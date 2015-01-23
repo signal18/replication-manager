@@ -291,7 +291,7 @@ func switchover() {
 	if err != nil {
 		log.Println("WARNING: Could not unlock tables on old master", err)
 	}
-	_, err = master.Exec(cm + ", master_use_gtid=slave_pos")
+	_, err = master.Exec(cm + ", master_use_gtid=current_pos")
 	if err != nil {
 		log.Println("WARNING: Change master failed on old master", err)
 	}
