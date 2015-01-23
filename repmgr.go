@@ -23,6 +23,7 @@ var (
 	variable   map[string]string
 	slaveList  []string
 	exit       bool
+	vy         int
 )
 
 var (
@@ -52,15 +53,19 @@ var (
 )
 
 type MasterMonitor struct {
+	Conn      *sqlx.DB
 	Host      string
 	Port      string
+	IP        string
 	BinlogPos string
 	Strict    string
 }
 
 type SlaveMonitor struct {
+	Conn      *sqlx.DB
 	Host      string
 	Port      string
+	IP        string
 	LogBin    string
 	UsingGtid string
 	SlaveGtid string
@@ -82,10 +87,12 @@ func main() {
 	if *masterUrl == "" {
 		log.Fatal("ERROR: No master host specified.")
 	}
-	masterHost, masterPort = splitHostPort(*masterUrl)
-	masterIP, err := dbhelper.CheckHostAddr(masterHost)
+	master := new(MasterMonitor)
+	master.Host, master.Port = splitHostPort(*masterUrl)
+	var err error
+	master.IP, err = dbhelper.CheckHostAddr(master.Host)
 	if err != nil {
-		log.Fatalln("ERROR: DNS resolution error for host", masterHost)
+		log.Fatalln("ERROR: DNS resolution error for host", master.Host)
 	}
 	if *user == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
@@ -96,42 +103,43 @@ func main() {
 	}
 	rplUser, rplPass = splitPair(*rpluser)
 	if *verbose {
-		log.Printf("Connecting to master server %s:%s", masterHost, masterPort)
+		log.Printf("Connecting to master server %s:%s", master.Host, master.Port)
 	}
 
-	master, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(masterHost, masterPort, *socket))
+	master.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(master.Host, master.Port, *socket))
 	if err != nil {
 		log.Fatal("Error: could not connect to master server.")
 	}
-	defer master.Close()
+	defer master.Conn.Close()
 	// If slaves option is empty, then attempt automatic discovery.
 	// fmt.Println("Length of slaveList", len(slaveList))
 	if len(slaveList) == 0 {
-		slaveList = dbhelper.GetSlaveHostsDiscovery(master)
+		slaveList = dbhelper.GetSlaveHostsDiscovery(master.Conn)
 		if len(slaveList) == 0 {
 			log.Fatal("Error: no slaves found. Please supply a list of slaves manually.")
 		}
 	}
-	for _, v := range slaveList {
-		slaveHost, slavePort := splitHostPort(v)
-		slaveIP, err := dbhelper.CheckHostAddr(slaveHost)
+	slave := make([]SlaveMonitor, len(slaveList))
+	for k, v := range slaveList {
+		slave[k].Host, slave[k].Port = splitHostPort(v)
+		slave[k].IP, err = dbhelper.CheckHostAddr(slave[k].Host)
 		if err != nil {
-			log.Fatalln("ERROR: DNS resolution error for host", slaveHost)
+			log.Fatalln("ERROR: DNS resolution error for host", slave[k].Host)
 		}
-		if validateHostPort(slaveIP, slavePort) {
+		if validateHostPort(slave[k].IP, slave[k].Port) {
 			var err error
-			slave, err := dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(slaveHost, slavePort, *socket))
+			slave[k].Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(slave[k].Host, slave[k].Port, *socket))
 			if err != nil {
 				log.Fatal(err)
 			}
 			if *verbose {
-				log.Printf("Checking if server %s is a slave of server %s", slaveHost, masterHost)
+				log.Printf("Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
 			}
-			if dbhelper.IsSlaveof(slave, slaveHost, masterIP) == false {
-				log.Fatalf("ERROR: Server %s is not a slave of declared master %s", v, masterHost)
+			if dbhelper.IsSlaveof(slave[k].Conn, slave[k].Host, master.IP) == false {
+				log.Fatalf("ERROR: Server %s is not a slave of declared master %s", v, master.Host)
 			}
-			slave.Close()
 		}
+		defer slave[k].Conn.Close()
 	}
 
 	err = termbox.Init()
@@ -142,14 +150,22 @@ func main() {
 	termboxChan := new_tb_chan()
 	interval := time.Second
 	ticker := time.NewTicker(interval * 3)
-	drawMonitor()
 Loop:
 	for exit == false {
 		select {
 		case <-ticker.C:
-			status = dbhelper.GetStatusAsInt(master)
-			variable = dbhelper.GetVariables(master)
-			drawMonitor()
+			status = dbhelper.GetStatusAsInt(master.Conn)
+			variable = dbhelper.GetVariables(master.Conn)
+			drawHeader()
+			master.refresh()
+			master.draw()
+			vy = 6
+			for k, _ := range slaveList {
+				slave[k].refresh()
+				slave[k].draw()
+			}
+			termbox.Flush()
+
 		case event := <-termboxChan:
 			switch event.Type {
 			case termbox.EventKey:
@@ -174,50 +190,42 @@ Loop:
 	}
 }
 
-func drawMonitor() {
+func drawHeader() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	printTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "MariaDB Replication Monitor and Health Checker")
-	m := new(MasterMonitor)
-	m.init()
-	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %20s %12s", "Master Host", "Port", "Binlog Position", "Strict Mode")
-	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %20s %12s", m.Host, m.Port, m.BinlogPos, m.Strict)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-	vy := 6
-	for _, v := range slaveList {
-		slave := new(SlaveMonitor)
-		slave.init(v)
-		printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
-		vy++
-	}
-	vy += 2
+
+}
+func (master *MasterMonitor) draw() {
+	master.refresh()
+	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %20s %12s", "Master Host", "Port", "Binlog Position", "Strict Mode")
+	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %20s %12s", master.Host, master.Port, master.BinlogPos, master.Strict)
+}
+
+func (slave *SlaveMonitor) draw() {
+	printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
+	vy++
+}
+
+func drawFooter() {
 	printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
-	termbox.Flush()
-	time.Sleep(time.Duration(1) * time.Second)
 }
 
 /* Init a monitored master object */
-func (mm *MasterMonitor) init() {
-	mm.Host = masterHost
-	mm.Port = masterPort
+func (mm *MasterMonitor) refresh() {
 	mm.BinlogPos = dbhelper.GetVariableByName(master, "GTID_BINLOG_POS")
 	mm.Strict = dbhelper.GetVariableByName(master, "GTID_STRICT_MODE")
 }
 
 /* Init a monitored slave object */
-func (sm *SlaveMonitor) init(url string) error {
-	sm.Host, sm.Port = splitHostPort(url)
-	slave, err := dbhelper.MySQLConnect(dbUser, dbPass, "tcp("+url+")")
-	defer slave.Close()
+func (sm *SlaveMonitor) refresh() error {
+	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
 		return err
 	}
-	slaveStatus, err := dbhelper.GetSlaveStatus(slave)
-	if err != nil {
-		return err
-	}
-	sm.LogBin = dbhelper.GetVariableByName(slave, "LOG_BIN")
-	sm.ReadOnly = dbhelper.GetVariableByName(slave, "READ_ONLY")
-	sm.SlaveGtid = dbhelper.GetVariableByName(slave, "GTID_SLAVE_POS")
+	sm.LogBin = dbhelper.GetVariableByName(sm.Conn, "LOG_BIN")
+	sm.ReadOnly = dbhelper.GetVariableByName(sm.Conn, "READ_ONLY")
+	sm.SlaveGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_SLAVE_POS")
 	sm.UsingGtid = slaveStatus.Using_Gtid
 	sm.IOThread = slaveStatus.Slave_IO_Running
 	sm.SQLThread = slaveStatus.Slave_SQL_Running
