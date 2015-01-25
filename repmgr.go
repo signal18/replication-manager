@@ -52,27 +52,21 @@ var (
 	masterPort string
 )
 
-type MasterMonitor struct {
-	Conn      *sqlx.DB
-	Host      string
-	Port      string
-	IP        string
-	BinlogPos string
-	Strict    string
-}
-
-type SlaveMonitor struct {
-	Conn      *sqlx.DB
-	Host      string
-	Port      string
-	IP        string
-	LogBin    string
-	UsingGtid string
-	SlaveGtid string
-	IOThread  string
-	SQLThread string
-	ReadOnly  string
-	Delay     sql.NullInt64
+type ServerMonitor struct {
+	Conn        *sqlx.DB
+	Host        string
+	Port        string
+	IP          string
+	BinlogPos   string
+	Strict      string
+	LogBin      string
+	UsingGtid   string
+	CurrentGtid string
+	SlaveGtid   string
+	IOThread    string
+	SQLThread   string
+	ReadOnly    string
+	Delay       sql.NullInt64
 }
 
 func main() {
@@ -87,7 +81,7 @@ func main() {
 	if *masterUrl == "" {
 		log.Fatal("ERROR: No master host specified.")
 	}
-	master := new(MasterMonitor)
+	master := new(ServerMonitor)
 	master.Host, master.Port = splitHostPort(*masterUrl)
 	var err error
 	master.IP, err = dbhelper.CheckHostAddr(master.Host)
@@ -119,7 +113,7 @@ func main() {
 			log.Fatal("Error: no slaves found. Please supply a list of slaves manually.")
 		}
 	}
-	slave := make([]SlaveMonitor, len(slaveList))
+	slave := make([]ServerMonitor, len(slaveList))
 	for k, v := range slaveList {
 		slave[k].Host, slave[k].Port = splitHostPort(v)
 		slave[k].IP, err = dbhelper.CheckHostAddr(slave[k].Host)
@@ -158,14 +152,13 @@ Loop:
 			variable = dbhelper.GetVariables(master.Conn)
 			drawHeader()
 			master.refresh()
-			master.draw()
+			master.drawMaster()
 			vy = 6
 			for k, _ := range slaveList {
 				slave[k].refresh()
-				slave[k].draw()
+				slave[k].drawSlave(&vy)
 			}
 			termbox.Flush()
-
 		case event := <-termboxChan:
 			switch event.Type {
 			case termbox.EventKey:
@@ -196,29 +189,25 @@ func drawHeader() {
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 
 }
-func (master *MasterMonitor) draw() {
+func (master *ServerMonitor) drawMaster() {
 	master.refresh()
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %20s %12s", "Master Host", "Port", "Binlog Position", "Strict Mode")
 	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %20s %12s", master.Host, master.Port, master.BinlogPos, master.Strict)
 }
 
-func (slave *SlaveMonitor) draw() {
-	printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
-	vy++
+func (slave *ServerMonitor) drawSlave(vy *int) {
+	printfTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
+	*vy++
 }
 
-func drawFooter() {
-	printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
+func drawFooter(vy *int) {
+	printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
 }
 
-/* Init a monitored master object */
-func (mm *MasterMonitor) refresh() {
-	mm.BinlogPos = dbhelper.GetVariableByName(master, "GTID_BINLOG_POS")
-	mm.Strict = dbhelper.GetVariableByName(master, "GTID_STRICT_MODE")
-}
-
-/* Init a monitored slave object */
-func (sm *SlaveMonitor) refresh() error {
+/* Refresh a server slave object */
+func (sm *ServerMonitor) refresh() error {
+	sm.BinlogPos = dbhelper.GetVariableByName(master, "GTID_BINLOG_POS")
+	sm.Strict = dbhelper.GetVariableByName(master, "GTID_STRICT_MODE")
 	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
 		return err
@@ -234,7 +223,7 @@ func (sm *SlaveMonitor) refresh() error {
 }
 
 /* Check replication health and return status string */
-func (sm *SlaveMonitor) healthCheck() string {
+func (sm *ServerMonitor) healthCheck() string {
 	if sm.Delay.Valid == false {
 		if sm.SQLThread == "Yes" && sm.IOThread == "No" {
 			return "NOT OK, IO Stopped"
@@ -268,7 +257,7 @@ func switchover() {
 	log.Printf("Slave %s has been elected as a new master", candidate)
 	if *preScript != "" {
 		log.Printf("Calling pre-failover script")
-		out, err := exec.Command(*preScript, masterHost, newMasterHost).CombinedOutput()
+		out, err := exec.Command(*preScript, master.Host, newMasterHost).CombinedOutput()
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
