@@ -6,9 +6,9 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/mariadb-tools/common"
-	"github.com/mariadb-tools/dbhelper"
 	"github.com/nsf/termbox-go"
+	"github.com/tanji/mariadb-tools/common"
+	"github.com/tanji/mariadb-tools/dbhelper"
 	"log"
 	"net"
 	"os/exec"
@@ -27,7 +27,6 @@ var (
 )
 
 var (
-	master    *sqlx.DB
 	version   = flag.Bool("version", false, "Return version")
 	user      = flag.String("user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	masterUrl = flag.String("host", "", "MariaDB master host IP and port (optional), specified in the host:[port] format")
@@ -67,6 +66,7 @@ type ServerMonitor struct {
 	SQLThread   string
 	ReadOnly    string
 	Delay       sql.NullInt64
+	IsMaster    bool
 }
 
 func main() {
@@ -140,11 +140,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer termbox.Close()
 	termboxChan := new_tb_chan()
 	interval := time.Second
 	ticker := time.NewTicker(interval * 3)
-Loop:
+	var command string
 	for exit == false {
 		select {
 		case <-ticker.C:
@@ -158,18 +157,15 @@ Loop:
 				slave[k].refresh()
 				slave[k].drawSlave(&vy)
 			}
+			drawFooter(&vy)
 			termbox.Flush()
 		case event := <-termboxChan:
 			switch event.Type {
 			case termbox.EventKey:
 				if event.Key == termbox.KeyCtrlS {
+					command = "switchover"
 					exit = true
-					ticker.Stop()
-					close(termboxChan)
-					termbox.Close()
-					switchover()
-					log.Println("Quitting")
-					goto Loop
+
 				}
 				if event.Key == termbox.KeyCtrlQ {
 					exit = true
@@ -181,14 +177,21 @@ Loop:
 			}
 		}
 	}
+	termbox.Close()
+	switch command {
+	case "switchover":
+		master.switchover()
+		log.Println("Quitting")
+	}
 }
 
 func drawHeader() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	printTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "MariaDB Replication Monitor and Health Checker")
-	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 
 }
+
 func (master *ServerMonitor) drawMaster() {
 	master.refresh()
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %20s %12s", "Master Host", "Port", "Binlog Position", "Strict Mode")
@@ -196,24 +199,36 @@ func (master *ServerMonitor) drawMaster() {
 }
 
 func (slave *ServerMonitor) drawSlave(vy *int) {
-	printfTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
+	printfTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.CurrentGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
 	*vy++
 }
 
 func drawFooter(vy *int) {
+	*vy++
 	printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
 }
 
-/* Refresh a server slave object */
+/* Initializes a server object */
+func (server *ServerMonitor) init(url string) {
+	server.Host, server.Port = splitHostPort(url)
+	var err error
+	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	if err != nil {
+		log.Fatalln("ERROR: DNS resolution error for host", server.Host)
+	}
+}
+
+/* Refresh a server object */
 func (sm *ServerMonitor) refresh() error {
-	sm.BinlogPos = dbhelper.GetVariableByName(master, "GTID_BINLOG_POS")
-	sm.Strict = dbhelper.GetVariableByName(master, "GTID_STRICT_MODE")
+	sm.BinlogPos = dbhelper.GetVariableByName(sm.Conn, "GTID_BINLOG_POS")
+	sm.Strict = dbhelper.GetVariableByName(sm.Conn, "GTID_STRICT_MODE")
 	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
 		return err
 	}
 	sm.LogBin = dbhelper.GetVariableByName(sm.Conn, "LOG_BIN")
 	sm.ReadOnly = dbhelper.GetVariableByName(sm.Conn, "READ_ONLY")
+	sm.CurrentGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_CURRENT_POS")
 	sm.SlaveGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_SLAVE_POS")
 	sm.UsingGtid = slaveStatus.Using_Gtid
 	sm.IOThread = slaveStatus.Slave_IO_Running
@@ -240,19 +255,19 @@ func (sm *ServerMonitor) healthCheck() string {
 	}
 }
 
-func switchover() {
+func (master *ServerMonitor) switchover() {
 	log.Println("Starting switchover")
 	log.Println("Flushing tables on master")
-	err := dbhelper.FlushTablesNoLog(master)
+	err := dbhelper.FlushTablesNoLog(master.Conn)
 	if err != nil {
 		log.Println("WARNING: Could not flush tables on master", err)
 	}
 	log.Println("Checking long running updates on master")
-	if dbhelper.CheckLongRunningWrites(master, 10) > 0 {
+	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 		log.Fatal("ERROR: Long updates running on master. Cannot switchover")
 	}
 	log.Println("Electing a new master")
-	candidate := electCandidate(slaveList)
+	candidate := master.electCandidate(slaveList)
 	newMasterHost, newMasterPort := splitHostPort(candidate)
 	log.Printf("Slave %s has been elected as a new master", candidate)
 	if *preScript != "" {
@@ -264,7 +279,7 @@ func switchover() {
 		log.Println("Post-failover script complete", string(out))
 	}
 	log.Printf("Rejecting updates on master")
-	err = dbhelper.FlushTablesWithReadLock(master)
+	err = dbhelper.FlushTablesWithReadLock(master.Conn)
 	if err != nil {
 		log.Println("WARNING: Could not lock tables on master", err)
 	}
@@ -275,7 +290,7 @@ func switchover() {
 	}
 	newMaster := dbhelper.Connect(dbUser, dbPass, "tcp("+candidate+")")
 	log.Println("Waiting for candidate master to synchronize")
-	masterGtid := dbhelper.GetVariableByName(master, "GTID_BINLOG_POS")
+	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
 	dbhelper.MasterPosWait(newMaster, masterGtid)
 	log.Println("Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster)
@@ -284,19 +299,19 @@ func switchover() {
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMasterIP + "', master_port=" + newMasterPort + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
 	log.Println("Switching old master as a slave")
-	err = dbhelper.UnlockTables(master)
+	err = dbhelper.UnlockTables(master.Conn)
 	if err != nil {
 		log.Println("WARNING: Could not unlock tables on old master", err)
 	}
-	_, err = master.Exec(cm + ", master_use_gtid=slave_pos")
+	_, err = master.Conn.Exec(cm + ", master_use_gtid=slave_pos")
 	if err != nil {
 		log.Println("WARNING: Change master failed on old master", err)
 	}
-	err = dbhelper.StartSlave(master)
+	err = dbhelper.StartSlave(master.Conn)
 	if err != nil {
 		log.Println("WARNING: Start slave failed on old master", err)
 	}
-	err = dbhelper.SetReadOnly(master, true)
+	err = dbhelper.SetReadOnly(master.Conn, true)
 	if err != nil {
 		log.Printf("ERROR: Could not set old master as read-only", err)
 	}
@@ -390,7 +405,7 @@ func validateHostPort(h string, p string) bool {
 }
 
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
-func electCandidate(l []string) string {
+func (master *ServerMonitor) electCandidate(l []string) string {
 	ll := len(l)
 	if *verbose {
 		log.Println("Processing %s candidates", ll)
@@ -411,11 +426,11 @@ func electCandidate(l []string) string {
 		if dbhelper.CheckSlavePrerequisites(sl, sh) == false {
 			continue
 		}
-		if dbhelper.CheckBinlogFilters(master, sl) == false {
+		if dbhelper.CheckBinlogFilters(master.Conn, sl) == false {
 			log.Printf("WARNING: Binlog filters differ on master and slave %s. Skipping", v)
 			continue
 		}
-		if dbhelper.CheckReplicationFilters(master, sl) == false {
+		if dbhelper.CheckReplicationFilters(master.Conn, sl) == false {
 			log.Printf("WARNING: Replication filters differ on master and slave %s. Skipping", v)
 			continue
 		}
@@ -428,7 +443,7 @@ func electCandidate(l []string) string {
 			log.Printf("WARNING: Slave %s has more than %d seconds of replication delay (%d). Skipping", v, *maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}
-		if *gtidCheck && dbhelper.CheckSlaveSync(sl, master) == false {
+		if *gtidCheck && dbhelper.CheckSlaveSync(sl, master.Conn) == false {
 			log.Printf("WARNING: Slave %s not in sync. Skipping", v)
 			continue
 		}
