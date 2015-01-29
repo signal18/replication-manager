@@ -7,7 +7,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/nsf/termbox-go"
-	"github.com/tanji/mariadb-tools/common"
 	"github.com/tanji/mariadb-tools/dbhelper"
 	"log"
 	"net"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"time"
 )
+
+const repmgrVersion string = "0.2.0"
 
 var (
 	slaveList []string
@@ -64,7 +65,7 @@ type ServerMonitor struct {
 func main() {
 	flag.Parse()
 	if *version == true {
-		common.Version()
+		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
 	}
 	// if slaves option has been supplied, split into a slice.
 	if *slaves != "" {
