@@ -371,7 +371,7 @@ func validateHostPort(h string, p string) bool {
 func (master *ServerMonitor) electCandidate(l []string) string {
 	ll := len(l)
 	if *verbose {
-		log.Println("Processing %s candidates", ll)
+		log.Printf("Processing %s candidates", ll)
 	}
 	seqList := make([]uint64, ll)
 	i := 0
