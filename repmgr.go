@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.2.0"
+const repmgrVersion string = "0.2.1"
 
 var (
 	slaveList []string
@@ -439,7 +439,7 @@ func getSeqFromGtid(gtid string) uint64 {
 
 func drawHeader() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	printTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, "MariaDB Replication Monitor and Health Checker")
+	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, " MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 
 }
