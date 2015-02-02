@@ -112,7 +112,7 @@ func main() {
 		}
 		return false
 	}
-	if ret() == false {
+	if ret() == false && *prefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the slaves option")
 	}
 	var err error
@@ -128,59 +128,64 @@ func main() {
 		defer slave[k].Conn.Close()
 	}
 
-MainLoop:
-	err = termbox.Init()
-	if err != nil {
-		log.Fatal(err)
-	}
-	termboxChan := new_tb_chan()
-	interval := time.Second
-	ticker := time.NewTicker(interval * 3)
-	var command string
-	for exit == false {
-		select {
-		case <-ticker.C:
-			drawHeader()
-			master.refresh()
-			master.drawMaster()
-			vy = 6
-			for k, _ := range slave {
-				slave[k].refresh()
-				slave[k].drawSlave(&vy)
-			}
-			drawFooter(&vy)
-			termbox.Flush()
-		case event := <-termboxChan:
-			switch event.Type {
-			case termbox.EventKey:
-				if event.Key == termbox.KeyCtrlS {
-					command = "switchover"
-					exit = true
+	if *interactive == false {
+		master.switchover()
+	} else {
 
+	MainLoop:
+		err = termbox.Init()
+		if err != nil {
+			log.Fatal(err)
+		}
+		termboxChan := new_tb_chan()
+		interval := time.Second
+		ticker := time.NewTicker(interval * 3)
+		var command string
+		for exit == false {
+			select {
+			case <-ticker.C:
+				drawHeader()
+				master.refresh()
+				master.drawMaster()
+				vy = 6
+				for k, _ := range slave {
+					slave[k].refresh()
+					slave[k].drawSlave(&vy)
 				}
-				if event.Key == termbox.KeyCtrlQ {
-					exit = true
+				drawFooter(&vy)
+				termbox.Flush()
+			case event := <-termboxChan:
+				switch event.Type {
+				case termbox.EventKey:
+					if event.Key == termbox.KeyCtrlS {
+						command = "switchover"
+						exit = true
+
+					}
+					if event.Key == termbox.KeyCtrlQ {
+						exit = true
+					}
+				}
+				switch event.Ch {
+				case 's':
+					termbox.Sync()
 				}
 			}
-			switch event.Ch {
-			case 's':
-				termbox.Sync()
+		}
+		termbox.Close()
+		switch command {
+		case "switchover":
+			nmUrl, nsKey := master.switchover()
+			if *verbose {
+				log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
 			}
+			master.init(nmUrl)
+			slave[nsKey].init(slave[nsKey].URL)
+			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
+			time.Sleep(5 * time.Second)
+			exit = false
+			goto MainLoop
 		}
-	}
-	termbox.Close()
-	switch command {
-	case "switchover":
-		nmUrl, nsKey := master.switchover()
-		if *verbose {
-			log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
-		}
-		master.init(nmUrl)
-		slave[nsKey].init(slave[nsKey].URL)
-		log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
-		time.Sleep(5 * time.Second)
-		exit = false
-		goto MainLoop
 	}
 }
 
