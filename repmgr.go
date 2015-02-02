@@ -43,6 +43,7 @@ var (
 	postScript  = flag.String("post-failover-script", "", "Path of post-failover script")
 	maxDelay    = flag.Int64("maxdelay", 0, "Maximum replication delay before initiating failover")
 	gtidCheck   = flag.Bool("gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
+	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 )
 
 type ServerMonitor struct {
@@ -102,6 +103,17 @@ func main() {
 		if len(slaveList) == 0 {
 			log.Fatal("ERROR: no slaves found. Please supply a list of slaves manually.")
 		}
+	}
+	ret := func() bool {
+		for _, v := range slaveList {
+			if v == *prefMaster {
+				return true
+			}
+		}
+		return false
+	}
+	if ret() == false {
+		log.Fatal("ERROR: Preferred master is not included in the slaves option")
 	}
 	var err error
 	slave = make([]ServerMonitor, len(slaveList))
@@ -238,10 +250,12 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Fatal("ERROR: Long updates running on master. Cannot switchover")
 	}
 	log.Println("Electing a new master")
+	var nmUrl string
 	key := master.electCandidate(slave)
-	log.Printf("Slave %s has been elected as a new master", slave[key].URL)
+	nmUrl = slave[key].URL
+	log.Printf("Slave %s has been elected as a new master", nmUrl)
 	newMaster := new(ServerMonitor)
-	newMaster.init(slave[key].URL)
+	newMaster.init(nmUrl)
 	if *preScript != "" {
 		log.Printf("Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
@@ -407,6 +421,13 @@ func (master *ServerMonitor) electCandidate(l []ServerMonitor) int {
 		if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
 			log.Printf("WARN : Slave %s not in sync. Skipping", sl.URL)
 			continue
+		}
+		/* Rig the election if the examined slave is preferred candidate master */
+		if sl.URL == *prefMaster {
+			if *verbose {
+				log.Printf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
+			}
+			return i
 		}
 		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl.Conn, "GTID_CURRENT_POS"))
 		var max uint64
