@@ -185,14 +185,14 @@ func (server *ServerMonitor) init(url string) {
 func (sm *ServerMonitor) refresh() error {
 	sm.BinlogPos = dbhelper.GetVariableByName(sm.Conn, "GTID_BINLOG_POS")
 	sm.Strict = dbhelper.GetVariableByName(sm.Conn, "GTID_STRICT_MODE")
-	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
-	if err != nil {
-		return err
-	}
 	sm.LogBin = dbhelper.GetVariableByName(sm.Conn, "LOG_BIN")
 	sm.ReadOnly = dbhelper.GetVariableByName(sm.Conn, "READ_ONLY")
 	sm.CurrentGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_CURRENT_POS")
 	sm.SlaveGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_SLAVE_POS")
+	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
+	if err != nil {
+		return err
+	}
 	sm.UsingGtid = slaveStatus.Using_Gtid
 	sm.IOThread = slaveStatus.Slave_IO_Running
 	sm.SQLThread = slaveStatus.Slave_SQL_Running
