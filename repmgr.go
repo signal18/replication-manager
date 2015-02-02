@@ -20,6 +20,7 @@ const repmgrVersion string = "0.2.0"
 
 var (
 	slaveList []string
+	slave     []ServerMonitor
 	exit      bool
 	vy        int
 	dbUser    string
@@ -100,7 +101,7 @@ func main() {
 		}
 	}
 	var err error
-	slave := make([]ServerMonitor, len(slaveList))
+	slave = make([]ServerMonitor, len(slaveList))
 	for k, url := range slaveList {
 		slave[k].init(url)
 		if *verbose {
@@ -445,8 +446,8 @@ func drawHeader() {
 
 func (master *ServerMonitor) drawMaster() {
 	master.refresh()
-	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %20s %12s", "Master Host", "Port", "Binlog Position", "Strict Mode")
-	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %20s %12s", master.Host, master.Port, master.BinlogPos, master.Strict)
+	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
+	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", master.Host, master.Port, master.CurrentGtid, master.BinlogPos, master.Strict)
 }
 
 func (slave *ServerMonitor) drawSlave(vy *int) {
