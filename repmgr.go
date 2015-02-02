@@ -47,6 +47,7 @@ var (
 
 type ServerMonitor struct {
 	Conn        *sqlx.DB
+	URL         string
 	Host        string
 	Port        string
 	IP          string
@@ -86,18 +87,20 @@ func main() {
 
 	master := new(ServerMonitor)
 	if *verbose {
-		log.Printf("Connecting to master server %s:%s", master.Host, master.Port)
+		log.Printf("DEBUG: Connecting to master server %s", *masterUrl)
 	}
 	master.init(*masterUrl)
 
 	defer master.Conn.Close()
 
 	// If slaves option is empty, then attempt automatic discovery.
-	// fmt.Println("Length of slaveList", len(slaveList))
+	if *verbose {
+		log.Println("DEBUG: Length of slaveList arguments:", len(slaveList))
+	}
 	if len(slaveList) == 0 {
 		slaveList = dbhelper.GetSlaveHostsDiscovery(master.Conn)
 		if len(slaveList) == 0 {
-			log.Fatal("Error: no slaves found. Please supply a list of slaves manually.")
+			log.Fatal("ERROR: no slaves found. Please supply a list of slaves manually.")
 		}
 	}
 	var err error
@@ -105,7 +108,7 @@ func main() {
 	for k, url := range slaveList {
 		slave[k].init(url)
 		if *verbose {
-			log.Printf("Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
+			log.Printf("DEBUG: Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
 		}
 		if dbhelper.IsSlaveof(slave[k].Conn, slave[k].Host, master.IP) == false {
 			log.Fatalf("ERROR: Server %s is not a slave of declared master %s", url, master.Host)
@@ -129,7 +132,7 @@ MainLoop:
 			master.refresh()
 			master.drawMaster()
 			vy = 6
-			for k, _ := range slaveList {
+			for k, _ := range slave {
 				slave[k].refresh()
 				slave[k].drawSlave(&vy)
 			}
@@ -157,10 +160,12 @@ MainLoop:
 	switch command {
 	case "switchover":
 		nmUrl, nsKey := master.switchover()
-		log.Printf("Info: new master is %s, demoted master is %s", nmUrl, slaveList[nsKey])
+		if *verbose {
+			log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
+		}
 		master.init(nmUrl)
-		slave[nsKey].init(slaveList[nsKey])
-		log.Println("Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
+		slave[nsKey].init(slave[nsKey].URL)
+		log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 		time.Sleep(5 * time.Second)
 		exit = false
 		goto MainLoop
@@ -169,6 +174,7 @@ MainLoop:
 
 /* Initializes a server object */
 func (server *ServerMonitor) init(url string) {
+	server.URL = url
 	server.Host, server.Port = splitHostPort(url)
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
@@ -178,7 +184,7 @@ func (server *ServerMonitor) init(url string) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		log.Fatalln("Error: could not connect to server", url, err, dbUser, dbPass)
+		log.Fatalln("ERROR: could not connect to server", url, err, dbUser, dbPass)
 	}
 }
 
@@ -225,17 +231,17 @@ func (master *ServerMonitor) switchover() (string, int) {
 	log.Println("Flushing tables on master")
 	err := dbhelper.FlushTablesNoLog(master.Conn)
 	if err != nil {
-		log.Println("WARNING: Could not flush tables on master", err)
+		log.Println("WARN : Could not flush tables on master", err)
 	}
 	log.Println("Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 		log.Fatal("ERROR: Long updates running on master. Cannot switchover")
 	}
 	log.Println("Electing a new master")
-	newMasterUrl := master.electCandidate(slaveList)
-	log.Printf("Slave %s has been elected as a new master", newMasterUrl)
+	key := master.electCandidate(slave)
+	log.Printf("Slave %s has been elected as a new master", slave[key].URL)
 	newMaster := new(ServerMonitor)
-	newMaster.init(newMasterUrl)
+	newMaster.init(slave[key].URL)
 	if *preScript != "" {
 		log.Printf("Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
@@ -247,7 +253,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	log.Printf("Rejecting updates on master")
 	err = dbhelper.FlushTablesWithReadLock(master.Conn)
 	if err != nil {
-		log.Println("WARNING: Could not lock tables on master", err)
+		log.Println("WARN : Could not lock tables on master", err)
 	}
 	log.Println("Switching master")
 	log.Println("Waiting for candidate master to synchronize")
@@ -256,30 +262,30 @@ func (master *ServerMonitor) switchover() (string, int) {
 	log.Println("Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
-		log.Println("WARNING: Stopping slave failed on new master")
+		log.Println("WARN : Stopping slave failed on new master")
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
 	log.Println("Switching old master as a slave")
 	err = dbhelper.UnlockTables(master.Conn)
 	if err != nil {
-		log.Println("WARNING: Could not unlock tables on old master", err)
+		log.Println("WARN : Could not unlock tables on old master", err)
 	}
 	_, err = master.Conn.Exec(cm + ", master_use_gtid=current_pos")
 	if err != nil {
-		log.Println("WARNING: Change master failed on old master", err)
+		log.Println("WARN : Change master failed on old master", err)
 	}
 	err = dbhelper.StartSlave(master.Conn)
 	if err != nil {
-		log.Println("WARNING: Start slave failed on old master", err)
+		log.Println("WARN : Start slave failed on old master", err)
 	}
 	err = dbhelper.SetReadOnly(master.Conn, true)
 	if err != nil {
-		log.Printf("ERROR: Could not set old master as read-only", err)
+		log.Printf("WARN : Could not set old master as read-only", err)
 	}
 	log.Println("Resetting slave on new master and set read/write mode on")
 	err = dbhelper.ResetSlave(newMaster.Conn, true)
 	if err != nil {
-		log.Println("WARNING: Reset slave failed on new master")
+		log.Println("WARN : Reset slave failed on new master")
 	}
 	err = dbhelper.SetReadOnly(newMaster.Conn, false)
 	if err != nil {
@@ -287,36 +293,33 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	log.Println("Switching other slaves to the new master")
 	var oldMasterKey int
-	for k, url := range slaveList {
-		if url == newMasterUrl {
-			slaveList[k] = *masterUrl
+	for k, sl := range slave {
+		if sl.URL == newMaster.URL {
+			slave[k].URL = master.URL
 			oldMasterKey = k
+			if *verbose {
+				log.Printf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
+			}
 			continue
 		}
-		slaveHost, slavePort := splitHostPort(url)
-		slave, err := dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(slaveHost, slavePort, *socket))
+		log.Printf("Waiting for slave %s to sync", sl.URL)
+		dbhelper.MasterPosWait(sl.Conn, masterGtid)
+		log.Printf("Change master on slave %s", sl.URL)
+		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
-			log.Printf("ERROR: Could not connect to slave %s, %s", url, err)
-		} else {
-			log.Printf("Waiting for slave %s to sync", url)
-			dbhelper.MasterPosWait(newMaster.Conn, masterGtid)
-			log.Printf("Change master on slave %s", url)
-			err := dbhelper.StopSlave(slave)
-			if err != nil {
-				log.Printf("WARNING: Could not stop slave on server %s, %s", url, err)
-			}
-			_, err = slave.Exec(cm)
-			if err != nil {
-				log.Printf("ERROR: Change master failed on slave %s, %s", url, err)
-			}
-			err = dbhelper.StartSlave(slave)
-			if err != nil {
-				log.Printf("ERROR: could not start slave on server %s, %s", url, err)
-			}
-			err = dbhelper.SetReadOnly(slave, true)
-			if err != nil {
-				log.Printf("ERROR: Could not set slave %s as read-only, %s", url, err)
-			}
+			log.Printf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
+		}
+		_, err = sl.Conn.Exec(cm)
+		if err != nil {
+			log.Printf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
+		}
+		err = dbhelper.StartSlave(sl.Conn)
+		if err != nil {
+			log.Printf("ERROR: could not start slave on server %s, %s", sl.URL, err)
+		}
+		err = dbhelper.SetReadOnly(sl.Conn, true)
+		if err != nil {
+			log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 		}
 	}
 	if *postScript != "" {
@@ -328,7 +331,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Println("Post-failover script complete", string(out))
 	}
 	log.Println("Switchover complete")
-	return newMasterUrl, oldMasterKey
+	return newMaster.URL, oldMasterKey
 }
 
 /* Returns two host and port items from a pair, e.g. host:port */
@@ -369,49 +372,43 @@ func validateHostPort(h string, p string) bool {
 }
 
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
-func (master *ServerMonitor) electCandidate(l []string) string {
+func (master *ServerMonitor) electCandidate(l []ServerMonitor) int {
 	ll := len(l)
 	if *verbose {
-		log.Printf("Processing %s candidates", ll)
+		log.Printf("DEBUG: Processing %d candidates", ll)
 	}
 	seqList := make([]uint64, ll)
 	i := 0
 	hiseq := 0
-	for _, v := range l {
+	for _, sl := range l {
 		if *verbose {
-			log.Println("Connecting to slave", v)
+			log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 		}
-		sl, err := dbhelper.MySQLConnect(dbUser, dbPass, "tcp("+v+")")
-		if err != nil {
-			log.Printf("WARNING: Server %s not online. Skipping", v)
+		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 			continue
 		}
-		sh, _ := splitHostPort(v)
-		if dbhelper.CheckSlavePrerequisites(sl, sh) == false {
+		if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+			log.Printf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 			continue
 		}
-		if dbhelper.CheckBinlogFilters(master.Conn, sl) == false {
-			log.Printf("WARNING: Binlog filters differ on master and slave %s. Skipping", v)
+		if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+			log.Printf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 			continue
 		}
-		if dbhelper.CheckReplicationFilters(master.Conn, sl) == false {
-			log.Printf("WARNING: Replication filters differ on master and slave %s. Skipping", v)
-			continue
-		}
-		ss, err := dbhelper.GetSlaveStatus(sl)
+		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
 		if ss.Seconds_Behind_Master.Valid == false {
-			log.Printf("WARNING: Slave %s is stopped. Skipping", v)
+			log.Printf("WARN : Slave %s is stopped. Skipping", sl.URL)
 			continue
 		}
 		if ss.Seconds_Behind_Master.Int64 > *maxDelay {
-			log.Printf("WARNING: Slave %s has more than %d seconds of replication delay (%d). Skipping", v, *maxDelay, ss.Seconds_Behind_Master.Int64)
+			log.Printf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}
-		if *gtidCheck && dbhelper.CheckSlaveSync(sl, master.Conn) == false {
-			log.Printf("WARNING: Slave %s not in sync. Skipping", v)
+		if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
+			log.Printf("WARN : Slave %s not in sync. Skipping", sl.URL)
 			continue
 		}
-		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl, "GTID_CURRENT_POS"))
+		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl.Conn, "GTID_CURRENT_POS"))
 		var max uint64
 		if i == 0 {
 			max = seqList[0]
@@ -419,15 +416,14 @@ func (master *ServerMonitor) electCandidate(l []string) string {
 			max = seqList[i]
 			hiseq = i
 		}
-		sl.Close()
 		i++
 	}
 	if i > 0 {
-		/* Return the slave with the highest seqno. */
-		return l[hiseq]
+		/* Return key of slave with the highest seqno. */
+		return hiseq
 	} else {
 		log.Fatal("ERROR: No suitable candidates found.")
-		return "err"
+		return 0
 	}
 }
 
