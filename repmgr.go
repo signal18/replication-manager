@@ -131,11 +131,10 @@ func main() {
 	if *interactive == false {
 		master.switchover()
 	} else {
-
 	MainLoop:
 		err = termbox.Init()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln("Termbox initialization error", err)
 		}
 		termboxChan := new_tb_chan()
 		interval := time.Second
@@ -201,18 +200,26 @@ func (server *ServerMonitor) init(url string) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		log.Fatalln("ERROR: could not connect to server", url, err, dbUser, dbPass)
+		log.Fatalln("ERROR: could not connect to server", url, err)
 	}
 }
 
 /* Refresh a server object */
 func (sm *ServerMonitor) refresh() error {
-	sm.BinlogPos = dbhelper.GetVariableByName(sm.Conn, "GTID_BINLOG_POS")
-	sm.Strict = dbhelper.GetVariableByName(sm.Conn, "GTID_STRICT_MODE")
-	sm.LogBin = dbhelper.GetVariableByName(sm.Conn, "LOG_BIN")
-	sm.ReadOnly = dbhelper.GetVariableByName(sm.Conn, "READ_ONLY")
-	sm.CurrentGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_CURRENT_POS")
-	sm.SlaveGtid = dbhelper.GetVariableByName(sm.Conn, "GTID_SLAVE_POS")
+	err := sm.Conn.Ping()
+	if err != nil {
+		return err
+	}
+	sv, err := dbhelper.GetVariables(sm.Conn)
+	if err != nil {
+		return err
+	}
+	sm.BinlogPos = sv["GTID_BINLOG_POS"]
+	sm.Strict = sv["GTID_STRICT_MODE"]
+	sm.LogBin = sv["LOG_BIN"]
+	sm.ReadOnly = sv["READ_ONLY"]
+	sm.CurrentGtid = sv["GTID_CURRENT_POS"]
+	sm.SlaveGtid = sv["GTID_SLAVE_POS"]
 	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
 		return err
@@ -467,7 +474,12 @@ func drawHeader() {
 }
 
 func (master *ServerMonitor) drawMaster() {
-	master.refresh()
+	err := master.refresh()
+	if err != nil && err != sql.ErrNoRows {
+		master.CurrentGtid = "MASTER FAILED"
+		master.BinlogPos = "MASTER FAILED"
+		termbox.Sync()
+	}
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", master.Host, master.Port, master.CurrentGtid, master.BinlogPos, master.Strict)
 }
