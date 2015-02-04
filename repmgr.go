@@ -44,6 +44,7 @@ var (
 	maxDelay    = flag.Int64("maxdelay", 0, "Maximum replication delay before initiating failover")
 	gtidCheck   = flag.Bool("gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
 	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
+	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 )
 
 type ServerMonitor struct {
@@ -381,7 +382,7 @@ func (server *ServerMonitor) freeze() bool {
 		log.Printf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := 5000; i > 0; i -= 500 {
+	for i := *waitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break
