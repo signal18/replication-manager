@@ -175,11 +175,13 @@ func main() {
 		switch command {
 		case "switchover":
 			nmUrl, nsKey := master.switchover()
-			if *verbose {
-				log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
+			if nmUrl != "" && nsKey >= 0 {
+				if *verbose {
+					log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
+				}
+				master.init(nmUrl)
+				slave[nsKey].init(slave[nsKey].URL)
 			}
-			master.init(nmUrl)
-			slave[nsKey].init(slave[nsKey].URL)
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
 			exit = false
@@ -257,13 +259,17 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		log.Printf("WARN : Could not flush tables on master", err)
 	}
-	log.Println("Checking long running updates on master")
+	log.Println("INFO : Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
-		log.Fatal("ERROR: Long updates running on master. Cannot switchover")
+		log.Println("ERROR: Long updates running on master. Cannot switchover")
+		return "", -1
 	}
 	log.Println("Electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slave)
+	if key == -1 {
+		return "", -1
+	}
 	nmUrl = slave[key].URL
 	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
 	newMaster := new(ServerMonitor)
@@ -466,8 +472,8 @@ func (master *ServerMonitor) electCandidate(l []ServerMonitor) int {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
 	} else {
-		log.Fatal("ERROR: No suitable candidates found.")
-		return 0
+		log.Println("ERROR: No suitable candidates found.")
+		return -1
 	}
 }
 
