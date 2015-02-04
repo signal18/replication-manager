@@ -264,7 +264,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Println("ERROR: Long updates running on master. Cannot switchover")
 		return "", -1
 	}
-	log.Println("Electing a new master")
+	log.Println("INFO : Electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slave)
 	if key == -1 {
@@ -280,8 +280,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
-		log.Println("INFO : Post-failover script complete", string(out))
+		log.Println("INFO : Post-failover script complete:", string(out))
 	}
+	master.freeze()
 	log.Printf("INFO : Rejecting updates on %s (old master)", master.URL)
 	err = dbhelper.FlushTablesWithReadLock(master.Conn)
 	if err != nil {
@@ -305,7 +306,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Println("WARN : Stopping slave failed on new master")
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
-	log.Println("Switching old master as a slave")
+	log.Println("INFO : Switching old master as a slave")
 	err = dbhelper.UnlockTables(master.Conn)
 	if err != nil {
 		log.Println("WARN : Could not unlock tables on old master", err)
@@ -318,11 +319,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		log.Println("WARN : Start slave failed on old master", err)
 	}
-	err = dbhelper.SetReadOnly(master.Conn, true)
-	if err != nil {
-		log.Printf("WARN : Could not set old master as read-only", err)
-	}
-	log.Println("Resetting slave on new master and set read/write mode on")
+	log.Println("INFO : Resetting slave on new master and set read/write mode on")
 	err = dbhelper.ResetSlave(newMaster.Conn, true)
 	if err != nil {
 		log.Println("WARN : Reset slave failed on new master")
@@ -331,7 +328,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		log.Println("ERROR: Could not set new master as read-write")
 	}
-	log.Println("Switching other slaves to the new master")
+	log.Println("INFO : Switching other slaves to the new master")
 	var oldMasterKey int
 	for k, sl := range slave {
 		if sl.URL == newMaster.URL {
@@ -347,7 +344,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 		if *verbose {
 			sl.log()
 		}
-		log.Printf("Change master on slave %s", sl.URL)
+		log.Printf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			log.Printf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
@@ -375,6 +372,26 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	log.Println("INFO : Switchover complete")
 	return newMaster.URL, oldMasterKey
+}
+
+/* Handles write freeze and existing transactions on a server */
+func (server *ServerMonitor) freeze() bool {
+	err := dbhelper.SetReadOnly(server.Conn, true)
+	if err != nil {
+		log.Printf("WARN : Could not set %s as read-only: %s", server.URL, err)
+		return false
+	}
+	for i := 5000; i > 0; i -= 500 {
+		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
+		if threads == 0 {
+			break
+		}
+		log.Printf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
+		time.Sleep(500 * time.Millisecond)
+	}
+	log.Printf("INFO: Terminating all threads on %s", server.URL)
+	dbhelper.KillThreads(server.Conn)
+	return true
 }
 
 /* Returns two host and port items from a pair, e.g. host:port */
