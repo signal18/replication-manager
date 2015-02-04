@@ -251,11 +251,11 @@ func (sm *ServerMonitor) healthCheck() string {
 
 /* Triggers a master switchover. Returns the new master's URL */
 func (master *ServerMonitor) switchover() (string, int) {
-	log.Println("Starting switchover")
-	log.Println("Flushing tables on master")
+	log.Println("INFO : Starting switchover")
+	log.Printf("INFO : Flushing tables on %s (master)", master.URL)
 	err := dbhelper.FlushTablesNoLog(master.Conn)
 	if err != nil {
-		log.Println("WARN : Could not flush tables on master", err)
+		log.Printf("WARN : Could not flush tables on master", err)
 	}
 	log.Println("Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
@@ -265,24 +265,24 @@ func (master *ServerMonitor) switchover() (string, int) {
 	var nmUrl string
 	key := master.electCandidate(slave)
 	nmUrl = slave[key].URL
-	log.Printf("Slave %s has been elected as a new master", nmUrl)
+	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
 	newMaster := new(ServerMonitor)
 	newMaster.init(nmUrl)
 	if *preScript != "" {
-		log.Printf("Calling pre-failover script")
+		log.Printf("INFO : Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
-		log.Println("Post-failover script complete", string(out))
+		log.Println("INFO : Post-failover script complete", string(out))
 	}
-	log.Printf("Rejecting updates on master")
+	log.Printf("INFO : Rejecting updates on %s (old master)", master.URL)
 	err = dbhelper.FlushTablesWithReadLock(master.Conn)
 	if err != nil {
-		log.Println("WARN : Could not lock tables on master", err)
+		log.Printf("WARN : Could not lock tables on %s (old master) %s", master.URL, err)
 	}
-	log.Println("Switching master")
-	log.Println("Waiting for candidate master to synchronize")
+	log.Println("INFO : Switching master")
+	log.Println("INFO : Waiting for candidate master to synchronize")
 	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
 	if *verbose {
 		log.Println("DEBUG: Syncing on master GTID Binlog Pos")
@@ -293,7 +293,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Println("DEBUG: MASTER_POS_WAIT executed.")
 		newMaster.log()
 	}
-	log.Println("Stopping slave thread on new master")
+	log.Println("INFO: Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
 		log.Println("WARN : Stopping slave failed on new master")
@@ -336,7 +336,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 			}
 			continue
 		}
-		log.Printf("Waiting for slave %s to sync", sl.URL)
+		log.Printf("INFO : Waiting for slave %s to sync", sl.URL)
 		dbhelper.MasterPosWait(sl.Conn, masterGtid)
 		if *verbose {
 			sl.log()
@@ -360,14 +360,14 @@ func (master *ServerMonitor) switchover() (string, int) {
 		}
 	}
 	if *postScript != "" {
-		log.Printf("Calling post-failover script")
+		log.Printf("INFO : Calling post-failover script")
 		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
-		log.Println("Post-failover script complete", string(out))
+		log.Println("INFO : Post-failover script complete", string(out))
 	}
-	log.Println("Switchover complete")
+	log.Println("INFO : Switchover complete")
 	return newMaster.URL, oldMasterKey
 }
 
