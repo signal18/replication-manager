@@ -284,7 +284,15 @@ func (master *ServerMonitor) switchover() (string, int) {
 	log.Println("Switching master")
 	log.Println("Waiting for candidate master to synchronize")
 	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
+	if *verbose {
+		log.Println("DEBUG: Syncing on master GTID Binlog Pos")
+		master.log()
+	}
 	dbhelper.MasterPosWait(newMaster.Conn, masterGtid)
+	if *verbose {
+		log.Println("DEBUG: MASTER_POS_WAIT executed.")
+		newMaster.log()
+	}
 	log.Println("Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
@@ -330,6 +338,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 		}
 		log.Printf("Waiting for slave %s to sync", sl.URL)
 		dbhelper.MasterPosWait(sl.Conn, masterGtid)
+		if *verbose {
+			sl.log()
+		}
 		log.Printf("Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
@@ -460,6 +471,12 @@ func (master *ServerMonitor) electCandidate(l []ServerMonitor) int {
 	}
 }
 
+func (server *ServerMonitor) log() {
+	server.refresh()
+	log.Printf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s\n", server.URL, server.CurrentGtid, server.SlaveGtid, server.BinlogPos)
+	return
+}
+
 func getSeqFromGtid(gtid string) uint64 {
 	e := strings.Split(gtid, "-")
 	s, _ := strconv.ParseUint(e[2], 10, 64)
@@ -470,7 +487,6 @@ func drawHeader() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, " MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-
 }
 
 func (master *ServerMonitor) drawMaster() {
