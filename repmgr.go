@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.2.1"
+const repmgrVersion string = "0.2.2"
 
 var (
 	slaveList []string
