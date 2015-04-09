@@ -27,7 +27,7 @@ To perform switchover, mariadb-repmgr uses a mechanism similar to common mysql f
   * Watching for all slaves to catch up to the current GTID position
   * Promote the candidate slave to be a new master
   * Put up the IP address on new master by calling an optional script
-  * Switch other slaves and old master to be slaves of the new master
+  * Switch other slaves and old master to be slaves of the new master and set them as read-only
 
 ## EXAMPLES
 
