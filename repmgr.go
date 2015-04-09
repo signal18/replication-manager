@@ -45,6 +45,7 @@ var (
 	gtidCheck   = flag.Bool("gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
 	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
+	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
 )
 
 type ServerMonitor struct {
@@ -320,6 +321,12 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		log.Println("WARN : Start slave failed on old master", err)
 	}
+	if *readonly {
+		err = dbhelper.SetReadOnly(master.Conn, true)
+		if err != nil {
+			log.Printf("ERROR: Could not set old master as read-only, %s", err)
+		}
+	}
 	log.Println("INFO : Resetting slave on new master and set read/write mode on")
 	err = dbhelper.ResetSlave(newMaster.Conn, true)
 	if err != nil {
@@ -358,9 +365,11 @@ func (master *ServerMonitor) switchover() (string, int) {
 		if err != nil {
 			log.Printf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
-		err = dbhelper.SetReadOnly(sl.Conn, true)
-		if err != nil {
-			log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
+		if *readonly {
+			err = dbhelper.SetReadOnly(sl.Conn, true)
+			if err != nil {
+				log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
+			}
 		}
 	}
 	if *postScript != "" {

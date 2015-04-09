@@ -66,7 +66,11 @@ Start mariadb-repmgr in interactive mode using full host and port syntax, using 
 
   * -prefmaster `<address>`
 
-    Preferred candidate server for master failover, in `host:[port]` format
+    Preferred candidate server for master failover, in `host:[port]` format.
+  
+  * -readonly `<boolean>`
+
+    Set slaves as read-only when performing switchover. Default true.
 
   * -rpluser `<user>:[password]`
 
