@@ -14,13 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"errors"
 )
 
 const repmgrVersion string = "0.2.2"
 
 var (
 	slaveList []string
-	slave     []ServerMonitor
+	slave     []*ServerMonitor
 	exit      bool
 	vy        int
 	dbUser    string
@@ -46,6 +47,7 @@ var (
 	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
+	state       = flag.String("failover", "alive", "Master state, either 'alive' (default) or 'dead'")
 )
 
 type ServerMonitor struct {
@@ -87,14 +89,17 @@ func main() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(*rpluser)
-
-	master := new(ServerMonitor)
+	
+	// Create a new master connection
 	if *verbose {
 		log.Printf("DEBUG: Connecting to master server %s", *masterUrl)
 	}
-	master.init(*masterUrl)
-
-	defer master.Conn.Close()
+	master, err := newServerMonitor(*masterUrl)
+	if err != nil && *state == "alive" {
+		log.Fatalln(err)
+	} else if err == nil {
+		defer master.Conn.Close()
+	}
 
 	// If slaves option is empty, then attempt automatic discovery.
 	if *verbose {
@@ -117,10 +122,9 @@ func main() {
 	if ret() == false && *prefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the slaves option")
 	}
-	var err error
-	slave = make([]ServerMonitor, len(slaveList))
+	slave = make([]*ServerMonitor, len(slaveList))
 	for k, url := range slaveList {
-		slave[k].init(url)
+		slave[k], err = newServerMonitor(url)
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
 		}
@@ -181,8 +185,8 @@ func main() {
 				if *verbose {
 					log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
 				}
-				master.init(nmUrl)
-				slave[nsKey].init(slave[nsKey].URL)
+				master, err = newServerMonitor(nmUrl)
+				slave[nsKey], err = newServerMonitor(slave[nsKey].URL)
 			}
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
@@ -193,19 +197,20 @@ func main() {
 }
 
 /* Initializes a server object */
-func (server *ServerMonitor) init(url string) {
+func newServerMonitor(url string) (*ServerMonitor, error) {
+	server := new(ServerMonitor)
 	server.URL = url
 	server.Host, server.Port = splitHostPort(url)
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
-		log.Fatalln("ERROR: DNS resolution error for host", server.Host)
-
+		return nil, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		log.Fatalln("ERROR: could not connect to server", url, err)
+		return nil, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
 	}
+	return server, nil
 }
 
 /* Refresh a server object */
@@ -274,8 +279,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	nmUrl = slave[key].URL
 	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
-	newMaster := new(ServerMonitor)
-	newMaster.init(nmUrl)
+	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
 		log.Printf("INFO : Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
@@ -442,7 +446,7 @@ func validateHostPort(h string, p string) bool {
 }
 
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
-func (master *ServerMonitor) electCandidate(l []ServerMonitor) int {
+func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	ll := len(l)
 	if *verbose {
 		log.Printf("DEBUG: Processing %d candidates", ll)
