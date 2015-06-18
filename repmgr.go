@@ -133,8 +133,9 @@ func main() {
 		}
 		defer slave[k].Conn.Close()
 	}
-
-	if *interactive == false {
+	if *state == "dead" {
+		master.failover()
+	} else if *interactive == false {
 		master.switchover()
 	} else {
 	MainLoop:
@@ -388,6 +389,85 @@ func (master *ServerMonitor) switchover() (string, int) {
 	return newMaster.URL, oldMasterKey
 }
 
+/* Triggers a master failover. Returns the new master's URL */
+func (master *ServerMonitor) failover() (string, int) {
+	log.Println("INFO : Starting failover")
+	log.Println("INFO : Electing a new master")
+	var nmUrl string
+	key := master.electCandidate(slave)
+	if key == -1 {
+		return "", -1
+	}
+	nmUrl = slave[key].URL
+	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
+	newMaster, err := newServerMonitor(nmUrl)
+	if *preScript != "" {
+		log.Printf("INFO : Calling pre-failover script")
+		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
+		if err != nil {
+			log.Println("ERROR:", err)
+		}
+		log.Println("INFO : Post-failover script complete:", string(out))
+	}
+	log.Println("INFO : Switching master")
+	log.Println("INFO : Stopping slave thread on new master")
+	err = dbhelper.StopSlave(newMaster.Conn)
+	if err != nil {
+		log.Println("WARN : Stopping slave failed on new master")
+	}
+	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
+	log.Println("INFO : Resetting slave on new master and set read/write mode on")
+	err = dbhelper.ResetSlave(newMaster.Conn, true)
+	if err != nil {
+		log.Println("WARN : Reset slave failed on new master")
+	}
+	err = dbhelper.SetReadOnly(newMaster.Conn, false)
+	if err != nil {
+		log.Println("ERROR: Could not set new master as read-write")
+	}
+	log.Println("INFO : Switching other slaves to the new master")
+	var oldMasterKey int
+	for k, sl := range slave {
+		if sl.URL == newMaster.URL {
+			slave[k].URL = master.URL
+			oldMasterKey = k
+			if *verbose {
+				log.Printf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
+			}
+			continue
+		}
+		log.Printf("INFO : Change master on slave %s", sl.URL)
+		err := dbhelper.StopSlave(sl.Conn)
+		if err != nil {
+			log.Printf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
+		}
+		_, err = sl.Conn.Exec(cm)
+		if err != nil {
+			log.Printf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
+		}
+		err = dbhelper.StartSlave(sl.Conn)
+		if err != nil {
+			log.Printf("ERROR: could not start slave on server %s, %s", sl.URL, err)
+		}
+		if *readonly {
+			err = dbhelper.SetReadOnly(sl.Conn, true)
+			if err != nil {
+				log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
+			}
+		}
+	}
+	if *postScript != "" {
+		log.Printf("INFO : Calling post-failover script")
+		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
+		if err != nil {
+			log.Println("ERROR:", err)
+		}
+		log.Println("INFO : Post-failover script complete", string(out))
+	}
+	log.Println("INFO : Switchover complete")
+	return newMaster.URL, oldMasterKey
+}
+
 /* Handles write freeze and existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
@@ -516,7 +596,13 @@ func (server *ServerMonitor) log() {
 
 func getSeqFromGtid(gtid string) uint64 {
 	e := strings.Split(gtid, "-")
-	s, _ := strconv.ParseUint(e[2], 10, 64)
+	if len(e) != 3 {
+		log.Fatalln("Error splitting GTID:", gtid)
+	}
+	s, err := strconv.ParseUint(e[2], 10, 64)
+	if err != nil {
+		log.Fatalln("Error getting sequence from GTID:", err)
+	}
 	return s
 }
 
