@@ -123,4 +123,4 @@ You should have received a copy of the GNU General Public License along with thi
 
 ## VERSION
 
-**mariadb-repmgr** 0.2.2
+**mariadb-repmgr** 0.3.0
