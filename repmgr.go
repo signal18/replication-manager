@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
@@ -14,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"errors"
 )
 
 const repmgrVersion string = "0.2.2"
@@ -89,7 +89,7 @@ func main() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(*rpluser)
-	
+
 	// Create a new master connection
 	if *verbose {
 		log.Printf("DEBUG: Connecting to master server %s", *masterUrl)
@@ -125,6 +125,12 @@ func main() {
 	slave = make([]*ServerMonitor, len(slaveList))
 	for k, url := range slaveList {
 		slave[k], err = newServerMonitor(url)
+		if *verbose {
+			log.Printf("creating new server: %v", slave[k])
+		}
+		if err != nil {
+			log.Fatalln(err)
+		}
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
 		}
@@ -205,11 +211,11 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
+		return server, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
+		return server, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
 	}
 	return server, nil
 }
@@ -535,32 +541,34 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	i := 0
 	hiseq := 0
 	for _, sl := range l {
-		if *verbose {
-			log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
-		}
-		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
-			continue
-		}
-		if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
-			log.Printf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
-			continue
-		}
-		if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
-			log.Printf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
-			continue
-		}
-		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-		if ss.Seconds_Behind_Master.Valid == false {
-			log.Printf("WARN : Slave %s is stopped. Skipping", sl.URL)
-			continue
-		}
-		if ss.Seconds_Behind_Master.Int64 > *maxDelay {
-			log.Printf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
-			continue
-		}
-		if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
-			log.Printf("WARN : Slave %s not in sync. Skipping", sl.URL)
-			continue
+		if *state == "alive" {
+			if *verbose {
+				log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
+			}
+			if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+				continue
+			}
+			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+				log.Printf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
+				continue
+			}
+			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+				log.Printf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+				continue
+			}
+			ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+			if ss.Seconds_Behind_Master.Valid == false {
+				log.Printf("WARN : Slave %s is stopped. Skipping", sl.URL)
+				continue
+			}
+			if ss.Seconds_Behind_Master.Int64 > *maxDelay {
+				log.Printf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
+				continue
+			}
+			if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
+				log.Printf("WARN : Slave %s not in sync. Skipping", sl.URL)
+				continue
+			}
 		}
 		/* Rig the election if the examined slave is preferred candidate master */
 		if sl.URL == *prefMaster {
