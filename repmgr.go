@@ -17,11 +17,13 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.3.0"
+const repmgrVersion string = "0.4.0"
 
 var (
-	slaveList []string
+	hostList  []string
+	hhdls     []*ServerMonitor
 	slave     []*ServerMonitor
+	master	  *ServerMonitor
 	exit      bool
 	vy        int
 	dbUser    string
@@ -33,11 +35,10 @@ var (
 var (
 	version   = flag.Bool("version", false, "Return version")
 	user      = flag.String("user", "", "User for MariaDB login, specified in the [user]:[password] format")
-	masterUrl = flag.String("host", "", "MariaDB master host IP and port (optional), specified in the host:[port] format")
+	hosts 	= flag.String("hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	socket    = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
 	rpluser   = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
 	// command specific-options
-	slaves      = flag.String("slaves", "", "List of slaves connected to MariaDB master, separated by a comma")
 	interactive = flag.Bool("interactive", true, "Runs the MariaDB monitor in interactive mode")
 	verbose     = flag.Bool("verbose", false, "Print detailed execution info")
 	preScript   = flag.String("pre-failover-script", "", "Path of pre-failover script")
@@ -75,12 +76,12 @@ func main() {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
 	}
 	// if slaves option has been supplied, split into a slice.
-	if *slaves != "" {
-		slaveList = strings.Split(*slaves, ",")
+	if *hosts != "" {
+		hostList = strings.Split(*hosts, ",")
+	} else {
+		log.Fatal("ERROR: No hosts list specified.")
 	}
-	if *masterUrl == "" {
-		log.Fatal("ERROR: No master host specified.")
-	}
+	// validate users.
 	if *user == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
@@ -89,30 +90,55 @@ func main() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(*rpluser)
-
-	// Create a new master connection
-	if *verbose {
-		log.Printf("DEBUG: Connecting to master server %s", *masterUrl)
-	}
-	master, err := newServerMonitor(*masterUrl)
-	if err != nil && *state == "alive" {
-		log.Fatalln(err)
-	} else if err == nil {
-		defer master.Conn.Close()
-	}
-
-	// If slaves option is empty, then attempt automatic discovery.
-	if *verbose {
-		log.Println("DEBUG: Length of slaveList arguments:", len(slaveList))
-	}
-	if len(slaveList) == 0 {
-		slaveList = dbhelper.GetSlaveHostsDiscovery(master.Conn)
-		if len(slaveList) == 0 {
-			log.Fatal("ERROR: no slaves found. Please supply a list of slaves manually.")
+	
+	// Create a connection to each host.
+	hostCount := len(hostList)
+	hhdls = make([]*ServerMonitor, hostCount)
+	slaveCount := 0
+	for k, url := range hostList {
+		var err error
+		hhdls[k], err = newServerMonitor(url)
+		if *verbose {
+			log.Printf("DEBUG: Creating new server: %v", hhdls[k].URL)
+		}
+		if err != nil {
+			if *state == "dead" {
+				log.Printf("INFO: Server %s is dead. Assuming old master.", hhdls[k].URL)
+				master = hhdls[k]
+				continue
+			}
+			log.Fatalln("ERROR: Error when establishing initial connection to host", err)
+		} 
+		defer hhdls[k].Conn.Close()
+		if *verbose {
+			log.Printf("DEBUG: Checking if server %s is slave", hhdls[k].URL)
+		}
+		ss, err := dbhelper.GetSlaveStatus(hhdls[k].Conn) 
+		if ss.Master_Host != "" {				
+			log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
+			slave = append(slave, hhdls[k])
+			slaveCount++
+		} else {
+			log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
+			master = hhdls[k] 				
 		}
 	}
+	if (hostCount - slaveCount) == 0 {
+		log.Fatalln("ERROR: Multi-master topologies are not yet supported.")
+	}
+	
+	for _, sl := range slave {
+		if *verbose {
+			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
+		}
+		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
+			log.Fatalf("ERROR: Server %s is not a slave of declared master %s", master.URL, master.Host)
+		}
+	}
+
+	// Check if preferred master is included in Host List
 	ret := func() bool {
-		for _, v := range slaveList {
+		for _, v := range hostList {
 			if v == *prefMaster {
 				return true
 			}
@@ -120,32 +146,17 @@ func main() {
 		return false
 	}
 	if ret() == false && *prefMaster != "" {
-		log.Fatal("ERROR: Preferred master is not included in the slaves option")
+		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
-	slave = make([]*ServerMonitor, len(slaveList))
-	for k, url := range slaveList {
-		slave[k], err = newServerMonitor(url)
-		if *verbose {
-			log.Printf("creating new server: %v", slave[k])
-		}
-		if err != nil {
-			log.Fatalln(err)
-		}
-		if *verbose {
-			log.Printf("DEBUG: Checking if server %s is a slave of server %s", slave[k].Host, master.Host)
-		}
-		if dbhelper.IsSlaveof(slave[k].Conn, slave[k].Host, master.IP) == false {
-			log.Fatalf("ERROR: Server %s is not a slave of declared master %s", url, master.Host)
-		}
-		defer slave[k].Conn.Close()
-	}
+	
+	// Do failover or switchover interactively, else start the interactive monitor.
 	if *state == "dead" {
 		master.failover()
 	} else if *interactive == false {
 		master.switchover()
 	} else {
 	MainLoop:
-		err = termbox.Init()
+		err := termbox.Init()
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
 		}
@@ -172,7 +183,10 @@ func main() {
 					if event.Key == termbox.KeyCtrlS {
 						command = "switchover"
 						exit = true
-
+					}
+					if event.Key == termbox.KeyCtrlF {
+						command = "failover"
+						exit = true
 					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
@@ -199,7 +213,19 @@ func main() {
 			time.Sleep(5 * time.Second)
 			exit = false
 			goto MainLoop
-		}
+		case "failover":
+			nmUrl, _ := master.switchover()
+			if nmUrl != "" {
+				if *verbose {
+					log.Printf("DEBUG: Reinstancing new master: %s", nmUrl)
+				}
+				master, err = newServerMonitor(nmUrl)
+			}
+			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
+			time.Sleep(5 * time.Second)
+			exit = false
+			goto MainLoop
+		}		
 	}
 }
 
@@ -303,9 +329,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	log.Println("INFO : Switching master")
 	log.Println("INFO : Waiting for candidate master to synchronize")
-	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
+	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_CURRENT_POS")
 	if *verbose {
-		log.Println("DEBUG: Syncing on master GTID Binlog Pos")
+		log.Printf("DEBUG: Syncing on master GTID Current Pos [%s]", masterGtid)
 		master.log()
 	}
 	dbhelper.MasterPosWait(newMaster.Conn, masterGtid)
@@ -638,7 +664,11 @@ func (slave *ServerMonitor) drawSlave(vy *int) {
 
 func drawFooter(vy *int) {
 	*vy++
-	printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
+	if master.CurrentGtid != "MASTER FAILED" {
+		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
+	} else {
+		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-F to fail over")
+	}
 }
 
 func printTb(x, y int, fg, bg termbox.Attribute, msg string) {
