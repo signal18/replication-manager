@@ -17,27 +17,27 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.4.0"
+const repmgrVersion string = "0.4.1"
 
 var (
-	hostList  []string
-	hhdls     []*ServerMonitor
-	slave     []*ServerMonitor
-	master	  *ServerMonitor
-	exit      bool
-	vy        int
-	dbUser    string
-	dbPass    string
-	rplUser   string
-	rplPass   string
+	hostList []string
+	hhdls    []*ServerMonitor
+	slave    []*ServerMonitor
+	master   *ServerMonitor
+	exit     bool
+	vy       int
+	dbUser   string
+	dbPass   string
+	rplUser  string
+	rplPass  string
 )
 
 var (
-	version   = flag.Bool("version", false, "Return version")
-	user      = flag.String("user", "", "User for MariaDB login, specified in the [user]:[password] format")
-	hosts 	= flag.String("hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
-	socket    = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
-	rpluser   = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
+	version = flag.Bool("version", false, "Return version")
+	user    = flag.String("user", "", "User for MariaDB login, specified in the [user]:[password] format")
+	hosts   = flag.String("hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	socket  = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
+	rpluser = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
 	// command specific-options
 	interactive = flag.Bool("interactive", true, "Runs the MariaDB monitor in interactive mode")
 	verbose     = flag.Bool("verbose", false, "Print detailed execution info")
@@ -90,7 +90,7 @@ func main() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(*rpluser)
-	
+
 	// Create a connection to each host.
 	hostCount := len(hostList)
 	hhdls = make([]*ServerMonitor, hostCount)
@@ -108,25 +108,25 @@ func main() {
 				continue
 			}
 			log.Fatalln("ERROR: Error when establishing initial connection to host", err)
-		} 
+		}
 		defer hhdls[k].Conn.Close()
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", hhdls[k].URL)
 		}
-		ss, err := dbhelper.GetSlaveStatus(hhdls[k].Conn) 
-		if ss.Master_Host != "" {				
+		ss, err := dbhelper.GetSlaveStatus(hhdls[k].Conn)
+		if ss.Master_Host != "" {
 			log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
 			slave = append(slave, hhdls[k])
 			slaveCount++
 		} else {
 			log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
-			master = hhdls[k] 				
+			master = hhdls[k]
 		}
 	}
 	if (hostCount - slaveCount) == 0 {
 		log.Fatalln("ERROR: Multi-master topologies are not yet supported.")
 	}
-	
+
 	for _, sl := range slave {
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
@@ -148,7 +148,7 @@ func main() {
 	if ret() == false && *prefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
-	
+
 	// Do failover or switchover interactively, else start the interactive monitor.
 	if *state == "dead" {
 		master.failover()
@@ -225,7 +225,7 @@ func main() {
 			time.Sleep(5 * time.Second)
 			exit = false
 			goto MainLoop
-		}		
+		}
 	}
 }
 
@@ -294,6 +294,7 @@ func (sm *ServerMonitor) healthCheck() string {
 /* Triggers a master switchover. Returns the new master's URL */
 func (master *ServerMonitor) switchover() (string, int) {
 	log.Println("INFO : Starting switchover")
+	// Phase 1: Cleanup and election
 	log.Printf("INFO : Flushing tables on %s (master)", master.URL)
 	err := dbhelper.FlushTablesNoLog(master.Conn)
 	if err != nil {
@@ -319,8 +320,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
-		log.Println("INFO : Post-failover script complete:", string(out))
+		log.Println("INFO : Pre-failover script complete:", string(out))
 	}
+	// Phase 2: Reject updates and sync slaves
 	master.freeze()
 	log.Printf("INFO : Rejecting updates on %s (old master)", master.URL)
 	err = dbhelper.FlushTablesWithReadLock(master.Conn)
@@ -339,10 +341,30 @@ func (master *ServerMonitor) switchover() (string, int) {
 		log.Println("DEBUG: MASTER_POS_WAIT executed.")
 		newMaster.log()
 	}
+	// Phase 3: Prepare new master
 	log.Println("INFO: Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
 		log.Println("WARN : Stopping slave failed on new master")
+	}
+	// Call post-failover script before unlocking the old master.
+	if *postScript != "" {
+		log.Printf("INFO : Calling post-failover script")
+		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
+		if err != nil {
+			log.Println("ERROR:", err)
+		}
+		log.Println("INFO : Post-failover script complete", string(out))
+	}
+	log.Println("INFO : Resetting slave on new master and set read/write mode on")
+	err = dbhelper.ResetSlave(newMaster.Conn, true)
+	if err != nil {
+		log.Println("WARN : Reset slave failed on new master")
+	}
+	// Phase 4: Demote old master to slave
+	err = dbhelper.SetReadOnly(newMaster.Conn, false)
+	if err != nil {
+		log.Println("ERROR: Could not set new master as read-write")
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
 	log.Println("INFO : Switching old master as a slave")
@@ -364,15 +386,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 			log.Printf("ERROR: Could not set old master as read-only, %s", err)
 		}
 	}
-	log.Println("INFO : Resetting slave on new master and set read/write mode on")
-	err = dbhelper.ResetSlave(newMaster.Conn, true)
-	if err != nil {
-		log.Println("WARN : Reset slave failed on new master")
-	}
-	err = dbhelper.SetReadOnly(newMaster.Conn, false)
-	if err != nil {
-		log.Println("ERROR: Could not set new master as read-write")
-	}
+	// Phase 5: Switch slaves to new master
 	log.Println("INFO : Switching other slaves to the new master")
 	var oldMasterKey int
 	for k, sl := range slave {
@@ -408,14 +422,6 @@ func (master *ServerMonitor) switchover() (string, int) {
 				log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		}
-	}
-	if *postScript != "" {
-		log.Printf("INFO : Calling post-failover script")
-		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
-		if err != nil {
-			log.Println("ERROR:", err)
-		}
-		log.Println("INFO : Post-failover script complete", string(out))
 	}
 	log.Println("INFO : Switchover complete")
 	return newMaster.URL, oldMasterKey
