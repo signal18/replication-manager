@@ -6,7 +6,7 @@
 MaxScale 1.2.0 and above can call external scripts on monitor events. In the case of a classic Master-Slave setup, this can be used for automatic failover and promotion using MariaDB Replication Manager. The following use case is exposed using three MariaDB servers (one master, two slaves) and a MaxScale server. Please refer to my [Vagrant files](https://github.com/tanji/maria-vagrant-ms) if you want to jumpstart such a testing platform.
 
 ## Requirements
-* A mariadb-repmgr binary, version 0.3.0 or above. Grab it from the github Releases page, and extract in /usr/local/bin/ on your MaxScale server.
+* A mariadb-repmgr binary, version 0.4.0 or above. Grab it from the github Releases page, and extract in /usr/local/bin/ on your MaxScale server.
 * A working MaxScale installation with MySQL Monitor setup and whatever router you like. Please refer to the MaxScale docs for more information on how to configure it correctly.
 
 ## MaxScale installation and configuration
@@ -55,7 +55,7 @@ As of the current MaxScale development branch, custom options are not supported,
     		;;
     	esac
     done
-    cmd="mariadb-repmgr -host $initiator -user $user -rpluser $repluser -slaves $nodelist -failover=dead"
+    cmd="mariadb-repmgr -user $user -rpluser $repluser -hosts $nodelist -failover=dead"
     eval $cmd
 
 Make sure to configure user and repluser script variables to whatever your user:password pairs are for administrative user and replication user. Also make sure to make the script executable (`chown +x`) as it's very easy to forget that step.
