@@ -214,7 +214,7 @@ func main() {
 			exit = false
 			goto MainLoop
 		case "failover":
-			nmUrl, _ := master.switchover()
+			nmUrl, _ := master.failover()
 			if nmUrl != "" {
 				if *verbose {
 					log.Printf("DEBUG: Reinstancing new master: %s", nmUrl)
@@ -329,7 +329,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	log.Println("INFO : Switching master")
 	log.Println("INFO : Waiting for candidate master to synchronize")
-	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_CURRENT_POS")
+	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
 	if *verbose {
 		log.Printf("DEBUG: Syncing on master GTID Current Pos [%s]", masterGtid)
 		master.log()
