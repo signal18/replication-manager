@@ -17,8 +17,7 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.4.1"
-
+const repmgrVersion string = "0.5.0-dev"
 var (
 	hostList []string
 	hhdls    []*ServerMonitor
@@ -30,6 +29,9 @@ var (
 	dbPass   string
 	rplUser  string
 	rplPass  string
+	switchOptions = []string{"keep", "kill"}
+	failOptions = []string{"monitor", "force", "check"}
+
 )
 
 var (
@@ -39,7 +41,7 @@ var (
 	socket  = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
 	rpluser = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
 	// command specific-options
-	interactive = flag.Bool("interactive", true, "Runs the MariaDB monitor in interactive mode")
+	interactive = flag.Bool("interactive", false, "Ask for user interaction when failures are detected")
 	verbose     = flag.Bool("verbose", false, "Print detailed execution info")
 	preScript   = flag.String("pre-failover-script", "", "Path of pre-failover script")
 	postScript  = flag.String("post-failover-script", "", "Path of post-failover script")
@@ -48,7 +50,8 @@ var (
 	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
-	state       = flag.String("failover", "alive", "Master state, either 'alive' (default) or 'dead'")
+	failover    = flag.String("failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
+	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 )
 
 type ServerMonitor struct {
@@ -91,6 +94,20 @@ func main() {
 	}
 	rplUser, rplPass = splitPair(*rpluser)
 
+	// Check that failover and switchover modes are set correctly.
+	if *switchover == "" && *failover == "" {
+		log.Fatal("ERROR: None of the switchover or failover modes are set.")
+	}
+	if *switchover != "" && *failover != "" {
+		log.Fatal("ERROR: Both switchover and failover modes are set.")
+	}
+	if !contains(failOptions, *failover) && *failover != "" {
+		log.Fatalf("ERROR: Incorrect failover mode: %s", *failover)
+	}
+	if !contains(switchOptions, *switchover) && *switchover != "" {
+		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
+	}		
+
 	// Create a connection to each host.
 	hostCount := len(hostList)
 	hhdls = make([]*ServerMonitor, hostCount)
@@ -102,7 +119,7 @@ func main() {
 			log.Printf("DEBUG: Creating new server: %v", hhdls[k].URL)
 		}
 		if err != nil {
-			if *state == "dead" {
+			if *failover == "force" {
 				log.Printf("INFO: Server %s is dead. Assuming old master.", hhdls[k].URL)
 				master = hhdls[k]
 				continue
@@ -149,10 +166,11 @@ func main() {
 		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
 
-	// Do failover or switchover interactively, else start the interactive monitor.
-	if *state == "dead" {
+	// Do failover or switchover manually, or start the interactive monitor.
+
+	if *failover == "force" {
 		master.failover()
-	} else if *interactive == false {
+	} else if *switchover != "" && *interactive == false {
 		master.switchover()
 	} else {
 	MainLoop:
@@ -573,7 +591,7 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	i := 0
 	hiseq := 0
 	for _, sl := range l {
-		if *state == "alive" {
+		if *failover != "" {
 			if *verbose {
 				log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 			}
@@ -648,7 +666,13 @@ func getSeqFromGtid(gtid string) uint64 {
 
 func drawHeader() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, " MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
+	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
+	if *failover != "" {
+		headstr += " |  Mode: Failover "
+	} else {
+		headstr += " |  Mode: Switchover "
+	}
+	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 }
 
@@ -697,4 +721,9 @@ func new_tb_chan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
+}
+
+func contains(s []string, e string) bool {
+    for _, a := range s { if a == e { return true } }
+    return false
 }
