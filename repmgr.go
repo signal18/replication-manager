@@ -55,6 +55,10 @@ var (
 	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 )
 
+type TermLog []string
+
+var tlog TermLog
+
 type ServerMonitor struct {
 	Conn        *sqlx.DB
 	URL         string
@@ -133,11 +137,15 @@ func main() {
 		}
 		ss, err := dbhelper.GetSlaveStatus(hhdls[k].Conn)
 		if ss.Master_Host != "" {
-			log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
+			if *verbose {
+				log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
+			}
 			slave = append(slave, hhdls[k])
 			slaveCount++
 		} else {
-			log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
+			if *verbose {
+				log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
+			}
 			master = hhdls[k]
 		}
 	}
@@ -179,6 +187,8 @@ func main() {
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
 		}
+		tlog = NewTermLog(20)
+		tlog.Add("Monitor started in failover mode")
 		termboxChan := new_tb_chan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 3)
@@ -195,6 +205,7 @@ func main() {
 					slave[k].drawSlave(&vy)
 				}
 				drawFooter(&vy)
+				tlog.Print(&vy)
 				termbox.Flush()
 			case event := <-termboxChan:
 				switch event.Type {
@@ -683,11 +694,12 @@ func drawHeader() {
 func (master *ServerMonitor) CheckMaster() {
 	err := master.refresh()
 	if err != nil && err != sql.ErrNoRows {
-		master.CurrentGtid = "MASTER FAILED"
-		master.BinlogPos = "MASTER FAILED"
 		failCount++
-		if failCount == 3 {
+		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/3", failCount))
+		if failCount > 2 {
 			master.Failed = true
+			master.CurrentGtid = "MASTER FAILED"
+			master.BinlogPos = "MASTER FAILED"
 		}
 		termbox.Sync()
 	}
@@ -706,6 +718,26 @@ func drawFooter(vy *int) {
 		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
 	} else {
 		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-F to fail over")
+	}
+	*vy = *vy + 3
+}
+
+func NewTermLog(sz int) TermLog {
+	tl := make(TermLog, sz)
+	return tl
+}
+
+func (tl *TermLog) Add(s string) {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	s = " " + ts + " " + s
+	*tl = shift(*tl, s)
+}
+
+func (tl TermLog) Print(vy *int) {
+	//log.Println(tl)
+	for _, line := range tl {
+		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, line)
+		*vy++
 	}
 }
 
@@ -729,6 +761,13 @@ func new_tb_chan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
+}
+
+func shift(s []string, e string) []string {
+	ns := make([]string, 1)
+	ns[0] = e
+	ns = append(ns, s[0:9]...)
+	return ns
 }
 
 func contains(s []string, e string) bool {
