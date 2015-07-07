@@ -18,20 +18,21 @@ import (
 )
 
 const repmgrVersion string = "0.5.0-dev"
-var (
-	hostList []string
-	hhdls    []*ServerMonitor
-	slave    []*ServerMonitor
-	master   *ServerMonitor
-	exit     bool
-	vy       int
-	dbUser   string
-	dbPass   string
-	rplUser  string
-	rplPass  string
-	switchOptions = []string{"keep", "kill"}
-	failOptions = []string{"monitor", "force", "check"}
 
+var (
+	hostList      []string
+	hhdls         []*ServerMonitor
+	slave         []*ServerMonitor
+	master        *ServerMonitor
+	exit          bool
+	vy            int
+	dbUser        string
+	dbPass        string
+	rplUser       string
+	rplPass       string
+	switchOptions     = []string{"keep", "kill"}
+	failOptions       = []string{"monitor", "force", "check"}
+	failCount     int = 0
 )
 
 var (
@@ -70,7 +71,7 @@ type ServerMonitor struct {
 	SQLThread   string
 	ReadOnly    string
 	Delay       sql.NullInt64
-	IsMaster    bool
+	Failed      bool
 }
 
 func main() {
@@ -106,7 +107,7 @@ func main() {
 	}
 	if !contains(switchOptions, *switchover) && *switchover != "" {
 		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
-	}		
+	}
 
 	// Create a connection to each host.
 	hostCount := len(hostList)
@@ -187,7 +188,7 @@ func main() {
 			case <-ticker.C:
 				drawHeader()
 				master.refresh()
-				master.drawMaster()
+				master.CheckMaster()
 				vy = 6
 				for k, _ := range slave {
 					slave[k].refresh()
@@ -259,8 +260,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
+		server.Failed = true
 		return server, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
 	}
+	server.Failed = false
 	return server, nil
 }
 
@@ -676,11 +679,16 @@ func drawHeader() {
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 }
 
-func (master *ServerMonitor) drawMaster() {
+// Check Master Status and print it out to terminal. Increment failure counter if needed.
+func (master *ServerMonitor) CheckMaster() {
 	err := master.refresh()
 	if err != nil && err != sql.ErrNoRows {
 		master.CurrentGtid = "MASTER FAILED"
 		master.BinlogPos = "MASTER FAILED"
+		failCount++
+		if failCount == 3 {
+			master.Failed = true
+		}
 		termbox.Sync()
 	}
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
@@ -724,6 +732,10 @@ func new_tb_chan() chan termbox.Event {
 }
 
 func contains(s []string, e string) bool {
-    for _, a := range s { if a == e { return true } }
-    return false
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }
