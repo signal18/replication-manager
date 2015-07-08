@@ -42,7 +42,7 @@ var (
 	socket  = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
 	rpluser = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
 	// command specific-options
-	interactive = flag.Bool("interactive", false, "Ask for user interaction when failures are detected")
+	interactive = flag.Bool("interactive", true, "Ask for user interaction when failures are detected")
 	verbose     = flag.Bool("verbose", false, "Print detailed execution info")
 	preScript   = flag.String("pre-failover-script", "", "Path of pre-failover script")
 	postScript  = flag.String("post-failover-script", "", "Path of post-failover script")
@@ -287,10 +287,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		server.Status = STATE_FAILED
+		server.State = STATE_FAILED
 		return server, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
 	}
-	server.Status = STATE_UNCONN
+	server.State = STATE_UNCONN
 	return server, nil
 }
 
