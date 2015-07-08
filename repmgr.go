@@ -75,8 +75,15 @@ type ServerMonitor struct {
 	SQLThread   string
 	ReadOnly    string
 	Delay       sql.NullInt64
-	Failed      bool
+	State       string
 }
+
+const (
+	STATE_FAILED   string = "Failed"
+	STATE_MASTER   string = "Master"
+	STATE_SLAVE    string = "Slave"
+	STATE_UNCONN   string = "Unconnected"
+)
 
 func main() {
 	flag.Parse()
@@ -127,6 +134,7 @@ func main() {
 			if *failover == "force" {
 				log.Printf("INFO: Server %s is dead. Assuming old master.", hhdls[k].URL)
 				master = hhdls[k]
+				master.State = STATE_FAILED
 				continue
 			}
 			log.Fatalln("ERROR: Error when establishing initial connection to host", err)
@@ -140,6 +148,7 @@ func main() {
 			if *verbose {
 				log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
 			}
+			hhdls[k].State = STATE_SLAVE
 			slave = append(slave, hhdls[k])
 			slaveCount++
 		} else {
@@ -147,6 +156,7 @@ func main() {
 				log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
 			}
 			master = hhdls[k]
+			master.State = STATE_MASTER
 		}
 	}
 	if (hostCount - slaveCount) == 0 {
@@ -227,6 +237,10 @@ func main() {
 					termbox.Sync()
 				}
 			}
+			if master.State == STATE_FAILED && *interactive == false {
+				command = "failover"
+				exit = true
+			}
 		}
 		termbox.Close()
 		switch command {
@@ -244,12 +258,14 @@ func main() {
 			exit = false
 			goto MainLoop
 		case "failover":
-			nmUrl, _ := master.failover()
+			nmUrl, nmKey := master.failover()
 			if nmUrl != "" {
 				if *verbose {
 					log.Printf("DEBUG: Reinstancing new master: %s", nmUrl)
 				}
 				master, err = newServerMonitor(nmUrl)
+				// Remove new master from slave slice
+				slave = append(slave[:nmKey], slave[nmKey+1:]...)
 			}
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
@@ -271,10 +287,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		server.Failed = true
+		server.Status = STATE_FAILED
 		return server, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
 	}
-	server.Failed = false
+	server.Status = STATE_UNCONN
 	return server, nil
 }
 
@@ -404,6 +420,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		log.Println("WARN : Could not unlock tables on old master", err)
 	}
+	dbhelper.StopSlave(master.Conn) // This is helpful because in some cases the old master can have an old configuration running
 	_, err = master.Conn.Exec(cm + ", master_use_gtid=current_pos")
 	if err != nil {
 		log.Println("WARN : Change master failed on old master", err)
@@ -459,10 +476,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 	return newMaster.URL, oldMasterKey
 }
 
-/* Triggers a master failover. Returns the new master's URL */
+/* Triggers a master failover. Returns the new master's URL and key */
 func (master *ServerMonitor) failover() (string, int) {
-	log.Println("INFO : Starting failover")
-	log.Println("INFO : Electing a new master")
+	log.Println("INFO : Starting failover and electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slave)
 	if key == -1 {
@@ -496,16 +512,7 @@ func (master *ServerMonitor) failover() (string, int) {
 		log.Println("ERROR: Could not set new master as read-write")
 	}
 	log.Println("INFO : Switching other slaves to the new master")
-	var oldMasterKey int
-	for k, sl := range slave {
-		if sl.URL == newMaster.URL {
-			slave[k].URL = master.URL
-			oldMasterKey = k
-			if *verbose {
-				log.Printf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
-			}
-			continue
-		}
+	for _, sl := range slave {
 		log.Printf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
@@ -534,8 +541,8 @@ func (master *ServerMonitor) failover() (string, int) {
 		}
 		log.Println("INFO : Post-failover script complete", string(out))
 	}
-	log.Println("INFO : Switchover complete")
-	return newMaster.URL, oldMasterKey
+	log.Println("INFO : Failover complete")
+	return newMaster.URL, key
 }
 
 /* Handles write freeze and existing transactions on a server */
@@ -605,7 +612,7 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	i := 0
 	hiseq := 0
 	for _, sl := range l {
-		if *failover != "" {
+		if *failover == "" {
 			if *verbose {
 				log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 			}
@@ -693,11 +700,12 @@ func drawHeader() {
 // Check Master Status and print it out to terminal. Increment failure counter if needed.
 func (master *ServerMonitor) CheckMaster() {
 	err := master.refresh()
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && err != sql.ErrNoRows && failCount < 4 {
 		failCount++
 		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/3", failCount))
-		if failCount > 2 {
-			master.Failed = true
+		if failCount > 3 {
+			tlog.Add("Declaring master as failed")
+			master.State = STATE_FAILED
 			master.CurrentGtid = "MASTER FAILED"
 			master.BinlogPos = "MASTER FAILED"
 		}
