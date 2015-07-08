@@ -21,8 +21,8 @@ const repmgrVersion string = "0.5.0-dev"
 
 var (
 	hostList      []string
-	hhdls         []*ServerMonitor
-	slave         []*ServerMonitor
+	servers       []*ServerMonitor
+	slaves        []*ServerMonitor
 	master        *ServerMonitor
 	exit          bool
 	vy            int
@@ -121,40 +121,40 @@ func main() {
 
 	// Create a connection to each host.
 	hostCount := len(hostList)
-	hhdls = make([]*ServerMonitor, hostCount)
+	servers = make([]*ServerMonitor, hostCount)
 	slaveCount := 0
 	for k, url := range hostList {
 		var err error
-		hhdls[k], err = newServerMonitor(url)
+		servers[k], err = newServerMonitor(url)
 		if *verbose {
-			log.Printf("DEBUG: Creating new server: %v", hhdls[k].URL)
+			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
 		}
 		if err != nil {
 			if *failover == "force" {
-				log.Printf("INFO: Server %s is dead. Assuming old master.", hhdls[k].URL)
-				master = hhdls[k]
+				log.Printf("INFO: Server %s is dead. Assuming old master.", servers[k].URL)
+				master = servers[k]
 				master.State = STATE_FAILED
 				continue
 			}
 			log.Fatalln("ERROR: Error when establishing initial connection to host", err)
 		}
-		defer hhdls[k].Conn.Close()
+		defer servers[k].Conn.Close()
 		if *verbose {
-			log.Printf("DEBUG: Checking if server %s is slave", hhdls[k].URL)
+			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
-		ss, err := dbhelper.GetSlaveStatus(hhdls[k].Conn)
+		ss, err := dbhelper.GetSlaveStatus(servers[k].Conn)
 		if ss.Master_Host != "" {
 			if *verbose {
-				log.Printf("INFO : Server %s is configured as a slave", hhdls[k].URL)
+				log.Printf("INFO : Server %s is configured as a slave", servers[k].URL)
 			}
-			hhdls[k].State = STATE_SLAVE
-			slave = append(slave, hhdls[k])
+			servers[k].State = STATE_SLAVE
+			slaves = append(slaves, servers[k])
 			slaveCount++
 		} else {
 			if *verbose {
-				log.Printf("INFO : Server %s is not a slave. Assuming master status.", hhdls[k].URL)
+				log.Printf("INFO : Server %s is not a slave. Assuming master status.", servers[k].URL)
 			}
-			master = hhdls[k]
+			master = servers[k]
 			master.State = STATE_MASTER
 		}
 	}
@@ -162,12 +162,12 @@ func main() {
 		log.Fatalln("ERROR: Multi-master topologies are not yet supported.")
 	}
 
-	for _, sl := range slave {
+	for _, sl := range slaves {
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 		}
 		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-			log.Fatalf("ERROR: Server %s is not a slave of declared master %s", master.URL, master.Host)
+			log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 		}
 	}
 
@@ -209,9 +209,9 @@ func main() {
 				master.refresh()
 				master.CheckMaster()
 				vy = 6
-				for k, _ := range slave {
-					slave[k].refresh()
-					slave[k].drawSlave(&vy)
+				for k, _ := range slaves {
+					slaves[k].refresh()
+					slaves[k].drawSlave(&vy)
 				}
 				drawFooter(&vy)
 				tlog.Print(&vy)
@@ -247,10 +247,10 @@ func main() {
 			nmUrl, nsKey := master.switchover()
 			if nmUrl != "" && nsKey >= 0 {
 				if *verbose {
-					log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slave[nsKey].URL, nsKey)
+					log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slaves[nsKey].URL, nsKey)
 				}
 				master, err = newServerMonitor(nmUrl)
-				slave[nsKey], err = newServerMonitor(slave[nsKey].URL)
+				slaves[nsKey], err = newServerMonitor(slaves[nsKey].URL)
 			}
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
@@ -264,7 +264,7 @@ func main() {
 				}
 				master, err = newServerMonitor(nmUrl)
 				// Remove new master from slave slice
-				slave = append(slave[:nmKey], slave[nmKey+1:]...)
+				slaves = append(slaves[:nmKey], slaves[nmKey+1:]...)
 			}
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
@@ -354,11 +354,11 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	log.Println("INFO : Electing a new master")
 	var nmUrl string
-	key := master.electCandidate(slave)
+	key := master.electCandidate(slaves)
 	if key == -1 {
 		return "", -1
 	}
-	nmUrl = slave[key].URL
+	nmUrl = slaves[key].URL
 	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
@@ -437,9 +437,9 @@ func (master *ServerMonitor) switchover() (string, int) {
 	// Phase 5: Switch slaves to new master
 	log.Println("INFO : Switching other slaves to the new master")
 	var oldMasterKey int
-	for k, sl := range slave {
+	for k, sl := range slaves {
 		if sl.URL == newMaster.URL {
-			slave[k].URL = master.URL
+			slaves[k].URL = master.URL
 			oldMasterKey = k
 			if *verbose {
 				log.Printf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
@@ -479,11 +479,11 @@ func (master *ServerMonitor) switchover() (string, int) {
 func (master *ServerMonitor) failover() (string, int) {
 	log.Println("INFO : Starting failover and electing a new master")
 	var nmUrl string
-	key := master.electCandidate(slave)
+	key := master.electCandidate(slaves)
 	if key == -1 {
 		return "", -1
 	}
-	nmUrl = slave[key].URL
+	nmUrl = slaves[key].URL
 	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
@@ -511,7 +511,7 @@ func (master *ServerMonitor) failover() (string, int) {
 		log.Println("ERROR: Could not set new master as read-write")
 	}
 	log.Println("INFO : Switching other slaves to the new master")
-	for _, sl := range slave {
+	for _, sl := range slaves {
 		log.Printf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
