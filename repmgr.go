@@ -146,14 +146,14 @@ func main() {
 		servers[k].refresh()
 		if servers[k].UsingGtid != "" {
 			if *verbose {
-				log.Printf("INFO : Server %s is configured as a slave", servers[k].URL)
+				log.Printf("DEBUG: Server %s is configured as a slave", servers[k].URL)
 			}
 			servers[k].State = STATE_SLAVE
 			slaves = append(slaves, servers[k])
 			slaveCount++
 		} else {
 			if *verbose {
-				log.Printf("INFO : Server %s is not a slave. Setting aside", servers[k].URL)
+				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
 			}
 		}
 	}
@@ -167,7 +167,7 @@ func main() {
 
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// dead hosts or unconnected hosts.
-	if *switchover != "" {
+	if *switchover != "" || *failover == "monitor" {
 		// First of all, get a server id from the slaves slice, they should be all the same
 		sid := slaves[0].MasterServerId
 		for k, s := range servers {
@@ -175,6 +175,9 @@ func main() {
 				if s.ServerId == sid {
 					master = servers[k]
 					master.State = STATE_MASTER
+					if *verbose {
+						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+					}
 					break
 				}
 			}
@@ -187,13 +190,16 @@ func main() {
 				if s.Host == smh || s.IP == smh {
 					master = servers[k]
 					master.State = STATE_MASTER
+					if *verbose {
+						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+					}
 					break
 				}
 			}
 		}
 	}
 	// Final check if master has been found
-	if master.State == "" {
+	if master == nil {
 		log.Fatalln("ERROR: Could not autodetect a master!")
 	}
 
