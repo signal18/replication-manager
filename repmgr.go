@@ -56,34 +56,36 @@ var (
 )
 
 type TermLog []string
+
 var tlog TermLog
 
 type ServerMonitor struct {
-	Conn        *sqlx.DB
-	URL         string
-	Host        string
-	Port        string
-	IP          string
-	BinlogPos   string
-	Strict      string
-	ServerId	uint
+	Conn           *sqlx.DB
+	URL            string
+	Host           string
+	Port           string
+	IP             string
+	BinlogPos      string
+	Strict         string
+	ServerId       uint
 	MasterServerId uint
-	LogBin      string
-	UsingGtid   string
-	CurrentGtid string
-	SlaveGtid   string
-	IOThread    string
-	SQLThread   string
-	ReadOnly    string
-	Delay       sql.NullInt64
-	State       string
+	MasterHost     string
+	LogBin         string
+	UsingGtid      string
+	CurrentGtid    string
+	SlaveGtid      string
+	IOThread       string
+	SQLThread      string
+	ReadOnly       string
+	Delay          sql.NullInt64
+	State          string
 }
 
 const (
-	STATE_FAILED   string = "Failed"
-	STATE_MASTER   string = "Master"
-	STATE_SLAVE    string = "Slave"
-	STATE_UNCONN   string = "Unconnected"
+	STATE_FAILED string = "Failed"
+	STATE_MASTER string = "Master"
+	STATE_SLAVE  string = "Slave"
+	STATE_UNCONN string = "Unconnected"
 )
 
 func main() {
@@ -133,9 +135,6 @@ func main() {
 		}
 		if err != nil {
 			log.Printf("INFO: Server %s is dead.", servers[k].URL)
-			// We assume wrong, cause there could be several dead servers.
-			// fix by comparing slave master host and alleged master IP.
-			master = servers[k]
 			servers[k].State = STATE_FAILED
 			continue
 		}
@@ -143,7 +142,7 @@ func main() {
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
-		
+
 		servers[k].refresh()
 		if servers[k].UsingGtid != "" {
 			if *verbose {
@@ -158,7 +157,7 @@ func main() {
 			}
 		}
 	}
-	
+
 	// Check that all slave servers have the same master.
 	for _, sl := range slaves {
 		if sl.hasSiblings(slaves) == false {
@@ -168,16 +167,34 @@ func main() {
 
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// dead hosts or unconnected hosts.
-	if *failover != "" {
+	if *switchover != "" {
 		// First of all, get a server id from the slaves slice, they should be all the same
 		sid := slaves[0].MasterServerId
 		for k, s := range servers {
-			if s.ServerId == sid {
-				master = servers[k]
-				master.State = STATE_MASTER
-				break
+			if s.State == STATE_UNCONN {
+				if s.ServerId == sid {
+					master = servers[k]
+					master.State = STATE_MASTER
+					break
+				}
 			}
 		}
+	} else {
+		// Slave master_host variable must point to dead master
+		smh := slaves[0].MasterHost
+		for k, s := range servers {
+			if s.State == STATE_FAILED {
+				if s.Host == smh || s.IP == smh {
+					master = servers[k]
+					master.State = STATE_MASTER
+					break
+				}
+			}
+		}
+	}
+	// Final check if master has been found
+	if master.State == "" {
+		log.Fatalln("ERROR: Could not autodetect a master!")
 	}
 
 	for _, sl := range slaves {
@@ -342,6 +359,7 @@ func (sm *ServerMonitor) refresh() error {
 	sm.SQLThread = slaveStatus.Slave_SQL_Running
 	sm.Delay = slaveStatus.Seconds_Behind_Master
 	sm.MasterServerId = slaveStatus.Master_Server_Id
+	sm.MasterHost = slaveStatus.Master_Host
 	return err
 }
 
