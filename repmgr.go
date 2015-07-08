@@ -56,7 +56,6 @@ var (
 )
 
 type TermLog []string
-
 var tlog TermLog
 
 type ServerMonitor struct {
