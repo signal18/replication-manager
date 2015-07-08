@@ -66,6 +66,8 @@ type ServerMonitor struct {
 	IP          string
 	BinlogPos   string
 	Strict      string
+	ServerId	uint
+	MasterServerId uint
 	LogBin      string
 	UsingGtid   string
 	CurrentGtid string
@@ -119,7 +121,7 @@ func main() {
 		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
 	}
 
-	// Create a connection to each host.
+	// Create a connection to each host and build list of slaves.
 	hostCount := len(hostList)
 	servers = make([]*ServerMonitor, hostCount)
 	slaveCount := 0
@@ -130,20 +132,20 @@ func main() {
 			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
 		}
 		if err != nil {
-			if *failover == "force" {
-				log.Printf("INFO: Server %s is dead. Assuming old master.", servers[k].URL)
-				master = servers[k]
-				master.State = STATE_FAILED
-				continue
-			}
-			log.Fatalln("ERROR: Error when establishing initial connection to host", err)
+			log.Printf("INFO: Server %s is dead.", servers[k].URL)
+			// We assume wrong, cause there could be several dead servers.
+			// fix by comparing slave master host and alleged master IP.
+			master = servers[k]
+			servers[k].State = STATE_FAILED
+			continue
 		}
 		defer servers[k].Conn.Close()
 		if *verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
-		ss, err := dbhelper.GetSlaveStatus(servers[k].Conn)
-		if ss.Master_Host != "" {
+		
+		servers[k].refresh()
+		if servers[k].UsingGtid != "" {
 			if *verbose {
 				log.Printf("INFO : Server %s is configured as a slave", servers[k].URL)
 			}
@@ -152,14 +154,30 @@ func main() {
 			slaveCount++
 		} else {
 			if *verbose {
-				log.Printf("INFO : Server %s is not a slave. Assuming master status.", servers[k].URL)
+				log.Printf("INFO : Server %s is not a slave. Setting aside", servers[k].URL)
 			}
-			master = servers[k]
-			master.State = STATE_MASTER
 		}
 	}
-	if (hostCount - slaveCount) == 0 {
-		log.Fatalln("ERROR: Multi-master topologies are not yet supported.")
+	
+	// Check that all slave servers have the same master.
+	for _, sl := range slaves {
+		if sl.hasSiblings(slaves) == false {
+			log.Fatalln("ERROR: Multi-master topologies are not yet supported.")
+		}
+	}
+
+	// Depending if we are doing a failover or a switchover, we will find the master in the list of
+	// dead hosts or unconnected hosts.
+	if *failover != "" {
+		// First of all, get a server id from the slaves slice, they should be all the same
+		sid := slaves[0].MasterServerId
+		for k, s := range servers {
+			if s.ServerId == sid {
+				master = servers[k]
+				master.State = STATE_MASTER
+				break
+			}
+		}
 	}
 
 	for _, sl := range slaves {
@@ -313,6 +331,8 @@ func (sm *ServerMonitor) refresh() error {
 	sm.ReadOnly = sv["READ_ONLY"]
 	sm.CurrentGtid = sv["GTID_CURRENT_POS"]
 	sm.SlaveGtid = sv["GTID_SLAVE_POS"]
+	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
+	sm.ServerId = uint(sid)
 	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
 		return err
@@ -321,6 +341,7 @@ func (sm *ServerMonitor) refresh() error {
 	sm.IOThread = slaveStatus.Slave_IO_Running
 	sm.SQLThread = slaveStatus.Slave_SQL_Running
 	sm.Delay = slaveStatus.Seconds_Behind_Master
+	sm.MasterServerId = slaveStatus.Master_Server_Id
 	return err
 }
 
@@ -716,6 +737,15 @@ func (master *ServerMonitor) CheckMaster() {
 	}
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", master.Host, master.Port, master.CurrentGtid, master.BinlogPos, master.Strict)
+}
+
+func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
+	for _, sl := range sib {
+		if s.MasterServerId != sl.MasterServerId {
+			return false
+		}
+	}
+	return true
 }
 
 func (slave *ServerMonitor) drawSlave(vy *int) {
