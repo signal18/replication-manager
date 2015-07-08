@@ -197,7 +197,11 @@ func main() {
 			log.Fatalln("Termbox initialization error", err)
 		}
 		tlog = NewTermLog(20)
-		tlog.Add("Monitor started in failover mode")
+		if *failover != "" {
+			tlog.Add("Monitor started in failover mode")
+		} else {
+			tlog.Add("Monitor started in switchover mode")
+		}
 		termboxChan := new_tb_chan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 3)
