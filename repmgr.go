@@ -250,17 +250,7 @@ func main() {
 		for exit == false {
 			select {
 			case <-ticker.C:
-				drawHeader()
-				master.refresh()
-				master.CheckMaster()
-				vy = 6
-				for k, _ := range slaves {
-					slaves[k].refresh()
-					slaves[k].drawSlave(&vy)
-				}
-				drawFooter(&vy)
-				tlog.Print(&vy)
-				termbox.Flush()
+				display()
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
@@ -733,7 +723,7 @@ func getSeqFromGtid(gtid string) uint64 {
 	return s
 }
 
-func drawHeader() {
+func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
 	if *failover != "" {
@@ -743,10 +733,7 @@ func drawHeader() {
 	}
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-}
-
-// Check Master Status and print it out to terminal. Increment failure counter if needed.
-func (master *ServerMonitor) CheckMaster() {
+	// Check Master Status and print it out to terminal. Increment failure counter if needed.
 	err := master.refresh()
 	if err != nil && err != sql.ErrNoRows && failCount < 4 {
 		failCount++
@@ -761,6 +748,36 @@ func (master *ServerMonitor) CheckMaster() {
 	}
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", master.Host, master.Port, master.CurrentGtid, master.BinlogPos, master.Strict)
+	vy = 6
+	for _, slave := range slaves {
+		printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.CurrentGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
+		vy++
+	}
+	vy++
+	for _, server := range servers {
+		f := false
+		if server.State == STATE_UNCONN {
+			if f == false {
+				printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Standalone Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
+				f = true
+				vy++
+			}
+			server.refresh()
+			printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
+			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid, server.BinlogPos, server.Strict)
+			vy++
+		}
+
+	}
+	vy++
+	if master.CurrentGtid != "MASTER FAILED" {
+		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-S to switchover")
+	} else {
+		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover")
+	}
+	vy = vy + 3
+	tlog.Print(&vy)
+	termbox.Flush()
 }
 
 func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
@@ -770,21 +787,6 @@ func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 		}
 	}
 	return true
-}
-
-func (slave *ServerMonitor) drawSlave(vy *int) {
-	printfTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6d %3s", slave.Host, slave.Port, slave.LogBin, slave.UsingGtid, slave.CurrentGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
-	*vy++
-}
-
-func drawFooter(vy *int) {
-	*vy++
-	if master.CurrentGtid != "MASTER FAILED" {
-		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-S to switch over")
-	} else {
-		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, "   Ctrl-Q to quit, Ctrl-F to fail over")
-	}
-	*vy = *vy + 3
 }
 
 func NewTermLog(sz int) TermLog {
