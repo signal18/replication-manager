@@ -134,7 +134,7 @@ func main() {
 			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
 		}
 		if err != nil {
-			log.Printf("INFO: Server %s is dead.", servers[k].URL)
+			log.Printf("INFO : Server %s is dead.", servers[k].URL)
 			servers[k].State = STATE_FAILED
 			continue
 		}
@@ -255,8 +255,14 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						command = "switchover"
-						exit = true
+						nmUrl, nsKey := master.switchover()
+						if nmUrl != "" && nsKey >= 0 {
+							if *verbose {
+								logprintf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slaves[nsKey].URL, nsKey)
+							}
+							master, err = newServerMonitor(nmUrl)
+							slaves[nsKey], err = newServerMonitor(slaves[nsKey].URL)
+						}
 					}
 					if event.Key == termbox.KeyCtrlF {
 						command = "failover"
@@ -276,22 +282,9 @@ func main() {
 				exit = true
 			}
 		}
-		termbox.Close()
 		switch command {
-		case "switchover":
-			nmUrl, nsKey := master.switchover()
-			if nmUrl != "" && nsKey >= 0 {
-				if *verbose {
-					log.Printf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slaves[nsKey].URL, nsKey)
-				}
-				master, err = newServerMonitor(nmUrl)
-				slaves[nsKey], err = newServerMonitor(slaves[nsKey].URL)
-			}
-			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
-			time.Sleep(5 * time.Second)
-			exit = false
-			goto MainLoop
 		case "failover":
+			termbox.Close()
 			nmUrl, nmKey := master.failover()
 			if nmUrl != "" {
 				if *verbose {
@@ -306,6 +299,7 @@ func main() {
 			exit = false
 			goto MainLoop
 		}
+		termbox.Close()
 	}
 }
 
@@ -379,138 +373,138 @@ func (sm *ServerMonitor) healthCheck() string {
 
 /* Triggers a master switchover. Returns the new master's URL */
 func (master *ServerMonitor) switchover() (string, int) {
-	log.Println("INFO : Starting switchover")
+	logprint("INFO : Starting switchover")
 	// Phase 1: Cleanup and election
-	log.Printf("INFO : Flushing tables on %s (master)", master.URL)
+	logprintf("INFO : Flushing tables on %s (master)", master.URL)
 	err := dbhelper.FlushTablesNoLog(master.Conn)
 	if err != nil {
-		log.Printf("WARN : Could not flush tables on master", err)
+		logprintf("WARN : Could not flush tables on master", err)
 	}
-	log.Println("INFO : Checking long running updates on master")
+	logprint("INFO : Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
-		log.Println("ERROR: Long updates running on master. Cannot switchover")
+		logprint("ERROR: Long updates running on master. Cannot switchover")
 		return "", -1
 	}
-	log.Println("INFO : Electing a new master")
+	logprint("INFO : Electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slaves)
 	if key == -1 {
 		return "", -1
 	}
 	nmUrl = slaves[key].URL
-	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
+	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
-		log.Printf("INFO : Calling pre-failover script")
+		logprintf("INFO : Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
-			log.Println("ERROR:", err)
+			logprint("ERROR:", err)
 		}
-		log.Println("INFO : Pre-failover script complete:", string(out))
+		logprint("INFO : Pre-failover script complete:", string(out))
 	}
 	// Phase 2: Reject updates and sync slaves
 	master.freeze()
-	log.Printf("INFO : Rejecting updates on %s (old master)", master.URL)
+	logprintf("INFO : Rejecting updates on %s (old master)", master.URL)
 	err = dbhelper.FlushTablesWithReadLock(master.Conn)
 	if err != nil {
-		log.Printf("WARN : Could not lock tables on %s (old master) %s", master.URL, err)
+		logprintf("WARN : Could not lock tables on %s (old master) %s", master.URL, err)
 	}
-	log.Println("INFO : Switching master")
-	log.Println("INFO : Waiting for candidate master to synchronize")
+	logprint("INFO : Switching master")
+	logprint("INFO : Waiting for candidate master to synchronize")
 	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
 	if *verbose {
-		log.Printf("DEBUG: Syncing on master GTID Current Pos [%s]", masterGtid)
+		logprintf("DEBUG: Syncing on master GTID Current Pos [%s]", masterGtid)
 		master.log()
 	}
 	dbhelper.MasterPosWait(newMaster.Conn, masterGtid)
 	if *verbose {
-		log.Println("DEBUG: MASTER_POS_WAIT executed.")
+		logprint("DEBUG: MASTER_POS_WAIT executed.")
 		newMaster.log()
 	}
 	// Phase 3: Prepare new master
-	log.Println("INFO: Stopping slave thread on new master")
+	logprint("INFO : Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
-		log.Println("WARN : Stopping slave failed on new master")
+		logprint("WARN : Stopping slave failed on new master")
 	}
 	// Call post-failover script before unlocking the old master.
 	if *postScript != "" {
-		log.Printf("INFO : Calling post-failover script")
+		logprintf("INFO : Calling post-failover script")
 		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
-			log.Println("ERROR:", err)
+			logprint("ERROR:", err)
 		}
-		log.Println("INFO : Post-failover script complete", string(out))
+		logprint("INFO : Post-failover script complete", string(out))
 	}
-	log.Println("INFO : Resetting slave on new master and set read/write mode on")
+	logprint("INFO : Resetting slave on new master and set read/write mode on")
 	err = dbhelper.ResetSlave(newMaster.Conn, true)
 	if err != nil {
-		log.Println("WARN : Reset slave failed on new master")
+		logprint("WARN : Reset slave failed on new master")
 	}
 	// Phase 4: Demote old master to slave
 	err = dbhelper.SetReadOnly(newMaster.Conn, false)
 	if err != nil {
-		log.Println("ERROR: Could not set new master as read-write")
+		logprint("ERROR: Could not set new master as read-write")
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
-	log.Println("INFO : Switching old master as a slave")
+	logprint("INFO : Switching old master as a slave")
 	err = dbhelper.UnlockTables(master.Conn)
 	if err != nil {
-		log.Println("WARN : Could not unlock tables on old master", err)
+		logprint("WARN : Could not unlock tables on old master", err)
 	}
 	dbhelper.StopSlave(master.Conn) // This is helpful because in some cases the old master can have an old configuration running
 	_, err = master.Conn.Exec(cm + ", master_use_gtid=current_pos")
 	if err != nil {
-		log.Println("WARN : Change master failed on old master", err)
+		logprint("WARN : Change master failed on old master", err)
 	}
 	err = dbhelper.StartSlave(master.Conn)
 	if err != nil {
-		log.Println("WARN : Start slave failed on old master", err)
+		logprint("WARN : Start slave failed on old master", err)
 	}
 	if *readonly {
 		err = dbhelper.SetReadOnly(master.Conn, true)
 		if err != nil {
-			log.Printf("ERROR: Could not set old master as read-only, %s", err)
+			logprintf("ERROR: Could not set old master as read-only, %s", err)
 		}
 	}
 	// Phase 5: Switch slaves to new master
-	log.Println("INFO : Switching other slaves to the new master")
+	logprint("INFO : Switching other slaves to the new master")
 	var oldMasterKey int
 	for k, sl := range slaves {
 		if sl.URL == newMaster.URL {
 			slaves[k].URL = master.URL
 			oldMasterKey = k
 			if *verbose {
-				log.Printf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
+				logprintf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
 			}
 			continue
 		}
-		log.Printf("INFO : Waiting for slave %s to sync", sl.URL)
+		logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 		dbhelper.MasterPosWait(sl.Conn, masterGtid)
 		if *verbose {
 			sl.log()
 		}
-		log.Printf("INFO : Change master on slave %s", sl.URL)
+		logprintf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
-			log.Printf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
+			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
 		_, err = sl.Conn.Exec(cm)
 		if err != nil {
-			log.Printf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
+			logprintf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
 		}
 		err = dbhelper.StartSlave(sl.Conn)
 		if err != nil {
-			log.Printf("ERROR: could not start slave on server %s, %s", sl.URL, err)
+			logprintf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
 		if *readonly {
 			err = dbhelper.SetReadOnly(sl.Conn, true)
 			if err != nil {
-				log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
+				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		}
 	}
-	log.Println("INFO : Switchover complete")
+	logprint("INFO : Switchover complete")
 	return newMaster.URL, oldMasterKey
 }
 
@@ -587,7 +581,7 @@ func (master *ServerMonitor) failover() (string, int) {
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
 	if err != nil {
-		log.Printf("WARN : Could not set %s as read-only: %s", server.URL, err)
+		logprintf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
 	for i := *waitKill; i > 0; i -= 500 {
@@ -595,10 +589,10 @@ func (server *ServerMonitor) freeze() bool {
 		if threads == 0 {
 			break
 		}
-		log.Printf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
+		logprintf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	log.Printf("INFO: Terminating all threads on %s", server.URL)
+	logprintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
 	return true
 }
@@ -644,7 +638,7 @@ func validateHostPort(h string, p string) bool {
 func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	ll := len(l)
 	if *verbose {
-		log.Printf("DEBUG: Processing %d candidates", ll)
+		logprintf("DEBUG: Processing %d candidates", ll)
 	}
 	seqList := make([]uint64, ll)
 	i := 0
@@ -652,37 +646,37 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	for _, sl := range l {
 		if *failover == "" {
 			if *verbose {
-				log.Printf("DEBUG: Checking eligibility of slave server %s", sl.URL)
+				logprintf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 			}
 			if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 				continue
 			}
 			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
-				log.Printf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
+				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
 			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
-				log.Printf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
 			ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
 			if ss.Seconds_Behind_Master.Valid == false {
-				log.Printf("WARN : Slave %s is stopped. Skipping", sl.URL)
+				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 				continue
 			}
 			if ss.Seconds_Behind_Master.Int64 > *maxDelay {
-				log.Printf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
+				logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
 				continue
 			}
 			if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
-				log.Printf("WARN : Slave %s not in sync. Skipping", sl.URL)
+				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
 		}
 		/* Rig the election if the examined slave is preferred candidate master */
 		if sl.URL == *prefMaster {
 			if *verbose {
-				log.Printf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
+				logprintf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
@@ -707,7 +701,7 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 
 func (server *ServerMonitor) log() {
 	server.refresh()
-	log.Printf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s\n", server.URL, server.CurrentGtid, server.SlaveGtid, server.BinlogPos)
+	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s\n", server.URL, server.CurrentGtid, server.SlaveGtid, server.BinlogPos)
 	return
 }
 
@@ -777,7 +771,7 @@ func display() {
 		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover")
 	}
 	vy = vy + 3
-	tlog.Print(&vy)
+	tlog.Print()
 	termbox.Flush()
 }
 
@@ -801,11 +795,10 @@ func (tl *TermLog) Add(s string) {
 	*tl = shift(*tl, s)
 }
 
-func (tl TermLog) Print(vy *int) {
-	//log.Println(tl)
+func (tl TermLog) Print() {
 	for _, line := range tl {
-		printTb(0, *vy, termbox.ColorWhite, termbox.ColorBlack, line)
-		*vy++
+		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, line)
+		vy++
 	}
 }
 
@@ -821,6 +814,24 @@ func printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interfa
 	printTb(x, y, fg, bg, s)
 }
 
+func logprint(msg ...interface{}) {
+	if *interactive == true || *failover == "monitor" {
+		tlog.Add(fmt.Sprintln(msg...))
+		display()
+	} else {
+		log.Println(msg...)
+	}
+}
+
+func logprintf(format string, args ...interface{}) {
+	if *interactive == true || *failover == "monitor" {
+		tlog.Add(fmt.Sprintf(format, args...))
+		display()
+	} else {
+		log.Printf(format, args...)
+	}
+}
+
 func new_tb_chan() chan termbox.Event {
 	termboxChan := make(chan termbox.Event)
 	go func() {
@@ -834,7 +845,7 @@ func new_tb_chan() chan termbox.Event {
 func shift(s []string, e string) []string {
 	ns := make([]string, 1)
 	ns[0] = e
-	ns = append(ns, s[0:9]...)
+	ns = append(ns, s[0:20]...)
 	return ns
 }
 
