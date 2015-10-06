@@ -441,11 +441,17 @@ func (master *ServerMonitor) switchover() (string, int) {
 	if err != nil {
 		logprint("WARN : Reset slave failed on new master")
 	}
-	// Phase 4: Demote old master to slave
 	err = dbhelper.SetReadOnly(newMaster.Conn, false)
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
+	newGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
+	// Insert a bogus transaction in order to have a new GTID pos on master
+	err = dbhelper.FlushTables(newMaster.Conn)
+	if err != nil {
+		logprint("WARN : Could not flush tables on new master", err)
+	}
+	// Phase 4: Demote old master to slave
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
 	logprint("INFO : Switching old master as a slave")
 	err = dbhelper.UnlockTables(master.Conn)
@@ -453,7 +459,11 @@ func (master *ServerMonitor) switchover() (string, int) {
 		logprint("WARN : Could not unlock tables on old master", err)
 	}
 	dbhelper.StopSlave(master.Conn) // This is helpful because in some cases the old master can have an old configuration running
-	_, err = master.Conn.Exec(cm + ", master_use_gtid=current_pos")
+	_, err = master.Conn.Exec("SET GLOBAL gtid_slave_pos='" + newGtid + "'")
+	if err != nil {
+		logprint("WARN : Could not set gtid_slave_pos on old master", err)
+	}
+	_, err = master.Conn.Exec(cm + ", master_use_gtid=slave_pos")
 	if err != nil {
 		logprint("WARN : Change master failed on old master", err)
 	}
@@ -488,6 +498,10 @@ func (master *ServerMonitor) switchover() (string, int) {
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
+		}
+		_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + newGtid + "'")
+		if err != nil {
+			logprintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 		}
 		_, err = sl.Conn.Exec(cm)
 		if err != nil {
