@@ -47,7 +47,7 @@ Automatically failover a dead master in the above setup:
 
   * -failover `<state>`
 
-    Perform non-interactive failover. `state` can be either `dead` or `alive`, reflecting the current master's state. The action will result in removing the master of the current replication topology.
+    Start the replication manager in failover mode. `state` can be either `monitor` or `force`, whether the manager should run in monitoring or command line mode. The action will result in removing the master of the current replication topology.
 
   * -gtidcheck `<boolean>`
 
@@ -59,7 +59,7 @@ Automatically failover a dead master in the above setup:
 
   * -interactive `<boolean>`
 
-    Runs the MariaDB monitor in interactive mode (default). A value of false allows mariadb-repmgr to invoke switchover without displaying the interactive monitor.
+    Runs the MariaDB monitor in interactive mode (default), asking for user interaction when failures are detected. A value of false also allows mariadb-repmgr to invoke switchover without displaying the interactive monitor.
 
   * -maxdelay `<seconds>`
 
@@ -84,6 +84,10 @@ Automatically failover a dead master in the above setup:
   * -rpluser `<user>:[password]`
 
     Replication user and password. This user must have REPLICATION SLAVE privileges and is used to setup the old master as a new slave.
+    
+  * -switchover `<action>`
+  
+    Starts the replication manager in switchover mode. Action can be either `keep` to degrade the old master as a new slave, or `kill` to remove the old master from the replication topology.
 
   * -socket `<path>`
 
