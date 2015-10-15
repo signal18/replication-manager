@@ -1,5 +1,4 @@
-mariadb-repmgr(1) -- MariaDB replication manager
-===========================================
+## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
 ## NAME
 
