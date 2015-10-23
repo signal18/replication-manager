@@ -32,7 +32,7 @@ To perform switchover, mariadb-repmgr uses a mechanism similar to common mysql f
 
 Start mariadb-repmgr in interactive mode with master host db1 and slaves db2 and db3:
 
-`mariadb-repmgr -hosts=db1,db2,db3 -user=root -repl=replicator`
+`mariadb-repmgr -hosts=db1,db2,db3 -user=root -rpluser=replicator`
 
 Start mariadb-repmgr in interactive mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
