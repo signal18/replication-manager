@@ -32,6 +32,7 @@ var (
 	failOptions       = []string{"monitor", "force", "check"}
 	failCount     int = 0
 	tlog          TermLog
+	ignoreList    []string
 )
 
 // Command specific options
@@ -48,6 +49,7 @@ var (
 	maxDelay    = flag.Int64("maxdelay", 0, "Maximum replication delay before initiating failover")
 	gtidCheck   = flag.Bool("gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
 	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
+	ignoreSrv   = flag.String("ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
 	failover    = flag.String("failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
@@ -94,6 +96,10 @@ func main() {
 	}
 	if !contains(switchOptions, *switchover) && *switchover != "" {
 		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
+	}
+
+	if *ignoreSrv != "" {
+		ignoreList = strings.Split(*ignoreSrv, ",")
 	}
 
 	// Create a connection to each host and build list of slaves.

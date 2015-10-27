@@ -383,6 +383,13 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 				continue
 			}
 		}
+		/* If server is in the ignore list, do not elect it */
+		if contains(ignoreList, sl.URL) {
+			if *verbose {
+				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
+			}
+			continue
+		}
 		/* Rig the election if the examined slave is preferred candidate master */
 		if sl.URL == *prefMaster {
 			if *verbose {
