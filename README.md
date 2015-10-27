@@ -1,5 +1,4 @@
-mariadb-repmgr(1) -- MariaDB replication manager
-===========================================
+## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
 ## NAME
 
@@ -33,7 +32,7 @@ To perform switchover, mariadb-repmgr uses a mechanism similar to common mysql f
 
 Start mariadb-repmgr in interactive mode with master host db1 and slaves db2 and db3:
 
-`mariadb-repmgr -hosts=db1,db2,db3 -user=root -repl=replicator`
+`mariadb-repmgr -hosts=db1,db2,db3 -user=root -rpluser=replicator`
 
 Start mariadb-repmgr in interactive mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
@@ -126,7 +125,7 @@ Guillaume Lefranc <guillaume@mariadb.com>
 
 THIS PROGRAM IS PROVIDED “AS IS” AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
-This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2; OR the Perl Artistic License. On UNIX and similar systems, you can issue `man perlgpl` or `man perlartistic` to read these licenses.
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 
