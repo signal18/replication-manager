@@ -137,6 +137,11 @@ func main() {
 		}
 	}
 
+	// If no slaves are detected, then bail out
+	if len(slaves) == 0 {
+		log.Fatal("ERROR: No slaves were detected.")
+	}
+
 	// Check that all slave servers have the same master.
 	for _, sl := range slaves {
 		if sl.hasSiblings(slaves) == false {
