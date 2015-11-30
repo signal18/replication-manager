@@ -49,7 +49,7 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
 		server.State = STATE_FAILED
-		return server, errors.New(fmt.Sprintf("ERROR: could not connect to server %s: %s", url, err))
+		return server, err
 	}
 	server.State = STATE_UNCONN
 	return server, nil

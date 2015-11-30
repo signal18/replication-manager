@@ -8,6 +8,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
 	"github.com/tanji/mariadb-tools/dbhelper"
 	"log"
@@ -113,6 +114,11 @@ func main() {
 			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
 		}
 		if err != nil {
+			if driverErr, ok := err.(*mysql.MySQLError); ok {
+				if driverErr.Number == 1045 {
+					log.Fatalln("ERROR: Database access denied:", err.Error())
+				}
+			}
 			log.Printf("INFO : Server %s is dead.", servers[k].URL)
 			servers[k].State = STATE_FAILED
 			continue
@@ -183,8 +189,10 @@ func main() {
 		}
 	}
 	// Final check if master has been found
-	if master == nil {
+	if master == nil && (*switchover != "" || *failover == "monitor") {
 		log.Fatalln("ERROR: Could not autodetect a master!")
+	} else {
+		log.Fatalln("ERROR: Could not autodetect a failed master!")
 	}
 
 	for _, sl := range slaves {
