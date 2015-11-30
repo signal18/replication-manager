@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const repmgrVersion string = "0.5.0-dev"
+const repmgrVersion string = "0.5.1-dev"
 
 var (
 	hostList      []string
