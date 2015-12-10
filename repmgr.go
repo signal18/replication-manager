@@ -189,10 +189,12 @@ func main() {
 		}
 	}
 	// Final check if master has been found
-	if master == nil && (*switchover != "" || *failover == "monitor") {
-		log.Fatalln("ERROR: Could not autodetect a master!")
-	} else {
-		log.Fatalln("ERROR: Could not autodetect a failed master!")
+	if master == nil {
+		if (*switchover != "" || *failover == "monitor") {
+			log.Fatalln("ERROR: Could not autodetect a master!")
+		} else {
+			log.Fatalln("ERROR: Could not autodetect a failed master!")
+		}
 	}
 
 	for _, sl := range slaves {
