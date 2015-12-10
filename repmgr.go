@@ -98,6 +98,10 @@ func main() {
 	if !contains(switchOptions, *switchover) && *switchover != "" {
 		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
 	}
+	// Forced failover implies interactive == false
+	if *failover == "force" && *interactive == true {
+		*interactive = false
+	}
 
 	if *ignoreSrv != "" {
 		ignoreList = strings.Split(*ignoreSrv, ",")
