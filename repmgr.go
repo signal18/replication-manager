@@ -8,12 +8,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/go-sql-driver/mysql"
-	"github.com/nsf/termbox-go"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"io/ioutil"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/nsf/termbox-go"
+	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
 const repmgrVersion string = "0.5.2-dev"
@@ -65,6 +67,8 @@ const (
 )
 
 func main() {
+	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
+	mysql.SetLogger(errLog)
 	flag.Parse()
 	if *version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
@@ -143,6 +147,7 @@ func main() {
 		} else {
 			if *verbose {
 				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
+				servers[k].State = STATE_UNCONN
 			}
 		}
 	}
@@ -194,7 +199,7 @@ func main() {
 	}
 	// Final check if master has been found
 	if master == nil {
-		if (*switchover != "" || *failover == "monitor") {
+		if *switchover != "" || *failover == "monitor" {
 			log.Fatalln("ERROR: Could not autodetect a master!")
 		} else {
 			log.Fatalln("ERROR: Could not autodetect a failed master!")

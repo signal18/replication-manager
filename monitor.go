@@ -54,7 +54,6 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		server.State = STATE_FAILED
 		return server, err
 	}
-	server.State = STATE_UNCONN
 	return server, nil
 }
 
@@ -62,12 +61,17 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 func (sm *ServerMonitor) refresh() error {
 	err := sm.Conn.Ping()
 	if err != nil {
+		// we want the failed state for masters to be set by the monitor
+		if sm.State != STATE_MASTER {
+			sm.State = STATE_FAILED
+		}
 		return err
 	}
 	sv, err := dbhelper.GetVariables(sm.Conn)
 	if err != nil {
 		return err
 	}
+	sm.PrevState = sm.State
 	sm.BinlogPos = sv["GTID_BINLOG_POS"]
 	sm.Strict = sv["GTID_STRICT_MODE"]
 	sm.LogBin = sv["LOG_BIN"]
@@ -86,7 +90,11 @@ func (sm *ServerMonitor) refresh() error {
 	sm.Delay = slaveStatus.Seconds_Behind_Master
 	sm.MasterServerId = slaveStatus.Master_Server_Id
 	sm.MasterHost = slaveStatus.Master_Host
-	sm.State = STATE_SLAVE
+	// In case of state change, reintroduce the server in the slave list
+	if sm.PrevState == STATE_FAILED || sm.PrevState == STATE_UNCONN {
+		sm.State = STATE_SLAVE
+		slaves = append(slaves, sm)
+	}
 	return err
 }
 
