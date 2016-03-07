@@ -275,7 +275,7 @@ func (master *ServerMonitor) failover() (string, int) {
 		if err != nil {
 			log.Println("ERROR:", err)
 		}
-		log.Println("INFO : Post-failover script complete:", string(out))
+		log.Println("INFO : Pre-failover script complete:", string(out))
 	}
 	log.Println("INFO : Switching master")
 	log.Println("INFO : Stopping slave thread on new master")
