@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
-	"github.com/tanji/mariadb-tools/dbhelper"
 	"log"
+	"os"
 	"os/exec"
 	"strconv"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
+	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
 type ServerMonitor struct {
@@ -126,6 +128,7 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	nmUrl = slaves[key].URL
 	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
+	slaves[key].writeState()
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
@@ -420,6 +423,19 @@ func (server *ServerMonitor) log() {
 	server.refresh()
 	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s\n", server.URL, server.CurrentGtid, server.SlaveGtid, server.BinlogPos)
 	return
+}
+
+func (server *ServerMonitor) writeState() error {
+	server.log()
+	f, err := os.Create("/tmp/repmgr.state")
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(server.BinlogPos)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
