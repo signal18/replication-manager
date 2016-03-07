@@ -128,7 +128,6 @@ func (master *ServerMonitor) switchover() (string, int) {
 	}
 	nmUrl = slaves[key].URL
 	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
-	slaves[key].writeState()
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
@@ -268,6 +267,7 @@ func (master *ServerMonitor) failover() (string, int) {
 	}
 	nmUrl = slaves[key].URL
 	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
+	slaves[key].writeState()
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
 		log.Printf("INFO : Calling pre-failover script")
