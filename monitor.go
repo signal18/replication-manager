@@ -36,6 +36,7 @@ type ServerMonitor struct {
 	ReadOnly       string
 	Delay          sql.NullInt64
 	State          string
+	PrevState      string
 }
 
 /* Initializes a server object */
@@ -85,6 +86,7 @@ func (sm *ServerMonitor) refresh() error {
 	sm.Delay = slaveStatus.Seconds_Behind_Master
 	sm.MasterServerId = slaveStatus.Master_Server_Id
 	sm.MasterHost = slaveStatus.Master_Host
+	sm.State = STATE_SLAVE
 	return err
 }
 

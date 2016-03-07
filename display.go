@@ -4,8 +4,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/nsf/termbox-go"
 	"log"
+
+	"github.com/nsf/termbox-go"
 )
 
 func display() {
@@ -42,13 +43,17 @@ func display() {
 	vy++
 	for _, server := range servers {
 		f := false
-		if server.State == STATE_UNCONN {
+		if server.State == STATE_UNCONN || server.State == STATE_FAILED {
 			if f == false {
 				printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Standalone Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 				f = true
 				vy++
 			}
 			server.refresh()
+			if server.State == STATE_FAILED {
+				server.CurrentGtid = "FAILED"
+				server.BinlogPos = "FAILED"
+			}
 			printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid, server.BinlogPos, server.Strict)
 			vy++
