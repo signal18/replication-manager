@@ -305,6 +305,10 @@ func (master *ServerMonitor) failover() (string, int) {
 	}
 	log.Println("INFO : Switching other slaves to the new master")
 	for _, sl := range slaves {
+		if sl.URL == newMaster.URL {
+			// Ignore the new master
+			continue
+		}
 		log.Printf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
