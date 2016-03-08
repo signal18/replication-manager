@@ -269,12 +269,14 @@ func main() {
 						}
 					}
 					if event.Key == termbox.KeyCtrlF {
-						nmUrl, _ := master.failover()
-						if nmUrl != "" {
-							if *verbose {
-								logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
+						if master.State != STATE_FAILED {
+							nmUrl, _ := master.failover()
+							if nmUrl != "" {
+								if *verbose {
+									logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
+								}
+								master, err = newServerMonitor(nmUrl)
 							}
-							master, err = newServerMonitor(nmUrl)
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
