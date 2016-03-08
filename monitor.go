@@ -87,6 +87,15 @@ func (sm *ServerMonitor) refresh() error {
 		// it as unconnected server.
 		if sm.State == STATE_FAILED {
 			sm.State = STATE_UNCONN
+			if *autorejoin {
+				if *verbose {
+					logprint("INFO : Rejoining previously failed server", sm.URL)
+				}
+				err := sm.rejoin()
+				if err != nil {
+					logprint("ERROR: Failed to autojoin previously failed server", sm.URL)
+				}
+			}
 		}
 		return err
 	}
@@ -467,4 +476,11 @@ func (server *ServerMonitor) delete(lsm []*ServerMonitor) []*ServerMonitor {
 		}
 	}
 	return lsm
+}
+
+func (server *ServerMonitor) rejoin() error {
+	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', MASTER_USE_GTID=CURRENT_POS"
+	_, err := server.Conn.Exec(cm)
+	dbhelper.StartSlave(server.Conn)
+	return err
 }

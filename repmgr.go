@@ -58,6 +58,7 @@ var (
 	failover    = flag.String("failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
 	maxfail     = flag.Int("failcount", 5, "Trigger failover after N failures (interval 1s)")
 	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
+	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
 )
 
 const (
