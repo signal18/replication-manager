@@ -64,6 +64,8 @@ func (sm *ServerMonitor) refresh() error {
 		// we want the failed state for masters to be set by the monitor
 		if sm.State != STATE_MASTER {
 			sm.State = STATE_FAILED
+			// remove from slave list
+			slaves = sm.delete(slaves)
 		}
 		return err
 	}
@@ -459,4 +461,15 @@ func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 		}
 	}
 	return true
+}
+
+func (server *ServerMonitor) delete(lsm []*ServerMonitor) []*ServerMonitor {
+	for k, s := range lsm {
+		if server.URL == s.URL {
+			lsm[k] = lsm[len(lsm)-1]
+			lsm[len(lsm)-1] = nil
+			lsm = lsm[:len(lsm)-1]
+		}
+	}
+	return lsm
 }
