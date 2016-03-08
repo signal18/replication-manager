@@ -282,6 +282,18 @@ func main() {
 							logprint(k, v)
 						}
 					}
+					if event.Key == termbox.KeyCtrlR {
+						logprint("INFO: Setting slaves read-only")
+						for _, sl := range slaves {
+							dbhelper.SetReadOnly(sl.Conn, true)
+						}
+					}
+					if event.Key == termbox.KeyCtrlW {
+						logprint("INFO: Setting slaves read-write")
+						for _, sl := range slaves {
+							dbhelper.SetReadOnly(sl.Conn, false)
+						}
+					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
 					}
