@@ -30,17 +30,17 @@ To perform switchover, mariadb-repmgr uses a mechanism similar to common mysql f
 
 ## EXAMPLES
 
-Start mariadb-repmgr in interactive mode with master host db1 and slaves db2 and db3:
+Start mariadb-repmgr in switchover interactive mode with master host db1 and slaves db2 and db3:
 
-`mariadb-repmgr -hosts=db1,db2,db3 -user=root -rpluser=replicator`
+`mariadb-repmgr -hosts=db1,db2,db3 -user=root -rpluser=replicator -interactive -switchover=keep`
 
-Start mariadb-repmgr in interactive mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+Start mariadb-repmgr in interactive failover mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
-`mariadb-repmgr -hosts=db1:3306,db2:3306,db2:3306 -user=root:pass -rpluser=repl:pass -pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" -verbose -maxdelay 15`
+`mariadb-repmgr -hosts=db1:3306,db2:3306,db2:3306 -user=root:pass -rpluser=repl:pass -pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" -verbose -maxdelay 15 -failover=monitor`
 
 Automatically failover a dead master in the above setup:
 
-`mariadb-repmgr -hosts=db1:3306,db2:3306,db2:3306 -user=root:pass -rpluser=repl:pass -pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" -failover=dead`
+`mariadb-repmgr -hosts=db1:3306,db2:3306,db2:3306 -user=root:pass -rpluser=repl:pass -pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" -failover=force -interactive=false`
 
 ## OPTIONS
 
@@ -51,10 +51,14 @@ Automatically failover a dead master in the above setup:
   * -gtidcheck `<boolean>`
 
     Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If false, mariadb-repmgr will wait for the slaves to be in sync before initiating.
-  
+
   * -hosts `<address>:[port],`
 
     List of MariaDB hosts IP and port (optional), specified in the `host:[port]` format and comma-separated.
+
+  * -ignore-servers `<address>:[port],`
+
+    List of servers in the `host:[port]` format to be ignored for slave promotion operations.
 
   * -interactive `<boolean>`
 
@@ -67,15 +71,15 @@ Automatically failover a dead master in the above setup:
   * -post-failover-script `<path>`
 
     Path of post-failover script, to be invoked after new master promotion.
-  
+
   * -pre-failover-script `<path>`
-  
+
     Path of pre-failover script to be invoked before master election.
 
   * -prefmaster `<address>`
 
     Preferred candidate server for master failover, in `host:[port]` format.
-  
+
   * -readonly `<boolean>`
 
     Set slaves as read-only when performing switchover. Default true.
@@ -83,9 +87,9 @@ Automatically failover a dead master in the above setup:
   * -rpluser `<user>:[password]`
 
     Replication user and password. This user must have REPLICATION SLAVE privileges and is used to setup the old master as a new slave.
-    
+
   * -switchover `<action>`
-  
+
     Starts the replication manager in switchover mode. Action can be either `keep` to degrade the old master as a new slave, or `kill` to remove the old master from the replication topology.
 
   * -socket `<path>`
@@ -131,4 +135,4 @@ You should have received a copy of the GNU General Public License along with thi
 
 ## VERSION
 
-**mariadb-repmgr** 0.5.0
+**mariadb-repmgr** 0.5.2
