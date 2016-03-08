@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -119,7 +118,7 @@ func (sm *ServerMonitor) healthCheck() string {
 }
 
 /* Triggers a master switchover. Returns the new master's URL */
-func (master *ServerMonitor) switchover() (string, int) {
+func (master *ServerMonitor) switchover() string {
 	logprint("INFO : Starting switchover")
 	// Phase 1: Cleanup and election
 	logprintf("INFO : Flushing tables on %s (master)", master.URL)
@@ -130,13 +129,13 @@ func (master *ServerMonitor) switchover() (string, int) {
 	logprint("INFO : Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 		logprint("ERROR: Long updates running on master. Cannot switchover")
-		return "", -1
+		return ""
 	}
 	logprint("INFO : Electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slaves)
 	if key == -1 {
-		return "", -1
+		return ""
 	}
 	nmUrl = slaves[key].URL
 	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
@@ -224,24 +223,18 @@ func (master *ServerMonitor) switchover() (string, int) {
 			logprintf("ERROR: Could not set old master as read-only, %s", err)
 		}
 	}
+	// Add the old master to the slaves list
+	slaves[len(slaves)+1], err = newServerMonitor(master.URL)
 	// Phase 5: Switch slaves to new master
 	logprint("INFO : Switching other slaves to the new master")
-	var oldMasterKey int
-	for k, sl := range slaves {
-		if sl.URL == newMaster.URL {
-			slaves[k].URL = master.URL
-			oldMasterKey = k
-			if *verbose {
-				logprintf("DEBUG: New master %s found in slave slice at key %d, reinstancing URL to %s", sl.URL, k, master.URL)
-			}
-			continue
-		}
+	slaves = newMaster.delete(slaves)
+	for _, sl := range slaves {
 		logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 		dbhelper.MasterPosWait(sl.Conn, masterGtid)
 		if *verbose {
 			sl.log()
 		}
-		logprintf("INFO : Change master on slave %s", sl.URL)
+		logprint("INFO : Change master on slave", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
@@ -266,80 +259,77 @@ func (master *ServerMonitor) switchover() (string, int) {
 		}
 	}
 	logprint("INFO : Switchover complete")
-	return newMaster.URL, oldMasterKey
+	return newMaster.URL
 }
 
 /* Triggers a master failover. Returns the new master's URL and key */
 func (master *ServerMonitor) failover() (string, int) {
-	log.Println("INFO : Starting failover and electing a new master")
+	logprint("INFO : Starting failover and electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slaves)
 	if key == -1 {
 		return "", -1
 	}
 	nmUrl = slaves[key].URL
-	log.Printf("INFO : Slave %s has been elected as a new master", nmUrl)
+	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
 	slaves[key].writeState()
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
-		log.Printf("INFO : Calling pre-failover script")
+		logprintf("INFO : Calling pre-failover script")
 		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
-			log.Println("ERROR:", err)
+			logprint("ERROR:", err)
 		}
-		log.Println("INFO : Pre-failover script complete:", string(out))
+		logprint("INFO : Pre-failover script complete:", string(out))
 	}
-	log.Println("INFO : Switching master")
-	log.Println("INFO : Stopping slave thread on new master")
+	logprint("INFO : Switching master")
+	logprint("INFO : Stopping slave thread on new master")
 	err = dbhelper.StopSlave(newMaster.Conn)
 	if err != nil {
-		log.Println("WARN : Stopping slave failed on new master")
+		logprint("WARN : Stopping slave failed on new master")
 	}
 	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
-	log.Println("INFO : Resetting slave on new master and set read/write mode on")
+	logprint("INFO : Resetting slave on new master and set read/write mode on")
 	err = dbhelper.ResetSlave(newMaster.Conn, true)
 	if err != nil {
-		log.Println("WARN : Reset slave failed on new master")
+		logprint("WARN : Reset slave failed on new master")
 	}
 	err = dbhelper.SetReadOnly(newMaster.Conn, false)
 	if err != nil {
-		log.Println("ERROR: Could not set new master as read-write")
+		logprint("ERROR: Could not set new master as read-write")
 	}
-	log.Println("INFO : Switching other slaves to the new master")
+	logprint("INFO : Switching other slaves to the new master")
+	slaves = newMaster.delete(slaves)
 	for _, sl := range slaves {
-		if sl.URL == newMaster.URL {
-			// Ignore the new master
-			continue
-		}
-		log.Printf("INFO : Change master on slave %s", sl.URL)
+		logprint("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
-			log.Printf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
+			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
 		_, err = sl.Conn.Exec(cm)
 		if err != nil {
-			log.Printf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
+			logprintf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
 		}
 		err = dbhelper.StartSlave(sl.Conn)
 		if err != nil {
-			log.Printf("ERROR: could not start slave on server %s, %s", sl.URL, err)
+			logprintf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
 		if *readonly {
 			err = dbhelper.SetReadOnly(sl.Conn, true)
 			if err != nil {
-				log.Printf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
+				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		}
 	}
 	if *postScript != "" {
-		log.Printf("INFO : Calling post-failover script")
+		logprintf("INFO : Calling post-failover script")
 		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
 		if err != nil {
-			log.Println("ERROR:", err)
+			logprint("ERROR:", err)
 		}
-		log.Println("INFO : Post-failover script complete", string(out))
+		logprint("INFO : Post-failover script complete", string(out))
 	}
-	log.Println("INFO : Failover complete")
+	logprint("INFO : Failover complete")
 	return newMaster.URL, key
 }
 
@@ -430,7 +420,7 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
 	} else {
-		log.Println("ERROR: No suitable candidates found.")
+		logprint("ERROR: No suitable candidates found.")
 		return -1
 	}
 }
