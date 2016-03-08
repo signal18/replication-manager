@@ -276,6 +276,11 @@ func main() {
 							master, err = newServerMonitor(nmUrl)
 						}
 					}
+					if event.Key == termbox.KeyCtrlD {
+						for k, v := range servers {
+							logprint(k, v)
+						}
+					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
 					}
