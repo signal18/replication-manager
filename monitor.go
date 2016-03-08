@@ -153,6 +153,8 @@ func (master *ServerMonitor) switchover() string {
 	}
 	nmUrl = slaves[key].URL
 	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
+	// Remove from slave list
+	slaves = slaves[key].delete(slaves)
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
@@ -238,10 +240,9 @@ func (master *ServerMonitor) switchover() string {
 		}
 	}
 	// Add the old master to the slaves list
-	slaves[len(slaves)+1], err = newServerMonitor(master.URL)
+	slaves = append(slaves, master)
 	// Phase 5: Switch slaves to new master
 	logprint("INFO : Switching other slaves to the new master")
-	slaves = newMaster.delete(slaves)
 	for _, sl := range slaves {
 		logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 		dbhelper.MasterPosWait(sl.Conn, masterGtid)
