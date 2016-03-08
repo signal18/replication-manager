@@ -480,6 +480,9 @@ func (server *ServerMonitor) delete(lsm []*ServerMonitor) []*ServerMonitor {
 }
 
 func (server *ServerMonitor) rejoin() error {
+	if *readonly {
+		dbhelper.SetReadOnly(server.Conn, true)
+	}
 	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', MASTER_USE_GTID=CURRENT_POS"
 	_, err := server.Conn.Exec(cm)
 	dbhelper.StartSlave(server.Conn)
