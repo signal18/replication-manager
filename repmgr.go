@@ -258,18 +258,22 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						nmUrl, nsKey := master.switchover()
-						if nmUrl != "" && nsKey >= 0 {
+						nmUrl := master.switchover()
+						if nmUrl != "" {
 							if *verbose {
-								logprintf("DEBUG: Reinstancing new master: %s and new slave: %s [%d]", nmUrl, slaves[nsKey].URL, nsKey)
+								logprint("DEBUG: Reinstancing new master:", nmUrl)
 							}
 							master, err = newServerMonitor(nmUrl)
-							slaves[nsKey], err = newServerMonitor(slaves[nsKey].URL)
 						}
 					}
 					if event.Key == termbox.KeyCtrlF {
-						command = "failover"
-						exit = true
+						nmUrl, _ := master.failover()
+						if nmUrl != "" {
+							if *verbose {
+								logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
+							}
+							master, err = newServerMonitor(nmUrl)
+						}
 					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
@@ -281,22 +285,18 @@ func main() {
 				}
 			}
 			if master.State == STATE_FAILED && *interactive == false {
-				command = "failover"
-				exit = true
+				nmUrl, _ := master.failover()
+				if nmUrl != "" {
+					if *verbose {
+						logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
+					}
+					master, err = newServerMonitor(nmUrl)
+				}
 			}
 		}
 		switch command {
 		case "failover":
 			termbox.Close()
-			nmUrl, nmKey := master.failover()
-			if nmUrl != "" {
-				if *verbose {
-					log.Printf("DEBUG: Reinstancing new master: %s", nmUrl)
-				}
-				master, err = newServerMonitor(nmUrl)
-				// Remove new master from slave slice
-				slaves = append(slaves[:nmKey], slaves[nmKey+1:]...)
-			}
 			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
 			time.Sleep(5 * time.Second)
 			exit = false
