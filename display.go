@@ -21,10 +21,10 @@ func display() {
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	// Check Master Status and print it out to terminal. Increment failure counter if needed.
 	err := master.refresh()
-	if err != nil && err != sql.ErrNoRows && failCount < 4 {
+	if err != nil && err != sql.ErrNoRows && failCount < *maxfail {
 		failCount++
-		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/3", failCount))
-		if failCount > 3 {
+		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, *maxfail))
+		if failCount == *maxfail {
 			tlog.Add("Declaring master as failed")
 			master.State = STATE_FAILED
 			master.CurrentGtid = "MASTER FAILED"

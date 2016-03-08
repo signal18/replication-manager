@@ -31,9 +31,9 @@ var (
 	dbPass        string
 	rplUser       string
 	rplPass       string
-	switchOptions     = []string{"keep", "kill"}
-	failOptions       = []string{"monitor", "force", "check"}
-	failCount     int = 0
+	switchOptions = []string{"keep", "kill"}
+	failOptions   = []string{"monitor", "force", "check"}
+	failCount     int
 	tlog          TermLog
 	ignoreList    []string
 )
@@ -56,6 +56,7 @@ var (
 	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
 	failover    = flag.String("failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
+	maxfail     = flag.Int("failcount", 5, "Trigger failover after N failures (interval 1s)")
 	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 )
 
@@ -248,7 +249,7 @@ func main() {
 		}
 		termboxChan := new_tb_chan()
 		interval := time.Second
-		ticker := time.NewTicker(interval * 3)
+		ticker := time.NewTicker(interval * 1)
 		var command string
 		for exit == false {
 			select {
