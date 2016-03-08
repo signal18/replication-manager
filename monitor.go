@@ -83,6 +83,11 @@ func (sm *ServerMonitor) refresh() error {
 	sm.ServerId = uint(sid)
 	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
 	if err != nil {
+		// If we reached this stage with a previously failed server, reintroduce
+		// it as unconnected server.
+		if sm.State == STATE_FAILED {
+			sm.State = STATE_UNCONN
+		}
 		return err
 	}
 	sm.UsingGtid = slaveStatus.Using_Gtid
