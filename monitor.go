@@ -132,7 +132,7 @@ func (sm *ServerMonitor) healthCheck() string {
 }
 
 /* Triggers a master switchover. Returns the new master's URL */
-func (master *ServerMonitor) switchover() string {
+func (master *ServerMonitor) switchover() {
 	logprint("INFO : Starting switchover")
 	// Phase 1: Cleanup and election
 	logprintf("INFO : Flushing tables on %s (master)", master.URL)
@@ -143,104 +143,108 @@ func (master *ServerMonitor) switchover() string {
 	logprint("INFO : Checking long running updates on master")
 	if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 		logprint("ERROR: Long updates running on master. Cannot switchover")
-		return ""
+		return
 	}
 	logprint("INFO : Electing a new master")
 	var nmUrl string
 	key := master.electCandidate(slaves)
 	if key == -1 {
-		return ""
+		return
 	}
 	nmUrl = slaves[key].URL
-	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
-	// Remove from slave list
+	logprintf("INFO : Slave %s [%d] has been elected as a new master", nmUrl, key)
+	// Shuffle the server list
+	oldMaster := master
+	master = slaves[key]
+	master.State = STATE_MASTER
 	slaves = slaves[key].delete(slaves)
-	newMaster, err := newServerMonitor(nmUrl)
+	// Call pre-failover script
 	if *preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
-		out, err := exec.Command(*preScript, master.Host, newMaster.Host).CombinedOutput()
+		out, err := exec.Command(*preScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
 		logprint("INFO : Pre-failover script complete:", string(out))
 	}
 	// Phase 2: Reject updates and sync slaves
-	master.freeze()
-	logprintf("INFO : Rejecting updates on %s (old master)", master.URL)
-	err = dbhelper.FlushTablesWithReadLock(master.Conn)
+	oldMaster.freeze()
+	logprintf("INFO : Rejecting updates on %s (old master)", oldMaster.URL)
+	err = dbhelper.FlushTablesWithReadLock(oldMaster.Conn)
 	if err != nil {
-		logprintf("WARN : Could not lock tables on %s (old master) %s", master.URL, err)
+		logprintf("WARN : Could not lock tables on %s (old master) %s", oldMaster.URL, err)
 	}
 	logprint("INFO : Switching master")
-	logprint("INFO : Waiting for candidate master to synchronize")
-	masterGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
+	logprint("INFO : Waiting for candidate Master to synchronize")
+	masterGtid := dbhelper.GetVariableByName(oldMaster.Conn, "GTID_BINLOG_POS")
 	if *verbose {
 		logprintf("DEBUG: Syncing on master GTID Current Pos [%s]", masterGtid)
-		master.log()
+		oldMaster.log()
 	}
-	dbhelper.MasterPosWait(newMaster.Conn, masterGtid)
+	dbhelper.MasterPosWait(master.Conn, masterGtid)
 	if *verbose {
 		logprint("DEBUG: MASTER_POS_WAIT executed.")
-		newMaster.log()
+		master.log()
 	}
 	// Phase 3: Prepare new master
 	logprint("INFO : Stopping slave thread on new master")
-	err = dbhelper.StopSlave(newMaster.Conn)
+	err = dbhelper.StopSlave(master.Conn)
 	if err != nil {
 		logprint("WARN : Stopping slave failed on new master")
 	}
 	// Call post-failover script before unlocking the old master.
 	if *postScript != "" {
 		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(*postScript, master.Host, newMaster.Host).CombinedOutput()
+		out, err := exec.Command(*postScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
 	logprint("INFO : Resetting slave on new master and set read/write mode on")
-	err = dbhelper.ResetSlave(newMaster.Conn, true)
+	err = dbhelper.ResetSlave(master.Conn, true)
 	if err != nil {
 		logprint("WARN : Reset slave failed on new master")
 	}
-	err = dbhelper.SetReadOnly(newMaster.Conn, false)
+	err = dbhelper.SetReadOnly(master.Conn, false)
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
-	newGtid := dbhelper.GetVariableByName(master.Conn, "GTID_BINLOG_POS")
+	newGtid := dbhelper.GetVariableByName(oldMaster.Conn, "GTID_BINLOG_POS")
 	// Insert a bogus transaction in order to have a new GTID pos on master
-	err = dbhelper.FlushTables(newMaster.Conn)
+	err = dbhelper.FlushTables(master.Conn)
 	if err != nil {
 		logprint("WARN : Could not flush tables on new master", err)
 	}
 	// Phase 4: Demote old master to slave
-	cm := "CHANGE MASTER TO master_host='" + newMaster.IP + "', master_port=" + newMaster.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
+	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
 	logprint("INFO : Switching old master as a slave")
-	err = dbhelper.UnlockTables(master.Conn)
+	err = dbhelper.UnlockTables(oldMaster.Conn)
 	if err != nil {
 		logprint("WARN : Could not unlock tables on old master", err)
 	}
-	dbhelper.StopSlave(master.Conn) // This is helpful because in some cases the old master can have an old configuration running
-	_, err = master.Conn.Exec("SET GLOBAL gtid_slave_pos='" + newGtid + "'")
+	dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
+	_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + newGtid + "'")
 	if err != nil {
 		logprint("WARN : Could not set gtid_slave_pos on old master", err)
 	}
-	_, err = master.Conn.Exec(cm + ", master_use_gtid=slave_pos")
+	_, err = oldMaster.Conn.Exec(cm + ", master_use_gtid=slave_pos")
 	if err != nil {
 		logprint("WARN : Change master failed on old master", err)
 	}
-	err = dbhelper.StartSlave(master.Conn)
+	err = dbhelper.StartSlave(oldMaster.Conn)
 	if err != nil {
 		logprint("WARN : Start slave failed on old master", err)
 	}
 	if *readonly {
-		err = dbhelper.SetReadOnly(master.Conn, true)
+		err = dbhelper.SetReadOnly(oldMaster.Conn, true)
 		if err != nil {
 			logprintf("ERROR: Could not set old master as read-only, %s", err)
 		}
 	}
 	// Add the old master to the slaves list
-	slaves = append(slaves, master)
+	oldMaster.State = STATE_SLAVE
+	slaves = append(slaves, oldMaster)
 	// Phase 5: Switch slaves to new master
 	logprint("INFO : Switching other slaves to the new master")
 	for _, sl := range slaves {
@@ -274,19 +278,19 @@ func (master *ServerMonitor) switchover() string {
 		}
 	}
 	logprint("INFO : Switchover complete")
-	return newMaster.URL
+	// Shuffle the list
+	return
 }
 
 /* Triggers a master failover. Returns the new master's URL and key */
-func (master *ServerMonitor) failover() (string, int) {
+func (master *ServerMonitor) failover() {
 	logprint("INFO : Starting failover and electing a new master")
-	var nmUrl string
 	key := master.electCandidate(slaves)
 	if key == -1 {
-		return "", -1
+		return
 	}
-	nmUrl = slaves[key].URL
-	logprintf("INFO : Slave %s has been elected as a new master", nmUrl)
+	nmUrl := slaves[key].URL
+	logprintf("INFO : Slave %s [%d] has been elected as a new master", nmUrl, key)
 	slaves[key].writeState()
 	newMaster, err := newServerMonitor(nmUrl)
 	if *preScript != "" {
@@ -344,8 +348,12 @@ func (master *ServerMonitor) failover() (string, int) {
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
+	// Promote the server to master in the list
+	master = slaves[key]
+	master.refresh()
+	master.State = STATE_MASTER
 	logprint("INFO : Failover complete")
-	return newMaster.URL, key
+	return
 }
 
 /* Handles write freeze and existing transactions on a server */

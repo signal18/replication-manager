@@ -242,7 +242,7 @@ func main() {
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
 		}
-		tlog = NewTermLog(20)
+		tlog = NewTermLog(30)
 		if *failover != "" {
 			tlog.Add("Monitor started in failover mode")
 		} else {
@@ -260,28 +260,20 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						nmUrl := master.switchover()
-						if nmUrl != "" {
-							if *verbose {
-								logprint("DEBUG: Reinstancing new master:", nmUrl)
-							}
-							master, err = newServerMonitor(nmUrl)
-						}
+						master.switchover()
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if master.State != STATE_FAILED {
-							nmUrl, _ := master.failover()
-							if nmUrl != "" {
-								if *verbose {
-									logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
-								}
-								master, err = newServerMonitor(nmUrl)
-							}
+							master.failover()
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
 						for k, v := range servers {
-							logprint(k, v)
+							logprint("Servers", k, v)
+						}
+						logprint("Master", master)
+						for k, v := range slaves {
+							logprint("Slaves", k, v)
 						}
 					}
 					if event.Key == termbox.KeyCtrlR {
@@ -306,13 +298,7 @@ func main() {
 				}
 			}
 			if master.State == STATE_FAILED && *interactive == false {
-				nmUrl, _ := master.failover()
-				if nmUrl != "" {
-					if *verbose {
-						logprintf("DEBUG: Reinstancing new master: %s", nmUrl)
-					}
-					master, err = newServerMonitor(nmUrl)
-				}
+				master.failover()
 			}
 		}
 		switch command {
