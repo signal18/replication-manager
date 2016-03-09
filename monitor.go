@@ -132,7 +132,7 @@ func (sm *ServerMonitor) healthCheck() string {
 }
 
 /* Triggers a master switchover. Returns the new master's URL */
-func (master *ServerMonitor) switchover() {
+func masterSwitchover() {
 	logprint("INFO : Starting switchover")
 	// Phase 1: Cleanup and election
 	logprintf("INFO : Flushing tables on %s (master)", master.URL)
@@ -155,8 +155,16 @@ func (master *ServerMonitor) switchover() {
 	logprintf("INFO : Slave %s [%d] has been elected as a new master", nmUrl, key)
 	// Shuffle the server list
 	oldMaster := master
-	master = slaves[key]
+	var skey int
+	for k, server := range servers {
+		if slaves[key].URL == server.URL {
+			skey = k
+			break
+		}
+	}
+	master = servers[skey]
 	master.State = STATE_MASTER
+	logprint(master)
 	slaves = slaves[key].delete(slaves)
 	// Call pre-failover script
 	if *preScript != "" {
@@ -278,7 +286,6 @@ func (master *ServerMonitor) switchover() {
 		}
 	}
 	logprint("INFO : Switchover complete")
-	// Shuffle the list
 	return
 }
 
@@ -348,10 +355,6 @@ func (master *ServerMonitor) failover() {
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
-	// Promote the server to master in the list
-	master = slaves[key]
-	master.refresh()
-	master.State = STATE_MASTER
 	logprint("INFO : Failover complete")
 	return
 }

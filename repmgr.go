@@ -80,7 +80,7 @@ func main() {
 	}
 	if *logfile != "" {
 		var err error
-		logPtr, err = os.Open(*logfile)
+		logPtr, err = os.Create(*logfile)
 		if err != nil {
 			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
 			*logfile = ""
@@ -246,7 +246,7 @@ func main() {
 	if *failover == "force" {
 		master.failover()
 	} else if *switchover != "" && *interactive == false {
-		master.switchover()
+		masterSwitchover()
 	} else {
 	MainLoop:
 		err := termbox.Init()
@@ -271,7 +271,7 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						master.switchover()
+						masterSwitchover()
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if master.State != STATE_FAILED {

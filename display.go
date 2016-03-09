@@ -98,7 +98,7 @@ func logprint(msg ...interface{}) {
 
 func logprintf(format string, args ...interface{}) {
 	if *logfile != "" {
-		io.WriteString(logPtr, fmt.Sprintf(format, args...))
+		io.WriteString(logPtr, fmt.Sprintf(format, args...)+"\n")
 	}
 	if *interactive == true || *failover == "monitor" {
 		tlog.Add(fmt.Sprintf(format, args...))
