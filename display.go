@@ -4,6 +4,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 
 	"github.com/nsf/termbox-go"
@@ -84,6 +85,9 @@ func printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interfa
 }
 
 func logprint(msg ...interface{}) {
+	if *logfile != "" {
+		io.WriteString(logPtr, fmt.Sprintln(msg...))
+	}
 	if *interactive == true || *failover == "monitor" {
 		tlog.Add(fmt.Sprintln(msg...))
 		display()
@@ -93,6 +97,9 @@ func logprint(msg ...interface{}) {
 }
 
 func logprintf(format string, args ...interface{}) {
+	if *logfile != "" {
+		io.WriteString(logPtr, fmt.Sprintf(format, args...))
+	}
 	if *interactive == true || *failover == "monitor" {
 		tlog.Add(fmt.Sprintf(format, args...))
 		display()

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ var (
 	failCount     int
 	tlog          TermLog
 	ignoreList    []string
+	logPtr        *os.File
 )
 
 // Command specific options
@@ -59,6 +61,7 @@ var (
 	maxfail     = flag.Int("failcount", 5, "Trigger failover after N failures (interval 1s)")
 	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
+	logfile     = flag.String("logfile", "", "Write MRM messages to a log file")
 )
 
 const (
@@ -74,6 +77,14 @@ func main() {
 	flag.Parse()
 	if *version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
+	}
+	if *logfile != "" {
+		var err error
+		logPtr, err = os.Open(*logfile)
+		if err != nil {
+			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
+			*logfile = ""
+		}
 	}
 	// if slaves option has been supplied, split into a slice.
 	if *hosts != "" {
