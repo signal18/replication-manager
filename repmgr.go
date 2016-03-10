@@ -317,16 +317,13 @@ func main() {
 			}
 			if master.State == stateFailed && *interactive == false {
 				rem := (failoverTs + *failtime) - time.Now().Unix()
-				if *verbose {
-					logprintf("DEBUG: Failovers: %d Remaining_Time: %d", failoverCtr, rem)
-				}
 				if (*failtime == 0) || (*failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 					masterFailover(true)
 					if failoverCtr == *faillimit {
 						exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
 						exit = true
 					}
-				} else if *failtime > 0 {
+				} else if *failtime > 0 && rem%10 == 0 {
 					logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 				}
 			}
