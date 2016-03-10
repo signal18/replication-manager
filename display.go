@@ -62,7 +62,7 @@ func display() {
 
 	}
 	vy++
-	if master.CurrentGtid != "MASTER FAILED" {
+	if master.State != stateFailed {
 		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-S to switchover")
 	} else {
 		printTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover")
