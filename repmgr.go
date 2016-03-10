@@ -244,11 +244,10 @@ func main() {
 	// Do failover or switchover manually, or start the interactive monitor.
 
 	if *failover == "force" {
-		master.failover()
+		masterFailover(true)
 	} else if *switchover != "" && *interactive == false {
-		masterSwitchover()
+		masterFailover(false)
 	} else {
-	MainLoop:
 		err := termbox.Init()
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
@@ -262,7 +261,6 @@ func main() {
 		termboxChan := new_tb_chan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 1)
-		var command string
 		for exit == false {
 			select {
 			case <-ticker.C:
@@ -271,11 +269,11 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						masterSwitchover()
+						masterFailover(false)
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if master.State != STATE_FAILED {
-							master.failover()
+							masterFailover(true)
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
@@ -309,16 +307,8 @@ func main() {
 				}
 			}
 			if master.State == STATE_FAILED && *interactive == false {
-				master.failover()
+				masterFailover(true)
 			}
-		}
-		switch command {
-		case "failover":
-			termbox.Close()
-			log.Println("###### Restarting monitor console in 5 seconds. Press Ctrl-C to exit")
-			time.Sleep(5 * time.Second)
-			exit = false
-			goto MainLoop
 		}
 		termbox.Close()
 	}
