@@ -2,6 +2,7 @@ package main
 
 import (
 	"os/exec"
+	"time"
 
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
@@ -183,6 +184,7 @@ func masterFailover(fail bool) {
 	failCount = 0
 	if fail == true {
 		failoverCtr++
+		failoverTs = time.Now().Unix()
 	}
 	return
 }

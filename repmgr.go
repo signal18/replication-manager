@@ -36,6 +36,7 @@ var (
 	failOptions   = []string{"monitor", "force", "check"}
 	failCount     int
 	failoverCtr   int
+	failoverTs    int64
 	tlog          TermLog
 	ignoreList    []string
 	logPtr        *os.File
@@ -64,8 +65,8 @@ var (
 	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
 	logfile     = flag.String("logfile", "", "Write MRM messages to a log file")
 	timeout     = flag.Int("connect-timeout", 5, "Database connection timeout in seconds")
-	faillimit   = flag.Int("failover-limit", 0, "In interactive monitor mode, quit after N failovers (0: unlimited)")
-	failtime    = flag.Int("failover-time-limit", 0, "")
+	faillimit   = flag.Int("failover-limit", 0, "In auto-monitor mode, quit after N failovers (0: unlimited)")
+	failtime    = flag.Int64("failover-time-limit", 0, "In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)")
 )
 
 const (
@@ -314,9 +315,14 @@ func main() {
 				}
 			}
 			if master.State == stateFailed && *interactive == false {
-				masterFailover(true)
-				if failoverCtr == *maxfail {
-					exit = true
+				rem := (failoverTs + *failtime) - time.Now().Unix()
+				if *failtime > 0 && rem >= 0 {
+					masterFailover(true)
+					if failoverCtr == *maxfail {
+						exit = true
+					}
+				} else {
+					logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 				}
 			}
 		}
