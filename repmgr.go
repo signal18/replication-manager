@@ -65,10 +65,10 @@ var (
 )
 
 const (
-	STATE_FAILED string = "Failed"
-	STATE_MASTER string = "Master"
-	STATE_SLAVE  string = "Slave"
-	STATE_UNCONN string = "Unconnected"
+	stateFailed string = "Failed"
+	stateMaster string = "Master"
+	stateSlave  string = "Slave"
+	stateUnconn string = "Unconnected"
 )
 
 func main() {
@@ -141,7 +141,7 @@ func main() {
 				}
 			}
 			log.Printf("INFO : Server %s is dead.", servers[k].URL)
-			servers[k].State = STATE_FAILED
+			servers[k].State = stateFailed
 			continue
 		}
 		defer servers[k].Conn.Close()
@@ -154,13 +154,13 @@ func main() {
 			if *verbose {
 				log.Printf("DEBUG: Server %s is configured as a slave", servers[k].URL)
 			}
-			servers[k].State = STATE_SLAVE
+			servers[k].State = stateSlave
 			slaves = append(slaves, servers[k])
 			slaveCount++
 		} else {
 			if *verbose {
 				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
-				servers[k].State = STATE_UNCONN
+				servers[k].State = stateUnconn
 			}
 		}
 	}
@@ -181,12 +181,12 @@ func main() {
 	// dead hosts or unconnected hosts.
 	if *switchover != "" || *failover == "monitor" {
 		// First of all, get a server id from the slaves slice, they should be all the same
-		sid := slaves[0].MasterServerId
+		sid := slaves[0].MasterServerID
 		for k, s := range servers {
-			if s.State == STATE_UNCONN {
-				if s.ServerId == sid {
+			if s.State == stateUnconn {
+				if s.ServerID == sid {
 					master = servers[k]
-					master.State = STATE_MASTER
+					master.State = stateMaster
 					if *verbose {
 						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
@@ -198,10 +198,10 @@ func main() {
 		// Slave master_host variable must point to dead master
 		smh := slaves[0].MasterHost
 		for k, s := range servers {
-			if s.State == STATE_FAILED {
+			if s.State == stateFailed {
 				if s.Host == smh || s.IP == smh {
 					master = servers[k]
-					master.State = STATE_MASTER
+					master.State = stateMaster
 					if *verbose {
 						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
@@ -258,7 +258,7 @@ func main() {
 		} else {
 			tlog.Add("Monitor started in switchover mode")
 		}
-		termboxChan := new_tb_chan()
+		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 1)
 		for exit == false {
@@ -272,7 +272,7 @@ func main() {
 						masterFailover(false)
 					}
 					if event.Key == termbox.KeyCtrlF {
-						if master.State != STATE_FAILED {
+						if master.State != stateFailed {
 							masterFailover(true)
 						}
 					}
@@ -306,7 +306,7 @@ func main() {
 					termbox.Sync()
 				}
 			}
-			if master.State == STATE_FAILED && *interactive == false {
+			if master.State == stateFailed && *interactive == false {
 				masterFailover(true)
 			}
 		}
@@ -314,7 +314,7 @@ func main() {
 	}
 }
 
-func new_tb_chan() chan termbox.Event {
+func newTbChan() chan termbox.Event {
 	termboxChan := make(chan termbox.Event)
 	go func() {
 		for {

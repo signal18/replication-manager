@@ -14,6 +14,7 @@ import (
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
+// ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Conn           *sqlx.DB
 	URL            string
@@ -22,8 +23,8 @@ type ServerMonitor struct {
 	IP             string
 	BinlogPos      string
 	Strict         string
-	ServerId       uint
-	MasterServerId uint
+	ServerID       uint
+	MasterServerID uint
 	MasterHost     string
 	LogBin         string
 	UsingGtid      string
@@ -49,81 +50,81 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	}
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
 	if err != nil {
-		server.State = STATE_FAILED
+		server.State = stateFailed
 		return server, err
 	}
 	return server, nil
 }
 
 /* Refresh a server object */
-func (sm *ServerMonitor) refresh() error {
-	err := sm.Conn.Ping()
+func (server *ServerMonitor) refresh() error {
+	err := server.Conn.Ping()
 	if err != nil {
 		// we want the failed state for masters to be set by the monitor
-		if sm.State != STATE_MASTER {
-			sm.State = STATE_FAILED
+		if server.State != stateMaster {
+			server.State = stateFailed
 			// remove from slave list
-			slaves = sm.delete(slaves)
+			slaves = server.delete(slaves)
 		}
 		return err
 	}
-	sv, err := dbhelper.GetVariables(sm.Conn)
+	sv, err := dbhelper.GetVariables(server.Conn)
 	if err != nil {
 		return err
 	}
-	sm.PrevState = sm.State
-	sm.BinlogPos = sv["GTID_BINLOG_POS"]
-	sm.Strict = sv["GTID_STRICT_MODE"]
-	sm.LogBin = sv["LOG_BIN"]
-	sm.ReadOnly = sv["READ_ONLY"]
-	sm.CurrentGtid = sv["GTID_CURRENT_POS"]
-	sm.SlaveGtid = sv["GTID_SLAVE_POS"]
+	server.PrevState = server.State
+	server.BinlogPos = sv["GTID_BINLOG_POS"]
+	server.Strict = sv["GTID_STRICT_MODE"]
+	server.LogBin = sv["LOG_BIN"]
+	server.ReadOnly = sv["READ_ONLY"]
+	server.CurrentGtid = sv["GTID_CURRENT_POS"]
+	server.SlaveGtid = sv["GTID_SLAVE_POS"]
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
-	sm.ServerId = uint(sid)
-	slaveStatus, err := dbhelper.GetSlaveStatus(sm.Conn)
+	server.ServerID = uint(sid)
+	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if sm.State == STATE_FAILED {
-			sm.State = STATE_UNCONN
+		if server.State == stateFailed {
+			server.State = stateUnconn
 			if *autorejoin {
 				if *verbose {
-					logprint("INFO : Rejoining previously failed server", sm.URL)
+					logprint("INFO : Rejoining previously failed server", server.URL)
 				}
-				err := sm.rejoin()
+				err := server.rejoin()
 				if err != nil {
-					logprint("ERROR: Failed to autojoin previously failed server", sm.URL)
+					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
 				}
 			}
 		}
 		return err
 	}
-	sm.UsingGtid = slaveStatus.Using_Gtid
-	sm.IOThread = slaveStatus.Slave_IO_Running
-	sm.SQLThread = slaveStatus.Slave_SQL_Running
-	sm.Delay = slaveStatus.Seconds_Behind_Master
-	sm.MasterServerId = slaveStatus.Master_Server_Id
-	sm.MasterHost = slaveStatus.Master_Host
+	server.UsingGtid = slaveStatus.Using_Gtid
+	server.IOThread = slaveStatus.Slave_IO_Running
+	server.SQLThread = slaveStatus.Slave_SQL_Running
+	server.Delay = slaveStatus.Seconds_Behind_Master
+	server.MasterServerID = slaveStatus.Master_Server_Id
+	server.MasterHost = slaveStatus.Master_Host
 	// In case of state change, reintroduce the server in the slave list
-	if sm.PrevState == STATE_FAILED || sm.PrevState == STATE_UNCONN {
-		sm.State = STATE_SLAVE
-		slaves = append(slaves, sm)
+	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
+		server.State = stateSlave
+		slaves = append(slaves, server)
 	}
 	return err
 }
 
 /* Check replication health and return status string */
-func (sm *ServerMonitor) healthCheck() string {
-	if sm.Delay.Valid == false {
-		if sm.SQLThread == "Yes" && sm.IOThread == "No" {
+func (server *ServerMonitor) healthCheck() string {
+	if server.Delay.Valid == false {
+		if server.SQLThread == "Yes" && server.IOThread == "No" {
 			return "NOT OK, IO Stopped"
-		} else if sm.SQLThread == "No" && sm.IOThread == "Yes" {
+		} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 			return "NOT OK, SQL Stopped"
 		} else {
 			return "NOT OK, ALL Stopped"
 		}
 	} else {
-		if sm.Delay.Int64 > 0 {
+		if server.Delay.Int64 > 0 {
 			return "Behind master"
 		}
 		return "Running OK"
@@ -151,7 +152,7 @@ func (server *ServerMonitor) freeze() bool {
 }
 
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
-func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
+func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	ll := len(l)
 	if *verbose {
 		logprintf("DEBUG: Processing %d candidates", ll)
@@ -167,11 +168,11 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 			if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 				continue
 			}
-			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+			if dbhelper.CheckBinlogFilters(server.Conn, sl.Conn) == false {
 				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
-			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+			if dbhelper.CheckReplicationFilters(server.Conn, sl.Conn) == false {
 				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
@@ -184,7 +185,7 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
 				continue
 			}
-			if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
+			if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, server.Conn) == false {
 				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
@@ -216,10 +217,9 @@ func (master *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	if i > 0 {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
-	} else {
-		logprint("ERROR: No suitable candidates found.")
-		return -1
 	}
+	logprint("ERROR: No suitable candidates found.")
+	return -1
 }
 
 func (server *ServerMonitor) log() {
@@ -241,9 +241,9 @@ func (server *ServerMonitor) writeState() error {
 	return nil
 }
 
-func (s *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
+func (server *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
-		if s.MasterServerId != sl.MasterServerId {
+		if server.MasterServerID != sl.MasterServerID {
 			return false
 		}
 	}

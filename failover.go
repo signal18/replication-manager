@@ -28,8 +28,7 @@ func masterFailover(fail bool) {
 	if key == -1 {
 		return
 	}
-	nmUrl := slaves[key].URL
-	logprintf("INFO : Slave %s [%d] has been elected as a new master", nmUrl, key)
+	logprintf("INFO : Slave %s [%d] has been elected as a new master", slaves[key].URL, key)
 	// Shuffle the server list
 	oldMaster := master
 	var skey int
@@ -40,7 +39,7 @@ func masterFailover(fail bool) {
 		}
 	}
 	master = servers[skey]
-	master.State = STATE_MASTER
+	master.State = stateMaster
 	logprint(master)
 	slaves = slaves[key].delete(slaves)
 	// Call pre-failover script
@@ -134,7 +133,7 @@ func masterFailover(fail bool) {
 			}
 		}
 		// Add the old master to the slaves list
-		oldMaster.State = STATE_SLAVE
+		oldMaster.State = stateSlave
 		slaves = append(slaves, oldMaster)
 	}
 	// Phase 5: Switch slaves to new master

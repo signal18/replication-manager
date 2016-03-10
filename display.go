@@ -27,7 +27,7 @@ func display() {
 		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, *maxfail))
 		if failCount == *maxfail {
 			tlog.Add("Declaring master as failed")
-			master.State = STATE_FAILED
+			master.State = stateFailed
 			master.CurrentGtid = "MASTER FAILED"
 			master.BinlogPos = "MASTER FAILED"
 		}
@@ -44,14 +44,14 @@ func display() {
 	vy++
 	for _, server := range servers {
 		f := false
-		if server.State == STATE_UNCONN || server.State == STATE_FAILED {
+		if server.State == stateUnconn || server.State == stateFailed {
 			if f == false {
 				printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Standalone Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 				f = true
 				vy++
 			}
 			server.refresh()
-			if server.State == STATE_FAILED {
+			if server.State == stateFailed {
 				server.CurrentGtid = "FAILED"
 				server.BinlogPos = "FAILED"
 			}
