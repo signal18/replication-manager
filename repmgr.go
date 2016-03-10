@@ -40,6 +40,7 @@ var (
 	tlog          TermLog
 	ignoreList    []string
 	logPtr        *os.File
+	exitMsg       string
 )
 
 // Command specific options
@@ -318,7 +319,8 @@ func main() {
 				rem := (failoverTs + *failtime) - time.Now().Unix()
 				if (*failtime == 0) || (*failtime > 0 && rem >= 0) {
 					masterFailover(true)
-					if failoverCtr == *maxfail {
+					if failoverCtr == *faillimit {
+						exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
 						exit = true
 					}
 				} else if *failtime > 0 {
@@ -327,6 +329,9 @@ func main() {
 			}
 		}
 		termbox.Close()
+		if exitMsg != "" {
+			log.Println(exitMsg)
+		}
 	}
 }
 
