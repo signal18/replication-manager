@@ -180,5 +180,6 @@ func masterFailover(fail bool) {
 		logprint("INFO : Post-failover script complete", string(out))
 	}
 	logprint("INFO : Master switch complete")
+	failCount = 0
 	return
 }
