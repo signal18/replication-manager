@@ -14,7 +14,11 @@ func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
 	if *failover != "" {
-		headstr += " |  Mode: Failover "
+		if *interactive == false {
+			headstr += " |  Mode: Auto Failover "
+		} else {
+			headstr += " |  Mode: Failover "
+		}
 	} else {
 		headstr += " |  Mode: Switchover "
 	}
