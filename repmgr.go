@@ -35,6 +35,7 @@ var (
 	switchOptions = []string{"keep", "kill"}
 	failOptions   = []string{"monitor", "force", "check"}
 	failCount     int
+	failoverCtr   int
 	tlog          TermLog
 	ignoreList    []string
 	logPtr        *os.File
@@ -63,6 +64,8 @@ var (
 	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
 	logfile     = flag.String("logfile", "", "Write MRM messages to a log file")
 	timeout     = flag.Int("connect-timeout", 5, "Database connection timeout in seconds")
+	faillimit   = flag.Int("failover-limit", 0, "In interactive monitor mode, quit after N failovers (0: unlimited)")
+	failtime    = flag.Int("failover-time-limit", 0, "")
 )
 
 const (
@@ -312,6 +315,9 @@ func main() {
 			}
 			if master.State == stateFailed && *interactive == false {
 				masterFailover(true)
+				if failoverCtr == *maxfail {
+					exit = true
+				}
 			}
 		}
 		termbox.Close()
