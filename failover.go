@@ -40,7 +40,6 @@ func masterFailover(fail bool) {
 	}
 	master = servers[skey]
 	master.State = stateMaster
-	logprint(master)
 	slaves = slaves[key].delete(slaves)
 	// Call pre-failover script
 	if *preScript != "" {
