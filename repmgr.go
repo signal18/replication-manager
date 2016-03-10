@@ -62,6 +62,7 @@ var (
 	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
 	logfile     = flag.String("logfile", "", "Write MRM messages to a log file")
+	timeout     = flag.Int("connect-timeout", 5, "Database connection timeout in seconds")
 )
 
 const (

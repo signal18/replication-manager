@@ -48,7 +48,8 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	if err != nil {
 		return server, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
 	}
-	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket))
+	params := fmt.Sprintf("timeout=%ds", *timeout)
+	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket), params)
 	if err != nil {
 		server.State = stateFailed
 		return server, err
