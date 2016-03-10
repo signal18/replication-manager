@@ -141,6 +141,9 @@ func main() {
 					log.Fatalln("ERROR: Database access denied:", err.Error())
 				}
 			}
+			if *verbose {
+				log.Println("ERROR:", err)
+			}
 			log.Printf("INFO : Server %s is dead.", servers[k].URL)
 			servers[k].State = stateFailed
 			continue
