@@ -50,8 +50,8 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	if err != nil {
 		return server, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
 	}
-	params := fmt.Sprintf("timeout=%ds", *timeout)
-	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, *socket), params)
+	params := fmt.Sprintf("timeout=%ds", timeout)
+	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, socket), params)
 	if err != nil {
 		server.State = stateFailed
 		return server, err
@@ -90,8 +90,8 @@ func (server *ServerMonitor) refresh() error {
 		// it as unconnected server.
 		if server.State == stateFailed {
 			server.State = stateUnconn
-			if *autorejoin {
-				if *verbose {
+			if autorejoin {
+				if verbose {
 					logprint("INFO : Rejoining previously failed server", server.URL)
 				}
 				err := server.rejoin()
@@ -141,7 +141,7 @@ func (server *ServerMonitor) freeze() bool {
 		logprintf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := *waitKill; i > 0; i -= 500 {
+	for i := waitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break
@@ -157,15 +157,15 @@ func (server *ServerMonitor) freeze() bool {
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
 func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	ll := len(l)
-	if *verbose {
+	if verbose {
 		logprintf("DEBUG: Processing %d candidates", ll)
 	}
 	seqList := make([]uint64, ll)
 	i := 0
 	hiseq := 0
 	for _, sl := range l {
-		if *failover == "" {
-			if *verbose {
+		if failover == "" {
+			if verbose {
 				logprintf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 			}
 			if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
@@ -184,25 +184,25 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 				continue
 			}
-			if ss.Seconds_Behind_Master.Int64 > *maxDelay {
-				logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, *maxDelay, ss.Seconds_Behind_Master.Int64)
+			if ss.Seconds_Behind_Master.Int64 > maxDelay {
+				logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
 				continue
 			}
-			if *gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, server.Conn) == false {
+			if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, server.Conn) == false {
 				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
 		}
 		/* If server is in the ignore list, do not elect it */
 		if contains(ignoreList, sl.URL) {
-			if *verbose {
+			if verbose {
 				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
 			}
 			continue
 		}
 		/* Rig the election if the examined slave is preferred candidate master */
-		if sl.URL == *prefMaster {
-			if *verbose {
+		if sl.URL == prefMaster {
+			if verbose {
 				logprintf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
@@ -266,7 +266,7 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) rejoin() error {
-	if *readonly {
+	if readonly {
 		dbhelper.SetReadOnly(server.Conn, true)
 	}
 	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', MASTER_USE_GTID=CURRENT_POS"

@@ -6,13 +6,14 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	flag "github.com/ogier/pflag"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
@@ -43,32 +44,57 @@ var (
 	exitMsg       string
 )
 
-// Command specific options
 var (
-	version     = flag.Bool("version", false, "Return version")
-	user        = flag.String("user", "", "User for MariaDB login, specified in the [user]:[password] format")
-	hosts       = flag.String("hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
-	socket      = flag.String("socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
-	rpluser     = flag.String("rpluser", "", "Replication user in the [user]:[password] format")
-	interactive = flag.Bool("interactive", true, "Ask for user interaction when failures are detected")
-	verbose     = flag.Bool("verbose", false, "Print detailed execution info")
-	preScript   = flag.String("pre-failover-script", "", "Path of pre-failover script")
-	postScript  = flag.String("post-failover-script", "", "Path of post-failover script")
-	maxDelay    = flag.Int64("maxdelay", 0, "Maximum replication delay before initiating failover")
-	gtidCheck   = flag.Bool("gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
-	prefMaster  = flag.String("prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
-	ignoreSrv   = flag.String("ignore-servers", "", "List of servers to ignore in slave promotion operations")
-	waitKill    = flag.Int64("wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
-	readonly    = flag.Bool("readonly", true, "Set slaves as read-only after switchover")
-	failover    = flag.String("failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
-	maxfail     = flag.Int("failcount", 5, "Trigger failover after N failures (interval 1s)")
-	switchover  = flag.String("switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
-	autorejoin  = flag.Bool("autorejoin", true, "Automatically rejoin a failed server to the current master.")
-	logfile     = flag.String("logfile", "", "Write MRM messages to a log file")
-	timeout     = flag.Int("connect-timeout", 5, "Database connection timeout in seconds")
-	faillimit   = flag.Int("failover-limit", 0, "In auto-monitor mode, quit after N failovers (0: unlimited)")
-	failtime    = flag.Int64("failover-time-limit", 0, "In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)")
+	version     bool
+	user        string
+	hosts       string
+	socket      string
+	rpluser     string
+	interactive bool
+	verbose     bool
+	preScript   string
+	postScript  string
+	maxDelay    int64
+	gtidCheck   bool
+	prefMaster  string
+	ignoreSrv   string
+	waitKill    int64
+	readonly    bool
+	failover    string
+	maxfail     int
+	switchover  string
+	autorejoin  bool
+	logfile     string
+	timeout     int
+	faillimit   int
+	failtime    int64
 )
+
+func init() {
+	flag.BoolVar(&version, "version", false, "Return version")
+	flag.StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
+	flag.StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	flag.StringVar(&socket, "socket", "/var/run/mysqld/mysqld.sock", "Path of MariaDB unix socket")
+	flag.StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
+	flag.BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
+	flag.BoolVar(&verbose, "verbose", false, "Print detailed execution info")
+	flag.StringVar(&preScript, "pre-failover-script", "", "Path of pre-failover script")
+	flag.StringVar(&postScript, "post-failover-script", "", "Path of post-failover script")
+	flag.Int64Var(&maxDelay, "maxdelay", 0, "Maximum replication delay before initiating failover")
+	flag.BoolVar(&gtidCheck, "gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
+	flag.StringVar(&prefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
+	flag.StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
+	flag.Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
+	flag.BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
+	flag.StringVar(&failover, "failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
+	flag.IntVar(&maxfail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
+	flag.StringVar(&switchover, "switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
+	flag.BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master.")
+	flag.StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
+	flag.IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
+	flag.IntVar(&faillimit, "failover-limit", 0, "In auto-monitor mode, quit after N failovers (0: unlimited)")
+	flag.Int64Var(&failtime, "failover-time-limit", 0, "In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)")
+}
 
 const (
 	stateFailed string = "Failed"
@@ -81,53 +107,53 @@ func main() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	flag.Parse()
-	if *version == true {
+	if version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
 	}
-	if *logfile != "" {
+	if logfile != "" {
 		var err error
-		logPtr, err = os.Create(*logfile)
+		logPtr, err = os.Create(logfile)
 		if err != nil {
 			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
-			*logfile = ""
+			logfile = ""
 		}
 	}
 	// if slaves option has been supplied, split into a slice.
-	if *hosts != "" {
-		hostList = strings.Split(*hosts, ",")
+	if hosts != "" {
+		hostList = strings.Split(hosts, ",")
 	} else {
 		log.Fatal("ERROR: No hosts list specified.")
 	}
 	// validate users.
-	if *user == "" {
+	if user == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = splitPair(*user)
-	if *rpluser == "" {
+	dbUser, dbPass = splitPair(user)
+	if rpluser == "" {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
-	rplUser, rplPass = splitPair(*rpluser)
+	rplUser, rplPass = splitPair(rpluser)
 
 	// Check that failover and switchover modes are set correctly.
-	if *switchover == "" && *failover == "" {
+	if switchover == "" && failover == "" {
 		log.Fatal("ERROR: None of the switchover or failover modes are set.")
 	}
-	if *switchover != "" && *failover != "" {
+	if switchover != "" && failover != "" {
 		log.Fatal("ERROR: Both switchover and failover modes are set.")
 	}
-	if !contains(failOptions, *failover) && *failover != "" {
-		log.Fatalf("ERROR: Incorrect failover mode: %s", *failover)
+	if !contains(failOptions, failover) && failover != "" {
+		log.Fatalf("ERROR: Incorrect failover mode: %s", failover)
 	}
-	if !contains(switchOptions, *switchover) && *switchover != "" {
-		log.Fatalf("ERROR: Incorrect switchover mode: %s", *switchover)
+	if !contains(switchOptions, switchover) && switchover != "" {
+		log.Fatalf("ERROR: Incorrect switchover mode: %s", switchover)
 	}
 	// Forced failover implies interactive == false
-	if *failover == "force" && *interactive == true {
-		*interactive = false
+	if failover == "force" && interactive == true {
+		interactive = false
 	}
 
-	if *ignoreSrv != "" {
-		ignoreList = strings.Split(*ignoreSrv, ",")
+	if ignoreSrv != "" {
+		ignoreList = strings.Split(ignoreSrv, ",")
 	}
 
 	// Create a connection to each host and build list of slaves.
@@ -137,7 +163,7 @@ func main() {
 	for k, url := range hostList {
 		var err error
 		servers[k], err = newServerMonitor(url)
-		if *verbose {
+		if verbose {
 			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
 		}
 		if err != nil {
@@ -146,7 +172,7 @@ func main() {
 					log.Fatalln("ERROR: Database access denied:", err.Error())
 				}
 			}
-			if *verbose {
+			if verbose {
 				log.Println("ERROR:", err)
 			}
 			log.Printf("INFO : Server %s is dead.", servers[k].URL)
@@ -154,20 +180,20 @@ func main() {
 			continue
 		}
 		defer servers[k].Conn.Close()
-		if *verbose {
+		if verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
 
 		servers[k].refresh()
 		if servers[k].UsingGtid != "" {
-			if *verbose {
+			if verbose {
 				log.Printf("DEBUG: Server %s is configured as a slave", servers[k].URL)
 			}
 			servers[k].State = stateSlave
 			slaves = append(slaves, servers[k])
 			slaveCount++
 		} else {
-			if *verbose {
+			if verbose {
 				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
 				servers[k].State = stateUnconn
 			}
@@ -188,7 +214,7 @@ func main() {
 
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// dead hosts or unconnected hosts.
-	if *switchover != "" || *failover == "monitor" {
+	if switchover != "" || failover == "monitor" {
 		// First of all, get a server id from the slaves slice, they should be all the same
 		sid := slaves[0].MasterServerID
 		for k, s := range servers {
@@ -196,7 +222,7 @@ func main() {
 				if s.ServerID == sid {
 					master = servers[k]
 					master.State = stateMaster
-					if *verbose {
+					if verbose {
 						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
@@ -211,7 +237,7 @@ func main() {
 				if s.Host == smh || s.IP == smh {
 					master = servers[k]
 					master.State = stateMaster
-					if *verbose {
+					if verbose {
 						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
@@ -221,7 +247,7 @@ func main() {
 	}
 	// Final check if master has been found
 	if master == nil {
-		if *switchover != "" || *failover == "monitor" {
+		if switchover != "" || failover == "monitor" {
 			log.Fatalln("ERROR: Could not autodetect a master!")
 		} else {
 			log.Fatalln("ERROR: Could not autodetect a failed master!")
@@ -229,7 +255,7 @@ func main() {
 	}
 
 	for _, sl := range slaves {
-		if *verbose {
+		if verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 		}
 		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
@@ -240,21 +266,21 @@ func main() {
 	// Check if preferred master is included in Host List
 	ret := func() bool {
 		for _, v := range hostList {
-			if v == *prefMaster {
+			if v == prefMaster {
 				return true
 			}
 		}
 		return false
 	}
-	if ret() == false && *prefMaster != "" {
+	if ret() == false && prefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
 
 	// Do failover or switchover manually, or start the interactive monitor.
 
-	if *failover == "force" {
+	if failover == "force" {
 		masterFailover(true)
-	} else if *switchover != "" && *interactive == false {
+	} else if switchover != "" && interactive == false {
 		masterFailover(false)
 	} else {
 		err := termbox.Init()
@@ -262,7 +288,7 @@ func main() {
 			log.Fatalln("Termbox initialization error", err)
 		}
 		tlog = NewTermLog(30)
-		if *failover != "" {
+		if failover != "" {
 			tlog.Add("Monitor started in failover mode")
 		} else {
 			tlog.Add("Monitor started in switchover mode")
@@ -315,15 +341,15 @@ func main() {
 					termbox.Sync()
 				}
 			}
-			if master.State == stateFailed && *interactive == false {
-				rem := (failoverTs + *failtime) - time.Now().Unix()
-				if (*failtime == 0) || (*failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
+			if master.State == stateFailed && interactive == false {
+				rem := (failoverTs + failtime) - time.Now().Unix()
+				if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 					masterFailover(true)
-					if failoverCtr == *faillimit {
+					if failoverCtr == faillimit {
 						exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
 						exit = true
 					}
-				} else if *failtime > 0 && rem%10 == 0 {
+				} else if failtime > 0 && rem%10 == 0 {
 					logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 				}
 			}

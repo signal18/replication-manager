@@ -43,9 +43,9 @@ func masterFailover(fail bool) {
 	master.State = stateMaster
 	slaves[key].delete(&slaves)
 	// Call pre-failover script
-	if *preScript != "" {
+	if preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
-		out, err := exec.Command(*preScript, oldMaster.Host, master.Host).CombinedOutput()
+		out, err := exec.Command(preScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
@@ -64,12 +64,12 @@ func masterFailover(fail bool) {
 	if fail == false {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
-		if *verbose {
+		if verbose {
 			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos)
 			oldMaster.log()
 		}
 		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos)
-		if *verbose {
+		if verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
 		}
@@ -81,9 +81,9 @@ func masterFailover(fail bool) {
 		logprint("WARN : Stopping slave failed on new master")
 	}
 	// Call post-failover script before unlocking the old master.
-	if *postScript != "" {
+	if postScript != "" {
 		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(*postScript, oldMaster.Host, master.Host).CombinedOutput()
+		out, err := exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
@@ -126,7 +126,7 @@ func masterFailover(fail bool) {
 		if err != nil {
 			logprint("WARN : Start slave failed on old master", err)
 		}
-		if *readonly {
+		if readonly {
 			err = dbhelper.SetReadOnly(oldMaster.Conn, true)
 			if err != nil {
 				logprintf("ERROR: Could not set old master as read-only, %s", err)
@@ -142,7 +142,7 @@ func masterFailover(fail bool) {
 		if fail == false {
 			logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos)
-			if *verbose {
+			if verbose {
 				sl.log()
 			}
 		}
@@ -165,16 +165,16 @@ func masterFailover(fail bool) {
 		if err != nil {
 			logprintf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
-		if *readonly {
+		if readonly {
 			err = dbhelper.SetReadOnly(sl.Conn, true)
 			if err != nil {
 				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		}
 	}
-	if *postScript != "" {
+	if postScript != "" {
 		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(*postScript, oldMaster.Host, master.Host).CombinedOutput()
+		out, err := exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
