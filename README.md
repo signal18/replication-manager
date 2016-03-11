@@ -2,19 +2,19 @@
 
 ## NAME
 
-mariadb-repmgr -- MariaDB replication manager utility
+replication-manager -- MariaDB replication manager utility
 
 ## SYNOPSIS
 
-`mariadb-repmgr [OPTIONS]`
+`replication-manager [OPTIONS]`
 
 ## DESCRIPTION
 
-**mariadb-repmgr** allows users to monitor interactively MariaDB 10.x GTID replication health and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka switchover).
+**replication-manager** allows users to monitor interactively MariaDB 10.x GTID replication health and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka switchover).
 
-At a minimum, required options are: a list of hosts (mariadb-repmgr can autodetect topologies), user with privileges (ALL), and replication user (with REPLICATION SLAVE privileges)
+At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (ALL), and replication user (with REPLICATION SLAVE privileges)
 
-To perform switchover, mariadb-repmgr uses a mechanism similar to common mysql failover tools such as MHA:
+To perform switchover, replication-manager uses a mechanism similar to common mysql failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
@@ -138,12 +138,20 @@ Failover non-interactively a dead master (similar setup as above):
 
 ## SYSTEM REQUIREMENTS
 
-`mariadb-repmgr` is a self-contained binary, which means that no dependencies are needed at the operating system level.
-On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported.
+`replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
+On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
 
 ## BUGS
 
-Check https://github.com/tanji/mariadb-tools/issues for a list of issues.
+Check https://github.com/mariadb-corporation/replication-manager/issues for a list of issues.
+
+## ROADMAP
+
+ * High availability support with etcd
+
+ * Semi-sync replication support
+
+ * Provisioning
 
 ## AUTHOR
 
@@ -159,4 +167,4 @@ You should have received a copy of the GNU General Public License along with thi
 
 ## VERSION
 
-**mariadb-repmgr** 0.6.0
+**replication-manager** 0.6.0
