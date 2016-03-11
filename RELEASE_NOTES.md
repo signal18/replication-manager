@@ -19,11 +19,11 @@
 
  * Automatic failover mode comes now with 3 tunables:
 
- ** It is now possible to set the number of master failures with the `--failcount` option.
+   * It is now possible to set the number of master failures with the `--failcount` option.
 
- ** It is now possible to set the number of automatic failovers with the `--failover-limit` option. Default is 0 (unlimited). If you want to have similar behavior as MHA, use `--failover-limit=1`
+   * It is now possible to set the number of automatic failovers with the `--failover-limit` option. Default is 0 (unlimited). If you want to have similar behavior as MHA, use `--failover-limit=1`
 
- ** It is now possible to set the interval between automatic failovers with the `--failover-time-limit` option. Default is 0 (no interval).
+   * It is now possible to set the interval between automatic failovers with the `--failover-time-limit` option. Default is 0 (no interval).
 
  * A bug with failover setting the read-only flag on the promoted master has been corrected.
 
