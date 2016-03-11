@@ -19,7 +19,7 @@ import (
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
-const repmgrVersion string = "0.5.2-dev"
+const repmgrVersion string = "0.6.0"
 
 var (
 	hostList      []string
