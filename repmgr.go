@@ -6,6 +6,7 @@
 package main
 
 import (
+	"cmd/asm/internal/flags"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -20,7 +21,7 @@ import (
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
-const repmgrVersion string = "0.6.0"
+const repmgrVersion string = "0.6.0-9450672"
 
 var (
 	hostList      []string
@@ -45,6 +46,7 @@ var (
 )
 
 var (
+	conf        string
 	version     bool
 	user        string
 	hosts       string
@@ -71,6 +73,7 @@ var (
 )
 
 func init() {
+	flag.StringVar(&conf, "conf", "config.toml", "Path of the configuration file")
 	flag.BoolVar(&version, "version", false, "Return version")
 	flag.StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	flag.StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
@@ -106,7 +109,7 @@ const (
 func main() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
-	flag.Parse()
+	flags.Parse()
 	if version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
 	}
