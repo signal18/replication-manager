@@ -41,7 +41,9 @@ func masterFailover(fail bool) {
 	}
 	master = servers[skey]
 	master.State = stateMaster
-	slaves = slaves[key].delete(slaves)
+	slaves[key] = slaves[len(slaves)-1]
+	slaves[len(slaves)-1] = nil
+	slaves = slaves[:len(slaves)-1]
 	// Call pre-failover script
 	if *preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
@@ -51,8 +53,8 @@ func masterFailover(fail bool) {
 		}
 		logprint("INFO : Pre-failover script complete:", string(out))
 	}
+	// Phase 2: Reject updates and sync slaves
 	if fail == false {
-		// Phase 2: Reject updates and sync slaves
 		oldMaster.freeze()
 		logprintf("INFO : Rejecting updates on %s (old master)", oldMaster.URL)
 		err = dbhelper.FlushTablesWithReadLock(oldMaster.Conn)
