@@ -6,7 +6,6 @@
 package main
 
 import (
-	"cmd/asm/internal/flags"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -109,7 +108,7 @@ const (
 func main() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
-	flags.Parse()
+	flag.Parse()
 	if version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
 	}
