@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"time"
 
 	"github.com/nsf/termbox-go"
 )
@@ -89,10 +90,12 @@ func printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interfa
 }
 
 func logprint(msg ...interface{}) {
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	if *logfile != "" {
-		io.WriteString(logPtr, fmt.Sprintln(msg...))
+		s := fmt.Sprint(stamp, " ", fmt.Sprintln(msg...))
+		io.WriteString(logPtr, fmt.Sprint(s))
 	}
-	if *interactive == true || *failover == "monitor" {
+	if exit == false {
 		tlog.Add(fmt.Sprintln(msg...))
 		display()
 	} else {
@@ -102,9 +105,10 @@ func logprint(msg ...interface{}) {
 
 func logprintf(format string, args ...interface{}) {
 	if *logfile != "" {
-		io.WriteString(logPtr, fmt.Sprintf(format, args...)+"\n")
+		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
+		io.WriteString(logPtr, fmt.Sprintf(f, args...))
 	}
-	if *interactive == true || *failover == "monitor" {
+	if exit == false {
 		tlog.Add(fmt.Sprintf(format, args...))
 		display()
 	} else {

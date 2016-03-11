@@ -180,7 +180,7 @@ func masterFailover(fail bool) {
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
-	logprint("INFO : Master switch complete")
+	logprintf("INFO : Master switch on %s complete", master.URL)
 	failCount = 0
 	if fail == true {
 		failoverCtr++
