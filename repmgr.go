@@ -23,8 +23,8 @@ const repmgrVersion string = "0.6.0"
 
 var (
 	hostList      []string
-	servers       []*ServerMonitor
-	slaves        []*ServerMonitor
+	servers       serverList
+	slaves        serverList
 	master        *ServerMonitor
 	exit          bool
 	vy            int

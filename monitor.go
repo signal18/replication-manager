@@ -38,6 +38,8 @@ type ServerMonitor struct {
 	PrevState      string
 }
 
+type serverList []*ServerMonitor
+
 /* Initializes a server object */
 func newServerMonitor(url string) (*ServerMonitor, error) {
 	server := new(ServerMonitor)
@@ -65,7 +67,7 @@ func (server *ServerMonitor) refresh() error {
 		if server.State != stateMaster {
 			server.State = stateFailed
 			// remove from slave list
-			slaves = server.delete(slaves)
+			server.delete(&slaves)
 		}
 		return err
 	}
@@ -251,7 +253,8 @@ func (server *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 	return true
 }
 
-func (server *ServerMonitor) delete(lsm []*ServerMonitor) []*ServerMonitor {
+func (server *ServerMonitor) delete(sl *serverList) {
+	lsm := *sl
 	for k, s := range lsm {
 		if server.URL == s.URL {
 			lsm[k] = lsm[len(lsm)-1]
@@ -259,7 +262,7 @@ func (server *ServerMonitor) delete(lsm []*ServerMonitor) []*ServerMonitor {
 			lsm = lsm[:len(lsm)-1]
 		}
 	}
-	return lsm
+	*sl = lsm
 }
 
 func (server *ServerMonitor) rejoin() error {
