@@ -198,8 +198,8 @@ func main() {
 		} else {
 			if verbose {
 				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
-				servers[k].State = stateUnconn
 			}
+			servers[k].State = stateUnconn
 		}
 	}
 
