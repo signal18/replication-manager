@@ -310,8 +310,10 @@ func main() {
 						masterFailover(false)
 					}
 					if event.Key == termbox.KeyCtrlF {
-						if master.State != stateFailed {
+						if master.State == stateFailed {
 							masterFailover(true)
+						} else {
+							logprint("ERROR: Master not failed, cannot initiate failover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
