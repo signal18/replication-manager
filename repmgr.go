@@ -20,7 +20,7 @@ import (
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
-const repmgrVersion string = "0.6.0-9450672"
+const repmgrVersion string = "0.6.1"
 
 var (
 	hostList      []string
@@ -111,6 +111,7 @@ func main() {
 	flag.Parse()
 	if version == true {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
+		os.Exit(0)
 	}
 	if logfile != "" {
 		var err error
