@@ -13,7 +13,7 @@ MaxScale 1.3.0 and above can call external scripts on monitor events. In the cas
 The MySQL Monitor has to be configured to send scripts. Add the following three lines to your [MySQL Monitor] section:
 
     monitor_interval=1000
-    script=/usr/local/bin/replication-manager --user root:admin --rpluser repluser:replpass --hosts $NODELIST --failover=force --interactive=false
+    script=/usr/local/bin/replication-manager --user root:admin --rpluser repluser:replpass --hosts $INITIATOR,$NODELIST --failover=force --interactive=false
     events=master_down
 
 ### Failover script
