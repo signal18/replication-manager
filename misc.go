@@ -57,13 +57,6 @@ func getSeqFromGtid(gtid string) uint64 {
 	return s
 }
 
-func shift(s []string, e string) []string {
-	ns := make([]string, 1)
-	ns[0] = e
-	ns = append(ns, s[0:20]...)
-	return ns
-}
-
 func contains(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {

@@ -42,6 +42,7 @@ var (
 	ignoreList    []string
 	logPtr        *os.File
 	exitMsg       string
+	termlength    int
 )
 
 var (
@@ -290,7 +291,9 @@ func main() {
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
 		}
-		tlog = NewTermLog(30)
+		_, termlength = termbox.Size()
+		loglen := termlength - 9 - (hostCount * 3)
+		tlog = NewTermLog(loglen)
 		if failover != "" {
 			tlog.Add("Monitor started in failover mode")
 		} else {

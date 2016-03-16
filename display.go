@@ -75,6 +75,16 @@ func display() {
 	vy = vy + 3
 	tlog.Print()
 	termbox.Flush()
+	_, newlen := termbox.Size()
+	if newlen > termlength {
+		termlength = newlen
+		tlog.len = termlength - 9 - (len(hostList) * 3)
+		tlog.Extend()
+	} else if newlen < termlength {
+		termlength = newlen
+		tlog.len = termlength - 9 - (len(hostList) * 3)
+		tlog.Shrink()
+	}
 }
 
 func printTb(x, y int, fg, bg termbox.Attribute, msg string) {
@@ -95,7 +105,7 @@ func logprint(msg ...interface{}) {
 		s := fmt.Sprint(stamp, " ", fmt.Sprintln(msg...))
 		io.WriteString(logPtr, fmt.Sprint(s))
 	}
-	if exit == false {
+	if tlog.len > 0 {
 		tlog.Add(fmt.Sprintln(msg...))
 		display()
 	} else {
@@ -108,7 +118,7 @@ func logprintf(format string, args ...interface{}) {
 		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
 		io.WriteString(logPtr, fmt.Sprintf(f, args...))
 	}
-	if exit == false {
+	if tlog.len > 0 {
 		tlog.Add(fmt.Sprintf(format, args...))
 		display()
 	} else {
