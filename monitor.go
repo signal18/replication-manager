@@ -260,6 +260,7 @@ func (server *ServerMonitor) delete(sl *serverList) {
 			lsm[k] = lsm[len(lsm)-1]
 			lsm[len(lsm)-1] = nil
 			lsm = lsm[:len(lsm)-1]
+			break
 		}
 	}
 	*sl = lsm
