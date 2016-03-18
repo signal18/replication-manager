@@ -82,6 +82,10 @@ func init() {
 	initRepmgrFlags(switchoverCmd)
 	initRepmgrFlags(failoverCmd)
 	initRepmgrFlags(monitorCmd)
+	monitorCmd.Flags().IntVar(&maxfail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
+	monitorCmd.Flags().BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
+	monitorCmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
+	monitorCmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "in automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -93,12 +97,9 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	cmd.Flags().Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
-	cmd.Flags().IntVar(&maxfail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
-	cmd.Flags().BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master.")
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
-	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "In auto-monitor mode, quit after N failovers (0: unlimited)")
-	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)")
+
 }
 
 var failoverCmd = &cobra.Command{
