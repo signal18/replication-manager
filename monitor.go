@@ -3,7 +3,6 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -48,7 +47,8 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
-		return server, errors.New(fmt.Sprintf("ERROR: DNS resolution error for host %s", server.Host))
+		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
+		return server, errmsg
 	}
 	params := fmt.Sprintf("timeout=%ds", timeout)
 	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, socket), params)
