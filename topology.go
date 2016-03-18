@@ -32,7 +32,6 @@ func topologyInit() error {
 			servers[k].State = stateFailed
 			continue
 		}
-		defer servers[k].Conn.Close()
 		if verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
@@ -65,24 +64,24 @@ func topologyInit() error {
 	}
 
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
-	// dead hosts or unconnected hosts.
-	if switchover != "" || failover == "monitor" {
-		// First of all, get a server id from the slaves slice, they should be all the same
-		sid := slaves[0].MasterServerID
-		for k, s := range servers {
-			if s.State == stateUnconn {
-				if s.ServerID == sid {
-					master = servers[k]
-					master.State = stateMaster
-					if verbose {
-						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
-					}
-					break
+	// failed hosts or unconnected hosts.
+	// First of all, get a server id from the slaves slice, they should be all the same
+	sid := slaves[0].MasterServerID
+	for k, s := range servers {
+		if s.State == stateUnconn {
+			if s.ServerID == sid {
+				master = servers[k]
+				master.State = stateMaster
+				if verbose {
+					log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
 				}
+				break
 			}
 		}
-	} else {
-		// Slave master_host variable must point to dead master
+	}
+	// If master is not initialized, find it in the failed hosts list
+	if master == nil {
+		// Slave master_host variable must point to failed master
 		smh := slaves[0].MasterHost
 		for k, s := range servers {
 			if s.State == stateFailed {
@@ -99,10 +98,7 @@ func topologyInit() error {
 	}
 	// Final check if master has been found
 	if master == nil {
-		if switchover != "" || failover == "monitor" {
-			return errors.New("ERROR: Could not autodetect a master")
-		}
-		return errors.New("ERROR: Could not autodetect a failed master")
+		return errors.New("ERROR: Could not autodetect a master")
 	}
 	// End of autodetection code
 
@@ -114,5 +110,14 @@ func topologyInit() error {
 			log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 		}
 	}
+	if verbose {
+		printTopology()
+	}
 	return nil
+}
+
+func printTopology() {
+	for k, v := range servers {
+		logprintf("DEBUG: Server [%d] %s %s", k, v.URL, v.State)
+	}
 }

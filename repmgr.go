@@ -21,26 +21,31 @@ import (
 const repmgrVersion string = "0.7-dev"
 
 var (
-	hostList      []string
-	servers       serverList
-	slaves        serverList
-	master        *ServerMonitor
-	exit          bool
-	vy            int
-	dbUser        string
-	dbPass        string
-	rplUser       string
-	rplPass       string
-	switchOptions = []string{"keep", "kill"}
-	failOptions   = []string{"monitor", "force", "check"}
-	failCount     int
-	failoverCtr   int
-	failoverTs    int64
-	tlog          TermLog
-	ignoreList    []string
-	logPtr        *os.File
-	exitMsg       string
-	termlength    int
+	hostList    []string
+	servers     serverList
+	slaves      serverList
+	master      *ServerMonitor
+	exit        bool
+	vy          int
+	dbUser      string
+	dbPass      string
+	rplUser     string
+	rplPass     string
+	failCount   int
+	failoverCtr int
+	failoverTs  int64
+	tlog        TermLog
+	ignoreList  []string
+	logPtr      *os.File
+	exitMsg     string
+	termlength  int
+)
+
+const (
+	stateFailed string = "Failed"
+	stateMaster string = "Master"
+	stateSlave  string = "Slave"
+	stateUnconn string = "Unconnected"
 )
 
 var (
@@ -60,9 +65,7 @@ var (
 	ignoreSrv   string
 	waitKill    int64
 	readonly    bool
-	failover    string
 	maxfail     int
-	switchover  string
 	autorejoin  bool
 	logfile     string
 	timeout     int
@@ -90,22 +93,13 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	cmd.Flags().Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
 	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
-	cmd.Flags().StringVar(&failover, "failover", "", "Failover mode, either 'monitor', 'force' or 'check'")
 	cmd.Flags().IntVar(&maxfail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
-	cmd.Flags().StringVar(&switchover, "switchover", "", "Switchover mode, either 'keep' or 'kill' the old master.")
 	cmd.Flags().BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master.")
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "In auto-monitor mode, quit after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)")
 }
-
-const (
-	stateFailed string = "Failed"
-	stateMaster string = "Master"
-	stateSlave  string = "Slave"
-	stateUnconn string = "Unconnected"
-)
 
 var failoverCmd = &cobra.Command{
 	Use:   "failover",
@@ -118,6 +112,12 @@ var failoverCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 		masterFailover(true)
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
+		for _, server := range servers {
+			defer server.Conn.Close()
+		}
 	},
 }
 
@@ -132,6 +132,12 @@ var switchoverCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 		masterFailover(false)
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
+		for _, server := range servers {
+			defer server.Conn.Close()
+		}
 	},
 }
 
@@ -155,10 +161,10 @@ var monitorCmd = &cobra.Command{
 		_, termlength = termbox.Size()
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = NewTermLog(loglen)
-		if failover != "" {
-			tlog.Add("Monitor started in failover mode")
+		if interactive {
+			tlog.Add("Monitor started in interactive mode")
 		} else {
-			tlog.Add("Monitor started in switchover mode")
+			tlog.Add("Monitor started in automatic mode")
 		}
 		termboxChan := newTbChan()
 		interval := time.Second
@@ -181,13 +187,7 @@ var monitorCmd = &cobra.Command{
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
-						for k, v := range servers {
-							logprint("Servers", k, v)
-						}
-						logprint("Master", master)
-						for k, v := range slaves {
-							logprint("Slaves", k, v)
-						}
+						printTopology()
 					}
 					if event.Key == termbox.KeyCtrlR {
 						logprint("INFO: Setting slaves read-only")
@@ -228,6 +228,12 @@ var monitorCmd = &cobra.Command{
 			log.Println(exitMsg)
 		}
 	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
+		for _, server := range servers {
+			defer server.Conn.Close()
+		}
+	},
 }
 
 func newTbChan() chan termbox.Event {
@@ -264,24 +270,6 @@ func repmgrFlagCheck() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(rpluser)
-
-	// Check that failover and switchover modes are set correctly.
-	if switchover == "" && failover == "" {
-		log.Fatal("ERROR: None of the switchover or failover modes are set.")
-	}
-	if switchover != "" && failover != "" {
-		log.Fatal("ERROR: Both switchover and failover modes are set.")
-	}
-	if !contains(failOptions, failover) && failover != "" {
-		log.Fatalf("ERROR: Incorrect failover mode: %s", failover)
-	}
-	if !contains(switchOptions, switchover) && switchover != "" {
-		log.Fatalf("ERROR: Incorrect switchover mode: %s", switchover)
-	}
-	// Forced failover implies interactive == false
-	if failover == "force" && interactive == true {
-		interactive = false
-	}
 
 	if ignoreSrv != "" {
 		ignoreList = strings.Split(ignoreSrv, ",")

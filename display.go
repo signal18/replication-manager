@@ -14,14 +14,10 @@ import (
 func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
-	if failover != "" {
-		if interactive == false {
-			headstr += " |  Mode: Auto Failover "
-		} else {
-			headstr += " |  Mode: Failover "
-		}
+	if interactive == false {
+		headstr += " |  Mode: Automatic "
 	} else {
-		headstr += " |  Mode: Switchover "
+		headstr += " |  Mode: Interactive "
 	}
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")

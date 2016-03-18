@@ -164,7 +164,7 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	i := 0
 	hiseq := 0
 	for _, sl := range l {
-		if failover == "" {
+		if server.State != stateFailed {
 			if verbose {
 				logprintf("DEBUG: Checking eligibility of slave server %s", sl.URL)
 			}
