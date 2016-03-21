@@ -31,7 +31,7 @@ func handlerAgent(w http.ResponseWriter, r *http.Request) {
 	db, err := newServerMonitor(hosts)
 	if err != nil {
 		log.Println("Error opening database connection: ", err)
-		http.NotFound(w, r)
+		http.Error(w, "Service is down", 503)
 		return
 	}
 	db.refresh()
