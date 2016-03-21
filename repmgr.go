@@ -173,6 +173,9 @@ var monitorCmd = &cobra.Command{
 		for exit == false {
 			select {
 			case <-ticker.C:
+				for _, server := range servers {
+					server.check()
+				}
 				display()
 			case event := <-termboxChan:
 				switch event.Type {
@@ -267,6 +270,7 @@ func repmgrFlagCheck() {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
 	dbUser, dbPass = splitPair(user)
+
 	if rpluser == "" {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}

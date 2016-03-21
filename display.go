@@ -2,7 +2,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -21,19 +20,7 @@ func display() {
 	}
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %20s %6s %3s", "Slave Host", "Port", "Binlog", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-	// Check Master Status and print it out to terminal. Increment failure counter if needed.
-	err := master.refresh()
-	if err != nil && err != sql.ErrNoRows && failCount < maxfail {
-		failCount++
-		tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, maxfail))
-		if failCount == maxfail {
-			tlog.Add("Declaring master as failed")
-			master.State = stateFailed
-			master.CurrentGtid = "MASTER FAILED"
-			master.BinlogPos = "MASTER FAILED"
-		}
-		termbox.Sync()
-	}
+	master.refresh()
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
 	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", master.Host, master.Port, master.CurrentGtid, master.BinlogPos, master.Strict)
 	vy = 6

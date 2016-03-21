@@ -59,6 +59,54 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	return server, nil
 }
 
+func (server *ServerMonitor) check() {
+	server.PrevState = server.State
+	err := server.Conn.Ping()
+	if err != nil {
+		// we want the failed state for masters to be set by the monitor
+		if err != sql.ErrNoRows && failCount < maxfail && server.State == stateMaster {
+			failCount++
+			tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, maxfail))
+			if failCount == maxfail {
+				tlog.Add("Declaring master as failed")
+				master.State = stateFailed
+				master.CurrentGtid = "MASTER FAILED"
+				master.BinlogPos = "MASTER FAILED"
+			}
+		} else {
+			if server.State != stateMaster {
+				server.State = stateFailed
+				// remove from slave list
+				server.delete(&slaves)
+			}
+		}
+		return
+	}
+	_, err = dbhelper.GetSlaveStatus(server.Conn)
+	if err != nil {
+		// If we reached this stage with a previously failed server, reintroduce
+		// it as unconnected server.
+		if server.State == stateFailed {
+			server.State = stateUnconn
+			if autorejoin {
+				if verbose {
+					logprint("INFO : Rejoining previously failed server", server.URL)
+				}
+				err := server.rejoin()
+				if err != nil {
+					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+				}
+			}
+		}
+		return
+	}
+	// In case of state change, reintroduce the server in the slave list
+	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
+		server.State = stateSlave
+		slaves = append(slaves, server)
+	}
+}
+
 /* Refresh a server object */
 func (server *ServerMonitor) refresh() error {
 	err := server.Conn.Ping()
@@ -75,7 +123,6 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
-	server.PrevState = server.State
 	server.BinlogPos = sv["GTID_BINLOG_POS"]
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
@@ -86,20 +133,6 @@ func (server *ServerMonitor) refresh() error {
 	server.ServerID = uint(sid)
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
-		// If we reached this stage with a previously failed server, reintroduce
-		// it as unconnected server.
-		if server.State == stateFailed {
-			server.State = stateUnconn
-			if autorejoin {
-				if verbose {
-					logprint("INFO : Rejoining previously failed server", server.URL)
-				}
-				err := server.rejoin()
-				if err != nil {
-					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
-				}
-			}
-		}
 		return err
 	}
 	server.UsingGtid = slaveStatus.Using_Gtid
@@ -108,12 +141,7 @@ func (server *ServerMonitor) refresh() error {
 	server.Delay = slaveStatus.Seconds_Behind_Master
 	server.MasterServerID = slaveStatus.Master_Server_Id
 	server.MasterHost = slaveStatus.Master_Host
-	// In case of state change, reintroduce the server in the slave list
-	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
-		server.State = stateSlave
-		slaves = append(slaves, server)
-	}
-	return err
+	return nil
 }
 
 /* Check replication health and return status string */
