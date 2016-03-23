@@ -182,7 +182,11 @@ var monitorCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						masterFailover(false)
+						if master.State != stateFailed {
+							masterFailover(false)
+						} else {
+							logprint("ERROR: Master failed, cannot initiate switchover")
+						}
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if master.State == stateFailed {
