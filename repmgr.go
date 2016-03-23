@@ -327,7 +327,7 @@ func main() {
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						if master.State != stateFailed {
+						if master.State != stateFailed || failCount > 0 {
 							masterFailover(false)
 						} else {
 							logprint("ERROR: Master failed, cannot initiate switchover")
