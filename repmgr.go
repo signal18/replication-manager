@@ -71,6 +71,7 @@ var (
 	timeout     int
 	faillimit   int
 	failtime    int64
+	checktype   string
 )
 
 func init() {
@@ -86,6 +87,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
 	monitorCmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	monitorCmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "in automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
+	monitorCmd.Flags().StringVar(&checktype, "check-type", "tcp", "Type of server health check (tcp, agent)")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -99,7 +101,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
-
 }
 
 var failoverCmd = &cobra.Command{

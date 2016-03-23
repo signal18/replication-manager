@@ -4,6 +4,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -61,7 +62,18 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 
 func (server *ServerMonitor) check() {
 	server.PrevState = server.State
-	err := server.Conn.Ping()
+	var err error
+	switch checktype {
+	case "tcp":
+		err = server.Conn.Ping()
+	case "agent":
+		var resp *http.Response
+		resp, err = http.Get("http://" + server.Host + ":10001/check/")
+		if resp.StatusCode != 200 {
+			// if 404, consider server down or agent killed. Don't initiate anything
+			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
+		}
+	}
 	if err != nil {
 		// we want the failed state for masters to be set by the monitor
 		if err != sql.ErrNoRows && failCount < maxfail && server.State == stateMaster {
