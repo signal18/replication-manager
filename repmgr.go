@@ -216,6 +216,23 @@ func main() {
 		}
 	}
 
+	// Check user privileges on live servers
+	for _, sv := range servers {
+		if sv.State != stateFailed {
+			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
+			if err != nil {
+				log.Fatalf("ERROR: Error getting privileges for user %s on host %s: %s", dbUser, sv.Host, err)
+			}
+			if priv.Repl_client_priv == "N" {
+				log.Fatalln("ERROR: User must have REPLICATION_CLIENT privilege")
+			} else if priv.Repl_slave_priv == "N" {
+				log.Fatalln("ERROR: User must have REPLICATION_SLAVE privilege")
+			} else if priv.Super_priv == "N" {
+				log.Fatalln("ERROR: User must have SUPER privilege")
+			}
+		}
+	}
+
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// dead hosts or unconnected hosts.
 	if switchover != "" || failover == "monitor" {
