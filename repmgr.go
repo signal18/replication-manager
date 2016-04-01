@@ -15,6 +15,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
@@ -88,6 +89,12 @@ func init() {
 	monitorCmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	monitorCmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "in automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	monitorCmd.Flags().StringVar(&checktype, "check-type", "tcp", "Type of server health check (tcp, agent)")
+	viper.BindPFlags(monitorCmd.Flags())
+	maxfail = viper.GetInt("failcount")
+	autorejoin = viper.GetBool("autorejoin")
+	faillimit = viper.GetInt("failover-limit")
+	failtime = int64(viper.GetInt("failover-time-limit"))
+	checktype = viper.GetString("check-type")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -101,6 +108,17 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
+	viper.BindPFlags(cmd.Flags())
+	preScript = viper.GetString("pre-failover-script")
+	postScript = viper.GetString("post-failover-script")
+	maxDelay = int64(viper.GetInt("maxdelay"))
+	gtidCheck = viper.GetBool("gtidcheck")
+	prefMaster = viper.GetString("prefmaster")
+	ignoreSrv = viper.GetString("ignore-servers")
+	waitKill = int64(viper.GetInt("wait-kill"))
+	readonly = viper.GetBool("readonly")
+	logfile = viper.GetString("logfile")
+	timeout = viper.GetInt("connect-timeout")
 }
 
 var failoverCmd = &cobra.Command{

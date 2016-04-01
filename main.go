@@ -5,16 +5,28 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func init() {
+	viper.SetConfigType("toml")
+	viper.SetConfigName("config")
+	viper.AddConfigPath("/etc/replication-manager/")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+	}
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVar(&conf, "conf", "config.toml", "Path of the configuration file")
 	rootCmd.PersistentFlags().StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
 	rootCmd.PersistentFlags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Print detailed execution info")
+	viper.BindPFlags(rootCmd.PersistentFlags())
+	user = viper.GetString("user")
+	hosts = viper.GetString("hosts")
+	rpluser = viper.GetString("rpluser")
 }
 
 func main() {
