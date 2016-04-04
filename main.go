@@ -42,6 +42,7 @@ var rootCmd = &cobra.Command{
 	Long: `replication-manager allows users to monitor interactively MariaDB 10.x GTID replication health
 and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
 	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Usage()
 	},
 }
 
