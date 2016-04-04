@@ -13,10 +13,7 @@ func init() {
 	viper.SetConfigName("config")
 	viper.AddConfigPath("/etc/replication-manager/")
 	viper.AddConfigPath(".")
-	err := viper.ReadInConfig()
-	if err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s \n", err))
-	}
+	viper.ReadInConfig()
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.PersistentFlags().StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
