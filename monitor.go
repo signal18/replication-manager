@@ -86,8 +86,8 @@ func (server *ServerMonitor) check() {
 			if failCount == maxfail {
 				tlog.Add("Declaring master as failed")
 				master.State = stateFailed
-				master.CurrentGtid = "MASTER FAILED"
-				master.BinlogPos = "MASTER FAILED"
+				master.CurrentGtid = "FAILED"
+				master.BinlogPos = "FAILED"
 			}
 		} else {
 			if server.State != stateMaster {
@@ -113,6 +113,8 @@ func (server *ServerMonitor) check() {
 					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
 				}
 			}
+		} else if server.State != stateMaster {
+			server.State = stateUnconn
 		}
 		return
 	}
@@ -168,9 +170,9 @@ func (server *ServerMonitor) refresh() error {
 func (server *ServerMonitor) healthCheck() string {
 	if server.Delay.Valid == false {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
-			return "NOT OK, IO Stopped"
+			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "Yes" {
-			return "NOT OK, SQL Stopped"
+			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
 		} else {
 			return "NOT OK, ALL Stopped"
 		}
