@@ -1,0 +1,9 @@
+{
+  "name": "admin-module",
+  "version": "0.0.1",
+  "dependencies": {
+    "express": "4.x",
+    "mysql": "2.x",
+    "body-parser": "*"
+  }
+}

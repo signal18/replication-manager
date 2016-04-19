@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.10/angular.min.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.10/angular-resource.min.js"></script>
+	<script>
+	var app = angular.module('dashboard', ['ngResource']);
+
+	app.factory('Servers', function($resource) {
+	  return $resource('http://localhost:10001/servers');
+	});
+
+	app.factory('Log', function($resource) {
+		return $resource('http://localhost:10001/log');
+	});
+
+	app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', function ($scope, $interval, $http, Servers, Log) {
+		$interval(function(){
+	  Servers.query({}, function(data) {
+	    $scope.servers = data;
+	  });
+		Log.query({}, function(data) {
+			$scope.log = data;
+		}, 1000);
+	});
+	$scope.switch = function() {
+		var response = $http.get('http://localhost:10001/switchover');
+		response.success(function(data, status, headers, config) {
+
+				console.log("Ok.");
+
+		});
+
+		response.error(function(data, status, headers, config) {
+				console.log("Error.");
+		});
+
+};
+	}]);
+	</script>
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+	<style>
+td {
+    white-space: nowrap;
+}
+</style>
+</head>
+
+<body ng-app="dashboard">
+  <div ng-controller="DashboardController" class="col-lg-12">
+		<h2>Replication Manager Status</h2>
+		<table ng-if="servers" class="table">
+			<tr>
+				<th>Host</th>
+				<th>Port</th>
+				<th>Status</th>
+				<th>Using GTID</th>
+				<th>Current GTID</th>
+				<th>Slave GTID Pos</th>
+				<th>Slave IO Thread</th>
+				<th>Slave SQL Thread</th>
+				<th>Delay</th>
+				<th>Read Only</th>
+			</tr>
+			<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': (server.IOThread=='No' && server.State=='Slave')}">
+				<td>{{server.Host}}</td>
+				<td>{{server.Port}}</td>
+				<td>{{server.State}}</td>
+				<td>{{server.UsingGtid}}</td>
+				<td>{{server.CurrentGtid}}</td>
+				<td>{{server.SlaveGtid}}</td>
+				<td>{{server.IOThread}}</td>
+				<td>{{server.SQLThread}}</td>
+				<td>{{server.Delay.Int64}}</td>
+				<td>{{server.ReadOnly}}</td>
+			</tr>
+		</table>
+		<p>
+		<button type="button" class="btn btn-primary" ng-click="switch()">Switchover</button>
+	</p>
+	<pre>
+<span ng-repeat="logline in log track by $index">{{ logline }}
+</span>
+	</pre>
+	</div>
+</body>
+
+</html>
