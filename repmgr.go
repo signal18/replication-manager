@@ -174,6 +174,8 @@ var monitorCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 
+		go httpserver()
+
 		err = termbox.Init()
 		if err != nil {
 			log.Fatalln("Termbox initialization error", err)
