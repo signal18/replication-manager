@@ -13,9 +13,8 @@ func splitHostPort(s string) (string, string) {
 	items := strings.Split(s, ":")
 	if len(items) == 1 {
 		return items[0], "3306"
-	} else {
-		return items[0], items[1]
 	}
+	return items[0], items[1]
 }
 
 /* Returns generic items from a pair, e.g. user:pass */
@@ -23,9 +22,8 @@ func splitPair(s string) (string, string) {
 	items := strings.Split(s, ":")
 	if len(items) == 1 {
 		return items[0], ""
-	} else {
-		return items[0], items[1]
 	}
+	return items[0], items[1]
 }
 
 /* Validate server host and port */
@@ -40,9 +38,8 @@ func validateHostPort(h string, p string) bool {
 	}
 	if port > 0 && port <= 65535 {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 func getSeqFromGtid(gtid string) uint64 {
