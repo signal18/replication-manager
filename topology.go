@@ -9,9 +9,16 @@ import (
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
-// Start of topology detection
-// Create a connection to each host and build list of slaves.
-func topologyInit() error {
+type topologyError struct {
+	Code int
+	Msg  string
+}
+
+func (e topologyError) Error() string {
+	return fmt.Sprintf("%v [#%v]", e.Msg, e.Code)
+}
+
+func newServerList() error {
 	servers = make([]*ServerMonitor, len(hostList))
 	for k, url := range hostList {
 		var err error
@@ -50,7 +57,16 @@ func topologyInit() error {
 			servers[k].State = stateUnconn
 		}
 	}
+	return nil
+}
 
+// Start of topology detection
+// Create a connection to each host and build list of slaves.
+func topologyInit() error {
+	err := newServerList()
+	if err != nil {
+		return err
+	}
 	// If no slaves are detected, then bail out
 	if len(slaves) == 0 {
 		return errors.New("ERROR: No slaves were detected")
@@ -59,7 +75,10 @@ func topologyInit() error {
 	// Check that all slave servers have the same master.
 	for _, sl := range slaves {
 		if sl.hasSiblings(slaves) == false {
-			return errors.New("ERROR: Multi-master topologies are not yet supported")
+			return topologyError{
+				33,
+				fmt.Sprintf("ERROR: Multiple masters were detected"),
+			}
 		}
 	}
 
@@ -98,7 +117,10 @@ func topologyInit() error {
 	}
 	// Final check if master has been found
 	if master == nil {
-		return errors.New("ERROR: Could not autodetect a master")
+		return topologyError{
+			83,
+			fmt.Sprintf("ERROR: Could not autodetect a master"),
+		}
 	}
 	// End of autodetection code
 
@@ -108,6 +130,12 @@ func topologyInit() error {
 		}
 		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
 			log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
+		}
+		if sl.LogBin == "OFF" {
+			return topologyError{
+				81,
+				fmt.Sprintf("ERROR: Binary log disabled on slave: %s", sl.URL),
+			}
 		}
 	}
 	if verbose {
