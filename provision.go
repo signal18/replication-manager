@@ -11,17 +11,77 @@ import (
 var (
 	source      string
 	destination string
+	cleanall    = false
 )
 
 func init() {
+	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(provisionCmd)
 	provisionCmd.Flags().StringVar(&source, "source", "", "Source server")
 	provisionCmd.Flags().StringVar(&destination, "destination", "", "Source server")
+	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
+}
+
+var bootstrapCmd = &cobra.Command{
+	Use:   "bootstrap",
+	Short: "Bootstrap a replication environment",
+	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
+	Run: func(cmd *cobra.Command, args []string) {
+		repmgrFlagCheck()
+		if cleanall {
+			log.Println("INFO : Cleaning up replication on existing servers")
+			err := newServerList()
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, server := range servers {
+				server.Conn.Exec("RESET MASTER")
+				server.Conn.Exec("STOP SLAVE")
+				server.Conn.Exec("RESET SLAVE ALL")
+			}
+		} else {
+			err := topologyInit()
+			if err == nil {
+				log.Fatal("ERROR: Environment already has an existing master/slave setup")
+			}
+			if topologyErr, ok := err.(*topologyError); ok {
+				if topologyErr.Code != 81 {
+					log.Fatal(err)
+				}
+			}
+		}
+		masterKey := 0
+		if prefMaster != "" {
+			masterKey = func() int {
+				for k, server := range servers {
+					if server.Host == prefMaster {
+						return k
+					}
+				}
+				return -1
+			}()
+		}
+		if masterKey == -1 {
+			log.Fatal("ERROR: Preferred master could not be found in existing servers")
+		}
+		servers[masterKey].Conn.Exec("RESET MASTER")
+		for key, server := range servers {
+			if key == masterKey {
+				continue
+			} else {
+				stmt := "CHANGE MASTER TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
+				server.Conn.Exec(stmt)
+				server.Conn.Exec("START SLAVE")
+			}
+		}
+		log.Printf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)
+	},
 }
 
 var provisionCmd = &cobra.Command{
 	Use:   "provision",
-	Short: "Provisions a server",
+	Short: "Provision a replica server",
 	Long: `The provision command is used to create a new replication server
 using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
