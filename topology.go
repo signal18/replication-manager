@@ -42,7 +42,6 @@ func newServerList() error {
 		if verbose {
 			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
 		}
-
 		servers[k].refresh()
 		if servers[k].UsingGtid != "" {
 			if verbose {

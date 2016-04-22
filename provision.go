@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
 var (
@@ -21,6 +22,7 @@ func init() {
 	provisionCmd.Flags().StringVar(&destination, "destination", "", "Source server")
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
+	bootstrapCmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -36,9 +38,22 @@ var bootstrapCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 			for _, server := range servers {
-				server.Conn.Exec("RESET MASTER")
-				server.Conn.Exec("STOP SLAVE")
-				server.Conn.Exec("RESET SLAVE ALL")
+				err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = dbhelper.ResetMaster(server.Conn)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = dbhelper.StopAllSlaves(server.Conn)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = dbhelper.ResetAllSlaves(server.Conn)
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 		} else {
 			err := topologyInit()
@@ -70,9 +85,15 @@ var bootstrapCmd = &cobra.Command{
 			if key == masterKey {
 				continue
 			} else {
-				stmt := "CHANGE MASTER TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
-				server.Conn.Exec(stmt)
-				server.Conn.Exec("START SLAVE")
+				stmt := "CHANGE MASTER '" + masterConn + "' TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
+				_, err := server.Conn.Exec(stmt)
+				if err != nil {
+					log.Fatal(stmt, err)
+				}
+				_, err = server.Conn.Exec("START SLAVE '" + masterConn + "'")
+				if err != nil {
+					log.Fatal("Start slave: ", err)
+				}
 			}
 		}
 		log.Printf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)

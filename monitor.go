@@ -149,6 +149,10 @@ func (server *ServerMonitor) refresh() error {
 	server.SlaveGtid = sv["GTID_SLAVE_POS"]
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
 	server.ServerID = uint(sid)
+	err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+	if err != nil {
+		return err
+	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		return err
