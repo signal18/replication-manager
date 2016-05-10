@@ -6,12 +6,17 @@ import (
 	"log"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
 type topologyError struct {
 	Code int
 	Msg  string
+}
+
+func init() {
+	rootCmd.AddCommand(topologyCmd)
 }
 
 func (e topologyError) Error() string {
@@ -147,4 +152,26 @@ func printTopology() {
 	for k, v := range servers {
 		logprintf("DEBUG: Server [%d] %s %s", k, v.URL, v.State)
 	}
+}
+
+var topologyCmd = &cobra.Command{
+	Use:   "topology",
+	Short: "Print replication topology",
+	Long:  `Print the replication topology by detecting master and slaves`,
+	Run: func(cmd *cobra.Command, args []string) {
+		repmgrFlagCheck()
+		err := topologyInit()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		for _, v := range servers {
+			fmt.Println(v.URL, v.State)
+		}
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
+		for _, server := range servers {
+			defer server.Conn.Close()
+		}
+	},
 }
