@@ -94,7 +94,7 @@ func topologyInit() error {
 				srw++
 			}
 		}
-		if srw != 1 {
+		if srw > 1 {
 			return topologyError{
 				11,
 				fmt.Sprintf("ERROR: RW server count > 1 in multi-master mode. Please set slaves to RO"),
