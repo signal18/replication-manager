@@ -215,12 +215,16 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 		logprintf("DEBUG: Processing %d candidates", ll)
 	}
 	seqList := make([]uint64, ll)
-	i := 0
 	hiseq := 0
-	for _, sl := range l {
+	var max uint64
+	for i, sl := range l {
 		if server.State != stateFailed {
 			if verbose {
-				logprintf("DEBUG: Checking eligibility of slave server %s", sl.URL)
+				logprintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
+			}
+			if multiMaster == true && sl.State == stateMaster {
+				logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
+				continue
 			}
 			if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 				continue
@@ -262,16 +266,15 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 			return i
 		}
 		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl.Conn, "GTID_CURRENT_POS"))
-		var max uint64
-		if i == 0 {
-			max = seqList[0]
-		} else if seqList[i] > max {
+		if verbose {
+			logprintf("DEBUG: Got sequence number %d for server [%d]", seqList[i], i)
+		}
+		if seqList[i] > max {
 			max = seqList[i]
 			hiseq = i
 		}
-		i++
 	}
-	if i > 0 {
+	if max > 0 {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
 	}

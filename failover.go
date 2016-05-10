@@ -41,7 +41,9 @@ func masterFailover(fail bool) {
 	}
 	master = servers[skey]
 	master.State = stateMaster
-	slaves[key].delete(&slaves)
+	if multiMaster == false {
+		slaves[key].delete(&slaves)
+	}
 	// Call pre-failover script
 	if preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
@@ -75,10 +77,12 @@ func masterFailover(fail bool) {
 		}
 	}
 	// Phase 3: Prepare new master
-	logprint("INFO : Stopping slave thread on new master")
-	err = dbhelper.StopSlave(master.Conn)
-	if err != nil {
-		logprint("WARN : Stopping slave failed on new master")
+	if multiMaster == false {
+		logprint("INFO : Stopping slave thread on new master")
+		err = dbhelper.StopSlave(master.Conn)
+		if err != nil {
+			logprint("WARN : Stopping slave failed on new master")
+		}
 	}
 	// Call post-failover script before unlocking the old master.
 	if postScript != "" {
@@ -89,10 +93,12 @@ func masterFailover(fail bool) {
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
-	logprint("INFO : Resetting slave on new master and set read/write mode on")
-	err = dbhelper.ResetSlave(master.Conn, true)
-	if err != nil {
-		logprint("WARN : Reset slave failed on new master")
+	if multiMaster == false {
+		logprint("INFO : Resetting slave on new master and set read/write mode on")
+		err = dbhelper.ResetSlave(master.Conn, true)
+		if err != nil {
+			logprint("WARN : Reset slave failed on new master")
+		}
 	}
 	err = dbhelper.SetReadOnly(master.Conn, false)
 	if err != nil {
@@ -134,11 +140,17 @@ func masterFailover(fail bool) {
 		}
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
-		slaves = append(slaves, oldMaster)
+		if multiMaster == false {
+			slaves = append(slaves, oldMaster)
+		}
 	}
 	// Phase 5: Switch slaves to new master
 	logprint("INFO : Switching other slaves to the new master")
 	for _, sl := range slaves {
+		// Don't switch if slave was the old master or is in a multiple master setup.
+		if sl.URL == oldMaster.URL || sl.State == stateMaster {
+			continue
+		}
 		if fail == false {
 			logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos)

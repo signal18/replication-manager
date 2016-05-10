@@ -17,6 +17,7 @@ type topologyError struct {
 
 func init() {
 	rootCmd.AddCommand(topologyCmd)
+	topologyCmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
 }
 
 func (e topologyError) Error() string {
@@ -77,11 +78,26 @@ func topologyInit() error {
 	}
 
 	// Check that all slave servers have the same master.
-	for _, sl := range slaves {
-		if sl.hasSiblings(slaves) == false {
+	if multiMaster == false {
+		for _, sl := range slaves {
+			if sl.hasSiblings(slaves) == false {
+				return topologyError{
+					33,
+					fmt.Sprintf("ERROR: Multiple masters were detected"),
+				}
+			}
+		}
+	} else {
+		srw := 0
+		for _, s := range servers {
+			if s.ReadOnly == "OFF" {
+				srw++
+			}
+		}
+		if srw != 1 {
 			return topologyError{
-				33,
-				fmt.Sprintf("ERROR: Multiple masters were detected"),
+				11,
+				fmt.Sprintf("ERROR: RW server count > 1 in multi-master mode. Please set slaves to RO"),
 			}
 		}
 	}
@@ -91,8 +107,18 @@ func topologyInit() error {
 	// First of all, get a server id from the slaves slice, they should be all the same
 	sid := slaves[0].MasterServerID
 	for k, s := range servers {
-		if s.State == stateUnconn {
+		if multiMaster == false && s.State == stateUnconn {
 			if s.ServerID == sid {
+				master = servers[k]
+				master.State = stateMaster
+				if verbose {
+					log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+				}
+				break
+			}
+		}
+		if multiMaster == true {
+			if s.ReadOnly == "OFF" {
 				master = servers[k]
 				master.State = stateMaster
 				if verbose {

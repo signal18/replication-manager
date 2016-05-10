@@ -74,6 +74,7 @@ var (
 	failtime    int64
 	checktype   string
 	masterConn  string
+	multiMaster bool
 )
 
 func init() {
@@ -110,6 +111,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
+	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
 	viper.BindPFlags(cmd.Flags())
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -122,6 +124,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	logfile = viper.GetString("logfile")
 	timeout = viper.GetInt("connect-timeout")
 	masterConn = viper.GetString("master-connection")
+	multiMaster = viper.GetBool("multimaster")
 }
 
 var failoverCmd = &cobra.Command{
