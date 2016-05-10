@@ -136,9 +136,9 @@ func topologyInit() error {
 			if s.State == stateFailed {
 				if s.Host == smh || s.IP == smh {
 					master = servers[k]
-					master.State = stateMaster
+					master.PrevState = stateMaster
 					if verbose {
-						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+						log.Printf("DEBUG: Assuming failed server %s was a master", s.URL)
 					}
 					break
 				}
