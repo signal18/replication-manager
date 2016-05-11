@@ -6,4 +6,20 @@ go:
 
 install: true
 
-script: go test -v
+script: go test -v .
+
+before_deploy:
+  - GOARCH=arm GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
+  - GOARCH=386 GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
+  - GOARCH=amd64 GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
+
+deploy:
+  provider: releases
+  api_key:
+    secure: KEY
+  file: bin/*
+  file_glob: true
+  on:
+    repo: mariadb-corporation/replication-manager
+    tags: true
+    go: 1.6
