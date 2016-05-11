@@ -70,7 +70,7 @@ Failover non-interactively a dead master (similar setup as above):
 
   * --gtidcheck `<boolean>`
 
-    Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If false, mariadb-repmgr will wait for the slaves to be in sync before initiating.
+    Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If true, mariadb-repmgr will wait for the slaves to be in sync before initiating.
 
   * --hosts `<address>:[port],`
 
@@ -130,7 +130,7 @@ Failover non-interactively a dead master (similar setup as above):
 
   * --version
 
-    Return softawre version.
+    Return software version.
 
   * --wait-kill `<msecs>`
 
