@@ -1,4 +1,9 @@
 language: go
 
 go:
+  - 1.6
   - tip
+
+install: true
+
+script: go test -v

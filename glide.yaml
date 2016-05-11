@@ -1,0 +1,10 @@
+package: replication-manager
+import:
+- package: github.com/go-sql-driver/mysql
+- package: github.com/jmoiron/sqlx
+- package: github.com/nsf/termbox-go
+- package: github.com/spf13/cobra
+- package: github.com/spf13/viper
+- package: github.com/tanji/mariadb-tools
+  subpackages:
+  - dbhelper
