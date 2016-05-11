@@ -130,7 +130,7 @@ Failover non-interactively a dead master (similar setup as above):
 
   * --version
 
-    Return softawre version.
+    Return software version.
 
   * --wait-kill `<msecs>`
 
