@@ -1,0 +1,7 @@
+FROM alpine
+
+RUN apk add --update mariadb-client && rm -rf /var/cache/apk/*
+
+COPY replication-manager-alpine /usr/local/bin/replication-manager
+
+CMD ["/usr/local/bin/replication-manager"]
