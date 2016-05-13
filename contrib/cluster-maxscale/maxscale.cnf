@@ -1,0 +1,42 @@
+[Replication Monitor]
+type=monitor
+module=mysqlmon
+servers=mariadb1, mariadb2, mariadb3
+user=maxscale
+passwd=pass
+monitor_interval=1000
+#script=/usr/local/bin/failover.sh
+#events=master_down
+
+[Splitter Service]
+type=service
+router=readwritesplit
+servers=mariadb1, mariadb2, mariadb3
+max_slave_replication_lag=30
+user=maxscale
+passwd=pass
+enable_root_user=1
+
+[Splitter Listener]
+type=listener
+service=Splitter Service
+protocol=MySQLClient
+port=3306
+
+[mariadb1]
+type=server
+address=mariadb1
+port=3306
+protocol=MySQLBackend
+ 
+[mariadb2]
+type=server
+address=mariadb2
+port=3306
+protocol=MySQLBackend
+ 
+[mariadb3]
+type=server
+address=mariadb3
+port=3306
+protocol=MySQLBackend
