@@ -8,7 +8,7 @@ import (
 )
 
 /* Triggers a master switchover. Returns the new master's URL */
-func masterFailover(fail bool) {
+func masterFailover(fail bool) bool {
 	logprint("INFO : Starting master switch")
 	// Phase 1: Cleanup and election
 	var err error
@@ -21,13 +21,13 @@ func masterFailover(fail bool) {
 		logprint("INFO : Checking long running updates on master")
 		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 			logprint("ERROR: Long updates running on master. Cannot switchover")
-			return
+			return false
 		}
 	}
 	logprint("INFO : Electing a new master")
 	key := master.electCandidate(slaves)
 	if key == -1 {
-		return
+		return false
 	}
 	logprintf("INFO : Slave %s [%d] has been elected as a new master", slaves[key].URL, key)
 	// Shuffle the server list
@@ -198,5 +198,5 @@ func masterFailover(fail bool) {
 		failoverCtr++
 		failoverTs = time.Now().Unix()
 	}
-	return
+	return true
 }
