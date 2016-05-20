@@ -137,7 +137,16 @@ var failoverCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalln(err)
 		}
-		masterFailover(true)
+		if masterFailover(true) {
+			sf := stateFile{Name: "/tmp/mrm.state"}
+			// handle if file already exists
+			err := sf.access()
+			if err != nil {
+				logprint("WARN : Could not create state file")
+			} else {
+				sf.Count =
+			}
+		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
