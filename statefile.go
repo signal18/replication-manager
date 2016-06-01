@@ -18,9 +18,9 @@ func newStateFile(name string) *stateFile {
 	return sf
 }
 
-func (sf *stateFile) create() error {
+func (sf *stateFile) access() error {
 	var err error
-	sf.Handle, err = os.Create(sf.Name)
+	sf.Handle, err = os.OpenFile(sf.Name, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -28,7 +28,11 @@ func (sf *stateFile) create() error {
 }
 
 func (sf *stateFile) write() error {
-	err := binary.Write(sf.Handle, binary.LittleEndian, sf.Count)
+	err := sf.Handle.Truncate(0)
+	if err != nil {
+		return err
+	}
+	err = binary.Write(sf.Handle, binary.LittleEndian, sf.Count)
 	if err != nil {
 		return err
 	}

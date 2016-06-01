@@ -144,7 +144,7 @@ var failoverCmd = &cobra.Command{
 			if err != nil {
 				logprint("WARN : Could not create state file")
 			} else {
-				sf.Count =
+				sf.Count = sf.Count + 1
 			}
 		}
 	},
