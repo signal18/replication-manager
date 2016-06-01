@@ -1,0 +1,52 @@
+version: '2'
+services:
+  maxscale:
+    image: themecloud/maxscale
+    volumes:
+      - ./maxscale.cnf:/etc/maxscale.cnf:ro
+    depends_on:
+      - replication-manager
+    ports:
+      - "3306"
+
+  replication-manager:
+    build: ../..
+    command: app monitor --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
+    depends_on:
+      - agent1
+      - agent2
+      - agent3
+    tty: true
+
+  mariadb1:
+    image: mariadb
+    command: --log-bin --skip-name-resolve --server_id=1
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      - MYSQL_USER=repl
+      - MYSQL_PASSWORD=pass
+    volumes:
+      - ./mariadb.sql:/docker-entrypoint-initdb.d/mariadb.sql:ro
+  agent1:
+    build: ../..
+    command: app agent --interactive=false --hosts=mariadb1 --user=root --rpluser=repl:pass
+    depends_on:
+      - mariadb1
+
+  mariadb2:
+    extends: mariadb1
+    command: --log-bin --skip-name-resolve --server_id=2
+  agent2:
+    build: ../..
+    command: app agent --interactive=false --hosts=mariadb2 --user=root --rpluser=repl:pass 
+    depends_on:
+      - mariadb2
+
+  mariadb3:
+    extends: mariadb1
+    command: --log-bin --skip-name-resolve --server_id=3
+  agent3:
+    build: ../..
+    command: app agent --interactive=false --hosts=mariadb3 --user=root --rpluser=repl:pass 
+    depends_on:
+      - mariadb3
