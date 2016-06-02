@@ -11,8 +11,8 @@ func httpserver() {
 	http.HandleFunc("/servers", handlerServers)
 	http.HandleFunc("/log", handlerLog)
 	http.HandleFunc("/switchover", handlerSwitchover)
-	log.Println("Starting agent on port 10001")
-	http.ListenAndServe("localhost:10001", nil)
+	log.Println("Starting agent on port " + httpport)
+	http.ListenAndServe(bindaddr+":"+httpport, nil)
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {

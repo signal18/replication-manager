@@ -75,6 +75,8 @@ var (
 	checktype   string
 	masterConn  string
 	multiMaster bool
+	bindaddr    string
+	httpport    string
 )
 
 func init() {
@@ -112,6 +114,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
+	cmd.Flags().StringVar(&bindaddr, "bind-address", "localhost", "Bind HTTP monitor to this IP address")
+	cmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
 	viper.BindPFlags(cmd.Flags())
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
