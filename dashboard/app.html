@@ -15,17 +15,68 @@
 		return $resource('http://localhost:10001/log');
 	});
 
-	app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', function ($scope, $interval, $http, Servers, Log) {
+	app.factory('Settings', function($resource) {
+		return $resource(
+			'http://localhost:10001/settings',
+			'',
+			{ 'query':  {method:'GET', isArray:false} }
+		);
+	});
+
+	app.factory('Master', function($resource) {
+		return $resource(
+			'http://localhost:10001/master',
+			'',
+			{ 'query':  {method:'GET', isArray:false} }
+		);
+	});
+
+
+	app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope, $interval, $http, Servers, Log, Settings, Master) {
 		$interval(function(){
 	  Servers.query({}, function(data) {
 	    $scope.servers = data;
 	  });
 		Log.query({}, function(data) {
 			$scope.log = data;
-		}, 1000);
-	});
-	$scope.switch = function() {
-		var response = $http.get('http://localhost:10001/switchover');
+		});
+		Settings.query({}, function(data) {
+	    $scope.settings = data;
+	  });
+		Master.query({}, function(data) {
+			$scope.master = data;
+		});
+	}, 1000);
+	$scope.switch = function(fail) {
+		if (fail == false) {
+			var r = confirm("Confirm switchover");
+			if (r == true) {
+				var response = $http.get('http://localhost:10001/switchover');
+				response.success(function(data, status, headers, config) {
+						console.log("Ok.");
+				});
+				response.error(function(data, status, headers, config) {
+						console.log("Error.");
+				});
+			}
+		}
+		else {
+			var r = confirm("Confirm failover");
+			if (r == true) {
+				var response = $http.get('http://localhost:10001/failover');
+				response.success(function(data, status, headers, config) {
+						console.log("Ok.");
+				});
+				response.error(function(data, status, headers, config) {
+						console.log("Error.");
+				});
+			}
+		}
+};
+$scope.inttoggle = function() {
+	var r = confirm("Confirm Mode Change");
+	if (r == true) {
+		var response = $http.get('http://localhost:10001/interactive');
 		response.success(function(data, status, headers, config) {
 
 				console.log("Ok.");
@@ -35,7 +86,7 @@
 		response.error(function(data, status, headers, config) {
 				console.log("Error.");
 		});
-
+}
 };
 	}]);
 	</script>
@@ -50,6 +101,7 @@ td {
 <body ng-app="dashboard">
   <div ng-controller="DashboardController" class="col-lg-12">
 		<h2>Replication Manager Status</h2>
+		<p>Current Mode <span ng-if="settings.interactive=='true'" class="label label-primary">on-call</span><span ng-if="settings.interactive=='false'" class="label label-warning">on-leave</span></p>
 		<table ng-if="servers" class="table">
 			<tr>
 				<th>Host</th>
@@ -77,7 +129,9 @@ td {
 			</tr>
 		</table>
 		<p>
-		<button type="button" class="btn btn-primary" ng-click="switch()">Switchover</button>
+		<button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
+		<button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
+		<button type="button" class="btn btn-primary" ng-click="inttoggle()">Mode Change</button>
 	</p>
 	<pre>
 <span ng-repeat="logline in log track by $index">{{ logline }}
