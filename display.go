@@ -57,16 +57,18 @@ func display() {
 	}
 	vy = vy + 3
 	tlog.Print()
-	termbox.Flush()
-	_, newlen := termbox.Size()
-	if newlen > termlength {
-		termlength = newlen
-		tlog.len = termlength - 9 - (len(hostList) * 3)
-		tlog.Extend()
-	} else if newlen < termlength {
-		termlength = newlen
-		tlog.len = termlength - 9 - (len(hostList) * 3)
-		tlog.Shrink()
+	if !daemon {
+		termbox.Flush()
+		_, newlen := termbox.Size()
+		if newlen > termlength {
+			termlength = newlen
+			tlog.len = termlength - 9 - (len(hostList) * 3)
+			tlog.Extend()
+		} else if newlen < termlength {
+			termlength = newlen
+			tlog.len = termlength - 9 - (len(hostList) * 3)
+			tlog.Shrink()
+		}
 	}
 }
 

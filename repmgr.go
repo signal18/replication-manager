@@ -77,6 +77,8 @@ var (
 	multiMaster bool
 	bindaddr    string
 	httpport    string
+	httpserv    bool
+	daemon      bool
 )
 
 func init() {
@@ -114,8 +116,10 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
+	cmd.Flags().BoolVar(&httpserv, "http-server", false, "Start the HTTP monitor")
 	cmd.Flags().StringVar(&bindaddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	cmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
+	cmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	viper.BindPFlags(cmd.Flags())
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -193,13 +197,21 @@ var monitorCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 
-		go httpserver()
-
-		err = termbox.Init()
-		if err != nil {
-			log.Fatalln("Termbox initialization error", err)
+		if httpserv {
+			go httpserver()
 		}
-		_, termlength = termbox.Size()
+
+		if !daemon {
+			err = termbox.Init()
+			if err != nil {
+				log.Fatalln("Termbox initialization error", err)
+			}
+		}
+		if daemon {
+			termlength = 40
+		} else {
+			_, termlength = termbox.Size()
+		}
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = NewTermLog(loglen)
 		if interactive {
@@ -258,17 +270,17 @@ var monitorCmd = &cobra.Command{
 					termbox.Sync()
 				}
 			}
-			if master.State == stateFailed && interactive == false {
-				rem := (failoverTs + failtime) - time.Now().Unix()
-				if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-					masterFailover(true)
-					if failoverCtr == faillimit {
-						exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
-						exit = true
-					}
-				} else if failtime > 0 && rem%10 == 0 {
-					logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
+		}
+		if master.State == stateFailed && interactive == false {
+			rem := (failoverTs + failtime) - time.Now().Unix()
+			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
+				masterFailover(true)
+				if failoverCtr == faillimit {
+					exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
+					exit = true
 				}
+			} else if failtime > 0 && rem%10 == 0 {
+				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 			}
 		}
 		termbox.Close()

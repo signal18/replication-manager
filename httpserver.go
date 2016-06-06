@@ -20,7 +20,9 @@ func httpserver() {
 	http.HandleFunc("/failover", handlerFailover)
 	http.HandleFunc("/interactive", handlerInteractiveToggle)
 	http.HandleFunc("/settings", handlerSettings)
-	log.Println("Starting agent on port " + httpport)
+	if verbose {
+		log.Println("INFO : Starting http monitor on port " + httpport)
+	}
 	http.ListenAndServe(bindaddr+":"+httpport, nil)
 }
 
