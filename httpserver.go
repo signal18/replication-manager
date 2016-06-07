@@ -21,7 +21,7 @@ func httpserver() {
 	http.HandleFunc("/interactive", handlerInteractiveToggle)
 	http.HandleFunc("/settings", handlerSettings)
 	if verbose {
-		log.Println("INFO : Starting http monitor on port " + httpport)
+		logprint("INFO : Starting http monitor on port " + httpport)
 	}
 	http.ListenAndServe(bindaddr+":"+httpport, nil)
 }
