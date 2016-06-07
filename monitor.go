@@ -218,7 +218,7 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	hiseq := 0
 	var max uint64
 	for i, sl := range l {
-		if server.State != stateFailed && server.PrevState != stateMaster {
+		if server.State != stateFailed || server.State == stateMaster {
 			if verbose {
 				logprintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
 			}
