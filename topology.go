@@ -176,7 +176,7 @@ func topologyInit() error {
 
 func printTopology() {
 	for k, v := range servers {
-		logprintf("DEBUG: Server [%d] %s %s", k, v.URL, v.State)
+		logprintf("DEBUG: Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
 }
 
