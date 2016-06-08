@@ -229,6 +229,7 @@ var monitorCmd = &cobra.Command{
 					server.check()
 				}
 				display()
+				checkfailed()
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
@@ -271,18 +272,6 @@ var monitorCmd = &cobra.Command{
 				}
 			}
 		}
-		if master.State == stateFailed && interactive == false {
-			rem := (failoverTs + failtime) - time.Now().Unix()
-			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-				masterFailover(true)
-				if failoverCtr == faillimit {
-					exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
-					exit = true
-				}
-			} else if failtime > 0 && rem%10 == 0 {
-				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
-			}
-		}
 		termbox.Close()
 		if exitMsg != "" {
 			log.Println(exitMsg)
@@ -294,6 +283,21 @@ var monitorCmd = &cobra.Command{
 			defer server.Conn.Close()
 		}
 	},
+}
+
+func checkfailed() {
+	if master.State == stateFailed && interactive == false {
+		rem := (failoverTs + failtime) - time.Now().Unix()
+		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
+			masterFailover(true)
+			if failoverCtr == faillimit {
+				exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
+				exit = true
+			}
+		} else if failtime > 0 && rem%10 == 0 {
+			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
+		}
+	}
 }
 
 func newTbChan() chan termbox.Event {
