@@ -122,6 +122,12 @@ func (server *ServerMonitor) check() {
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
 		server.State = stateSlave
 		slaves = append(slaves, server)
+		if readonly {
+			err = dbhelper.SetReadOnly(server.Conn, true)
+			if err != nil {
+				logprintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
+			}
+		}
 	}
 }
 
