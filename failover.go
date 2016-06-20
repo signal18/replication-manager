@@ -67,7 +67,7 @@ func masterFailover(fail bool) bool {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
 		if verbose {
-			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos)
+			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
 		}
 		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos.Sprint())
