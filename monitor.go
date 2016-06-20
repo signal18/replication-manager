@@ -294,7 +294,7 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 
 func (server *ServerMonitor) log() {
 	server.refresh()
-	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid, server.SlaveGtid, server.BinlogPos)
+	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
 	return
 }
 
