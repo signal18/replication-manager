@@ -108,7 +108,7 @@ func (server *ServerMonitor) check() {
 				if verbose {
 					logprint("INFO : Rejoining previously failed server", server.URL)
 				}
-				err := server.rejoin()
+				err = server.rejoin()
 				if err != nil {
 					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
 				}
