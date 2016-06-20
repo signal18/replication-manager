@@ -223,6 +223,8 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	hiseq := 0
 	var max uint64
 	for i, sl := range l {
+		// Refresh state before evaluating
+		sl.refresh()
 		if server.State != stateFailed || server.State == stateMaster {
 			if verbose {
 				logprintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
@@ -270,9 +272,12 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 			}
 			return i
 		}
-		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl.Conn, "GTID_CURRENT_POS"))
+		seqnos := sl.SlaveGtid.GetSeqNos()
 		if verbose {
-			logprintf("DEBUG: Got sequence number %d for server [%d]", seqList[i], i)
+			logprintf("DEBUG: Got sequence(s) %v for server [%d]", seqnos, i)
+		}
+		for _, v := range seqnos {
+			seqList[i] += v
 		}
 		if seqList[i] > max {
 			max = seqList[i]
