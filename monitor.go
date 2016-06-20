@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/mariadb-corporation/replication-manager/gtid"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
@@ -21,15 +22,15 @@ type ServerMonitor struct {
 	Host           string
 	Port           string
 	IP             string
-	BinlogPos      string
+	BinlogPos      *gtid.List
 	Strict         string
 	ServerID       uint
 	MasterServerID uint
 	MasterHost     string
 	LogBin         string
 	UsingGtid      string
-	CurrentGtid    string
-	SlaveGtid      string
+	CurrentGtid    *gtid.List
+	SlaveGtid      *gtid.List
 	IOThread       string
 	SQLThread      string
 	ReadOnly       string
@@ -86,8 +87,6 @@ func (server *ServerMonitor) check() {
 			if failCount == maxfail {
 				tlog.Add("Declaring master as failed")
 				master.State = stateFailed
-				master.CurrentGtid = "FAILED"
-				master.BinlogPos = "FAILED"
 			}
 		} else {
 			if server.State != stateMaster {
@@ -147,12 +146,12 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
-	server.BinlogPos = sv["GTID_BINLOG_POS"]
+	server.BinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
 	server.ReadOnly = sv["READ_ONLY"]
-	server.CurrentGtid = sv["GTID_CURRENT_POS"]
-	server.SlaveGtid = sv["GTID_SLAVE_POS"]
+	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
+	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
 	server.ServerID = uint(sid)
 	err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
@@ -300,7 +299,7 @@ func (server *ServerMonitor) writeState() error {
 	if err != nil {
 		return err
 	}
-	_, err = f.WriteString(server.BinlogPos)
+	_, err = f.WriteString(server.BinlogPos.Sprint())
 	if err != nil {
 		return err
 	}
