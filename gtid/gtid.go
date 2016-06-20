@@ -20,6 +20,9 @@ type List []Gtid
 // Usually it shouldn't be called directly
 func NewList(s string) *List {
 	gl := new(List)
+	if s == "" {
+		return gl
+	}
 	l := strings.Split(s, ",")
 	for _, g := range l {
 		gtid := NewGtid(g)
