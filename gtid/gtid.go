@@ -1,6 +1,7 @@
 package gtid
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -37,6 +38,7 @@ func NewGtid(s string) *Gtid {
 	return g
 }
 
+// GetDomainIDs returns a slice of domain ID integers
 func (gl List) GetDomainIDs() []uint64 {
 	var d []uint64
 	for _, g := range gl {
@@ -45,6 +47,7 @@ func (gl List) GetDomainIDs() []uint64 {
 	return d
 }
 
+// GetServerIDs returns a slice of server ID integers
 func (gl List) GetServerIDs() []uint64 {
 	var d []uint64
 	for _, g := range gl {
@@ -53,10 +56,21 @@ func (gl List) GetServerIDs() []uint64 {
 	return d
 }
 
+// GetSeqNos returns a slice of sequence integers
 func (gl List) GetSeqNos() []uint64 {
 	var d []uint64
 	for _, g := range gl {
 		d = append(d, g.SeqNo)
 	}
 	return d
+}
+
+// Sprint returns a formatted GTID List string
+func (gl List) Sprint() string {
+	var sl []string
+	for _, g := range gl {
+		s := fmt.Sprintf("%d-%d-%d", g.DomainID, g.ServerID, g.SeqNo)
+		sl = append(sl, s)
+	}
+	return strings.Join(sl, ",")
 }
