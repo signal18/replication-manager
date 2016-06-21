@@ -40,7 +40,7 @@ func display() {
 			}
 			server.refresh()
 			printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
-			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid.Sprint(), server.BinlogPos, server.Strict)
+			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid.Sprint(), server.BinlogPos.Sprint(), server.Strict)
 			vy++
 		}
 
