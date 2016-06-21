@@ -133,6 +133,10 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	timeout = viper.GetInt("connect-timeout")
 	masterConn = viper.GetString("master-connection")
 	multiMaster = viper.GetBool("multimaster")
+	httpserv = viper.GetBool("http-server")
+	bindaddr = viper.GetString("http-bind-address")
+	httpport = viper.GetString("http-port")
+	daemon = viper.GetBool("daemon")
 }
 
 var failoverCmd = &cobra.Command{
