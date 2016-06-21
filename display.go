@@ -21,12 +21,12 @@ func display() {
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	master.refresh()
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %20s %20s %12s", "Master Host", "Port", "Status", "Current GTID", "Binlog Position", "Strict Mode")
-	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %20s %20s %12s", master.Host, master.Port, master.State, master.CurrentGtid, master.BinlogPos, master.Strict)
+	printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %20s %20s %12s", master.Host, master.Port, master.State, master.CurrentGtid.Sprint(), master.BinlogPos.Sprint(), master.Strict)
 	printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %30s %6s %3s", "Slave Host", "Port", "Status", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	vy = 6
 	for _, slave := range slaves {
 		slave.refresh()
-		printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %30s %6d %3s", slave.Host, slave.Port, slave.State, slave.UsingGtid, slave.CurrentGtid, slave.SlaveGtid, slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
+		printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %30s %6d %3s", slave.Host, slave.Port, slave.State, slave.UsingGtid, slave.CurrentGtid.Sprint(), slave.SlaveGtid.Sprint(), slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
 		vy++
 	}
 	vy++
@@ -39,12 +39,8 @@ func display() {
 				vy++
 			}
 			server.refresh()
-			if server.State == stateFailed {
-				server.CurrentGtid = stateFailed
-				server.BinlogPos = stateFailed
-			}
 			printfTb(0, vy, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
-			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid, server.BinlogPos, server.Strict)
+			printfTb(0, vy, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid.Sprint(), server.BinlogPos.Sprint(), server.Strict)
 			vy++
 		}
 

@@ -67,10 +67,10 @@ func masterFailover(fail bool) bool {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
 		if verbose {
-			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos)
+			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
 		}
-		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos)
+		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos.Sprint())
 		if verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
@@ -120,7 +120,7 @@ func masterFailover(fail bool) bool {
 			logprint("WARN : Could not unlock tables on old master", err)
 		}
 		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
-		_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos + "'")
+		_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
 		if err != nil {
 			logprint("WARN : Could not set gtid_slave_pos on old master", err)
 		}
@@ -153,7 +153,7 @@ func masterFailover(fail bool) bool {
 		}
 		if fail == false {
 			logprintf("INFO : Waiting for slave %s to sync", sl.URL)
-			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos)
+			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint())
 			if verbose {
 				sl.log()
 			}
@@ -164,7 +164,7 @@ func masterFailover(fail bool) bool {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
 		if fail == false {
-			_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos + "'")
+			_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
 			if err != nil {
 				logprintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
