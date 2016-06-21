@@ -6,5 +6,7 @@ COPY . /go/src/replication-manager
 RUN go get .
 RUN go install .
 RUN rm -rf /go/src/replication-manager
+RUN mkdir /etc/replication-manager
+COPY config.toml /etc/replication-manager/config.toml
 WORKDIR /go/bin
 CMD ["replication-manager"] 
