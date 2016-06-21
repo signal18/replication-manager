@@ -9,4 +9,4 @@ RUN rm -rf /go/src/replication-manager
 RUN mkdir /etc/replication-manager
 COPY config.toml /etc/replication-manager/config.toml
 WORKDIR /go/bin
-CMD ["replication-manager"] 
+CMD ["replication-manager", "monitor", "--daemon"] 
