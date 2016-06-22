@@ -23,7 +23,7 @@ take consensus decisions`,
 		agentFlagCheck()
 		http.HandleFunc("/agent/", handlerAgent)
 		log.Println("Starting agent on port 10001")
-		http.ListenAndServe("localhost:10001", nil)
+		http.ListenAndServe("0.0.0.0:10001", nil)
 	},
 }
 
