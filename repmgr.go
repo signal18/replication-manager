@@ -95,12 +95,20 @@ func init() {
 	monitorCmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	monitorCmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "in automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	monitorCmd.Flags().StringVar(&checktype, "check-type", "tcp", "Type of server health check (tcp, agent)")
+	monitorCmd.Flags().BoolVar(&httpserv, "http-server", false, "Start the HTTP monitor")
+	monitorCmd.Flags().StringVar(&bindaddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
+	monitorCmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
+	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
 	autorejoin = viper.GetBool("autorejoin")
 	faillimit = viper.GetInt("failover-limit")
 	failtime = int64(viper.GetInt("failover-time-limit"))
 	checktype = viper.GetString("check-type")
+	httpserv = viper.GetBool("http-server")
+	bindaddr = viper.GetString("http-bind-address")
+	httpport = viper.GetString("http-port")
+	daemon = viper.GetBool("daemon")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -116,10 +124,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
-	cmd.Flags().BoolVar(&httpserv, "http-server", false, "Start the HTTP monitor")
-	cmd.Flags().StringVar(&bindaddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
-	cmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
-	cmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	viper.BindPFlags(cmd.Flags())
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -133,10 +137,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	timeout = viper.GetInt("connect-timeout")
 	masterConn = viper.GetString("master-connection")
 	multiMaster = viper.GetBool("multimaster")
-	httpserv = viper.GetBool("http-server")
-	bindaddr = viper.GetString("http-bind-address")
-	httpport = viper.GetString("http-port")
-	daemon = viper.GetBool("daemon")
 }
 
 var failoverCmd = &cobra.Command{
