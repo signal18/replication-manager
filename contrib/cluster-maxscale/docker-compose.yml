@@ -10,6 +10,7 @@ services:
       - "3306"
 
   replication-manager:
+    image: replication-manager
     build: ../..
     command: monitor --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
     depends_on:
@@ -28,6 +29,7 @@ services:
     volumes:
       - ./mariadb.sql:/docker-entrypoint-initdb.d/mariadb.sql:ro
   agent1:
+    image: replication-manager
     build: ../..
     command: agent --interactive=false --hosts=mariadb1 --user=root --rpluser=repl:pass
     depends_on:
@@ -37,6 +39,7 @@ services:
     extends: mariadb1
     command: --log-bin --skip-name-resolve --server_id=2
   agent2:
+    image: replication-manager
     build: ../..
     command: agent --interactive=false --hosts=mariadb2 --user=root --rpluser=repl:pass
     depends_on:
@@ -46,6 +49,7 @@ services:
     extends: mariadb1
     command: --log-bin --skip-name-resolve --server_id=3
   agent3:
+    image: replication-manager
     build: ../..
     command: agent --interactive=false --hosts=mariadb3 --user=root --rpluser=repl:pass
     depends_on:
