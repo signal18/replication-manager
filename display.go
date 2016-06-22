@@ -66,7 +66,9 @@ func display() {
 	if !daemon {
 		termbox.Flush()
 		_, newlen := termbox.Size()
-		if newlen > termlength {
+		if newlen == 0 {
+			// pass
+		} else if newlen > termlength {
 			termlength = newlen
 			tlog.Len = termlength - 9 - (len(hostList) * 3)
 			tlog.Extend()

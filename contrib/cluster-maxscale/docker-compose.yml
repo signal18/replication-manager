@@ -18,6 +18,7 @@ services:
       - agent2
       - agent3
     tty: true
+    stdin_open: true
 
   mariadb1:
     image: mariadb

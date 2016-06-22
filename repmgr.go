@@ -227,6 +227,9 @@ var monitorCmd = &cobra.Command{
 			termlength = 40
 		} else {
 			_, termlength = termbox.Size()
+			if termlength == 0 {
+				termlength = 120;
+			}
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = termlog.NewTermLog(loglen)
