@@ -13,7 +13,7 @@ docker-compose ps
 
 * Bootstrap cluster
 ```sh
-docker-compose run --rm replication-manager app bootstrap --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
+docker-compose run --rm replication-manager bootstrap --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
 ```
 Cluster is now ready
 
