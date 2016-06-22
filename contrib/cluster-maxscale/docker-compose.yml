@@ -11,7 +11,7 @@ services:
 
   replication-manager:
     build: ../..
-    command: app monitor --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
+    command: monitor --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
     depends_on:
       - agent1
       - agent2
@@ -29,7 +29,7 @@ services:
       - ./mariadb.sql:/docker-entrypoint-initdb.d/mariadb.sql:ro
   agent1:
     build: ../..
-    command: app agent --interactive=false --hosts=mariadb1 --user=root --rpluser=repl:pass
+    command: agent --interactive=false --hosts=mariadb1 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb1
 
@@ -38,7 +38,7 @@ services:
     command: --log-bin --skip-name-resolve --server_id=2
   agent2:
     build: ../..
-    command: app agent --interactive=false --hosts=mariadb2 --user=root --rpluser=repl:pass 
+    command: agent --interactive=false --hosts=mariadb2 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb2
 
@@ -47,6 +47,6 @@ services:
     command: --log-bin --skip-name-resolve --server_id=3
   agent3:
     build: ../..
-    command: app agent --interactive=false --hosts=mariadb3 --user=root --rpluser=repl:pass 
+    command: agent --interactive=false --hosts=mariadb3 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb3
