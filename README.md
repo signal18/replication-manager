@@ -1,5 +1,7 @@
 ## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
+[![Join the chat at https://gitter.im/mariadb-corporation/replication-manager](https://badges.gitter.im/mariadb-corporation/replication-manager.svg)](https://gitter.im/mariadb-corporation/replication-manager?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 ## NAME
 
 replication-manager -- MariaDB replication manager utility
