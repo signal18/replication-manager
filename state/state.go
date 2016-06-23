@@ -33,3 +33,11 @@ func (m Map) Add(key string, s State) {
 	}
 	m.Log(key)
 }
+
+// Clear copies the current map to argument map and clears it
+func (m *Map) Clear() *Map {
+	o := m
+	n := NewMap()
+	m = n
+	return o
+}
