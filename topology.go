@@ -36,10 +36,10 @@ func newServerList() error {
 			if driverErr, ok := err.(*mysql.MySQLError); ok {
 				if driverErr.Number == 1045 {
 					servers[k].State = stateUnconn
-					curStates.Add("ERR00009", state.State{"ERROR", fmt.Sprintf("Database %s access denied: %s.", servers[k].URL, err.Error()), false})
+					sme.AddState("ERR00009", state.State{"ERROR", fmt.Sprintf("Database %s access denied: %s.", servers[k].URL, err.Error()), "TOPO"})
 				}
 			}
-			curStates.Add("INF00001", state.State{"INFO", fmt.Sprintf("INFO : Server %s is dead.", servers[k].URL), false})
+			sme.AddState("INF00001", state.State{"INFO", fmt.Sprintf("INFO : Server %s is dead.", servers[k].URL), "TOPO"})
 			servers[k].State = stateFailed
 			continue
 		}
@@ -70,7 +70,7 @@ func topologyInit() error {
 
 	// If no slaves are detected, then bail out
 	if len(slaves) == 0 {
-		curStates.Add("ERR00010", state.State{"ERROR", "No slaves were detected.", false})
+		sme.AddState("ERR00010", state.State{"ERROR", "No slaves were detected.", "TOPO"})
 	}
 
 	// Check that all slave servers have the same master.
@@ -78,7 +78,7 @@ func topologyInit() error {
 		for _, sl := range slaves {
 
 			if sl.hasSiblings(slaves) == false {
-				curStates.Add("ERR00011", state.State{"WARNING", "Multiple masters were detected, auto switching to multimaster monitoring.", false})
+				sme.AddState("ERR00011", state.State{"WARNING", "Multiple masters were detected, auto switching to multimaster monitoring.", "TOPO"})
 
 				multiMaster = true
 			}
@@ -92,7 +92,7 @@ func topologyInit() error {
 			}
 		}
 		if srw > 1 {
-			curStates.Add("WARN00003", state.State{"WARNING", "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master.", false})
+			sme.AddState("WARN00003", state.State{"WARNING", "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master.", "TOPO"})
 		}
 		srw = 0
 		for _, s := range servers {
@@ -101,7 +101,7 @@ func topologyInit() error {
 			}
 		}
 		if srw > 1 {
-			curStates.Add("WARN00004", state.State{"WARNING", "RO server count > 1 in multi-master mode.  switching to prefered master.", false})
+			sme.AddState("WARN00004", state.State{"WARNING", "RO server count > 1 in multi-master mode.  switching to prefered master.", "TOPO"})
 			// 		    server:=GetPreferedMaster()
 			//			    dbhelper.SetReadOnly(server.Conn, true)
 
@@ -157,7 +157,7 @@ func topologyInit() error {
 			83,
 			fmt.Sprintf("ERROR: Could not autodetect a master"),
 		}*/
-		curStates.Add("ERR00012", state.State{"ERROR", "Could not autodetect a master.", false})
+		sme.AddState("ERR00012", state.State{"ERROR", "Could not autodetect a master.", false})
 
 	}
 	// End of autodetection code
@@ -175,7 +175,7 @@ func topologyInit() error {
 					fmt.Sprintf("ERROR: Binary log disabled on slave: %s", sl.URL),
 				}
 			}*/
-			curStates.Add("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), false})
+			sme.AddState("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), "TOPO"})
 
 		}
 	}

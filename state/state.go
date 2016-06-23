@@ -14,27 +14,46 @@ func NewMap() *Map {
 	m := make(Map)
 	return &m
 }
-
-func (m Map) Log(key string) {
-	s := m[key]
-	log.Println(s.ErrType, ":", key, s.ErrDesc)
-	// TODO: FIX tlog.Add(fmt.Sprintf(s.errType, ":", key, s.errDesc))
-	m[key] = s
-}
-
+ 
 func (m Map) Add(key string, s State) {
 	_, ok := m[key]
 	if !ok {
 		m[key] = s
 
 	}
-	m.Log(key)
+
+}
+
+type StateMachine struct {
+  curState *Map
+  oldState *Map
+}
+
+ func (SM *StateMachine) Init()  {
+	 SM.curState = NewMap( )
+	 SM.oldState  = NewMap()
+  	
+}
+
+func (SM *StateMachine) AddSate(key string, s State)  {
+	SM.curState.Add(key, s )
+	 
 }
 
 // Clear copies the current map to argument map and clears it
-func (m *Map) Clear() *Map {
-	o := m
+func (SM *StateMachine) ClearSate()  {
+	SM.oldState = SM.curState
 	n := NewMap()
-	m = n
-	return o
+	SM.curState = n
+	 
 }
+
+func (SM *StateMachine) LogState( ) {
+	  for key, value := range SM.curState {
+
+	   log.Println(value.ErrType, ":", key, value.ErrDesc)
+	// TODO: FIX tlog.Add(fmt.Sprintf(s.errType, ":", key, s.errDesc))
+	} 
+}
+
+
