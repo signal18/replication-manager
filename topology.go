@@ -1,8 +1,7 @@
 package main
 
 import (
-	"errors"
-	"fmt"
+ 	"fmt"
 	"log"
 
 	"github.com/go-sql-driver/mysql"
@@ -30,18 +29,16 @@ func newServerList() error {
 		var err error
 		servers[k], err = newServerMonitor(url)
 		if verbose {
-			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
+			log.Printf("DEBUG: Creating new server: %v.", servers[k].URL)
 		}
 		if err != nil {
 			if driverErr, ok := err.(*mysql.MySQLError); ok {
 				if driverErr.Number == 1045 {
-					return fmt.Errorf("ERROR: Database access denied: %s", err.Error())
+					servers[k].State = stateUnconn	
+					addState( "ERR00009" ,  State {"ERROR", fmt.Sprintf( "Database %s access denied: %s.",servers[k].URL, err.Error() ),false})
 				}
 			}
-			if verbose {
-				log.Println("ERROR:", err)
-			}
-			log.Printf("INFO : Server %s is dead.", servers[k].URL)
+		    addState( "INF00001" ,  State {"INFO", fmt.Sprintf( "INFO : Server %s is dead.", servers[k].URL ),false})
 			servers[k].State = stateFailed
 			continue
 		}
@@ -68,26 +65,25 @@ func newServerList() error {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func topologyInit() error {
-	err := newServerList()
-	if err != nil {
-		return err
-	}
+	 newServerList()
+	
 	// If no slaves are detected, then bail out
 	if len(slaves) == 0 {
-		return errors.New("ERROR: No slaves were detected")
-	}
+		addState( "ERR00010" ,   State {"ERROR", "No slaves were detected.",false})
+ 	}
 
 	// Check that all slave servers have the same master.
 	if multiMaster == false {
 		for _, sl := range slaves {
+			
 			if sl.hasSiblings(slaves) == false {
-				return topologyError{
-					33,
-					fmt.Sprintf("ERROR: Multiple masters were detected"),
-				}
+				addState( "ERR00011" ,  State {"WARNING", "Multiple masters were detected, auto switching to multimaster monitoring.",false})
+
+				multiMaster=true
 			}
 		}
-	} else {
+	}
+   if multiMaster == true {
 		srw := 0
 		for _, s := range servers {
 			if s.ReadOnly == "OFF" {
@@ -95,12 +91,24 @@ func topologyInit() error {
 			}
 		}
 		if srw > 1 {
-			return topologyError{
-				11,
-				fmt.Sprintf("ERROR: RW server count > 1 in multi-master mode. Please set slaves to RO (SET GLOBAL read_only=1)"),
+				addState( "WARN00003" , State {"WARNING", "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master.",false})
+ 		}
+	 	srw  = 0
+		for _, s := range servers {
+			if s.ReadOnly == "ON" {
+				srw++
 			}
 		}
+		if srw > 1 {
+		    addState( "WARN00004" , State {"WARNING", "RO server count > 1 in multi-master mode.  switching to prefered master.",false})
+// 		    server:=GetPreferedMaster()  
+//			    dbhelper.SetReadOnly(server.Conn, true)
+ 	    
+			
+		}
 	}
+
+
 
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// failed hosts or unconnected hosts.
@@ -147,13 +155,15 @@ func topologyInit() error {
 	}
 	// Final check if master has been found
 	if master == nil {
-		return topologyError{
+		/*return topologyError{
 			83,
 			fmt.Sprintf("ERROR: Could not autodetect a master"),
-		}
+		}*/
+		 addState( "ERR00012" ,   State {"ERROR", "Could not autodetect a master.",false})
+ 		
 	}
 	// End of autodetection code
-
+    if multiMaster == false {
 	for _, sl := range slaves {
 		if verbose {
 			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
@@ -161,12 +171,15 @@ func topologyInit() error {
 		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
 			log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 		}
-		if sl.LogBin == "OFF" {
+		/*if sl.LogBin == "OFF" {
 			return topologyError{
 				81,
 				fmt.Sprintf("ERROR: Binary log disabled on slave: %s", sl.URL),
 			}
-		}
+		}*/
+		 addState( "ERR00013" , State {"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL),false})
+		 
+	}
 	}
 	if verbose {
 		printTopology()

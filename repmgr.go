@@ -7,11 +7,12 @@ package main
 
 import (
 	"io/ioutil"
+	"errors"
 	"log"
 	"os"
 	"strings"
 	"time"
-
+    "fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
@@ -48,7 +49,13 @@ const (
 	stateSlave  string = "Slave"
 	stateUnconn string = "Unconnected"
 )
+type State struct {
+  errType  string
+  errDesc  string
+  errPrinted bool  
+ } 
 
+  	
 var (
 	conf        string
 	version     bool
@@ -79,7 +86,11 @@ var (
 	httpport    string
 	httpserv    bool
 	daemon      bool
+	curStates map[string]State 
+
 )
+
+
 
 func init() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
@@ -193,20 +204,14 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-
-		repmgrFlagCheck()
-
-		err := topologyInit()
-		if err != nil {
-			log.Fatalln(err)
-		}
-
+        curStates = make(map[string]State)
+		
 		if httpserv {
 			go httpserver()
 		}
 
 		if !daemon {
-			err = termbox.Init()
+			err := termbox.Init()
 			if err != nil {
 				log.Fatalln("Termbox initialization error", err)
 			}
@@ -223,17 +228,27 @@ var monitorCmd = &cobra.Command{
 		} else {
 			tlog.Add("Monitor started in automatic mode")
 		}
+	  
+
+
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 1)
 		for exit == false {
+		   
+
+			 
 			select {
 			case <-ticker.C:
+			 repmgrFlagCheck()
+ 		     topologyInit()
+		     if stateOnTopologyError() == nil {
 				for _, server := range servers {
 					server.check()
 				}
 				display()
 				checkfailed()
+			 }	
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
@@ -275,6 +290,7 @@ var monitorCmd = &cobra.Command{
 					termbox.Sync()
 				}
 			}
+		
 		}
 		termbox.Close()
 		if exitMsg != "" {
@@ -283,10 +299,16 @@ var monitorCmd = &cobra.Command{
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
+		termbox.Close()
 		for _, server := range servers {
 			defer server.Conn.Close()
 		}
 	},
+}
+
+func stateOnTopologyError()  error {
+   err := errors.New("Found initial errors.")
+   return err
 }
 
 func checkfailed() {
@@ -295,10 +317,10 @@ func checkfailed() {
 		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 			masterFailover(true)
 			if failoverCtr == faillimit {
-				exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
-				exit = true
-			}
+				addState("INF00002",  State {"INFO",  "Failover limit reached. Exiting on failover completion.",false}   )
+	 		}
 		} else if failtime > 0 && rem%10 == 0 {
+
 			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 		}
 	}
@@ -314,12 +336,32 @@ func newTbChan() chan termbox.Event {
 	return termboxChan
 }
 
+func logState(key string) {
+	s := curStates[ key ] 
+	if s.errPrinted == false {
+		log.Println( s.errType ,":" , key ,  s.errDesc) 
+		tlog.Add(fmt.Sprintf( s.errType ,":" , key ,  s.errDesc))
+	 	s.errPrinted = true
+	 	curStates[ key ]=s
+
+	}	
+}	
+func addState(key string , s  State) {
+ _, ok := curStates[key] 
+   if   !ok {
+   curStates[key]= s
+
+   }
+   logState(key)
+}
+
 func repmgrFlagCheck() {
 	if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
-			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
+
+		    addState("WAR00001",  State {"WARNING", "Error opening logfile, disabling for the rest of the session.",false}   )
 			logfile = ""
 		}
 	}
@@ -327,16 +369,17 @@ func repmgrFlagCheck() {
 	if hosts != "" {
 		hostList = strings.Split(hosts, ",")
 	} else {
-		log.Fatal("ERROR: No hosts list specified.")
+		addState(  "ERR00001" ,  State {"ERROR", "No hosts list specified.",false})
+	 		 
 	}
 	// validate users.
 	if user == "" {
-		log.Fatal("ERROR: No master user/pair specified.")
+		addState("ERR00002",  State {"ERROR",  "No master user/pair specified.",false} )
 	}
 	dbUser, dbPass = splitPair(user)
 
 	if rpluser == "" {
-		log.Fatal("ERROR: No replication user/pair specified.")
+	 	addState( "ERR00003" ,  State {"ERROR",  "No replication user/pair specified.",false})
 	}
 	rplUser, rplPass = splitPair(rpluser)
 
@@ -354,7 +397,7 @@ func repmgrFlagCheck() {
 		return false
 	}
 	if ret() == false && prefMaster != "" {
-		log.Fatal("ERROR: Preferred master is not included in the hosts option")
+		addState( "ERR00004" ,  State {"ERROR",  "Preferred master is not included in the hosts option.",false})
 	}
 
 	// Check user privileges on live servers
@@ -362,14 +405,16 @@ func repmgrFlagCheck() {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
-				log.Fatalf("ERROR: Error getting privileges for user %s on host %s: %s", dbUser, sv.Host, err)
+		        addState( "ERR00005" ,  State {"ERROR",  fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err),false})
 			}
 			if priv.Repl_client_priv == "N" {
-				log.Fatalln("ERROR: User must have REPLICATION_CLIENT privilege")
-			} else if priv.Repl_slave_priv == "N" {
-				log.Fatalln("ERROR: User must have REPLICATION_SLAVE privilege")
-			} else if priv.Super_priv == "N" {
-				log.Fatalln("ERROR: User must have SUPER privilege")
+			    addState( "ERR00006" ,  State {"ERROR",  fmt.Sprintf("Error getting  REPLICATION_CLIENT privileges for user %s on host %s: %s.", dbUser, sv.Host, err),false})
+			} 
+			if priv.Repl_slave_priv == "N" {
+				addState( "ERR00007" ,  State {"ERROR",  "User must have REPLICATION_SLAVE privilege.",false})
+			}
+			if priv.Super_priv == "N" {
+				addState( "ERR00008" ,  State {"ERROR",  "User must have SUPER privilege.",false})
 			}
 		}
 	}
