@@ -43,7 +43,7 @@ var (
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
-	curStates   *state.Map
+	
 )
 
 const (
@@ -83,7 +83,8 @@ var (
 	httpport    string
 	httpserv    bool
 	daemon      bool
-	sme *StateMachine
+	sme         *state.StateMachine
+
 
 )
 
@@ -199,8 +200,9 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		sme := new StateMachine
+		sme = new(state.StateMachine ) 
 		sme.Init()
+		
 
 		if httpserv {
 			go httpserver()
@@ -234,6 +236,10 @@ var monitorCmd = &cobra.Command{
 			case <-ticker.C:
 				repmgrFlagCheck()
 				topologyInit()
+				sme.LogState()
+				
+				sme.ClearState() 
+				
 				if stateOnTopologyError() == nil {
 					for _, server := range servers {
 						server.check()
@@ -309,7 +315,7 @@ func checkfailed() {
 		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 			masterFailover(true)
 			if failoverCtr == faillimit {
-				sme.AddSate("INF00002",   State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
+				sme.AddState("INF00002",   state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
 			}
 		} else if failtime > 0 && rem%10 == 0 {
 
@@ -334,7 +340,7 @@ func repmgrFlagCheck() {
 		logPtr, err = os.Create(logfile)
 		if err != nil {
 
-			sme.AddSate("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", "CONF"})
+			sme.AddState("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", "CONF"})
 			logfile = ""
 		}
 	}
@@ -342,17 +348,17 @@ func repmgrFlagCheck() {
 	if hosts != "" {
 		hostList = strings.Split(hosts, ",")
 	} else {
-		sme.AddSate("ERR00001", state.State{"ERROR", "No hosts list specified.",  "CONF"})
+		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.",  "CONF"})
 
 	}
 	// validate users.
 	if user == "" {
-		sme.AddSate("ERR00002", state.State{"ERROR", "No master user/pair specified.", "CONF"})
+		sme.AddState("ERR00002", state.State{"ERROR", "No master user/pair specified.", "CONF"})
 	}
 	dbUser, dbPass = splitPair(user)
 
 	if rpluser == "" {
-		sme.AddSate("ERR00003", state.State{"ERROR", "No replication user/pair specified.", "CONF"})
+		sme.AddState("ERR00003", state.State{"ERROR", "No replication user/pair specified.", "CONF"})
 	}
 	rplUser, rplPass = splitPair(rpluser)
 
@@ -370,7 +376,7 @@ func repmgrFlagCheck() {
 		return false
 	}
 	if ret() == false && prefMaster != "" {
-		sme.AddSate("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
+		sme.AddState("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
 	}
 
 	// Check user privileges on live servers
@@ -378,16 +384,15 @@ func repmgrFlagCheck() {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
-				sme.AddSate("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err),  "CONF"})
+				sme.AddState("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err),  "CONF"})
 			}
 			if priv.Repl_client_priv == "N" {
-				sme.AddSate("ERR00006", state.State{"ERROR", fmt.Sprintf("Error getting  REPLICATION_CLIENT privileges for user %s on host %s: %s.", dbUser, sv.Host, err),  "CONF"})
 			}
 			if priv.Repl_slave_priv == "N" {
-				sme.AddSate("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.",  "CONF"})
+				sme.AddState("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.",  "CONF"})
 			}
 			if priv.Super_priv == "N" {
-				sme.AddSate("ERR00008", state.State{"ERROR", "User must have SUPER privilege.",  "CONF"})
+				sme.AddState("ERR00008", state.State{"ERROR", "User must have SUPER privilege.",  "CONF"})
 			}
 		}
 	}

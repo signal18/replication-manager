@@ -157,7 +157,7 @@ func topologyInit() error {
 			83,
 			fmt.Sprintf("ERROR: Could not autodetect a master"),
 		}*/
-		sme.AddState("ERR00012", state.State{"ERROR", "Could not autodetect a master.", false})
+		sme.AddState("ERR00012", state.State{"ERROR", "Could not autodetect a master.", "TOPO"})
 
 	}
 	// End of autodetection code
