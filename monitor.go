@@ -163,6 +163,7 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	seqList := make([]uint64, ll)
 	i := 0
 	hiseq := 0
+	var max uint64
 	for _, sl := range l {
 		if failover == "" {
 			if verbose {
@@ -208,7 +209,6 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 			return i
 		}
 		seqList[i] = getSeqFromGtid(dbhelper.GetVariableByName(sl.Conn, "GTID_CURRENT_POS"))
-		var max uint64
 		if i == 0 {
 			max = seqList[0]
 		} else if seqList[i] > max {
