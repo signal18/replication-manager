@@ -6,14 +6,16 @@
 package main
 
 import (
-	"io/ioutil"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
-    "fmt"
+
 	"github.com/go-sql-driver/mysql"
+	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,6 +43,7 @@ var (
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
+	curStates   *state.Map
 )
 
 const (
@@ -49,13 +52,7 @@ const (
 	stateSlave  string = "Slave"
 	stateUnconn string = "Unconnected"
 )
-type State struct {
-  errType  string
-  errDesc  string
-  errPrinted bool  
- } 
 
-  	
 var (
 	conf        string
 	version     bool
@@ -86,11 +83,7 @@ var (
 	httpport    string
 	httpserv    bool
 	daemon      bool
-	curStates map[string]State 
-
 )
-
-
 
 func init() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
@@ -204,8 +197,8 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-        curStates = make(map[string]State)
-		
+		curStates = state.NewMap()
+
 		if httpserv {
 			go httpserver()
 		}
@@ -228,27 +221,23 @@ var monitorCmd = &cobra.Command{
 		} else {
 			tlog.Add("Monitor started in automatic mode")
 		}
-	  
-
 
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 1)
 		for exit == false {
-		   
 
-			 
 			select {
 			case <-ticker.C:
-			 repmgrFlagCheck()
- 		     topologyInit()
-		     if stateOnTopologyError() == nil {
-				for _, server := range servers {
-					server.check()
+				repmgrFlagCheck()
+				topologyInit()
+				if stateOnTopologyError() == nil {
+					for _, server := range servers {
+						server.check()
+					}
+					display()
+					checkfailed()
 				}
-				display()
-				checkfailed()
-			 }	
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
@@ -290,7 +279,7 @@ var monitorCmd = &cobra.Command{
 					termbox.Sync()
 				}
 			}
-		
+
 		}
 		termbox.Close()
 		if exitMsg != "" {
@@ -306,9 +295,9 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-func stateOnTopologyError()  error {
-   err := errors.New("Found initial errors.")
-   return err
+func stateOnTopologyError() error {
+	err := errors.New("Found initial errors.")
+	return err
 }
 
 func checkfailed() {
@@ -317,8 +306,8 @@ func checkfailed() {
 		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 			masterFailover(true)
 			if failoverCtr == faillimit {
-				addState("INF00002",  State {"INFO",  "Failover limit reached. Exiting on failover completion.",false}   )
-	 		}
+				curStates.Add("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", false})
+			}
 		} else if failtime > 0 && rem%10 == 0 {
 
 			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
@@ -336,32 +325,13 @@ func newTbChan() chan termbox.Event {
 	return termboxChan
 }
 
-func logState(key string) {
-	s := curStates[ key ] 
-	if s.errPrinted == false {
-		log.Println( s.errType ,":" , key ,  s.errDesc) 
-		tlog.Add(fmt.Sprintf( s.errType ,":" , key ,  s.errDesc))
-	 	s.errPrinted = true
-	 	curStates[ key ]=s
-
-	}	
-}	
-func addState(key string , s  State) {
- _, ok := curStates[key] 
-   if   !ok {
-   curStates[key]= s
-
-   }
-   logState(key)
-}
-
 func repmgrFlagCheck() {
 	if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
 
-		    addState("WAR00001",  State {"WARNING", "Error opening logfile, disabling for the rest of the session.",false}   )
+			curStates.Add("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", false})
 			logfile = ""
 		}
 	}
@@ -369,17 +339,17 @@ func repmgrFlagCheck() {
 	if hosts != "" {
 		hostList = strings.Split(hosts, ",")
 	} else {
-		addState(  "ERR00001" ,  State {"ERROR", "No hosts list specified.",false})
-	 		 
+		curStates.Add("ERR00001", state.State{"ERROR", "No hosts list specified.", false})
+
 	}
 	// validate users.
 	if user == "" {
-		addState("ERR00002",  State {"ERROR",  "No master user/pair specified.",false} )
+		curStates.Add("ERR00002", state.State{"ERROR", "No master user/pair specified.", false})
 	}
 	dbUser, dbPass = splitPair(user)
 
 	if rpluser == "" {
-	 	addState( "ERR00003" ,  State {"ERROR",  "No replication user/pair specified.",false})
+		curStates.Add("ERR00003", state.State{"ERROR", "No replication user/pair specified.", false})
 	}
 	rplUser, rplPass = splitPair(rpluser)
 
@@ -397,7 +367,7 @@ func repmgrFlagCheck() {
 		return false
 	}
 	if ret() == false && prefMaster != "" {
-		addState( "ERR00004" ,  State {"ERROR",  "Preferred master is not included in the hosts option.",false})
+		curStates.Add("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", false})
 	}
 
 	// Check user privileges on live servers
@@ -405,16 +375,16 @@ func repmgrFlagCheck() {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
-		        addState( "ERR00005" ,  State {"ERROR",  fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err),false})
+				curStates.Add("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), false})
 			}
 			if priv.Repl_client_priv == "N" {
-			    addState( "ERR00006" ,  State {"ERROR",  fmt.Sprintf("Error getting  REPLICATION_CLIENT privileges for user %s on host %s: %s.", dbUser, sv.Host, err),false})
-			} 
+				curStates.Add("ERR00006", state.State{"ERROR", fmt.Sprintf("Error getting  REPLICATION_CLIENT privileges for user %s on host %s: %s.", dbUser, sv.Host, err), false})
+			}
 			if priv.Repl_slave_priv == "N" {
-				addState( "ERR00007" ,  State {"ERROR",  "User must have REPLICATION_SLAVE privilege.",false})
+				curStates.Add("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.", false})
 			}
 			if priv.Super_priv == "N" {
-				addState( "ERR00008" ,  State {"ERROR",  "User must have SUPER privilege.",false})
+				curStates.Add("ERR00008", state.State{"ERROR", "User must have SUPER privilege.", false})
 			}
 		}
 	}
