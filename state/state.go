@@ -63,13 +63,12 @@ func (SM *StateMachine) ClearState()  {
 func (SM *StateMachine) CanMonitor() bool {
 	
 	for _, value := range *SM.curState {
-	    if value.ErrType == "ERROR"{
-		  SM.discovered  = true
-	     return true
-
+	    if value.ErrType == "ERROR" {
+		     return false
 	  } 
-	}  
-	return false
+	} 
+	  SM.discovered  = true 
+	return true
 
 }
 

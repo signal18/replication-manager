@@ -81,6 +81,7 @@ var (
 	httpserv    bool
 	daemon      bool
 	sme         *state.StateMachine
+	
 )
 
 func init() {
@@ -244,6 +245,7 @@ var monitorCmd = &cobra.Command{
 					//logprint(states[i])
 				}
 				sme.ClearState() 
+			
 				for _, server := range servers {
 					server.check()
 				}
@@ -251,6 +253,7 @@ var monitorCmd = &cobra.Command{
 				if sme.CanMonitor() {
 					checkfailed()
 				}
+
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
