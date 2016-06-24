@@ -71,7 +71,7 @@ func newServerList() error {
 func topologyInit() error {
 	newServerList()
 
-    // Check user privileges on live servers
+	// Check user privileges on live servers
 	for _, sv := range servers {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
@@ -179,26 +179,26 @@ func topologyInit() error {
 	}
 	// Final check if master has been found
 	if master == nil {
-		
+
 		sme.AddState("ERR00012", state.State{"ERROR", "Could not autodetect a master.", "TOPO"})
 
 	} else {
-	
-	// End of autodetection code
-	if multiMaster == false {
-		for _, sl := range slaves {
-			if verbose {
-				log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
+
+		// End of autodetection code
+		if multiMaster == false {
+			for _, sl := range slaves {
+				if verbose {
+					log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
+				}
+				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
+					log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
+				}
+				if sl.LogBin == "OFF" {
+
+					sme.AddState("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), "TOPO"})
+				}
 			}
-			if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-				log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
-			}
-		  if sl.LogBin == "OFF" {
-		   	
-			sme.AddState("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), "TOPO"})
-		  }	
 		}
-	}
 	}
 	if verbose {
 		printTopology()

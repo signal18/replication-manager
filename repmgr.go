@@ -81,7 +81,6 @@ var (
 	httpserv    bool
 	daemon      bool
 	sme         *state.StateMachine
-	
 )
 
 func init() {
@@ -232,7 +231,7 @@ var monitorCmd = &cobra.Command{
 
 			select {
 			case <-ticker.C:
-				if sme.IsDiscovered() == false {  
+				if sme.IsDiscovered() == false {
 					for _, server := range servers {
 						server.close()
 					}
@@ -245,8 +244,6 @@ var monitorCmd = &cobra.Command{
 					}
 					sme.ClearState() 
 				}
-				
-			
 				for _, server := range servers {
 					server.check()
 				}
@@ -388,5 +385,4 @@ func repmgrFlagCheck() {
 		sme.AddState("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
 	}
 
-	
 }
