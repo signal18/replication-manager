@@ -70,6 +70,24 @@ func newServerList() error {
 func topologyInit() error {
 	newServerList()
 
+    // Check user privileges on live servers
+	for _, sv := range servers {
+		if sv.State != stateFailed {
+			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
+			if err != nil {
+				sme.AddState("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), "CONF"})
+			}
+			if priv.Repl_client_priv == "N" {
+			}
+			if priv.Repl_slave_priv == "N" {
+				sme.AddState("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.", "CONF"})
+			}
+			if priv.Super_priv == "N" {
+				sme.AddState("ERR00008", state.State{"ERROR", "User must have SUPER privilege.", "CONF"})
+			}
+		}
+	}
+
 	// If no slaves are detected, then bail out
 	if len(slaves) == 0 {
 		sme.AddState("ERR00010", state.State{"ERROR", "No slaves were detected.", "TOPO"})

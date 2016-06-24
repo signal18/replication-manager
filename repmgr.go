@@ -6,7 +6,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/mariadb-corporation/replication-manager/termlog"
@@ -232,15 +231,18 @@ var monitorCmd = &cobra.Command{
 
 			select {
 			case <-ticker.C:
-				if ! sme.IsDiscovered() {  
+				if sme.IsDiscovered() == false {  
+					for _, server := range servers {
+						server.close()
+					}
 					repmgrFlagCheck()
-				    topologyInit()
+					topologyInit()
 				}
 				states := sme.GetState()
 				for i := range states {
 					tlog.Add(states[i])
 					//logprint(states[i])
-    			}
+				}
 				sme.ClearState() 
 				for _, server := range servers {
 					server.check()
@@ -380,21 +382,5 @@ func repmgrFlagCheck() {
 		sme.AddState("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
 	}
 
-	// Check user privileges on live servers
-	for _, sv := range servers {
-		if sv.State != stateFailed {
-			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
-			if err != nil {
-				sme.AddState("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), "CONF"})
-			}
-			if priv.Repl_client_priv == "N" {
-			}
-			if priv.Repl_slave_priv == "N" {
-				sme.AddState("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.", "CONF"})
-			}
-			if priv.Super_priv == "N" {
-				sme.AddState("ERR00008", state.State{"ERROR", "User must have SUPER privilege.", "CONF"})
-			}
-		}
-	}
+	
 }

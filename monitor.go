@@ -298,6 +298,11 @@ func (server *ServerMonitor) log() {
 	return
 }
 
+func (server *ServerMonitor) close() {
+	server.Conn.Close()
+	return
+}
+
 func (server *ServerMonitor) writeState() error {
 	server.log()
 	f, err := os.Create("/tmp/repmgr.state")
