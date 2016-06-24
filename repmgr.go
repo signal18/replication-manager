@@ -28,7 +28,6 @@ var (
 	slaves      serverList
 	master      *ServerMonitor
 	exit        bool
-	vy          int
 	dbUser      string
 	dbPass      string
 	rplUser     string
