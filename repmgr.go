@@ -6,16 +6,15 @@
 package main
 
 import (
-	"errors"
+
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
-
 	"github.com/go-sql-driver/mysql"
-	"github.com/mariadb-corporation/replication-manager/state"
+	"github.com/mariadb-corporation/replication-manager/state" 
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -151,6 +150,7 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initOnce()
 		repmgrFlagCheck()
 		err := topologyInit()
 		if err != nil {
@@ -180,6 +180,7 @@ var switchoverCmd = &cobra.Command{
 	Short: "Perform a master switch",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initOnce()
 		repmgrFlagCheck()
 		err := topologyInit()
 		if err != nil {
@@ -200,6 +201,7 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initOnce()
 		sme = new(state.StateMachine ) 
 		sme.Init()
 		
@@ -229,23 +231,26 @@ var monitorCmd = &cobra.Command{
 
 		termboxChan := newTbChan()
 		interval := time.Second
-		ticker := time.NewTicker(interval * 1)
+		ticker := time.NewTicker(interval * 2)
 		for exit == false {
 
 			select {
 			case <-ticker.C:
+				
 				repmgrFlagCheck()
 				topologyInit()
-				sme.LogState()
-				
+				states := sme.GetState()
+				for i  := range states {
+					tlog.Add(states[i])
+					//logprint(states[i])
+    			}
 				sme.ClearState() 
-				
-				if stateOnTopologyError() == nil {
-					for _, server := range servers {
+				for _, server := range servers {
 						server.check()
-					}
-					display()
-					checkfailed()
+				}
+				display()	
+				if sme.CanMonitor()  {
+				   checkfailed()
 				}
 			case event := <-termboxChan:
 				switch event.Type {
@@ -304,10 +309,6 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-func stateOnTopologyError() error {
-	err := errors.New("Found initial errors.")
-	return err
-}
 
 func checkfailed() {
 	if master.State == stateFailed && interactive == false {
@@ -334,8 +335,8 @@ func newTbChan() chan termbox.Event {
 	return termboxChan
 }
 
-func repmgrFlagCheck() {
-	if logfile != "" {
+func initOnce() {
+if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
@@ -344,9 +345,13 @@ func repmgrFlagCheck() {
 			logfile = ""
 		}
 	}
+}
+
+func repmgrFlagCheck() {
+	
 	// if slaves option has been supplied, split into a slice.
 	if hosts != "" {
-		hostList = strings.Split(hosts, ",")
+				hostList = strings.Split(hosts, ",")
 	} else {
 		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.",  "CONF"})
 

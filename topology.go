@@ -169,14 +169,10 @@ func topologyInit() error {
 			if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
 				log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 			}
-			/*if sl.LogBin == "OFF" {
-				return topologyError{
-					81,
-					fmt.Sprintf("ERROR: Binary log disabled on slave: %s", sl.URL),
-				}
-			}*/
+		  if sl.LogBin == "OFF" {
+		   	
 			sme.AddState("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), "TOPO"})
-
+		  }	
 		}
 	}
 	if verbose {

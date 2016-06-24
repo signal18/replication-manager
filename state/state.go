@@ -1,6 +1,6 @@
 package state
 
-import "log"
+import "fmt"
 
 type State struct {
 	ErrType string
@@ -26,7 +26,7 @@ func (m Map) Add(key string, s State) {
 
 func (m Map) Search(key string) bool{
 	_, ok := m[key]
-	if !ok { 
+	if ok { 
 		 return true 
 	} else {
 		 return false 
@@ -53,21 +53,41 @@ func (SM *StateMachine) AddState(key string, s State)  {
 
 // Clear copies the current map to argument map and clears it
 func (SM *StateMachine) ClearState()  {
-	SM.oldState = SM.curState
-	n := NewMap()
-	SM.curState = n
+	SM.oldState =SM.curState
+	SM.curState = nil
+	 SM.curState =NewMap()
 	 
 }
 
-func (SM *StateMachine) LogState( ) {
-	  for key, value := range *SM.curState {
-	    if  SM.oldState.Search( key) {
-	   		log.Println(value.ErrType, ":", key, value.ErrDesc)
-
-	   	
-	}
-
+func (SM *StateMachine) CanMonitor() bool {
+	
+	for _, value := range *SM.curState {
+	    if value.ErrType == "ERROR"{
+		 
+	     return true
 	} 
+	}  
+	return false
+
+}
+
+func (SM *StateMachine) GetState() []string{
+	
+    var log []string
+	for key2, value2 := range *SM.oldState {
+	    if  SM.curState.Search( key2) == false{
+	   		log= append(log,fmt.Sprintf( "%s:%s HAS BEEN FIXED, %s",  value2.ErrType, key2,value2.ErrDesc))
+	   		 
+   		}
+	} 
+
+	for key, value := range *SM.curState {
+	    if   SM.oldState.Search( key) == false {
+	   		log= append(log,fmt.Sprintf("%s:%s %s", value.ErrType, key, value.ErrDesc))
+	   		
+   		}
+   	}
+	return log
 }
 
 
