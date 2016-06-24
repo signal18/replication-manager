@@ -6,19 +6,19 @@
 package main
 
 import (
-
 	"fmt"
+	"github.com/go-sql-driver/mysql"
+	"github.com/mariadb-corporation/replication-manager/state"
+	"github.com/mariadb-corporation/replication-manager/termlog"
+	"github.com/nsf/termbox-go"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/tanji/mariadb-tools/dbhelper"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
 	"time"
-	"github.com/go-sql-driver/mysql"
-	"github.com/mariadb-corporation/replication-manager/state" 
-	"github.com/nsf/termbox-go"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/tanji/mariadb-tools/dbhelper"
 )
 
 const repmgrVersion string = "0.7-dev"
@@ -37,12 +37,11 @@ var (
 	failCount   int
 	failoverCtr int
 	failoverTs  int64
-	tlog        TermLog
+	tlog        termlog.TermLog
 	ignoreList  []string
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
-	
 )
 
 const (
@@ -83,8 +82,6 @@ var (
 	httpserv    bool
 	daemon      bool
 	sme         *state.StateMachine
-
-
 )
 
 func init() {
@@ -202,9 +199,8 @@ var monitorCmd = &cobra.Command{
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		initOnce()
-		sme = new(state.StateMachine ) 
+		sme = new(state.StateMachine)
 		sme.Init()
-		
 
 		if httpserv {
 			go httpserver()
@@ -222,7 +218,7 @@ var monitorCmd = &cobra.Command{
 			_, termlength = termbox.Size()
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
-		tlog = NewTermLog(loglen)
+		tlog = termlog.NewTermLog(loglen)
 		if interactive {
 			tlog.Add("Monitor started in interactive mode")
 		} else {
@@ -241,19 +237,17 @@ var monitorCmd = &cobra.Command{
 				    topologyInit()
 				}
 				states := sme.GetState()
-				for i  := range states {
+				for i := range states {
 					tlog.Add(states[i])
 					//logprint(states[i])
     			}
 				sme.ClearState() 
-
-
 				for _, server := range servers {
-						server.check()
+					server.check()
 				}
-				display()	
-				if sme.CanMonitor()  {
-				   checkfailed()
+				display()
+				if sme.CanMonitor() {
+					checkfailed()
 				}
 			case event := <-termboxChan:
 				switch event.Type {
@@ -312,14 +306,13 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-
 func checkfailed() {
 	if master.State == stateFailed && interactive == false {
 		rem := (failoverTs + failtime) - time.Now().Unix()
 		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 			masterFailover(true)
 			if failoverCtr == faillimit {
-				sme.AddState("INF00002",   state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
+				sme.AddState("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
 			}
 		} else if failtime > 0 && rem%10 == 0 {
 
@@ -339,7 +332,7 @@ func newTbChan() chan termbox.Event {
 }
 
 func initOnce() {
-if logfile != "" {
+	if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
@@ -351,12 +344,12 @@ if logfile != "" {
 }
 
 func repmgrFlagCheck() {
-	
+
 	// if slaves option has been supplied, split into a slice.
 	if hosts != "" {
-				hostList = strings.Split(hosts, ",")
+		hostList = strings.Split(hosts, ",")
 	} else {
-		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.",  "CONF"})
+		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.", "CONF"})
 
 	}
 	// validate users.
@@ -392,15 +385,15 @@ func repmgrFlagCheck() {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
-				sme.AddState("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err),  "CONF"})
+				sme.AddState("ERR00005", state.State{"ERROR", fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), "CONF"})
 			}
 			if priv.Repl_client_priv == "N" {
 			}
 			if priv.Repl_slave_priv == "N" {
-				sme.AddState("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.",  "CONF"})
+				sme.AddState("ERR00007", state.State{"ERROR", "User must have REPLICATION_SLAVE privilege.", "CONF"})
 			}
 			if priv.Super_priv == "N" {
-				sme.AddState("ERR00008", state.State{"ERROR", "User must have SUPER privilege.",  "CONF"})
+				sme.AddState("ERR00008", state.State{"ERROR", "User must have SUPER privilege.", "CONF"})
 			}
 		}
 	}
