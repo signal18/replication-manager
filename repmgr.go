@@ -14,7 +14,8 @@ import (
 	"strings"
 	"time"
 	"github.com/go-sql-driver/mysql"
-	"github.com/mariadb-corporation/replication-manager/state" 
+	"github.com/mariadb-corporation/replication-manager/state"
+	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,12 +38,11 @@ var (
 	failCount   int
 	failoverCtr int
 	failoverTs  int64
-	tlog        TermLog
+	tlog        termlog.TermLog
 	ignoreList  []string
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
-	
 )
 
 const (
@@ -202,9 +202,8 @@ var monitorCmd = &cobra.Command{
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		initOnce()
-		sme = new(state.StateMachine ) 
+		sme = new(state.StateMachine)
 		sme.Init()
-		
 
 		if httpserv {
 			go httpserver()
@@ -222,7 +221,7 @@ var monitorCmd = &cobra.Command{
 			_, termlength = termbox.Size()
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
-		tlog = NewTermLog(loglen)
+		tlog = termlog.NewTermLog(loglen)
 		if interactive {
 			tlog.Add("Monitor started in interactive mode")
 		} else {
@@ -236,7 +235,6 @@ var monitorCmd = &cobra.Command{
 
 			select {
 			case <-ticker.C:
-				
 				repmgrFlagCheck()
 				topologyInit()
 				states := sme.GetState()
