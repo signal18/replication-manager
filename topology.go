@@ -28,6 +28,7 @@ func newServerList() error {
 
 	servers = make([]*ServerMonitor, len(hostList))
 	slaves = nil
+	master = nil
 	for k, url := range hostList {
 		var err error
 		servers[k], err = newServerMonitor(url)
@@ -128,6 +129,8 @@ func topologyInit() error {
 		}
 	}
 
+	
+	if slaves != nil {
 	// Depending if we are doing a failover or a switchover, we will find the master in the list of
 	// failed hosts or unconnected hosts.
 	// First of all, get a server id from the slaves slice, they should be all the same
@@ -154,6 +157,8 @@ func topologyInit() error {
 			}
 		}
 	}
+     
+
 	// If master is not initialized, find it in the failed hosts list
 	if master == nil {
 		// Slave master_host variable must point to failed master
@@ -170,6 +175,7 @@ func topologyInit() error {
 				}
 			}
 		}
+	}
 	}
 	// Final check if master has been found
 	if master == nil {

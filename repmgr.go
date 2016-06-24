@@ -238,13 +238,14 @@ var monitorCmd = &cobra.Command{
 					}
 					repmgrFlagCheck()
 					topologyInit()
+					states := sme.GetState()
+					for i := range states {
+						tlog.Add(states[i])
+						//logprint(states[i])
+					}
+					sme.ClearState() 
 				}
-				states := sme.GetState()
-				for i := range states {
-					tlog.Add(states[i])
-					//logprint(states[i])
-				}
-				sme.ClearState() 
+				
 			
 				for _, server := range servers {
 					server.check()
@@ -312,6 +313,7 @@ var monitorCmd = &cobra.Command{
 }
 
 func checkfailed() {
+	if master != nil {  
 	if master.State == stateFailed && interactive == false {
 		rem := (failoverTs + failtime) - time.Now().Unix()
 		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
@@ -323,6 +325,7 @@ func checkfailed() {
 
 			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 		}
+	}
 	}
 }
 

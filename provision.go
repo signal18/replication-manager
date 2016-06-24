@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
-
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
@@ -12,7 +11,8 @@ import (
 var (
 	source      string
 	destination string
-	cleanall    = false
+	cleanall    = false 
+	
 )
 
 func init() {
@@ -23,6 +23,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
 	bootstrapCmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
+
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -30,6 +31,7 @@ var bootstrapCmd = &cobra.Command{
 	Short: "Bootstrap a replication environment",
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
+	
 		repmgrFlagCheck()
 		if cleanall {
 			log.Println("INFO : Cleaning up replication on existing servers")
