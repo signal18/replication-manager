@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
+	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,12 +39,13 @@ var (
 	failCount   int
 	failoverCtr int
 	failoverTs  int64
-	tlog        TermLog
+	tlog        termlog.TermLog
 	ignoreList  []string
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
 	curStates   *state.Map
+	prevStates  *state.Map
 )
 
 const (
