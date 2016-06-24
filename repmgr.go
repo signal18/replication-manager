@@ -6,6 +6,12 @@
 package main
 
 import (
+	"io/ioutil"
+	"log"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/mariadb-corporation/replication-manager/termlog"
@@ -13,11 +19,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/mariadb-tools/dbhelper"
-	"io/ioutil"
-	"log"
-	"os"
-	"strings"
-	"time"
 )
 
 const repmgrVersion string = "0.7-dev"
@@ -28,7 +29,6 @@ var (
 	slaves      serverList
 	master      *ServerMonitor
 	exit        bool
-	vy          int
 	dbUser      string
 	dbPass      string
 	rplUser     string
@@ -242,7 +242,7 @@ var monitorCmd = &cobra.Command{
 						tlog.Add(states[i])
 						//logprint(states[i])
 					}
-					sme.ClearState() 
+					sme.ClearState()
 				}
 				for _, server := range servers {
 					server.check()
@@ -310,19 +310,19 @@ var monitorCmd = &cobra.Command{
 }
 
 func checkfailed() {
-	if master != nil {  
-	if master.State == stateFailed && interactive == false {
-		rem := (failoverTs + failtime) - time.Now().Unix()
-		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-			masterFailover(true)
-			if failoverCtr == faillimit {
-				sme.AddState("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
-			}
-		} else if failtime > 0 && rem%10 == 0 {
+	if master != nil {
+		if master.State == stateFailed && interactive == false {
+			rem := (failoverTs + failtime) - time.Now().Unix()
+			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
+				masterFailover(true)
+				if failoverCtr == faillimit {
+					sme.AddState("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
+				}
+			} else if failtime > 0 && rem%10 == 0 {
 
-			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
+				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
+			}
 		}
-	}
 	}
 }
 
