@@ -37,13 +37,14 @@ func (m Map) Search(key string) bool{
 type StateMachine struct {
   curState *Map
   oldState *Map
-}
+  discovered  bool
+ }
 
  func (SM *StateMachine) Init()  {
 	 
 	 SM.curState = NewMap( )
 	 SM.oldState  = NewMap()
-  	 
+  	 SM.discovered  = false
 }
 
 func (SM *StateMachine) AddState(key string, s State)  {
@@ -63,11 +64,18 @@ func (SM *StateMachine) CanMonitor() bool {
 	
 	for _, value := range *SM.curState {
 	    if value.ErrType == "ERROR"{
-		 
+		  SM.discovered  = true
 	     return true
-	} 
+
+	  } 
 	}  
 	return false
+
+}
+
+func (SM *StateMachine) IsDiscovered() bool {
+	 
+	return SM.discovered 
 
 }
 

@@ -236,15 +236,18 @@ var monitorCmd = &cobra.Command{
 
 			select {
 			case <-ticker.C:
-				
-				repmgrFlagCheck()
-				topologyInit()
+				if ! sme.IsDiscovered() {  
+					repmgrFlagCheck()
+				    topologyInit()
+				}
 				states := sme.GetState()
 				for i  := range states {
 					tlog.Add(states[i])
 					//logprint(states[i])
     			}
 				sme.ClearState() 
+
+
 				for _, server := range servers {
 						server.check()
 				}

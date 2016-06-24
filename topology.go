@@ -25,7 +25,9 @@ func (e topologyError) Error() string {
 }
 
 func newServerList() error {
+
 	servers = make([]*ServerMonitor, len(hostList))
+	slaves = nil
 	for k, url := range hostList {
 		var err error
 		servers[k], err = newServerMonitor(url)
@@ -153,13 +155,11 @@ func topologyInit() error {
 	}
 	// Final check if master has been found
 	if master == nil {
-		/*return topologyError{
-			83,
-			fmt.Sprintf("ERROR: Could not autodetect a master"),
-		}*/
+		
 		sme.AddState("ERR00012", state.State{"ERROR", "Could not autodetect a master.", "TOPO"})
 
-	}
+	} else {
+	
 	// End of autodetection code
 	if multiMaster == false {
 		for _, sl := range slaves {
@@ -174,6 +174,7 @@ func topologyInit() error {
 			sme.AddState("ERR00013", state.State{"ERROR", fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), "TOPO"})
 		  }	
 		}
+	}
 	}
 	if verbose {
 		printTopology()
