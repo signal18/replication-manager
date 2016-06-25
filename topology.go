@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
-
+    "errors" 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
@@ -203,7 +203,11 @@ func topologyInit() error {
 	if verbose {
 		printTopology()
 	}
-	return nil
+	if sme.CanMonitor() {
+	  return nil
+	} 	else {
+	  return errors.New("Some Errors Exists State Machine Engine")
+	} 
 }
 
 func printTopology() {

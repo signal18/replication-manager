@@ -6,13 +6,13 @@ import (
 	"os/exec"
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/mariadb-corporation/replication-manager/state"
 )
 
 var (
 	source      string
 	destination string
 	cleanall    = false 
-	
 )
 
 func init() {
@@ -31,7 +31,8 @@ var bootstrapCmd = &cobra.Command{
 	Short: "Bootstrap a replication environment",
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
-	
+		sme = new(state.StateMachine)
+		sme.Init()
 		repmgrFlagCheck()
 		if cleanall {
 			log.Println("INFO : Cleaning up replication on existing servers")
@@ -72,7 +73,7 @@ var bootstrapCmd = &cobra.Command{
 		if prefMaster != "" {
 			masterKey = func() int {
 				for k, server := range servers {
-					if server.Host == prefMaster {
+					if server.URL == prefMaster {
 						return k
 					}
 				}
