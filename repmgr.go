@@ -295,7 +295,6 @@ var monitorCmd = &cobra.Command{
 			}
 
 		}
-		termbox.Close()
 		if exitMsg != "" {
 			log.Println(exitMsg)
 		}
