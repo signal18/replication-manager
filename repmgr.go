@@ -198,6 +198,7 @@ var monitorCmd = &cobra.Command{
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		initOnce()
+		repmgrFlagCheck()
 		sme = new(state.StateMachine)
 		sme.Init()
 
@@ -235,7 +236,6 @@ var monitorCmd = &cobra.Command{
 					for _, server := range servers {
 						server.close()
 					}
-					repmgrFlagCheck()
 					topologyInit()
 					states := sme.GetState()
 					for i := range states {
@@ -341,7 +341,6 @@ func initOnce() {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
-
 			sme.AddState("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", "CONF"})
 			logfile = ""
 		}
