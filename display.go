@@ -34,8 +34,8 @@ func display() {
 		tlog.Line++
 	}
 	tlog.Line++
+	f := false
 	for _, server := range servers {
-		f := false
 		if server.State == stateUnconn || server.State == stateFailed {
 			if f == false {
 				printfTb(0, tlog.Line, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Standalone Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
