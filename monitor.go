@@ -57,12 +57,17 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		return server, errmsg
 	}
 	params := fmt.Sprintf("timeout=%ds", timeout)
-	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, socket), params)
-	if err != nil {
-		server.State = stateFailed
-		return server, err
+	mydsn := func() string {
+		dsn := dbUser + ":" + dbPass + "@"
+		if server.Host != "" {
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+		} else {
+			dsn += "unix(" + socket + ")/" + params
+		}
+		return dsn
 	}
-	return server, nil
+	server.Conn, err = sqlx.Open("mysql", mydsn())
+	return server, err
 }
 
 func (server *ServerMonitor) check() {

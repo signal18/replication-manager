@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+
+	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
-	"github.com/mariadb-corporation/replication-manager/state"
 )
 
 var (
 	source      string
 	destination string
-	cleanall    = false 
+	cleanall    = false
 )
 
 func init() {
@@ -36,12 +37,9 @@ var bootstrapCmd = &cobra.Command{
 		repmgrFlagCheck()
 		if cleanall {
 			log.Println("INFO : Cleaning up replication on existing servers")
-			err := newServerList()
-			if err != nil {
-				log.Fatal(err)
-			}
+			newServerList()
 			for _, server := range servers {
-				err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+				err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -59,14 +57,9 @@ var bootstrapCmd = &cobra.Command{
 				}
 			}
 		} else {
-			err := topologyInit()
+			err := topologyDiscover()
 			if err == nil {
 				log.Fatal("ERROR: Environment already has an existing master/slave setup")
-			}
-			if topologyErr, ok := err.(*topologyError); ok {
-				if topologyErr.Code != 81 {
-					log.Fatal(err)
-				}
 			}
 		}
 		masterKey := 0

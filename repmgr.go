@@ -148,7 +148,8 @@ var failoverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		initOnce()
 		repmgrFlagCheck()
-		err := topologyInit()
+		newServerList()
+		err := topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -178,7 +179,8 @@ var switchoverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		initOnce()
 		repmgrFlagCheck()
-		err := topologyInit()
+		newServerList()
+		err := topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -236,7 +238,7 @@ var monitorCmd = &cobra.Command{
 					for _, server := range servers {
 						server.close()
 					}
-					topologyInit()
+					topologyDiscover()
 					states := sme.GetState()
 					for i := range states {
 						tlog.Add(states[i])
