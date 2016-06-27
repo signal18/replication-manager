@@ -27,7 +27,7 @@ func httpserver() {
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "dashboard/app.html")
+	http.ServeFile(w, r, httproot+"/dashboard/app.html")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {

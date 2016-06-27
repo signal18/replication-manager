@@ -78,6 +78,7 @@ var (
 	bindaddr    string
 	httpport    string
 	httpserv    bool
+	httproot    string
 	daemon      bool
 )
 
@@ -98,6 +99,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&httpserv, "http-server", false, "Start the HTTP monitor")
 	monitorCmd.Flags().StringVar(&bindaddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	monitorCmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
+	monitorCmd.Flags().StringVar(&httproot, "http-root", "/usr/share/replication-manager", "Path to HTTP monitor files")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
@@ -108,6 +110,7 @@ func init() {
 	httpserv = viper.GetBool("http-server")
 	bindaddr = viper.GetString("http-bind-address")
 	httpport = viper.GetString("http-port")
+	httproot = viper.GetString("http-root")
 	daemon = viper.GetBool("daemon")
 }
 
