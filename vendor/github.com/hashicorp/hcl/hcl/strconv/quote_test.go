@@ -36,9 +36,10 @@ var unquotetests = []unQuoteTest{
 	{`"\a\b\f\n\r\t\v\\\""`, "\a\b\f\n\r\t\v\\\""},
 	{`"'"`, "'"},
 	{`"${file("foo")}"`, `${file("foo")}`},
-	{`"${file(\"foo\")}"`, `${file("foo")}`},
+	{`"${file("\"foo\"")}"`, `${file("\"foo\"")}`},
 	{`"echo ${var.region}${element(split(",",var.zones),0)}"`,
 		`echo ${var.region}${element(split(",",var.zones),0)}`},
+	{`"${HH\\:mm\\:ss}"`, `${HH\:mm\:ss}`},
 }
 
 var misquoted = []string{

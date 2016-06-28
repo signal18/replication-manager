@@ -97,6 +97,7 @@ type Privileges struct {
 	Super_priv       string
 	Repl_slave_priv  string
 	Repl_client_priv string
+	Reload_priv      string
 }
 
 /* Connect to a MySQL server. Must be deprecated, use MySQLConnect instead */
@@ -140,7 +141,7 @@ func GetProcesslist(db *sqlx.DB) []Processlist {
 func GetPrivileges(db *sqlx.DB, user string, host string) (Privileges, error) {
 	db.MapperFunc(strings.Title)
 	priv := Privileges{}
-	stmt := "SELECT Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv FROM mysql.user WHERE user = ? AND host = ?"
+	stmt := "SELECT Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv, Reload_priv FROM mysql.user WHERE user = ? AND host = ?"
 	row := db.QueryRowx(stmt, user, host)
 	err := row.StructScan(&priv)
 	if err != nil {
