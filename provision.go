@@ -54,6 +54,10 @@ var bootstrapCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal(err)
 				}
+				_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 		} else {
 			err := topologyInit()
@@ -80,7 +84,10 @@ var bootstrapCmd = &cobra.Command{
 		if masterKey == -1 {
 			log.Fatal("ERROR: Preferred master could not be found in existing servers")
 		}
-		servers[masterKey].Conn.Exec("RESET MASTER")
+		_, err := servers[masterKey].Conn.Exec("RESET MASTER")
+		if err != nil {
+			log.Println("WARN : RESET MASTER failed on masster")
+		}
 		for key, server := range servers {
 			if key == masterKey {
 				continue

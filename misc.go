@@ -2,8 +2,10 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"net"
+	"net/smtp"
 	"strconv"
 	"strings"
 )
@@ -61,4 +63,26 @@ func contains(s []string, e string) bool {
 		}
 	}
 	return false
+}
+
+func mail(msg string) {
+	// Connect to the remote SMTP server.
+	c, err := smtp.Dial(mailSMTPAddr + ":" + mailSMTPPort)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+	// Set the sender and recipient.
+	c.Mail(mailFrom)
+	c.Rcpt(mailTo)
+	// Send the email body.
+	wc, err := c.Data()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer wc.Close()
+	buf := bytes.NewBufferString(msg)
+	if _, err = buf.WriteTo(wc); err != nil {
+		log.Fatal(err)
+	}
 }
