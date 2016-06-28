@@ -118,7 +118,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&preScript, "pre-failover-script", "", "Path of pre-failover script")
 	cmd.Flags().StringVar(&postScript, "post-failover-script", "", "Path of post-failover script")
 	cmd.Flags().Int64Var(&maxDelay, "maxdelay", 0, "Maximum replication delay before initiating failover")
-	cmd.Flags().BoolVar(&gtidCheck, "gtidcheck", false, "Check that GTID sequence numbers are identical before initiating failover")
+	cmd.Flags().BoolVar(&gtidCheck, "gtidcheck", false, "Do not initiate failover unless slaves are fully in sync")
 	cmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	cmd.Flags().StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	cmd.Flags().Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
@@ -373,6 +373,8 @@ func repmgrFlagCheck() {
 				log.Fatalln("ERROR: User must have REPLICATION_SLAVE privilege")
 			} else if priv.Super_priv == "N" {
 				log.Fatalln("ERROR: User must have SUPER privilege")
+			} else if priv.Reload_priv == "N" {
+				log.Fatalln("ERROR: User must have RELOAD privilege")
 			}
 		}
 	}
