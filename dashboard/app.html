@@ -88,15 +88,18 @@ $scope.inttoggle = function() {
 		});
 }
 };
-$scope.gtidstring = function(arr) {
-	var output = [];
-	for (i = 0; i < arr.length; i++) {
-		var gtid = "";
-		gtid = arr[i]["DomainID"] + '-' + arr[i]["ServerID"] + '-' + arr[i]["SeqNo"];
-		output.push(gtid)
-	}
-	return output.join(",");
-};
+	$scope.gtidstring = function(arr) {
+		var output = [];
+		if (arr != null) {
+			for (i = 0; i < arr.length; i++) {
+				var gtid = "";
+				gtid = arr[i]["DomainID"] + '-' + arr[i]["ServerID"] + '-' + arr[i]["SeqNo"];
+				output.push(gtid)
+			}
+			return output.join(",");
+		}
+		return '';
+	};
 }]);
 
 	</script>
