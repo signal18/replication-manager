@@ -8,16 +8,16 @@
 	var app = angular.module('dashboard', ['ngResource']);
 
 	app.factory('Servers', function($resource) {
-	  return $resource('http://localhost:10001/servers');
+	  return $resource('/servers');
 	});
 
 	app.factory('Log', function($resource) {
-		return $resource('http://localhost:10001/log');
+		return $resource('/log');
 	});
 
 	app.factory('Settings', function($resource) {
 		return $resource(
-			'http://localhost:10001/settings',
+			'/settings',
 			'',
 			{ 'query':  {method:'GET', isArray:false} }
 		);
@@ -25,7 +25,7 @@
 
 	app.factory('Master', function($resource) {
 		return $resource(
-			'http://localhost:10001/master',
+			'/master',
 			'',
 			{ 'query':  {method:'GET', isArray:false} }
 		);
@@ -51,7 +51,7 @@
 		if (fail == false) {
 			var r = confirm("Confirm switchover");
 			if (r == true) {
-				var response = $http.get('http://localhost:10001/switchover');
+				var response = $http.get('/switchover');
 				response.success(function(data, status, headers, config) {
 						console.log("Ok.");
 				});
@@ -63,7 +63,7 @@
 		else {
 			var r = confirm("Confirm failover");
 			if (r == true) {
-				var response = $http.get('http://localhost:10001/failover');
+				var response = $http.get('/failover');
 				response.success(function(data, status, headers, config) {
 						console.log("Ok.");
 				});
@@ -76,7 +76,7 @@
 $scope.inttoggle = function() {
 	var r = confirm("Confirm Mode Change");
 	if (r == true) {
-		var response = $http.get('http://localhost:10001/interactive');
+		var response = $http.get('/interactive');
 		response.success(function(data, status, headers, config) {
 
 				console.log("Ok.");
