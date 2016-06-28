@@ -73,6 +73,7 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if master.State != stateFailed && failCount == 0 {
 		masterFailover(false)
 		return
@@ -83,11 +84,13 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerFailover(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	masterFailover(true)
 	return
 }
 
 func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if interactive == true {
 		interactive = false
 	} else {
