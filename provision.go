@@ -74,7 +74,7 @@ var bootstrapCmd = &cobra.Command{
 		if prefMaster != "" {
 			masterKey = func() int {
 				for k, server := range servers {
-					if server.Host == prefMaster {
+					if server.URL == prefMaster {
 						return k
 					}
 				}
