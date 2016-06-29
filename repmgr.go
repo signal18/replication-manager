@@ -104,8 +104,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
 	monitorCmd.Flags().StringVar(&httproot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
 	monitorCmd.Flags().StringVar(&mailFrom, "mail-from", "mrm@localhost", "Alert email sender")
-	monitorCmd.Flags().StringVar(&mailTo, "mail-to", "mrm@localhost", "Alert email recipients, separated by commas")
-	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "Alert email SMTP server address, in host:[port] format")
+	monitorCmd.Flags().StringVar(&mailTo, "mail-to", "", "Alert email recipients, separated by commas")
+	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
@@ -119,7 +119,7 @@ func init() {
 	httproot = viper.GetString("http-root")
 	mailTo = viper.GetString("mail-to")
 	mailFrom = viper.GetString("mail-from")
-	mailSmtp = viper.GetString("mail-smtp")
+	mailSMTPAddr = viper.GetString("mail-smtp-addr")
 	daemon = viper.GetBool("daemon")
 }
 
