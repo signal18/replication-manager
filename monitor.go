@@ -95,6 +95,10 @@ func (server *ServerMonitor) check() {
 				server.delete(&slaves)
 			}
 		}
+		// Send alert if state has changed
+		if server.PrevState != server.State {
+			//a := alert.Alert{}
+		}
 		return
 	}
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
