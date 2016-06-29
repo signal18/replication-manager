@@ -152,12 +152,6 @@ func (server *ServerMonitor) check() {
 func (server *ServerMonitor) refresh() error {
 	err := server.Conn.Ping()
 	if err != nil {
-		// we want the failed state for masters to be set by the monitor
-		if server.State != stateMaster {
-			server.State = stateFailed
-			// remove from slave list
-			server.delete(&slaves)
-		}
 		return err
 	}
 	sv, err := dbhelper.GetVariables(server.Conn)
