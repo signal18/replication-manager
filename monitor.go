@@ -46,6 +46,8 @@ type ServerMonitor struct {
 
 type serverList []*ServerMonitor
 
+var maxConn string
+
 /* Initializes a server object */
 func newServerMonitor(url string) (*ServerMonitor, error) {
 	server := new(ServerMonitor)
@@ -220,6 +222,8 @@ func (server *ServerMonitor) freeze() bool {
 		logprintf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
+	maxConn = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
+	_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
 	logprintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
 	return true

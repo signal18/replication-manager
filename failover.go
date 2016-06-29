@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os/exec"
 	"time"
 
@@ -138,6 +139,7 @@ func masterFailover(fail bool) bool {
 				logprintf("ERROR: Could not set old master as read-only, %s", err)
 			}
 		}
+		_, err = oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
 		if multiMaster == false {
