@@ -24,7 +24,7 @@ func (a *Alert) Email() error {
 	subj := fmt.Sprintf("MRM alert - State change detected on host %s", a.Origin)
 	e.Subject = subj
 	text := fmt.Sprintf(`MariaDB Replication manager has detected a change of state for host %s.
-  State is now %s`, a.Origin, a.Type)
+New server state is %s.`, a.Origin, a.Type)
 	e.Text = []byte(text)
 	err := e.Send(a.Destination, nil)
 	return err
