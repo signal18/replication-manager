@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/mariadb-corporation/replication-manager/alert"
 	"github.com/mariadb-corporation/replication-manager/gtid"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
@@ -96,8 +97,21 @@ func (server *ServerMonitor) check() {
 			}
 		}
 		// Send alert if state has changed
-		if server.PrevState != server.State {
-			//a := alert.Alert{}
+		if server.PrevState != server.State && mailTo != "" {
+			if verbose {
+				logprintf("INFO : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+			}
+			a := alert.Alert{
+				From:        mailFrom,
+				To:          mailTo,
+				Type:        server.State,
+				Origin:      server.URL,
+				Destination: mailSMTPAddr,
+			}
+			err = a.Email()
+			if err != nil {
+				logprint("ERROR: Could not send email alert: ", err)
+			}
 		}
 		return
 	}
