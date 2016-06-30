@@ -5,10 +5,7 @@ import:
 - package: github.com/nsf/termbox-go
 - package: github.com/spf13/cobra
 - package: github.com/spf13/viper
+- package: github.com/jordan-wright/email
 - package: github.com/tanji/mariadb-tools
   subpackages:
   - dbhelper
-- package: github.com/mariadb-corporation/replication-manager
-  version: ^0.7.0-beta2
-  subpackages:
-  - gtid
