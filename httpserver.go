@@ -9,10 +9,13 @@ import (
 
 type settings struct {
 	Interactive string `json:"interactive"`
+	FailoverCtr string `json:"failoverctr"`
+	Faillimit   string `json:"faillimit"`
 }
 
 func httpserver() {
 	http.HandleFunc("/", handlerApp)
+	http.HandleFunc("/dashboard.js", handlerJS)
 	http.HandleFunc("/servers", handlerServers)
 	http.HandleFunc("/master", handlerMaster)
 	http.HandleFunc("/log", handlerLog)
@@ -28,6 +31,10 @@ func httpserver() {
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, httproot+"/app.html")
+}
+
+func handlerJS(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, httproot+"/dashboard.js")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +60,8 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(settings)
 	s.Interactive = fmt.Sprintf("%v", interactive)
+	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
+	s.Faillimit = fmt.Sprintf("%d", faillimit)
 	e := json.NewEncoder(w)
 	err := e.Encode(s)
 	if err != nil {
