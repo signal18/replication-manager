@@ -66,21 +66,35 @@ $scope.switch = function(fail) {
     }
   }
 };
+
 $scope.inttoggle = function() {
 var r = confirm("Confirm Mode Change");
 if (r == true) {
   var response = $http.get('/interactive');
   response.success(function(data, status, headers, config) {
-
       console.log("Ok.");
-
-  });
+    });
 
   response.error(function(data, status, headers, config) {
       console.log("Error.");
-  });
-}
+    });
+  }
 };
+
+$scope.resetfail = function() {
+var r = confirm("Reset Failover counter?");
+if (r == true) {
+  var response = $http.get('/resetfail');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
+
 $scope.gtidstring = function(arr) {
   var output = [];
   if (arr != null) {

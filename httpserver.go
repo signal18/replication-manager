@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 type settings struct {
-	Interactive string `json:"interactive"`
-	FailoverCtr string `json:"failoverctr"`
-	Faillimit   string `json:"faillimit"`
+	Interactive  string `json:"interactive"`
+	FailoverCtr  string `json:"failoverctr"`
+	Faillimit    string `json:"faillimit"`
+	LastFailover string `json:"lastfailover"`
 }
 
 func httpserver() {
@@ -23,6 +25,7 @@ func httpserver() {
 	http.HandleFunc("/failover", handlerFailover)
 	http.HandleFunc("/interactive", handlerInteractiveToggle)
 	http.HandleFunc("/settings", handlerSettings)
+	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
@@ -62,6 +65,12 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Interactive = fmt.Sprintf("%v", interactive)
 	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
 	s.Faillimit = fmt.Sprintf("%d", faillimit)
+	if failoverTs != 0 {
+		t := time.Unix(failoverTs, 0)
+		s.LastFailover = t.String()
+	} else {
+		s.LastFailover = "N/A"
+	}
 	e := json.NewEncoder(w)
 	err := e.Encode(s)
 	if err != nil {
@@ -105,5 +114,11 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 	} else {
 		interactive = true
 	}
+	return
+}
+
+func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	failoverCtr = 0
 	return
 }
