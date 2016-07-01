@@ -227,6 +227,8 @@ var monitorCmd = &cobra.Command{
 			tlog.Add("Monitor started in automatic mode")
 		}
 
+		newServerList()
+
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * 2)
@@ -235,9 +237,6 @@ var monitorCmd = &cobra.Command{
 			select {
 			case <-ticker.C:
 				if sme.IsDiscovered() == false {
-					for _, server := range servers {
-						server.close()
-					}
 					topologyDiscover()
 					states := sme.GetState()
 					for i := range states {

@@ -61,13 +61,13 @@ func topologyDiscover() error {
 		sv.refresh()
 		if sv.UsingGtid != "" {
 			if verbose {
-				log.Printf("DEBUG: Server %s is configured as a slave", sv.URL)
+				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
 			}
 			sv.State = stateSlave
 			slaves = append(slaves, sv)
 		} else {
 			if verbose {
-				log.Printf("DEBUG: Server %s is not a slave. Setting aside", sv.URL)
+				logprintf("DEBUG: Server %s is not a slave. Setting aside", sv.URL)
 			}
 			sv.State = stateUnconn
 		}
@@ -139,7 +139,7 @@ func topologyDiscover() error {
 					master = servers[k]
 					master.State = stateMaster
 					if verbose {
-						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
 				}
@@ -149,7 +149,7 @@ func topologyDiscover() error {
 					master = servers[k]
 					master.State = stateMaster
 					if verbose {
-						log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
+						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
 				}
@@ -166,7 +166,7 @@ func topologyDiscover() error {
 						master = servers[k]
 						master.PrevState = stateMaster
 						if verbose {
-							log.Printf("DEBUG: Assuming failed server %s was a master", s.URL)
+							logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
 						}
 						break
 					}
@@ -185,10 +185,10 @@ func topologyDiscover() error {
 		if multiMaster == false {
 			for _, sl := range slaves {
 				if verbose {
-					log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
+					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 				}
 				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-					log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
+					logprintf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 				}
 				if sl.LogBin == "OFF" {
 
