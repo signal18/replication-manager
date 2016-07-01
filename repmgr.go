@@ -204,11 +204,12 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		initOnce()
-		repmgrFlagCheck()
 		sme = new(state.StateMachine)
 		sme.Init()
 
+		initOnce()
+		repmgrFlagCheck()
+		
 		if httpserv {
 			go httpserver()
 		}

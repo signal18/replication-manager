@@ -192,12 +192,12 @@ func topologyDiscover() error {
 	if master == nil {
 
 		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master.", ErrFrom: "TOPO"})
-		master.RplMasterStatus=false
+		
 
 	
 	} else {
-
-		// End of autodetection code
+		master.RplMasterStatus=false
+			// End of autodetection code
 		if multiMaster == false {
 			for _, sl := range slaves {
 				if loglevel > 2 {
