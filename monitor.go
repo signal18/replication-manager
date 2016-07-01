@@ -109,12 +109,15 @@ func (server *ServerMonitor) check() {
 		if server.State == stateFailed {
 			server.State = stateUnconn
 			if autorejoin {
-				if verbose {
-					logprint("INFO : Rejoining previously failed server", server.URL)
-				}
-				err = server.rejoin()
-				if err != nil {
-					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+				// Check if master exists in topology before rejoining.
+				if master != nil {
+					if verbose {
+						logprint("INFO : Rejoining previously failed server", server.URL)
+					}
+					err = server.rejoin()
+					if err != nil {
+						logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+					}
 				}
 			}
 		} else if server.State != stateMaster {
