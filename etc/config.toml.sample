@@ -1,0 +1,64 @@
+# config.toml
+# Example replication-manager configuration file
+
+# LOG
+# ---
+
+logfile = "/var/log/replication-manager.log"
+verbose = true
+
+# TOPOLOGY
+# --------
+
+hosts = "127.0.0.1:5054,127.0.0.1:5012"
+user = "skysql:skyvodka"
+rpluser = "skysql:skyvodka"
+title = "cluster1"
+connect-timeout = 1
+prefmaster = "127.0.0.1:5012"
+
+# HTTP
+# ----
+
+http-server = true  
+http-bind-address = "0.0.0.0"   
+http-port = "10001"
+http-root = "./dashboard"
+
+# ALERTS
+# ------
+
+mail-from = "mrm@localhost"
+mail-smtp-addr = "localhost:25"
+mail-to = "mrm@mariadb.com"
+
+# FAILOVER
+# --------
+
+# Automatically rejoin a failed server to the current master
+# Slaves will re enter with read-only
+# Wait 5 seconds before killing long running transactions
+
+autorejoin = true
+readonly = true
+wait-kill = 5000
+post-failover-script = ""
+pre-failover-script =""
+
+# CHECK
+# -----
+
+check-type = "tcp"
+
+# Failover after N failures detection
+# Monitoring is stopped after N failovers
+# Wait N seconds for next failover
+# Don't initiate failover unless slaves are fully in sync
+# Don't failover when replication pass delay
+
+failcount = 5
+failover-limit = 3
+failover-time-limit = 10
+gtidcheck = true
+maxdelay = 30
+
