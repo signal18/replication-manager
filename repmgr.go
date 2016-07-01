@@ -243,10 +243,12 @@ var monitorCmd = &cobra.Command{
 					for i := range states {
 						logprint(states[i])
 					}
+					if sme.CanMonitor() {
+						logprint("Monitoring servers...")
+					}	
 				}
 				display()
 				if sme.CanMonitor() {
-					logprint("Monitoring servers...")
 					if loglevel >= 2 {
 						for k, v := range servers {
 							logprintf("DEBUG: Server [%d]: %v", k, v)
