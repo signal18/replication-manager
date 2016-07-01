@@ -192,7 +192,9 @@ func topologyDiscover() error {
 	if master == nil {
 
 		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master.", ErrFrom: "TOPO"})
+		master.RplMasterStatus=false
 
+	
 	} else {
 
 		// End of autodetection code
@@ -205,11 +207,14 @@ func topologyDiscover() error {
 					logprintf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
 				}
 				if sl.LogBin == "OFF" {
-
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
+				}
+				if sl.Delay.Int64  < maxDelay {
+				   master.RplMasterStatus=true
 				}
 			}
 		}
+		sme.SetMasterUpAndSync(master.SemiSyncMasterStatus, master.RplMasterStatus)
 	}
 	if sme.CanMonitor() {
 		return nil
