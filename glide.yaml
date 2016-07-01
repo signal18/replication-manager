@@ -9,3 +9,9 @@ import:
 - package: github.com/tanji/mariadb-tools
   subpackages:
   - dbhelper
+- package: github.com/mariadb-corporation/replication-manager
+  version: 0.7
+  subpackages:
+  - gtid
+  - alert
+  - termlog
