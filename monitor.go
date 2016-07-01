@@ -41,6 +41,10 @@ type ServerMonitor struct {
 	IOError        string
 	SQLErrno       uint
 	SQLError       string
+	SemiSyncMasterStatus bool
+	RplMasterStatus bool
+
+
 }
 
 type serverList []*ServerMonitor
@@ -101,7 +105,13 @@ func (server *ServerMonitor) check() {
 			}
 		}
 		return
-	}
+	} else {
+		// uptime monitoring 
+		if server.State == stateMaster	{
+	
+			sme.SetMasterUpAndSync(server.SemiSyncMasterStatus,server.RplMasterStatus)
+		}	
+    }	 
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		// If we reached this stage with a previously failed server, reintroduce
@@ -180,6 +190,10 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
+	su  := dbhelper.GetStatus(server.Conn)
+	if su["SEMI_SYNC_MASTER_STATUS"] == "ON" {
+	 	server.SemiSyncMasterStatus= true
+	}  	
 	return nil
 }
 
@@ -220,6 +234,7 @@ func (server *ServerMonitor) freeze() bool {
 	dbhelper.KillThreads(server.Conn)
 	return true
 }
+
 
 /* Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate. */
 func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
