@@ -31,6 +31,9 @@ func init() {
 	if verbose == true && loglevel == 0 {
 		loglevel = 1
 	}
+	if verbose == false && loglevel == 1 {
+		verbose = true
+	}
 }
 
 func main() {
