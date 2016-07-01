@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var loglevel int
+
 func init() {
 	viper.SetConfigType("toml")
 	viper.SetConfigName("config")
@@ -20,10 +22,18 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
 	rootCmd.PersistentFlags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Print detailed execution info")
+	rootCmd.PersistentFlags().IntVar(&loglevel, "log-level", 0, "Log verbosity level")
 	viper.BindPFlags(rootCmd.PersistentFlags())
 	user = viper.GetString("user")
 	hosts = viper.GetString("hosts")
 	rpluser = viper.GetString("rpluser")
+	loglevel = viper.GetInt("log-level")
+	if verbose == true && loglevel == 0 {
+		loglevel = 1
+	}
+	if verbose == false && loglevel > 0 {
+		verbose = true
+	}
 }
 
 func main() {
