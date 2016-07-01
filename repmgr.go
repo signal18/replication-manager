@@ -245,11 +245,11 @@ var monitorCmd = &cobra.Command{
 					}
 					sme.ClearState()
 				}
-				for _, server := range servers {
-					server.check()
-				}
 				display()
 				if sme.CanMonitor() {
+					for _, server := range servers {
+						server.check()
+					}
 					checkfailed()
 				}
 

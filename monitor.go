@@ -56,7 +56,7 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("timeout=%ds", timeout)
+	params := fmt.Sprintf("?timeout=%ds", timeout)
 	mydsn := func() string {
 		dsn := dbUser + ":" + dbPass + "@"
 		if server.Host != "" {
