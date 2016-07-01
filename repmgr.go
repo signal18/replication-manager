@@ -319,7 +319,6 @@ var monitorCmd = &cobra.Command{
 func checkfailed() {
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
-			logprintf("INFO : %s/%s failures. Next step is failover time check", master.FailCount, maxfail)
 			rem := (failoverTs + failtime) - time.Now().Unix()
 			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 				masterFailover(true)
