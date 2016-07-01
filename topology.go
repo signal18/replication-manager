@@ -58,6 +58,9 @@ func topologyDiscover() error {
 	pingServerList()
 
 	for _, sv := range servers {
+		if sv.State == stateFailed {
+			continue
+		}
 		sv.refresh()
 		if sv.UsingGtid != "" {
 			if verbose {
