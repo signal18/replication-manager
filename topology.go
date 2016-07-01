@@ -212,9 +212,6 @@ func topologyDiscover() error {
 			}
 		}
 	}
-	if verbose {
-		printTopology()
-	}
 	if sme.CanMonitor() {
 		return nil
 	}

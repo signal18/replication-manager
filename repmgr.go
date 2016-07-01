@@ -237,7 +237,9 @@ var monitorCmd = &cobra.Command{
 			select {
 			case <-ticker.C:
 				if sme.IsDiscovered() == false {
-					logprint("Discovering topology...")
+					if loglevel >= 2 {
+						logprint("DEBUG: Discovering topology loop")
+					}
 					topologyDiscover()
 					states := sme.GetState()
 					for i := range states {
@@ -246,8 +248,8 @@ var monitorCmd = &cobra.Command{
 				}
 				display()
 				if sme.CanMonitor() {
-					logprint("Monitoring servers...")
 					if loglevel >= 2 {
+						logprint("DEBUG: Monitoring server loop")
 						for k, v := range servers {
 							logprintf("DEBUG: Server [%d]: %v", k, v)
 						}
