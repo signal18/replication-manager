@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
@@ -40,13 +41,6 @@ var (
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
-)
-
-const (
-	stateFailed string = "Failed"
-	stateMaster string = "Master"
-	stateSlave  string = "Slave"
-	stateUnconn string = "Unconnected"
 )
 
 var (
@@ -83,6 +77,7 @@ var (
 	mailFrom     string
 	mailTo       string
 	mailSMTPAddr string
+	sme          *state.StateMachine
 )
 
 func init() {
@@ -156,8 +151,10 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initOnce()
 		repmgrFlagCheck()
-		err := topologyInit()
+		newServerList()
+		err := topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -185,8 +182,10 @@ var switchoverCmd = &cobra.Command{
 	Short: "Perform a master switch",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		initOnce()
 		repmgrFlagCheck()
-		err := topologyInit()
+		newServerList()
+		err := topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -205,20 +204,17 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-
+		initOnce()
 		repmgrFlagCheck()
-
-		err := topologyInit()
-		if err != nil {
-			log.Fatalln(err)
-		}
+		sme = new(state.StateMachine)
+		sme.Init()
 
 		if httpserv {
 			go httpserver()
 		}
 
 		if !daemon {
-			err = termbox.Init()
+			err := termbox.Init()
 			if err != nil {
 				log.Fatalln("Termbox initialization error", err)
 			}
@@ -228,7 +224,7 @@ var monitorCmd = &cobra.Command{
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {
-				termlength = 120;
+				termlength = 120
 			}
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
@@ -238,22 +234,52 @@ var monitorCmd = &cobra.Command{
 		} else {
 			tlog.Add("Monitor started in automatic mode")
 		}
+
+		newServerList()
+
 		termboxChan := newTbChan()
 		interval := time.Second
-		ticker := time.NewTicker(interval * 1)
+		ticker := time.NewTicker(interval * 2)
 		for exit == false {
+
 			select {
 			case <-ticker.C:
-				for _, server := range servers {
-					server.check()
+				if sme.IsDiscovered() == false {
+					if loglevel >= 2 {
+						logprint("DEBUG: Discovering topology loop")
+					}
+					pingServerList()
+					topologyDiscover()
+					states := sme.GetState()
+					for i := range states {
+						logprint(states[i])
+					}
 				}
 				display()
-				checkfailed()
+				if sme.CanMonitor() {
+					if loglevel >= 2 {
+						logprint("DEBUG: Monitoring server loop")
+						for k, v := range servers {
+							logprintf("DEBUG: Server [%d]: %v", k, v)
+						}
+						logprintf("DEBUG: Master: %v", master)
+						for k, v := range slaves {
+							logprintf("DEBUG: Slave [%d]: %v", k, v)
+						}
+					}
+					for _, server := range servers {
+						server.check()
+					}
+					topologyDiscover()
+					checkfailed()
+				}
+				sme.ClearState()
+
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						if master.State != stateFailed || failCount > 0 {
+						if master.State != stateFailed || master.FailCount > 0 {
 							masterFailover(false)
 						} else {
 							logprint("ERROR: Master failed, cannot initiate switchover")
@@ -290,14 +316,15 @@ var monitorCmd = &cobra.Command{
 					termbox.Sync()
 				}
 			}
+
 		}
-		termbox.Close()
 		if exitMsg != "" {
 			log.Println(exitMsg)
 		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
+		termbox.Close()
 		for _, server := range servers {
 			defer server.Conn.Close()
 		}
@@ -305,16 +332,18 @@ var monitorCmd = &cobra.Command{
 }
 
 func checkfailed() {
-	if master.State == stateFailed && interactive == false {
-		rem := (failoverTs + failtime) - time.Now().Unix()
-		if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-			masterFailover(true)
-			if failoverCtr == faillimit {
-				exitMsg = "INFO : Failover limit reached. Exiting on failover completion."
-				exit = true
+	if master != nil {
+		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
+			rem := (failoverTs + failtime) - time.Now().Unix()
+			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
+				masterFailover(true)
+				if failoverCtr == faillimit {
+					sme.AddState("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
+				}
+			} else if failtime > 0 && rem%10 == 0 {
+
+				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 			}
-		} else if failtime > 0 && rem%10 == 0 {
-			logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
 		}
 	}
 }
@@ -329,29 +358,34 @@ func newTbChan() chan termbox.Event {
 	return termboxChan
 }
 
-func repmgrFlagCheck() {
+func initOnce() {
 	if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
-			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
+			sme.AddState("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", "CONF"})
 			logfile = ""
 		}
 	}
+}
+
+func repmgrFlagCheck() {
+
 	// if slaves option has been supplied, split into a slice.
 	if hosts != "" {
 		hostList = strings.Split(hosts, ",")
 	} else {
-		log.Fatal("ERROR: No hosts list specified.")
+		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.", "CONF"})
+
 	}
 	// validate users.
 	if user == "" {
-		log.Fatal("ERROR: No master user/pair specified.")
+		sme.AddState("ERR00002", state.State{"ERROR", "No master user/pair specified.", "CONF"})
 	}
 	dbUser, dbPass = splitPair(user)
 
 	if rpluser == "" {
-		log.Fatal("ERROR: No replication user/pair specified.")
+		sme.AddState("ERR00003", state.State{"ERROR", "No replication user/pair specified.", "CONF"})
 	}
 	rplUser, rplPass = splitPair(rpluser)
 
@@ -369,25 +403,6 @@ func repmgrFlagCheck() {
 		return false
 	}
 	if ret() == false && prefMaster != "" {
-		log.Fatal("ERROR: Preferred master is not included in the hosts option")
-	}
-
-	// Check user privileges on live servers
-	for _, sv := range servers {
-		if sv.State != stateFailed {
-			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
-			if err != nil {
-				log.Fatalf("ERROR: Error getting privileges for user %s on host %s: %s", dbUser, sv.Host, err)
-			}
-			if priv.Repl_client_priv == "N" {
-				log.Fatalln("ERROR: User must have REPLICATION_CLIENT privilege")
-			} else if priv.Repl_slave_priv == "N" {
-				log.Fatalln("ERROR: User must have REPLICATION_SLAVE privilege")
-			} else if priv.Super_priv == "N" {
-				log.Fatalln("ERROR: User must have SUPER privilege")
-			} else if priv.Reload_priv == "N" {
-				log.Fatalln("ERROR: User must have RELOAD privilege")
-			}
-		}
+		sme.AddState("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
 	}
 }

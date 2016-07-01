@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
@@ -20,74 +22,103 @@ func init() {
 	topologyCmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
 }
 
-func (e topologyError) Error() string {
-	return fmt.Sprintf("%v [#%v]", e.Msg, e.Code)
-}
-
-func newServerList() error {
+func newServerList() {
 	servers = make([]*ServerMonitor, len(hostList))
 	for k, url := range hostList {
 		var err error
 		servers[k], err = newServerMonitor(url)
-		if verbose {
-			log.Printf("DEBUG: Creating new server: %v", servers[k].URL)
-		}
 		if err != nil {
-			if driverErr, ok := err.(*mysql.MySQLError); ok {
-				if driverErr.Number == 1045 {
-					return fmt.Errorf("ERROR: Database access denied: %s", err.Error())
-				}
-			}
-			if verbose {
-				log.Println("ERROR:", err)
-			}
-			log.Printf("INFO : Server %s is dead.", servers[k].URL)
-			servers[k].State = stateFailed
-			continue
+			log.Fatalf("ERROR: Could not open connection to server %s : %s", servers[k].URL, err)
 		}
 		if verbose {
-			log.Printf("DEBUG: Checking if server %s is slave", servers[k].URL)
-		}
-		servers[k].refresh()
-		if servers[k].UsingGtid != "" {
-			if verbose {
-				log.Printf("DEBUG: Server %s is configured as a slave", servers[k].URL)
-			}
-			servers[k].State = stateSlave
-			slaves = append(slaves, servers[k])
-		} else {
-			if verbose {
-				log.Printf("DEBUG: Server %s is not a slave. Setting aside", servers[k].URL)
-			}
-			servers[k].State = stateUnconn
+			logprintf("DEBUG: New server created: %v.", servers[k].URL)
 		}
 	}
-	return nil
+}
+
+func pingServerList() {
+	wg := new(sync.WaitGroup)
+	mx := new(sync.Mutex)
+	for _, sv := range servers {
+		wg.Add(1)
+		go func(sv *ServerMonitor) {
+			defer wg.Done()
+			err := sv.Conn.Ping()
+			if err != nil {
+				if driverErr, ok := err.(*mysql.MySQLError); ok {
+					if driverErr.Number == 1045 {
+						sv.State = stateUnconn
+						mx.Lock()
+						sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
+						mx.Unlock()
+					}
+				} else {
+					mx.Lock()
+					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("INFO : Server %s is dead.", sv.URL), ErrFrom: "TOPO"})
+					mx.Unlock()
+					sv.State = stateFailed
+				}
+			}
+		}(sv)
+	}
+	wg.Wait()
 }
 
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
-func topologyInit() error {
-	err := newServerList()
-	if err != nil {
-		return err
+func topologyDiscover() error {
+	slaves = nil
+	for _, sv := range servers {
+		if sv.State == stateFailed {
+			continue
+		}
+		sv.refresh()
+		if sv.UsingGtid != "" {
+			if loglevel > 2 {
+				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
+			}
+			sv.State = stateSlave
+			slaves = append(slaves, sv)
+		} else {
+			if loglevel > 2 {
+				logprintf("DEBUG: Server %s is not a slave. Setting aside", sv.URL)
+			}
+			sv.State = stateUnconn
+		}
+		// Check user privileges on live servers
+		if sv.State != stateFailed {
+			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
+			if err != nil {
+				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), ErrFrom: "CONF"})
+			}
+			if priv.Repl_client_priv == "N" {
+			}
+			if priv.Repl_slave_priv == "N" {
+				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION_SLAVE privilege.", ErrFrom: "CONF"})
+			}
+			if priv.Super_priv == "N" {
+				sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege.", ErrFrom: "CONF"})
+			}
+		}
 	}
-	// If no slaves are detected, then bail out
+
+	// If no slaves are detected, generate an error
 	if len(slaves) == 0 {
-		return errors.New("ERROR: No slaves were detected")
+		sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected.", ErrFrom: "TOPO"})
 	}
 
 	// Check that all slave servers have the same master.
 	if multiMaster == false {
 		for _, sl := range slaves {
+
 			if sl.hasSiblings(slaves) == false {
-				return topologyError{
-					33,
-					fmt.Sprintf("ERROR: Multiple masters were detected"),
-				}
+				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring.", ErrFrom: "TOPO"})
+
+				multiMaster = true
 			}
 		}
-	} else {
+	}
+	if multiMaster == true {
 		srw := 0
 		for _, s := range servers {
 			if s.ReadOnly == "OFF" {
@@ -95,83 +126,100 @@ func topologyInit() error {
 			}
 		}
 		if srw > 1 {
-			return topologyError{
-				11,
-				fmt.Sprintf("ERROR: RW server count > 1 in multi-master mode. Please set slaves to RO (SET GLOBAL read_only=1)"),
+			sme.AddState("WARN00003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master.", ErrFrom: "TOPO"})
+		}
+		srw = 0
+		for _, s := range servers {
+			if s.ReadOnly == "ON" {
+				srw++
 			}
+		}
+		if srw > 1 {
+			sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to prefered master.", ErrFrom: "TOPO"})
+			// 		    server:=GetPreferedMaster()
+			//			    dbhelper.SetReadOnly(server.Conn, true)
+
 		}
 	}
 
-	// Depending if we are doing a failover or a switchover, we will find the master in the list of
-	// failed hosts or unconnected hosts.
-	// First of all, get a server id from the slaves slice, they should be all the same
-	sid := slaves[0].MasterServerID
-	for k, s := range servers {
-		if multiMaster == false && s.State == stateUnconn {
-			if s.ServerID == sid {
-				master = servers[k]
-				master.State = stateMaster
-				if verbose {
-					log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
-				}
-				break
-			}
-		}
-		if multiMaster == true {
-			if s.ReadOnly == "OFF" {
-				master = servers[k]
-				master.State = stateMaster
-				if verbose {
-					log.Printf("DEBUG: Server %s was autodetected as a master", s.URL)
-				}
-				break
-			}
-		}
-	}
-	// If master is not initialized, find it in the failed hosts list
-	if master == nil {
-		// Slave master_host variable must point to failed master
-		smh := slaves[0].MasterHost
+	if slaves != nil {
+		// Depending if we are doing a failover or a switchover, we will find the master in the list of
+		// failed hosts or unconnected hosts.
+		// First of all, get a server id from the slaves slice, they should be all the same
+		sid := slaves[0].MasterServerID
 		for k, s := range servers {
-			if s.State == stateFailed {
-				if s.Host == smh || s.IP == smh {
+			if multiMaster == false && s.State == stateUnconn {
+				if s.ServerID == sid {
 					master = servers[k]
-					master.PrevState = stateMaster
-					if verbose {
-						log.Printf("DEBUG: Assuming failed server %s was a master", s.URL)
+					master.State = stateMaster
+					if loglevel > 2 {
+						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
+				}
+			}
+			if multiMaster == true {
+				if s.ReadOnly == "OFF" {
+					master = servers[k]
+					master.State = stateMaster
+					if loglevel > 2 {
+						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
+					}
+					break
+				}
+			}
+		}
+
+		// If master is not initialized, find it in the failed hosts list
+		if master == nil {
+			// Slave master_host variable must point to failed master
+			smh := slaves[0].MasterHost
+			for k, s := range servers {
+				if s.State == stateFailed {
+					if s.Host == smh || s.IP == smh {
+						master = servers[k]
+						master.PrevState = stateMaster
+						if loglevel > 2 {
+							logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
+						}
+						break
+					}
 				}
 			}
 		}
 	}
 	// Final check if master has been found
 	if master == nil {
-		return topologyError{
-			83,
-			fmt.Sprintf("ERROR: Could not autodetect a master"),
-		}
-	}
-	// End of autodetection code
 
-	for _, sl := range slaves {
-		if verbose {
-			log.Printf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
-		}
-		if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-			log.Printf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
-		}
-		if sl.LogBin == "OFF" {
-			return topologyError{
-				81,
-				fmt.Sprintf("ERROR: Binary log disabled on slave: %s", sl.URL),
+		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master.", ErrFrom: "TOPO"})
+		master.RplMasterStatus=false
+
+	
+	} else {
+
+		// End of autodetection code
+		if multiMaster == false {
+			for _, sl := range slaves {
+				if loglevel > 2 {
+					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
+				}
+				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
+					logprintf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
+				}
+				if sl.LogBin == "OFF" {
+					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
+				}
+				if sl.Delay.Int64  < maxDelay {
+				   master.RplMasterStatus=true
+				}
 			}
 		}
+		sme.SetMasterUpAndSync(master.SemiSyncMasterStatus, master.RplMasterStatus)
 	}
-	if verbose {
-		printTopology()
+	if sme.CanMonitor() {
+		return nil
 	}
-	return nil
+	return errors.New("Error found in State Machine Engine")
 }
 
 func printTopology() {
@@ -186,7 +234,8 @@ var topologyCmd = &cobra.Command{
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
 		repmgrFlagCheck()
-		err := topologyInit()
+		newServerList()
+		err := topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}

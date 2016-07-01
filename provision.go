@@ -5,6 +5,7 @@ import (
 	"log"
 	"os/exec"
 
+	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )
@@ -23,6 +24,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
 	bootstrapCmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
+
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -30,15 +32,14 @@ var bootstrapCmd = &cobra.Command{
 	Short: "Bootstrap a replication environment",
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
+		sme = new(state.StateMachine)
+		sme.Init()
 		repmgrFlagCheck()
+		newServerList()
 		if cleanall {
 			log.Println("INFO : Cleaning up replication on existing servers")
-			err := newServerList()
-			if err != nil {
-				log.Fatal(err)
-			}
 			for _, server := range servers {
-				err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+				err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -60,14 +61,9 @@ var bootstrapCmd = &cobra.Command{
 				}
 			}
 		} else {
-			err := topologyInit()
+			err := topologyDiscover()
 			if err == nil {
 				log.Fatal("ERROR: Environment already has an existing master/slave setup")
-			}
-			if topologyErr, ok := err.(*topologyError); ok {
-				if topologyErr.Code != 81 {
-					log.Fatal(err)
-				}
 			}
 		}
 		masterKey := 0

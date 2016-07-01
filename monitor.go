@@ -18,35 +18,46 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Conn           *sqlx.DB
-	URL            string
-	Host           string
-	Port           string
-	IP             string
-	BinlogPos      *gtid.List
-	Strict         string
-	ServerID       uint
-	MasterServerID uint
-	MasterHost     string
-	LogBin         string
-	UsingGtid      string
-	CurrentGtid    *gtid.List
-	SlaveGtid      *gtid.List
-	IOThread       string
-	SQLThread      string
-	ReadOnly       string
-	Delay          sql.NullInt64
-	State          string
-	PrevState      string
-	IOErrno        uint
-	IOError        string
-	SQLErrno       uint
-	SQLError       string
+	Conn                 *sqlx.DB
+	URL                  string
+	Host                 string
+	Port                 string
+	IP                   string
+	BinlogPos            *gtid.List
+	Strict               string
+	ServerID             uint
+	MasterServerID       uint
+	MasterHost           string
+	LogBin               string
+	UsingGtid            string
+	CurrentGtid          *gtid.List
+	SlaveGtid            *gtid.List
+	IOThread             string
+	SQLThread            string
+	ReadOnly             string
+	Delay                sql.NullInt64
+	State                string
+	PrevState            string
+	IOErrno              uint
+	IOError              string
+	SQLErrno             uint
+	SQLError             string
+	FailCount            int
+	SemiSyncMasterStatus bool
+	RplMasterStatus      bool
 }
 
 type serverList []*ServerMonitor
 
 var maxConn string
+
+const (
+	stateFailed  string = "Failed"
+	stateMaster  string = "Master"
+	stateSlave   string = "Slave"
+	stateUnconn  string = "Unconnected"
+	stateSuspect string = "Suspect"
+)
 
 /* Initializes a server object */
 func newServerMonitor(url string) (*ServerMonitor, error) {
@@ -59,13 +70,18 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("timeout=%ds", timeout)
-	server.Conn, err = dbhelper.MySQLConnect(dbUser, dbPass, dbhelper.GetAddress(server.Host, server.Port, socket), params)
-	if err != nil {
-		server.State = stateFailed
-		return server, err
+	params := fmt.Sprintf("?timeout=%ds", timeout)
+	mydsn := func() string {
+		dsn := dbUser + ":" + dbPass + "@"
+		if server.Host != "" {
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+		} else {
+			dsn += "unix(" + socket + ")/" + params
+		}
+		return dsn
 	}
-	return server, nil
+	server.Conn, err = sqlx.Open("mysql", mydsn())
+	return server, err
 }
 
 func (server *ServerMonitor) check() {
@@ -84,16 +100,24 @@ func (server *ServerMonitor) check() {
 	}
 	if err != nil {
 		// we want the failed state for masters to be set by the monitor
-		if err != sql.ErrNoRows && failCount < maxfail && server.State == stateMaster {
-			failCount++
-			tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, maxfail))
-			if failCount == maxfail {
-				tlog.Add("Declaring master as failed")
+		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
+			server.FailCount++
+			logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+			if server.FailCount == maxfail {
+				logprint("WARN : Declaring master as failed")
 				master.State = stateFailed
+			} else {
+				master.State = stateSuspect
 			}
 		} else {
 			if server.State != stateMaster {
-				server.State = stateFailed
+				server.FailCount++
+				if server.FailCount == maxfail {
+					logprintf("WARN : Declaring server %s as failed", server.URL)
+					server.State = stateFailed
+				} else {
+					server.State = stateSuspect
+				}
 				// remove from slave list
 				server.delete(&slaves)
 			}
@@ -117,6 +141,12 @@ func (server *ServerMonitor) check() {
 		}
 		return
 	}
+	// uptime monitoring
+	if server.State == stateMaster {
+
+		sme.SetMasterUpAndSync(server.SemiSyncMasterStatus, server.RplMasterStatus)
+	}
+
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		// If we reached this stage with a previously failed server, reintroduce
@@ -124,12 +154,15 @@ func (server *ServerMonitor) check() {
 		if server.State == stateFailed {
 			server.State = stateUnconn
 			if autorejoin {
-				if verbose {
-					logprint("INFO : Rejoining previously failed server", server.URL)
-				}
-				err = server.rejoin()
-				if err != nil {
-					logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+				// Check if master exists in topology before rejoining.
+				if master != nil {
+					if verbose {
+						logprint("INFO : Rejoining previously failed server", server.URL)
+					}
+					err = server.rejoin()
+					if err != nil {
+						logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+					}
 				}
 			}
 		} else if server.State != stateMaster {
@@ -174,6 +207,16 @@ func (server *ServerMonitor) refresh() error {
 	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
+		server.UsingGtid = ""
+		server.IOThread = ""
+		server.SQLThread = ""
+		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
+		server.MasterServerID = 0
+		server.MasterHost = ""
+		server.IOErrno = 0
+		server.IOError = ""
+		server.SQLError = ""
+		server.SQLErrno = 0
 		return err
 	}
 	server.UsingGtid = slaveStatus.Using_Gtid
@@ -186,11 +229,18 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
+	su := dbhelper.GetStatus(server.Conn)
+	if su["SEMI_SYNC_MASTER_STATUS"] == "ON" {
+		server.SemiSyncMasterStatus = true
+	}
 	return nil
 }
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) healthCheck() string {
+	if server.State == stateMaster {
+		return "Master OK"
+	}
 	if server.Delay.Valid == false {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
 			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
@@ -311,6 +361,11 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 func (server *ServerMonitor) log() {
 	server.refresh()
 	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
+	return
+}
+
+func (server *ServerMonitor) close() {
+	server.Conn.Close()
 	return
 }
 

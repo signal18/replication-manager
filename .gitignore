@@ -1,2 +1,4 @@
-replication-manager
 *~
+replication-manager
+*.rpm
+*.deb
