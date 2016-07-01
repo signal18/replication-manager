@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
@@ -36,27 +37,37 @@ func newServerList() {
 }
 
 func pingServerList() {
+	wg := new(sync.WaitGroup)
+	mx := new(sync.Mutex)
 	for _, sv := range servers {
-		err := sv.Conn.Ping()
-		if err != nil {
-			if driverErr, ok := err.(*mysql.MySQLError); ok {
-				if driverErr.Number == 1045 {
-					sv.State = stateUnconn
-					sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
+		wg.Add(1)
+		go func(sv *ServerMonitor) {
+			defer wg.Done()
+			err := sv.Conn.Ping()
+			if err != nil {
+				if driverErr, ok := err.(*mysql.MySQLError); ok {
+					if driverErr.Number == 1045 {
+						sv.State = stateUnconn
+						mx.Lock()
+						sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
+						mx.Unlock()
+					}
+				} else {
+					mx.Lock()
+					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("INFO : Server %s is dead.", sv.URL), ErrFrom: "TOPO"})
+					mx.Unlock()
+					sv.State = stateFailed
 				}
 			}
-			sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("INFO : Server %s is dead.", sv.URL), ErrFrom: "TOPO"})
-			sv.State = stateFailed
-			continue
-		}
+		}(sv)
 	}
+	wg.Wait()
 }
 
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
 	pingServerList()
-
 	for _, sv := range servers {
 		if sv.State == stateFailed {
 			continue
