@@ -35,9 +35,9 @@ var bootstrapCmd = &cobra.Command{
 		sme = new(state.StateMachine)
 		sme.Init()
 		repmgrFlagCheck()
+		newServerList()
 		if cleanall {
 			log.Println("INFO : Cleaning up replication on existing servers")
-			newServerList()
 			for _, server := range servers {
 				err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
 				if err != nil {
@@ -66,6 +66,7 @@ var bootstrapCmd = &cobra.Command{
 		if prefMaster != "" {
 			masterKey = func() int {
 				for k, server := range servers {
+					log.Printf("INFO : Check Server %s prefered  %s ", server.URL,prefMaster)
 					if server.URL == prefMaster {
 						return k
 					}

@@ -17,31 +17,33 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Conn           *sqlx.DB
-	URL            string
-	Host           string
-	Port           string
-	IP             string
-	BinlogPos      *gtid.List
-	Strict         string
-	ServerID       uint
-	MasterServerID uint
-	MasterHost     string
-	LogBin         string
-	UsingGtid      string
-	CurrentGtid    *gtid.List
-	SlaveGtid      *gtid.List
-	IOThread       string
-	SQLThread      string
-	ReadOnly       string
-	Delay          sql.NullInt64
-	State          string
-	PrevState      string
-	IOErrno        uint
-	IOError        string
-	SQLErrno       uint
-	SQLError       string
-	FailCount      int
+	Conn                 *sqlx.DB
+	URL                  string
+	Host                 string
+	Port                 string
+	IP                   string
+	BinlogPos            *gtid.List
+	Strict               string
+	ServerID             uint
+	MasterServerID       uint
+	MasterHost           string
+	LogBin               string
+	UsingGtid            string
+	CurrentGtid          *gtid.List
+	SlaveGtid            *gtid.List
+	IOThread             string
+	SQLThread            string
+	ReadOnly             string
+	Delay                sql.NullInt64
+	State                string
+	PrevState            string
+	IOErrno              uint
+	IOError              string
+	SQLErrno             uint
+	SQLError             string
+	FailCount            int
+	SemiSyncMasterStatus bool
+	RplMasterStatus      bool
 }
 
 type serverList []*ServerMonitor
@@ -119,6 +121,12 @@ func (server *ServerMonitor) check() {
 		}
 		return
 	}
+	// uptime monitoring
+	if server.State == stateMaster {
+
+		sme.SetMasterUpAndSync(server.SemiSyncMasterStatus, server.RplMasterStatus)
+	}
+
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		// If we reached this stage with a previously failed server, reintroduce
@@ -192,6 +200,10 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
+	su := dbhelper.GetStatus(server.Conn)
+	if su["SEMI_SYNC_MASTER_STATUS"] == "ON" {
+		server.SemiSyncMasterStatus = true
+	}
 	return nil
 }
 

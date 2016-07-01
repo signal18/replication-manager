@@ -1,6 +1,7 @@
 package state
 
 import "fmt"
+import "time"
 
 type State struct {
 	ErrType string
@@ -38,18 +39,48 @@ type StateMachine struct {
 	curState   *Map
 	oldState   *Map
 	discovered bool
+	lasttime int64
+	firsttime int64
+	uptime int64
+	uptime_failable int64
+	uptime_semisync int64
+	avg_replication_delay float32
+
 }
 
 func (SM *StateMachine) Init() {
-
+	
 	SM.curState = NewMap()
 	SM.oldState = NewMap()
 	SM.discovered = false
+	SM.lasttime = time.Now().Unix()
+	SM.firsttime = SM.lasttime
+	SM.uptime = 0 
+	SM.uptime_failable = 0
+	SM.uptime_semisync = 0
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
 	SM.curState.Add(key, s)
+}
 
+ 
+
+
+func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool , IsDelay bool) {
+      var timenow int64
+      timenow =  time.Now().Unix()
+      if IsSemiSynced {
+        SM.uptime = SM.lasttime - timenow
+        SM.uptime_failable = SM.lasttime - timenow
+        SM.uptime_semisync =  SM.lasttime - timenow
+      } else if IsDelay  {
+		SM.uptime = SM.lasttime - timenow
+        SM.uptime_failable = SM.lasttime - timenow
+      } else {
+  	    SM.uptime = SM.lasttime - timenow	
+	  }
+      SM.lasttime = timenow
 }
 
 // Clear copies the current map to argument map and clears it
