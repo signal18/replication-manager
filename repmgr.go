@@ -237,21 +237,32 @@ var monitorCmd = &cobra.Command{
 			select {
 			case <-ticker.C:
 				if sme.IsDiscovered() == false {
+					logprint("Discovering topology...")
 					topologyDiscover()
 					states := sme.GetState()
 					for i := range states {
-						tlog.Add(states[i])
-						//logprint(states[i])
+						logprint(states[i])
 					}
-					sme.ClearState()
 				}
 				display()
 				if sme.CanMonitor() {
+					logprint("Monitoring servers...")
+					if loglevel >= 2 {
+						for k, v := range servers {
+							logprintf("DEBUG: Server [%d]: %v", k, v)
+						}
+						logprintf("DEBUG: Master: %v", master)
+						for k, v := range slaves {
+							logprintf("DEBUG: Slave [%d]: %v", k, v)
+						}
+					}
+					topologyDiscover()
 					for _, server := range servers {
 						server.check()
 					}
 					checkfailed()
 				}
+				sme.ClearState()
 
 			case event := <-termboxChan:
 				switch event.Type {

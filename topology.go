@@ -68,6 +68,7 @@ func pingServerList() {
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
 	pingServerList()
+	slaves = nil
 	for _, sv := range servers {
 		if sv.State == stateFailed {
 			continue
