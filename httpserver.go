@@ -73,7 +73,7 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
-	if master.State != stateFailed && failCount == 0 {
+	if master.State != stateFailed && master.FailCount == 0 {
 		masterFailover(false)
 		return
 	}

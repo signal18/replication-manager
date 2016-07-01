@@ -31,7 +31,7 @@ func newServerList() {
 			log.Fatalf("ERROR: Could not open connection to server %s : %s", servers[k].URL, err)
 		}
 		if verbose {
-			log.Printf("DEBUG: New server created: %v.", servers[k].URL)
+			logprintf("DEBUG: New server created: %v.", servers[k].URL)
 		}
 	}
 }
@@ -67,7 +67,6 @@ func pingServerList() {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
-	pingServerList()
 	slaves = nil
 	for _, sv := range servers {
 		if sv.State == stateFailed {
@@ -75,13 +74,13 @@ func topologyDiscover() error {
 		}
 		sv.refresh()
 		if sv.UsingGtid != "" {
-			if verbose {
+			if loglevel > 2 {
 				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
 			}
 			sv.State = stateSlave
 			slaves = append(slaves, sv)
 		} else {
-			if verbose {
+			if loglevel > 2 {
 				logprintf("DEBUG: Server %s is not a slave. Setting aside", sv.URL)
 			}
 			sv.State = stateUnconn
@@ -153,7 +152,7 @@ func topologyDiscover() error {
 				if s.ServerID == sid {
 					master = servers[k]
 					master.State = stateMaster
-					if verbose {
+					if loglevel > 2 {
 						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
@@ -163,7 +162,7 @@ func topologyDiscover() error {
 				if s.ReadOnly == "OFF" {
 					master = servers[k]
 					master.State = stateMaster
-					if verbose {
+					if loglevel > 2 {
 						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 					}
 					break
@@ -180,7 +179,7 @@ func topologyDiscover() error {
 					if s.Host == smh || s.IP == smh {
 						master = servers[k]
 						master.PrevState = stateMaster
-						if verbose {
+						if loglevel > 2 {
 							logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
 						}
 						break
@@ -199,7 +198,7 @@ func topologyDiscover() error {
 		// End of autodetection code
 		if multiMaster == false {
 			for _, sl := range slaves {
-				if verbose {
+				if loglevel > 2 {
 					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 				}
 				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {

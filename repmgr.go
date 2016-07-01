@@ -43,13 +43,6 @@ var (
 	termlength  int
 )
 
-const (
-	stateFailed string = "Failed"
-	stateMaster string = "Master"
-	stateSlave  string = "Slave"
-	stateUnconn string = "Unconnected"
-)
-
 var (
 	conf        string
 	version     bool
@@ -240,6 +233,7 @@ var monitorCmd = &cobra.Command{
 					if loglevel >= 2 {
 						logprint("DEBUG: Discovering topology loop")
 					}
+					pingServerList()
 					topologyDiscover()
 					states := sme.GetState()
 					for i := range states {
@@ -258,10 +252,10 @@ var monitorCmd = &cobra.Command{
 							logprintf("DEBUG: Slave [%d]: %v", k, v)
 						}
 					}
-					topologyDiscover()
 					for _, server := range servers {
 						server.check()
 					}
+					topologyDiscover()
 					checkfailed()
 				}
 				sme.ClearState()
@@ -270,7 +264,7 @@ var monitorCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						if master.State != stateFailed || failCount > 0 {
+						if master.State != stateFailed || master.FailCount > 0 {
 							masterFailover(false)
 						} else {
 							logprint("ERROR: Master failed, cannot initiate switchover")
@@ -324,7 +318,8 @@ var monitorCmd = &cobra.Command{
 
 func checkfailed() {
 	if master != nil {
-		if master.State == stateFailed && interactive == false {
+		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
+			logprintf("INFO : %s/%s failures. Next step is failover time check", master.FailCount, maxfail)
 			rem := (failoverTs + failtime) - time.Now().Unix()
 			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 				masterFailover(true)

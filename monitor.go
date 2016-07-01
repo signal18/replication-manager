@@ -41,9 +41,18 @@ type ServerMonitor struct {
 	IOError        string
 	SQLErrno       uint
 	SQLError       string
+	FailCount      int
 }
 
 type serverList []*ServerMonitor
+
+const (
+	stateFailed  string = "Failed"
+	stateMaster  string = "Master"
+	stateSlave   string = "Slave"
+	stateUnconn  string = "Unconnected"
+	stateSuspect string = "Suspect"
+)
 
 /* Initializes a server object */
 func newServerMonitor(url string) (*ServerMonitor, error) {
@@ -86,16 +95,24 @@ func (server *ServerMonitor) check() {
 	}
 	if err != nil {
 		// we want the failed state for masters to be set by the monitor
-		if err != sql.ErrNoRows && failCount < maxfail && server.State == stateMaster {
-			failCount++
-			tlog.Add(fmt.Sprintf("Master Failure detected! Retry %d/%d", failCount, maxfail))
-			if failCount == maxfail {
-				tlog.Add("Declaring master as failed")
+		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
+			server.FailCount++
+			logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+			if server.FailCount == maxfail {
+				logprint("WARN : Declaring master as failed")
 				master.State = stateFailed
+			} else {
+				master.State = stateSuspect
 			}
 		} else {
 			if server.State != stateMaster {
-				server.State = stateFailed
+				server.FailCount++
+				if server.FailCount == maxfail {
+					logprintf("WARN : Declaring server %s as failed", server.URL)
+					server.State = stateFailed
+				} else {
+					server.State = stateSuspect
+				}
 				// remove from slave list
 				server.delete(&slaves)
 			}
@@ -142,12 +159,6 @@ func (server *ServerMonitor) check() {
 func (server *ServerMonitor) refresh() error {
 	err := server.Conn.Ping()
 	if err != nil {
-		// we want the failed state for masters to be set by the monitor
-		if server.State != stateMaster {
-			server.State = stateFailed
-			// remove from slave list
-			server.delete(&slaves)
-		}
 		return err
 	}
 	sv, err := dbhelper.GetVariables(server.Conn)
@@ -186,6 +197,9 @@ func (server *ServerMonitor) refresh() error {
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) healthCheck() string {
+	if server.State == stateMaster {
+		return "Master OK"
+	}
 	if server.Delay.Valid == false {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
 			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)

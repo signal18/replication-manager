@@ -19,39 +19,25 @@ func display() {
 		headstr += " |  Mode: Interactive "
 	}
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	if master != nil {
-		master.refresh()
-
-		printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %20s %20s %12s", "Master Host", "Port", "Status", "Current GTID", "Binlog Position", "Strict Mode")
-		printfTb(0, 3, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %20s %20s %12s", master.Host, master.Port, master.State, master.CurrentGtid.Sprint(), master.BinlogPos.Sprint(), master.Strict)
-		printfTb(0, 5, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %30s %6s %3s", "Slave Host", "Port", "Status", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-	}
-	tlog.Line = 6
-	for _, slave := range slaves {
-
-		slave.refresh()
-		printfTb(0, tlog.Line, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %7s %12s %20s %20s %30s %6d %3s", slave.Host, slave.Port, slave.State, slave.UsingGtid, slave.CurrentGtid.Sprint(), slave.SlaveGtid.Sprint(), slave.healthCheck(), slave.Delay.Int64, slave.ReadOnly)
-		tlog.Line++
-	}
-	tlog.Line++
-	f := false
+	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	tlog.Line = 3
 	for _, server := range servers {
-		if server.State == stateUnconn || server.State == stateFailed {
-			if f == false {
-				printfTb(0, tlog.Line, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Standalone Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
-				f = true
-				tlog.Line++
-			}
-			server.refresh()
-			printfTb(0, tlog.Line, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %41s %20s %12s", "Master Host", "Port", "Current GTID", "Binlog Position", "Strict Mode")
-			if server.CurrentGtid != nil {
-				printfTb(0, tlog.Line, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, server.CurrentGtid.Sprint(), server.BinlogPos.Sprint(), server.Strict)
-			} else {
-				printfTb(0, tlog.Line, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %41s %20s %12s", server.Host, server.Port, "FAILED", "FAILED", server.Strict)
-			}
-			tlog.Line++
+		server.refresh()
+		var gtidCurr string
+		var gtidSlave string
+		if server.CurrentGtid != nil {
+			gtidCurr = server.CurrentGtid.Sprint()
+		} else {
+			gtidCurr = ""
 		}
-
+		if server.SlaveGtid != nil {
+			gtidSlave = server.SlaveGtid.Sprint()
+		} else {
+			gtidSlave = ""
+		}
+		repHeal := server.healthCheck()
+		printfTb(0, tlog.Line, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
+		tlog.Line++
 	}
 	tlog.Line++
 	if master != nil {

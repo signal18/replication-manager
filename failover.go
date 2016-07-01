@@ -193,7 +193,7 @@ func masterFailover(fail bool) bool {
 		logprint("INFO : Post-failover script complete", string(out))
 	}
 	logprintf("INFO : Master switch on %s complete", master.URL)
-	failCount = 0
+	master.FailCount = 0
 	if fail == true {
 		failoverCtr++
 		failoverTs = time.Now().Unix()
