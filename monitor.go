@@ -86,6 +86,7 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 
 func (server *ServerMonitor) check() {
 	server.PrevState = server.State
+
 	var err error
 	switch checktype {
 	case "tcp":
@@ -185,6 +186,7 @@ func (server *ServerMonitor) check() {
 
 /* Refresh a server object */
 func (server *ServerMonitor) refresh() error {
+
 	err := server.Conn.Ping()
 	if err != nil {
 		return err
@@ -205,6 +207,14 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
+
+	su := dbhelper.GetStatus(server.Conn)
+    if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
+		server.SemiSyncMasterStatus = true
+	} else {
+		server.SemiSyncMasterStatus = false
+	}	
+	
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""
@@ -229,10 +239,7 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
-	su := dbhelper.GetStatus(server.Conn)
-	if su["SEMI_SYNC_MASTER_STATUS"] == "ON" {
-		server.SemiSyncMasterStatus = true
-	}
+	 
 	return nil
 }
 

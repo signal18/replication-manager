@@ -32,11 +32,17 @@ td {
 				<th>Current Mode</th>
 				<th>Failover Count</th>
 				<th>Last Failover Time</th>
+				<th>SLA Uptime</th>
+				<th>SLA Can Switch</th>
+				<th>SLA In Sync</th>
 			</tr>
 			<tr>
 				<td><span ng-if="settings.interactive=='true'" class="label label-primary">on-call</span><span ng-if="settings.interactive=='false'" class="label label-warning">on-leave</span></td>
 				<td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
 				<td>{{settings.lastfailover}}</td>
+				<td>{{settings.uptime}}</td>
+				<td>{{settings.uptimefailable}}</td>
+				<td>{{settings.uptimesemisync}}</td>
 			</tr>
 		</table>
 		<p class="sectionheader">Server Status</p>
@@ -71,6 +77,7 @@ td {
 		<button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
 		<button type="button" class="btn btn-primary" ng-click="inttoggle()">Mode Change</button>
 		<button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
+		<button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
 	</p>
 	<pre>
 <span ng-repeat="logline in log track by $index">{{ logline }}

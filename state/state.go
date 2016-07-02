@@ -2,6 +2,7 @@ package state
 
 import "fmt"
 import "time"
+import "strconv"
 
 type State struct {
 	ErrType string
@@ -64,23 +65,40 @@ func (SM *StateMachine) AddState(key string, s State) {
 	SM.curState.Add(key, s)
 }
 
- 
+func   (SM *StateMachine) GetUptime() string  {
+    var up=strconv.FormatFloat(float64(100* float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime)), 'f',5,64) 
+	//fmt.Printf("INFO : Uptime %f", float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime))
+   if up=="100.00000"  { up="99.99999"}
+   return up      
+}
+func   (SM *StateMachine) GetUptimeSemiSync() string  {
 
+	var up  = strconv.FormatFloat(float64(100*float64(SM.uptime_semisync)/float64(time.Now().Unix()-SM.firsttime)), 'f',5,64) 
+    if up=="100.00000"  { up="99.99999"}
+    return up   
+}
+func   (SM *StateMachine) GetUptimeFailable() string  {
+   var  up = strconv.FormatFloat(float64(100*float64(SM.uptime_failable)/float64(time.Now().Unix()-SM.firsttime)), 'f',5,64)
+    if up=="100.00000"  { up="99.99999"}
+    return up         
+}
 
 func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool , IsDelay bool) {
       var timenow int64
       timenow =  time.Now().Unix()
       if IsSemiSynced {
-        SM.uptime = SM.lasttime - timenow
-        SM.uptime_failable = SM.lasttime - timenow
-        SM.uptime_semisync =  SM.lasttime - timenow
+        SM.uptime = SM.uptime  + (timenow - SM.lasttime)  
+        SM.uptime_failable = SM.uptime_failable + (timenow - SM.lasttime) 
+        SM.uptime_semisync = SM.uptime_semisync + (timenow -SM.lasttime) 
       } else if IsDelay  {
-		SM.uptime = SM.lasttime - timenow
-        SM.uptime_failable = SM.lasttime - timenow
+		  SM.uptime = SM.uptime  + (timenow - SM.lasttime)  
+         SM.uptime_failable = SM.uptime_failable + (timenow - SM.lasttime) 
       } else {
-  	    SM.uptime = SM.lasttime - timenow	
+  	     SM.uptime = SM.uptime  + (timenow - SM.lasttime)   	
 	  }
       SM.lasttime = timenow
+
+    //   fmt.Printf("INFO : Uptime %b  %b %d %d %d\n",IsSemiSynced ,IsDelay, SM.uptime, SM.uptime_failable ,SM.uptime_semisync)
 }
 
 // Clear copies the current map to argument map and clears it
