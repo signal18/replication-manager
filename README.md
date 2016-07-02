@@ -10,10 +10,10 @@ replication-manager -- MariaDB replication manager utility
 
 ## DESCRIPTION
 
-**replication-manager** Hight Availabilty utilities to manage MariaDB 10.x GTID replication.  
-It compute topology health and trigger slave to master promotion (aka switchover), or elect a new master on failure detection (aka switchover).
+**replication-manager** is an hight availabilty solution to manage MariaDB 10.x GTID replication.  
+It detect topology and monitor health to trigger slave to master promotion (aka switchover), or elect a new master on failure detection (aka switchover).
 
-To perform switchover and still preserve data consistancy, replication-manager uses a mechanism similar to common MySQL failover tools such as MHA:
+To perform switchover, preserving data consistancy, replication-manager uses a mechanism similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
@@ -29,11 +29,11 @@ To perform switchover and still preserve data consistancy, replication-manager u
   * Put up the IP address on new master by calling an optional script
   * Switch other slaves and old master to be slaves of the new master and set them as read-only
 
-If **replication-manager** is used as an arbitrator it need to drive a proxy that route the database traffic to the leader database node (aka the MASTER). 
+When **replication-manager** is used as an arbitrator it will have to drive a proxy that route the database traffic to the leader database node (aka the MASTER). We can advice usage of:
 
-- The usage of a layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology. 
+- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology. 
 
-- Enable monitor less proxies, **replication-manager**  can call scripts with topology parameters to delegate the new configuration of the leader route. A common scenrio is an VRRP Actif Passif HaProxy sharing configuration via a network disk with the **replication-manager** scripts           
+- Some Monitor less proxies, **replication-manager**  call scripts that set and reload the new configuration of the leader route. A common scenrio is an VRRP Actif Passif HaProxy sharing configuration via a network disk with the **replication-manager** scripts           
 
 - Use **replication-manager** as an API component of a group communication cluster. MRM can be call as a corossync ressource that move along side a VIP, the monitoring of the cluster is in this case already in charge of the GCC   
 
