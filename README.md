@@ -10,11 +10,10 @@ replication-manager -- MariaDB replication manager utility
 
 ## DESCRIPTION
 
-**replication-manager** allows users to monitor interactively MariaDB 10.x GTID replication health and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka switchover).
+**replication-manager** Hight Availabilty utilities to manage MariaDB 10.x GTID replication.  
+It compute topology health and trigger slave to master promotion (aka switchover), or elect a new master on failure detection (aka switchover).
 
-At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (ALL), and replication user (with REPLICATION SLAVE privileges)
-
-To perform switchover, replication-manager uses a mechanism similar to common mysql failover tools such as MHA:
+To perform switchover and still preserve data consistancy, replication-manager uses a mechanism similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
@@ -22,27 +21,72 @@ To perform switchover, replication-manager uses a mechanism similar to common my
   * Elect a new master (usually the most up to date, but it could also be a designated candidate)
   * Put down the IP address on master by calling an optional script
   * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
-  * Kill long running threads on master if any remaining
+  * Reject writes on master by setting READ_ONLY FLAG
+  * Reject writes on master by decreasing MAX_CONNECTIONS
+  * Kill prnding connections on master if any remaining
   * Watching for all slaves to catch up to the current GTID position
   * Promote the candidate slave to be a new master
   * Put up the IP address on new master by calling an optional script
   * Switch other slaves and old master to be slaves of the new master and set them as read-only
 
-## EXAMPLES
+If **replication-manager** is used as an arbitrator it need to drive a proxy that route the database traffic to the leader database node (aka the MASTER). 
 
-Start mariadb-repmgr in switchover interactive mode with master host db1 and slaves db2 and db3:
+- The usage of a layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology. 
 
-`mariadb-repmgr --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive --switchover=keep`
+- Enable monitor less proxies, **replication-manager**  can call scripts with topology parameters to delegate the new configuration of the leader route. A common scenrio is an VRRP Actif Passif HaProxy sharing configuration via a network disk with the **replication-manager** scripts           
 
-Start mariadb-repmgr in interactive failover mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+- Use **replication-manager** as an API component of a group communication cluster. MRM can be call as a corossync ressource that move along side a VIP, the monitoring of the cluster is in this case already in charge of the GCC   
 
-`mariadb-repmgr --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay 15 --failover=monitor`
+## ADVANTAGES
 
-Failover non-interactively a dead master (similar setup as above):
+A **replication-manager** Leader Election Cluster is best to use in such scenario:
 
-`mariadb-repmgr --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" --post-failover-script="/usr/local/bin/vipup.sh" --failover=force --interactive=false`
+   * Node diss fonctionning do not impact the Availlability and Performance  
+   * Node heterogenous in configuration and ressources do not impact the Availlability and Performance  
+   * Leader Pick Performance is not impacted by the data replication 
+   * Read scalability do not impact write scalability 
+   * Network inter connect quality fluctuation
+   * Can benefit human expertise on false positive failure detection
+
+This is achive via folowing drawback:
+
+   * Over loading the leader can lead to data lost during failover  
+   * Replicat READ is eventualy consistant  
+   * ACID can be preserve via route to leader always 
+   * Replicat READ can be quaranty COMMITED READ under monitoring of semiync no slave behind status 
+    
+The history of MariaDB replicaton as reach a point that replication can almost in any case catch with the master. It can be ensure using new features like Group Commit improvement, optimistic in order parrallel replication and semi syncrhonus replication. 
+
+Giving the available hardware to ensure that, a synchronus cluster and an asynchonus cluster will always deliver. But Leader Asyncronus Cluster can garanty continuity of service at close to zero cost for the leader under no data lost SLA.      
+
+## PROCEDURAL COMMAND LINE EXAMPLES 
+
+Run replication-manager for a switchover interactive mode with master host db1 and slaves db2 and db3:
+
+`replication-manager --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive --switchover=keep`
+
+Run replication-manager for a failover in interactive mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+
+`replication-manager --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay 15 --failover=monitor`
+
+Run replication-manager for a failover non-interactively of a dead master (similar setup as above):
+
+`replication-manager --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" --post-failover-script="/usr/local/bin/vipup.sh" --failover=force --interactive=false`
+
+## MONITORING 
+
+Start replication-manager in terminal to monitor the cluster 
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
+
+Start replication-manager in background to monitor the cluster
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon`
+
 
 ## OPTIONS
+
+At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (ALL), and replication user (with REPLICATION SLAVE privileges)
 
   * --autorejoin `bool`
 
