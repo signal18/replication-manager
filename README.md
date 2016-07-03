@@ -76,12 +76,19 @@ Start replication-manager in background to monitor the cluster
 ## Available ommands
 
   agent       Starts replication monitoring agent
+
   bootstrap   Bootstrap a replication environment
+
   failover    Failover a dead master
+
   monitor     Start the interactive replication monitor
+
   provision   Provision a replica server
+
   switchover  Perform a master switch
+
   topology    Print replication topology
+
   version     Print the replication manager version number
 
 ## Options
