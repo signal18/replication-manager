@@ -151,7 +151,6 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		initOnce()
 		repmgrFlagCheck()
 		newServerList()
 		err := topologyDiscover()
@@ -182,7 +181,6 @@ var switchoverCmd = &cobra.Command{
 	Short: "Perform a master switch",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		initOnce()
 		repmgrFlagCheck()
 		newServerList()
 		err := topologyDiscover()
@@ -204,12 +202,9 @@ var monitorCmd = &cobra.Command{
 	Short: "Start the interactive replication monitor",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		sme = new(state.StateMachine)
-		sme.Init()
 
-		initOnce()
 		repmgrFlagCheck()
-		
+
 		if httpserv {
 			go httpserver()
 		}
@@ -220,6 +215,11 @@ var monitorCmd = &cobra.Command{
 				log.Fatalln("Termbox initialization error", err)
 			}
 		}
+
+		// Initialize the state machine at this stage where everything is fine.
+		sme = new(state.StateMachine)
+		sme.Init()
+
 		if daemon {
 			termlength = 40
 		} else {
@@ -359,34 +359,32 @@ func newTbChan() chan termbox.Event {
 	return termboxChan
 }
 
-func initOnce() {
+// Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
+// must lead to Fatal errors if initialized with wrong values.
+
+func repmgrFlagCheck() {
 	if logfile != "" {
 		var err error
 		logPtr, err = os.Create(logfile)
 		if err != nil {
-			sme.AddState("WAR00001", state.State{"WARNING", "Error opening logfile, disabling for the rest of the session.", "CONF"})
+			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
 			logfile = ""
 		}
 	}
-}
-
-func repmgrFlagCheck() {
-
 	// if slaves option has been supplied, split into a slice.
 	if hosts != "" {
 		hostList = strings.Split(hosts, ",")
 	} else {
-		sme.AddState("ERR00001", state.State{"ERROR", "No hosts list specified.", "CONF"})
-
+		log.Fatal("ERROR: No hosts list specified.")
 	}
 	// validate users.
 	if user == "" {
-		sme.AddState("ERR00002", state.State{"ERROR", "No master user/pair specified.", "CONF"})
+		log.Fatal("ERROR: No master user/pair specified.")
 	}
 	dbUser, dbPass = splitPair(user)
 
 	if rpluser == "" {
-		sme.AddState("ERR00003", state.State{"ERROR", "No replication user/pair specified.", "CONF"})
+		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(rpluser)
 
@@ -404,6 +402,6 @@ func repmgrFlagCheck() {
 		return false
 	}
 	if ret() == false && prefMaster != "" {
-		sme.AddState("ERR00004", state.State{"ERROR", "Preferred master is not included in the hosts option.", "CONF"})
+		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
 }
