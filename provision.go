@@ -86,6 +86,7 @@ var bootstrapCmd = &cobra.Command{
 		}
 		for key, server := range servers {
 			if key == masterKey {
+				dbhelper.FlushTables(server.Conn)
 				continue
 			} else {
 				stmt := "CHANGE MASTER '" + masterConn + "' TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
