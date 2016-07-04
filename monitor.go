@@ -188,7 +188,6 @@ func (server *ServerMonitor) check() {
 
 /* Refresh a server object */
 func (server *ServerMonitor) refresh() error {
-
 	err := server.Conn.Ping()
 	if err != nil {
 		return err

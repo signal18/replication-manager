@@ -209,7 +209,7 @@ func topologyDiscover() error {
 					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 				}
 				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-					logprintf("WARN : Server %s is not a slave of declared master %s", master.URL, master.Host)
+					sme.AddState("WARN00005", state.State{ErrType: "WARN", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", master.URL, master.Host), ErrFrom: "TOPO"})
 				}
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
