@@ -31,7 +31,7 @@ func newServerList() {
 			log.Fatalf("ERROR: Could not open connection to server %s : %s", servers[k].URL, err)
 		}
 		if verbose {
-			logprintf("DEBUG: New server created: %v", servers[k].URL)
+			tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[k].URL))
 		}
 	}
 }
