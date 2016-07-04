@@ -31,7 +31,7 @@ func newServerList() {
 			log.Fatalf("ERROR: Could not open connection to server %s : %s", servers[k].URL, err)
 		}
 		if verbose {
-			logprintf("DEBUG: New server created: %v.", servers[k].URL)
+			logprintf("DEBUG: New server created: %v", servers[k].URL)
 		}
 	}
 }
@@ -199,12 +199,10 @@ func topologyDiscover() error {
 	if master == nil {
 
 		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master.", ErrFrom: "TOPO"})
-		
 
-	
 	} else {
-		master.RplMasterStatus=false
-			// End of autodetection code
+		master.RplMasterStatus = false
+		// End of autodetection code
 		if multiMaster == false {
 			for _, sl := range slaves {
 				if loglevel > 2 {
@@ -216,8 +214,8 @@ func topologyDiscover() error {
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
 				}
-				if sl.Delay.Int64  < maxDelay {
-				   master.RplMasterStatus=true
+				if sl.Delay.Int64 < maxDelay {
+					master.RplMasterStatus = true
 				}
 			}
 		}
