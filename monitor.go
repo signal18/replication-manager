@@ -103,7 +103,9 @@ func (server *ServerMonitor) check() {
 		// we want the failed state for masters to be set by the monitor
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
-			logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+			if master.FailCount <= maxfail {
+				logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+			}
 			if server.FailCount == maxfail {
 				logprint("WARN : Declaring master as failed")
 				master.State = stateFailed
@@ -209,12 +211,12 @@ func (server *ServerMonitor) refresh() error {
 	}
 
 	su := dbhelper.GetStatus(server.Conn)
-    if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
+	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
 	} else {
 		server.SemiSyncMasterStatus = false
-	}	
-	
+	}
+
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""
@@ -239,7 +241,7 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
-	 
+
 	return nil
 }
 
