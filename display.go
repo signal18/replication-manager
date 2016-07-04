@@ -36,7 +36,18 @@ func display() {
 			gtidSlave = ""
 		}
 		repHeal := server.healthCheck()
-		printfTb(0, tlog.Line, termbox.ColorWhite, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
+		var fgCol termbox.Attribute
+		switch server.State {
+		case "Master":
+			fgCol = termbox.ColorGreen
+		case "Failed":
+			fgCol = termbox.ColorRed
+		case "Unconnected":
+			fgCol = termbox.ColorYellow
+		default:
+			fgCol = termbox.ColorWhite
+		}
+		printfTb(0, tlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
 		tlog.Line++
 	}
 	tlog.Line++
@@ -86,6 +97,7 @@ func logprint(msg ...interface{}) {
 	}
 	if tlog.Len > 0 {
 		tlog.Add(fmt.Sprintln(msg...))
+		display()
 	} else {
 		log.Println(msg...)
 	}
@@ -98,6 +110,7 @@ func logprintf(format string, args ...interface{}) {
 	}
 	if tlog.Len > 0 {
 		tlog.Add(fmt.Sprintf(format, args...))
+		display()
 	} else {
 		log.Printf(format, args...)
 	}
