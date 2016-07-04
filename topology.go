@@ -92,12 +92,16 @@ func topologyDiscover() error {
 				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), ErrFrom: "CONF"})
 			}
 			if priv.Repl_client_priv == "N" {
+				sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege.", ErrFrom: "CONF"})
 			}
 			if priv.Repl_slave_priv == "N" {
-				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION_SLAVE privilege.", ErrFrom: "CONF"})
+				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege.", ErrFrom: "CONF"})
 			}
 			if priv.Super_priv == "N" {
 				sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege.", ErrFrom: "CONF"})
+			}
+			if priv.Reload_priv == "N" {
+				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege.", ErrFrom: "CONF"})
 			}
 		}
 	}
