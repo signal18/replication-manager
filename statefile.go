@@ -8,7 +8,7 @@ import (
 type stateFile struct {
 	Handle    *os.File
 	Name      string
-	Count     int
+	Count     int32
 	Timestamp int64
 }
 
@@ -29,6 +29,7 @@ func (sf *stateFile) access() error {
 
 func (sf *stateFile) write() error {
 	err := sf.Handle.Truncate(0)
+	sf.Handle.Seek(0, 0)
 	if err != nil {
 		return err
 	}
