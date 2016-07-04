@@ -152,19 +152,39 @@ var failoverCmd = &cobra.Command{
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		repmgrFlagCheck()
+		sme = new(state.StateMachine)
+		sme.Init()
+		// Recover state from file before doing anything else
+		sf := stateFile{Name: "/tmp/mrm.state"}
+		err := sf.access()
+		if err != nil {
+			logprint("WARN : Could not create state file")
+		}
+		err = sf.read()
+		if err != nil {
+			logprint("WARN : Could not read values from state file")
+		} else {
+			failoverCtr = sf.Count
+			failoverTs = sf.Timestamp
+		}
 		newServerList()
-		err := topologyDiscover()
+		err = topologyDiscover()
 		if err != nil {
 			log.Fatalln(err)
 		}
+		if failoverCtr > faillimit {
+			log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", faillimit)
+		}
+		rem := (failoverTs + failtime) - time.Now().Unix()
+		if failtime > 0 && rem > 0 {
+			log.Fatalf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
+		}
 		if masterFailover(true) {
-			sf := stateFile{Name: "/tmp/mrm.state"}
-			// handle if file already exists
-			err := sf.access()
+			sf.Count = sf.Count + 1
+			sf.Timestamp = failoverTs
+			err := sf.write()
 			if err != nil {
-				logprint("WARN : Could not create state file")
-			} else {
-				sf.Count = sf.Count + 1
+				logprint("WARN : Could not write values to state file")
 			}
 		}
 	},
@@ -182,6 +202,8 @@ var switchoverCmd = &cobra.Command{
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		repmgrFlagCheck()
+		sme = new(state.StateMachine)
+		sme.Init()
 		newServerList()
 		err := topologyDiscover()
 		if err != nil {
@@ -339,7 +361,7 @@ func checkfailed() {
 			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 				masterFailover(true)
 				if failoverCtr == faillimit {
-					sme.AddState("INF00002", state.State{"INFO", "Failover limit reached. Exiting on failover completion.", "MON"})
+					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Exiting on failover completion.", ErrFrom: "MON"})
 				}
 			} else if failtime > 0 && rem%10 == 0 {
 

@@ -8,7 +8,7 @@ import (
 type stateFile struct {
 	Handle    *os.File
 	Name      string
-	Count     int32
+	Count     int
 	Timestamp int64
 }
 
