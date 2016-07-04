@@ -228,7 +228,7 @@ func (server *ServerMonitor) refresh() error {
 		server.IOError = ""
 		server.SQLError = ""
 		server.SQLErrno = 0
-		return err
+		return nil
 	}
 	server.UsingGtid = slaveStatus.Using_Gtid
 	server.IOThread = slaveStatus.Slave_IO_Running

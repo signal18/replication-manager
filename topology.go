@@ -68,11 +68,14 @@ func pingServerList() {
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
 	slaves = nil
-	for _, sv := range servers {
-		if sv.State == stateFailed {
+	for k, sv := range servers {
+		err := sv.refresh()
+		if err != nil {
+			if loglevel > 2 {
+				logprintf("DEBUG: Server %s could not be refreshed: %s", sv.URL, err)
+			}
 			continue
 		}
-		sv.refresh()
 		if sv.UsingGtid != "" {
 			if loglevel > 2 {
 				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
@@ -80,16 +83,29 @@ func topologyDiscover() error {
 			sv.State = stateSlave
 			slaves = append(slaves, sv)
 		} else {
-			if loglevel > 2 {
-				logprintf("DEBUG: Server %s is not a slave. Setting aside", sv.URL)
+			var n int
+			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='binlog dump'")
+			if err != nil {
+				sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting binlog dump count on server %s: %s", sv.URL, err), ErrFrom: "CONF"})
+				sv.State = stateFailed
+				continue
 			}
-			sv.State = stateUnconn
+			if n == 0 {
+				sv.State = stateUnconn
+				// TODO: fix flapping in case slaves are reconnecting
+				if loglevel > 2 {
+					logprintf("DEBUG: Server %s has no slaves connected", sv.URL)
+				}
+			} else {
+				master = servers[k]
+				master.State = stateMaster
+			}
 		}
 		// Check user privileges on live servers
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
-				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on host %s: %s.", dbUser, sv.Host, err), ErrFrom: "CONF"})
+				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", dbUser, sv.URL, err), ErrFrom: "CONF"})
 			}
 			if priv.Repl_client_priv == "N" {
 				sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege.", ErrFrom: "CONF"})
