@@ -37,68 +37,73 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	curState   *Map
-	oldState   *Map
-	discovered bool
-	lasttime int64
-	firsttime int64
-	uptime int64
-	uptime_failable int64
-	uptime_semisync int64
-	avg_replication_delay float32
-
+	curState            *Map
+	oldState            *Map
+	discovered          bool
+	lasttime            int64
+	firsttime           int64
+	uptime              int64
+	uptimeFailable      int64
+	uptimeSemisync      int64
+	avgReplicationDelay float32
 }
 
 func (SM *StateMachine) Init() {
-	
+
 	SM.curState = NewMap()
 	SM.oldState = NewMap()
 	SM.discovered = false
 	SM.lasttime = time.Now().Unix()
 	SM.firsttime = SM.lasttime
-	SM.uptime = 0 
-	SM.uptime_failable = 0
-	SM.uptime_semisync = 0
+	SM.uptime = 0
+	SM.uptimeFailable = 0
+	SM.uptimeSemisync = 0
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
 	SM.curState.Add(key, s)
 }
 
-func   (SM *StateMachine) GetUptime() string  {
-    var up=strconv.FormatFloat(float64(100* float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime)), 'f',5,64) 
+func (SM *StateMachine) GetUptime() string {
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptime)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
 	//fmt.Printf("INFO : Uptime %f", float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime))
-   if up=="100.00000"  { up="99.99999"}
-   return up      
+	if up == "100.00000" {
+		up = "99.99999"
+	}
+	return up
 }
-func   (SM *StateMachine) GetUptimeSemiSync() string  {
+func (SM *StateMachine) GetUptimeSemiSync() string {
 
-	var up  = strconv.FormatFloat(float64(100*float64(SM.uptime_semisync)/float64(time.Now().Unix()-SM.firsttime)), 'f',5,64) 
-    if up=="100.00000"  { up="99.99999"}
-    return up   
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
+	if up == "100.00000" {
+		up = "99.99999"
+	}
+	return up
 }
-func   (SM *StateMachine) GetUptimeFailable() string  {
-   var  up = strconv.FormatFloat(float64(100*float64(SM.uptime_failable)/float64(time.Now().Unix()-SM.firsttime)), 'f',5,64)
-    if up=="100.00000"  { up="99.99999"}
-    return up         
+func (SM *StateMachine) GetUptimeFailable() string {
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
+	if up == "100.00000" {
+		up = "99.99999"
+	}
+	return up
 }
 
-func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool , IsDelay bool) {
-      var timenow int64
-      timenow =  time.Now().Unix()
-      if IsSemiSynced {
-        SM.uptime = SM.uptime  + (timenow - SM.lasttime)  
-        SM.uptime_failable = SM.uptime_failable + (timenow - SM.lasttime) 
-        SM.uptime_semisync = SM.uptime_semisync + (timenow -SM.lasttime) 
-      } else if IsDelay  {
-		  SM.uptime = SM.uptime  + (timenow - SM.lasttime)  
-         SM.uptime_failable = SM.uptime_failable + (timenow - SM.lasttime) 
-      } else {
-  	     SM.uptime = SM.uptime  + (timenow - SM.lasttime)   	
-	  }
-      SM.lasttime = timenow
+func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsDelay bool) {
+	var timenow int64
+	timenow = time.Now().Unix()
+	if IsSemiSynced {
+		SM.uptime = SM.uptime + (timenow - SM.lasttime)
+		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
+		SM.uptimeSemisync = SM.uptimeSemisync + (timenow - SM.lasttime)
+	} else if IsDelay {
+		SM.uptime = SM.uptime + (timenow - SM.lasttime)
+		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
+	} else {
+		SM.uptime = SM.uptime + (timenow - SM.lasttime)
+	}
+	SM.lasttime = timenow
 
-    //   fmt.Printf("INFO : Uptime %b  %b %d %d %d\n",IsSemiSynced ,IsDelay, SM.uptime, SM.uptime_failable ,SM.uptime_semisync)
+	//   fmt.Printf("INFO : Uptime %b  %b %d %d %d\n",IsSemiSynced ,IsDelay, SM.uptime, SM.uptimeFailable ,SM.uptimeSemisync)
 }
 
 // Clear copies the current map to argument map and clears it
