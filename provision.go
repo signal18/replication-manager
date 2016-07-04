@@ -87,6 +87,7 @@ var bootstrapCmd = &cobra.Command{
 		for key, server := range servers {
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
+				dbhelper.SetReadOnly(server.Conn, false)
 				continue
 			} else {
 				stmt := "CHANGE MASTER '" + masterConn + "' TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
@@ -98,6 +99,7 @@ var bootstrapCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal("Start slave: ", err)
 				}
+				dbhelper.SetReadOnly(server.Conn, true)
 			}
 		}
 		log.Printf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)
