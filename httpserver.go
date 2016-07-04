@@ -9,11 +9,11 @@ import (
 )
 
 type settings struct {
-	Interactive  string `json:"interactive"`
-	FailoverCtr  string `json:"failoverctr"`
-	Faillimit    string `json:"faillimit"`
-	LastFailover string `json:"lastfailover"`
-	Uptime		 string `json:"uptime"`
+	Interactive    string `json:"interactive"`
+	FailoverCtr    string `json:"failoverctr"`
+	Faillimit      string `json:"faillimit"`
+	LastFailover   string `json:"lastfailover"`
+	Uptime         string `json:"uptime"`
 	UptimeFailable string `json:"uptimefailable"`
 	UptimeSemiSync string `json:"uptimesemisync"`
 }
@@ -68,9 +68,9 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Interactive = fmt.Sprintf("%v", interactive)
 	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
 	s.Faillimit = fmt.Sprintf("%d", faillimit)
-	s.Uptime = sme.GetUptime() 
+	s.Uptime = sme.GetUptime()
 	s.UptimeFailable = sme.GetUptimeFailable()
-	s.UptimeSemiSync= sme.GetUptimeSemiSync()
+	s.UptimeSemiSync = sme.GetUptimeSemiSync()
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()
