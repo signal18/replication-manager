@@ -162,7 +162,7 @@ func topologyDiscover() error {
 		}
 	} else if readonly {
 		// In non-multimaster mode, enforce read-only flag if the option is set
-		for _, s := range servers {
+		for _, s := range slaves {
 			if s.ReadOnly == "OFF" {
 				dbhelper.SetReadOnly(s.Conn, true)
 			}
