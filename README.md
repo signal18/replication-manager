@@ -13,7 +13,7 @@ To perform switchover, preserving data consistency, replication-manager uses a m
   * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
   * Reject writes on master by setting READ_ONLY FLAG
   * Reject writes on master by decreasing MAX_CONNECTIONS
-  * Kill prnding connections on master if any remaining
+  * Kill pending connections on master if any remaining
   * Watching for all slaves to catch up to the current GTID position
   * Promote the candidate slave to be a new master
   * Put up the IP address on new master by calling an optional script
@@ -31,8 +31,8 @@ When **replication-manager** is used as an arbitrator it will have to drive a pr
 
 A **replication-manager** Leader Election Cluster is best to use in such scenarios:
 
-   * Node dysfunctioning does not impact the Availability and Performance  
-   * Node heterogenous in configuration and resources does not impact the Availability and Performance  
+   * Dysfunctional node does not impact Availability and Performance  
+   * Heterogeneous node in configuration and resources does not impact Availability and Performance  
    * Leader Pick Performance is not impacted by the data replication
    * Read scalability does not impact write scalability
    * Network inter connect quality fluctuation
@@ -41,7 +41,7 @@ A **replication-manager** Leader Election Cluster is best to use in such scenari
 This is achieved via following drawbacks:
 
    * Overloading the leader can lead to data loss during failover  
-   * READ Replica is eventually consistant  
+   * READ Replica is eventually consistent  
    * ACID can be preserved via route to leader always
    * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind status
 
@@ -88,7 +88,7 @@ Start replication-manager in background to monitor the cluster
 
 ## Options
 
-At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (ALL), and replication user (with REPLICATION SLAVE privileges)
+At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (SUPER, REPLICATION CLIENT, RELOAD), and replication user (with REPLICATION SLAVE privileges)
 
   * --autorejoin `bool`
 
