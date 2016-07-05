@@ -422,20 +422,17 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
 
 /* Check if server is connected to declared master */
 func IsSlaveof(db *sqlx.DB, s string, m string) bool {
-	if debug {
-		log.Printf("IsSlaveOf called")
-	}
 	ss, err := GetSlaveStatus(db)
 	if err != nil {
-		log.Printf("WARN : Server %s is not a slave. Skipping", s)
+		// log.Printf("WARN : Server %s is not a slave. Skipping", s)
 		return false
 	}
 	masterHost, err := CheckHostAddr(ss.Master_Host)
 	if err != nil {
-		log.Println("ERROR: Could not resolve master hostname", ss.Master_Host)
+		// log.Println("ERROR: Could not resolve master hostname", ss.Master_Host)
 	}
 	if masterHost != m {
-		log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
+		// log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
 		return false
 	}
 	return true
