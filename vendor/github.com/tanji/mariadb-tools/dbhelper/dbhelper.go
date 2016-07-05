@@ -452,8 +452,8 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	}
 }
 
-func MasterPosWait(db *sqlx.DB, gtid string) error {
-	_, err := db.Exec("SELECT MASTER_GTID_WAIT(?)", gtid)
+func MasterPosWait(db *sqlx.DB, gtid string, timeout int) error {
+	_, err := db.Exec("SELECT MASTER_GTID_WAIT(?, ?)", gtid, timeout)
 	return err
 }
 

@@ -71,7 +71,7 @@ func masterFailover(fail bool) bool {
 			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
 		}
-		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos.Sprint())
+		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos.Sprint(), 30)
 		if verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
@@ -155,7 +155,7 @@ func masterFailover(fail bool) bool {
 		}
 		if fail == false {
 			logprintf("INFO : Waiting for slave %s to sync", sl.URL)
-			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint())
+			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint(), 30)
 			if verbose {
 				sl.log()
 			}

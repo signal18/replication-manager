@@ -1,5 +1,5 @@
 hash: 5ee2b1bcf442f780c7000774aea726b9e7c2788dd91fbda169d92062465ccc89
-updated: 2016-07-05T11:29:46.019858123+02:00
+updated: 2016-07-05T16:21:50.295192944+02:00
 imports:
 - name: github.com/BurntSushi/toml
   version: f0aeabca5a127c4078abb8c8d64298b147264b55
@@ -45,7 +45,7 @@ imports:
 - name: github.com/spf13/viper
   version: c1ccc378a054ea8d4e38d8c67f6938d4760b53dd
 - name: github.com/tanji/mariadb-tools
-  version: b45a0b4d2074b62b3f6ee98762d3a168c5e0f289
+  version: 7fce291b174884fc6167fd4fde188524b524d340
   subpackages:
   - dbhelper
 - name: golang.org/x/sys
