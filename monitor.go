@@ -317,6 +317,13 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 	hiseq := 0
 	var max uint64
 	for i, sl := range l {
+		/* If server is in the ignore list, do not elect it */
+		if contains(ignoreList, sl.URL) {
+			if verbose {
+				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
+			}
+			continue
+		}
 		// Refresh state before evaluating
 		sl.refresh()
 		if server.State != stateFailed || server.State == stateMaster {
@@ -351,13 +358,6 @@ func (server *ServerMonitor) electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
-		}
-		/* If server is in the ignore list, do not elect it */
-		if contains(ignoreList, sl.URL) {
-			if verbose {
-				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
-			}
-			continue
 		}
 		/* Rig the election if the examined slave is preferred candidate master */
 		if sl.URL == prefMaster {
