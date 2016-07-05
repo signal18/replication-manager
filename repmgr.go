@@ -268,7 +268,7 @@ var monitorCmd = &cobra.Command{
 			select {
 			case <-ticker.C:
 				if sme.IsDiscovered() == false {
-					if loglevel >= 2 {
+					if loglevel > 2 {
 						logprint("DEBUG: Discovering topology loop")
 					}
 					pingServerList()
@@ -280,7 +280,7 @@ var monitorCmd = &cobra.Command{
 				}
 				display()
 				if sme.CanMonitor() {
-					if loglevel >= 2 {
+					if loglevel > 2 {
 						logprint("DEBUG: Monitoring server loop")
 						for k, v := range servers {
 							logprintf("DEBUG: Server [%d]: %v", k, v)

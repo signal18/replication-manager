@@ -85,7 +85,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 }
 
 func (server *ServerMonitor) check() {
-	server.PrevState = server.State
+
+	if server.PrevState != server.State {
+		server.PrevState = server.State
+	}
 
 	var err error
 	switch checktype {
@@ -99,30 +102,37 @@ func (server *ServerMonitor) check() {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
+
+	// Handle failure cases here
 	if err != nil {
-		// we want the failed state for masters to be set by the monitor
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
-			if master.FailCount <= maxfail {
-				logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
-			}
-			if server.FailCount == maxfail {
-				logprint("WARN : Declaring master as failed")
-				master.State = stateFailed
-			} else {
-				master.State = stateSuspect
+			if server.URL == master.URL {
+				if master.FailCount <= maxfail {
+					logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+				}
+				if server.FailCount >= maxfail {
+					if server.FailCount == maxfail {
+						logprint("WARN : Declaring master as failed")
+					}
+					master.State = stateFailed
+				} else {
+					master.State = stateSuspect
+				}
 			}
 		} else {
-			if server.State != stateMaster {
+			if server.State != stateMaster && server.State != stateFailed {
 				server.FailCount++
-				if server.FailCount == maxfail {
-					logprintf("WARN : Declaring server %s as failed", server.URL)
-					server.State = stateFailed
-				} else {
-					server.State = stateSuspect
+				if server.FailCount >= maxfail {
+					if server.FailCount == maxfail {
+						logprintf("WARN : Declaring server %s as failed", server.URL)
+						server.State = stateFailed
+					} else {
+						server.State = stateSuspect
+					}
+					// remove from slave list
+					server.delete(&slaves)
 				}
-				// remove from slave list
-				server.delete(&slaves)
 			}
 		}
 		// Send alert if state has changed
@@ -144,38 +154,45 @@ func (server *ServerMonitor) check() {
 		}
 		return
 	}
+
 	// uptime monitoring
 	if server.State == stateMaster {
-
 		sme.SetMasterUpAndSync(server.SemiSyncMasterStatus, server.RplMasterStatus)
 	}
 
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
-	if err != nil {
+	if err == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if server.State == stateFailed {
+		if server.PrevState == stateFailed {
+			if loglevel > 1 {
+				logprintf("DEBUG: State comparison reinitialized failed server %s as unconnected", server.URL)
+			}
 			server.State = stateUnconn
+			server.FailCount = 0
 			if autorejoin {
 				// Check if master exists in topology before rejoining.
-				if master != nil {
-					if verbose {
-						logprint("INFO : Rejoining previously failed server", server.URL)
-					}
+				if server.URL != master.URL {
+					logprintf("INFO : Rejoining previously failed server %s", server.URL)
 					err = server.rejoin()
 					if err != nil {
-						logprint("ERROR: Failed to autojoin previously failed server", server.URL)
+						logprintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
 					}
 				}
 			}
 		} else if server.State != stateMaster {
+			if loglevel > 1 {
+				logprintf("DEBUG: State unconnected set by non-master rule on server %s", server.URL)
+			}
 			server.State = stateUnconn
 		}
 		return
 	}
+
 	// In case of state change, reintroduce the server in the slave list
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
 		server.State = stateSlave
+		server.FailCount = 0
 		slaves = append(slaves, server)
 		if readonly {
 			err = dbhelper.SetReadOnly(server.Conn, true)

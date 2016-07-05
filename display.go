@@ -19,7 +19,7 @@ func display() {
 		headstr += " |  Mode: Interactive "
 	}
 	printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	tlog.Line = 3
 	for _, server := range servers {
 		server.refresh()
@@ -43,11 +43,13 @@ func display() {
 		case "Failed":
 			fgCol = termbox.ColorRed
 		case "Unconnected":
-			fgCol = termbox.ColorYellow
+			fgCol = termbox.ColorBlue
+		case "Suspect":
+			fgCol = termbox.ColorMagenta
 		default:
 			fgCol = termbox.ColorWhite
 		}
-		printfTb(0, tlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
+		printfTb(0, tlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
 		tlog.Line++
 	}
 	tlog.Line++
