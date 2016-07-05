@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -84,7 +85,9 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 	return server, err
 }
 
-func (server *ServerMonitor) check() {
+func (server *ServerMonitor) check(wg *sync.WaitGroup) {
+
+	defer wg.Done()
 
 	if server.PrevState != server.State {
 		server.PrevState = server.State

@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -290,9 +291,12 @@ var monitorCmd = &cobra.Command{
 							logprintf("DEBUG: Slave [%d]: %v", k, v)
 						}
 					}
+					wg := new(sync.WaitGroup)
 					for _, server := range servers {
-						server.check()
+						wg.Add(1)
+						go server.check(wg)
 					}
+					wg.Wait()
 					topologyDiscover()
 					checkfailed()
 				}
