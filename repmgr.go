@@ -24,6 +24,7 @@ import (
 
 const repmgrVersion string = "0.7-dev"
 
+// Global variables
 var (
 	hostList    []string
 	servers     serverList
@@ -42,43 +43,45 @@ var (
 	logPtr      *os.File
 	exitMsg     string
 	termlength  int
+	sme         *state.StateMachine
 )
 
+// Configuration variables - do not put global variables in that list
 var (
-	conf         string
-	version      bool
-	user         string
-	hosts        string
-	socket       string
-	rpluser      string
-	interactive  bool
-	verbose      bool
-	preScript    string
-	postScript   string
-	maxDelay     int64
-	gtidCheck    bool
-	prefMaster   string
-	ignoreSrv    string
-	waitKill     int64
-	readonly     bool
-	maxfail      int
-	autorejoin   bool
-	logfile      string
-	timeout      int
-	faillimit    int
-	failtime     int64
-	checktype    string
-	masterConn   string
-	multiMaster  bool
-	bindaddr     string
-	httpport     string
-	httpserv     bool
-	httproot     string
-	daemon       bool
-	mailFrom     string
-	mailTo       string
-	mailSMTPAddr string
-	sme          *state.StateMachine
+	conf               string
+	version            bool
+	user               string
+	hosts              string
+	socket             string
+	rpluser            string
+	interactive        bool
+	verbose            bool
+	preScript          string
+	postScript         string
+	maxDelay           int64
+	gtidCheck          bool
+	prefMaster         string
+	ignoreSrv          string
+	waitKill           int64
+	readonly           bool
+	maxfail            int
+	autorejoin         bool
+	logfile            string
+	timeout            int
+	faillimit          int
+	failtime           int64
+	checktype          string
+	masterConn         string
+	multiMaster        bool
+	bindaddr           string
+	httpport           string
+	httpserv           bool
+	httproot           string
+	daemon             bool
+	mailFrom           string
+	mailTo             string
+	mailSMTPAddr       string
+	masterConnectRetry int
 )
 
 func init() {
@@ -131,6 +134,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	viper.BindPFlags(cmd.Flags())
 	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
+	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
 	maxDelay = int64(viper.GetInt("maxdelay"))
@@ -145,6 +149,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	multiMaster = viper.GetBool("multimaster")
 	faillimit = viper.GetInt("failover-limit")
 	failtime = int64(viper.GetInt("failover-time-limit"))
+	masterConnectRetry = viper.GetInt("master-connect-retry")
 }
 
 var failoverCmd = &cobra.Command{

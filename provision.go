@@ -24,7 +24,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
 	bootstrapCmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
-
+	bootstrapCmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -82,7 +82,7 @@ var bootstrapCmd = &cobra.Command{
 		}
 		_, err := servers[masterKey].Conn.Exec("RESET MASTER")
 		if err != nil {
-			log.Println("WARN : RESET MASTER failed on masster")
+			log.Println("WARN : RESET MASTER failed on master")
 		}
 		for key, server := range servers {
 			if key == masterKey {
@@ -90,7 +90,7 @@ var bootstrapCmd = &cobra.Command{
 				dbhelper.SetReadOnly(server.Conn, false)
 				continue
 			} else {
-				stmt := "CHANGE MASTER '" + masterConn + "' TO master_host='" + servers[masterKey].IP + "', master_port=" + servers[masterKey].Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', master_use_gtid=current_pos"
+				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", masterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, masterConnectRetry)
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					log.Fatal(stmt, err)

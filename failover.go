@@ -105,7 +105,7 @@ func masterFailover(fail bool) bool {
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
-	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "'"
+	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", master.IP, master.Port, rplUser, rplPass, masterConnectRetry)
 	if fail == false {
 		// Get latest GTID pos
 		oldMaster.refresh()
