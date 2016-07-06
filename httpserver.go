@@ -18,6 +18,8 @@ type settings struct {
 	UptimeSemiSync string `json:"uptimesemisync"`
 }
 
+var swlock bool
+
 func httpserver() {
 	http.HandleFunc("/", handlerApp)
 	http.HandleFunc("/dashboard.js", handlerJS)
@@ -98,8 +100,13 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if swlock {
+		return
+	}
 	if master.State != stateFailed && master.FailCount == 0 {
+		swlock = true
 		masterFailover(false)
+		swlock = false
 		return
 	}
 	logprint("ERROR: Master failed, cannot initiate switchover")
