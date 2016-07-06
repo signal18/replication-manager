@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
@@ -418,6 +419,16 @@ func repmgrFlagCheck() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(rpluser)
+	for _, url := range hostList {
+		host, port := splitHostPort(url)
+		dsn := rplUser + ":" + rplPass + "@tcp(" + host + ":" + port + ")/"
+		db, err := sqlx.Connect("mysql", dsn)
+		if err != nil {
+			log.Printf("ERROR: Could not connect to server %s to with supplied replication credentials", url)
+			log.Fatalln(err)
+		}
+		db.Close()
+	}
 
 	if ignoreSrv != "" {
 		ignoreList = strings.Split(ignoreSrv, ",")
