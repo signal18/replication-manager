@@ -34,23 +34,23 @@ To perform switchover, replication-manager uses a mechanism similar to common my
 
 Start mariadb-repmgr in switchover interactive mode with master host db1 and slaves db2 and db3:
 
-`mariadb-repmgr --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive --switchover=keep`
+`replication-manager --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive --switchover=keep`
 
 Start mariadb-repmgr in interactive failover mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
-`mariadb-repmgr --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay 15 --failover=monitor`
+`replication-manager --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15 --failover=monitor`
 
 Failover non-interactively a dead master (similar setup as above):
 
-`mariadb-repmgr --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" --post-failover-script="/usr/local/bin/vipup.sh" --failover=force --interactive=false`
+`replication-manager --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" --post-failover-script="/usr/local/bin/vipup.sh" --failover=force --interactive=false`
 
 ## OPTIONS
 
-  * --autorejoin `bool`
+  * --autorejoin `<boolean>`
 
-    Automatically rejoin a failed server to the current master. (default true)
+    Automatically rejoin a failed server to the current master (default true)
 
-  * --connect-timeout `secs`
+  * --connect-timeout `<seconds>`
 
     Database connection timeout in seconds (default 5)
 
@@ -58,35 +58,35 @@ Failover non-interactively a dead master (similar setup as above):
 
     Start the replication manager in failover mode. `state` can be either `monitor` or `force`, whether the manager should run in monitoring or command line mode. The action will result in removing the master of the current replication topology.
 
-  * --failcount `secs`
+  * --failcount `<count>`
 
-    Trigger failover after N failures (interval 1s) (default 5)
+    Trigger failover after `count` failures (interval 1s) (default 5)
 
-  * --failover-limit `count`
+  * --failover-limit `<count>`
 
-    In auto-monitor mode, quit after N failovers (0: unlimited)
+    In auto-monitor mode, quit after `count` failovers (0: unlimited)
 
-  * --failover-time-limit `secs`
+  * --failover-time-limit `<seconds>`
 
-    In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)
+    In auto-monitor mode, wait `seconds` seconds before attempting next failover (0: do not wait)
 
   * --gtidcheck `<boolean>`
 
-    Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If true, mariadb-repmgr will wait for the slaves to be in sync before initiating.
+    Check that GTID sequence numbers are identical before initiating failover. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If true, mariadb-repmgr will wait for the slaves to be in sync before initiating. (default false)
 
-  * --hosts `<address>:[port],`
+  * --hosts `<address>`
 
-    List of MariaDB hosts IP and port (optional), specified in the `host:[port]` format and comma-separated.
+    List of MariaDB hosts IP and port (optional), specified in the `host[:port],` format and comma-separated.
 
-  * --ignore-servers `<address>:[port],`
+  * --ignore-servers `<address>`
 
-    List of servers in the `host:[port]` format to be ignored for slave promotion operations.
+    List of servers in the `host[:port]` format to be ignored for slave promotion operations.
 
   * --interactive `<boolean>`
 
-    Runs the MariaDB monitor in interactive mode (default), asking for user interaction when failures are detected. A value of false also allows mariadb-repmgr to invoke switchover without displaying the interactive monitor.
+    Runs the MariaDB monitor in interactive mode, asking for user interaction when failures are detected. A value of false also allows mariadb-repmgr to invoke switchover without displaying the interactive monitor. (default true)
 
-  * --logfile `path`
+  * --logfile `<path>`
 
     Write MRM messages to a log file.
 
@@ -104,13 +104,13 @@ Failover non-interactively a dead master (similar setup as above):
 
   * --prefmaster `<address>`
 
-    Preferred candidate server for master failover, in `host:[port]` format.
+    Preferred candidate server for master failover, in `host[:port]` format.
 
   * --readonly `<boolean>`
 
-    Set slaves as read-only when performing switchover. Default true.
+    Set slaves as read-only when performing switchover. (default true)
 
-  * --rpluser `<user>:[password]`
+  * --rpluser `<user>[:password]`
 
     Replication user and password. This user must have REPLICATION SLAVE privileges and is used to setup the old master as a new slave.
 
@@ -120,11 +120,11 @@ Failover non-interactively a dead master (similar setup as above):
 
   * --socket `<path>`
 
-    Path of MariaDB unix socket. Default is "/var/run/mysqld/mysqld.sock"
+    Path of MariaDB unix socket. (default "/var/run/mysqld/mysqld.sock")
 
-  * --user `<user>:[password]`
+  * --user `<user>[:password]`
 
-    User for MariaDB login, specified in the `user:[password]` format. Must have administrative privileges. This user is used to perform switchover.
+    User for MariaDB login, specified in the `user[:password]` format. Must have administrative privileges. This user is used to perform switchover.
 
   * --verbose
 
@@ -134,9 +134,9 @@ Failover non-interactively a dead master (similar setup as above):
 
     Return software version.
 
-  * --wait-kill `<msecs>`
+  * --wait-kill `<milliseconds>`
 
-    Wait this many milliseconds before killing threads on demoted master. Default 5000 ms.
+    Wait this many milliseconds before killing threads on demoted master. (default 5000)
 
 ## SYSTEM REQUIREMENTS
 
