@@ -365,6 +365,10 @@ var monitorCmd = &cobra.Command{
 }
 
 func checkfailed() {
+	// Don't trigger a failover if a switchover is happening
+	if swlock {
+		return
+	}
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
