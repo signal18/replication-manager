@@ -29,6 +29,7 @@ func httpserver() {
 	http.HandleFunc("/interactive", handlerInteractiveToggle)
 	http.HandleFunc("/settings", handlerSettings)
 	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
+	http.HandleFunc("/bootstrap", handlerBootstrap)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
@@ -127,5 +128,14 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	failoverCtr = 0
+	return
+}
+
+func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if err := bootstrap(); err != nil {
+		logprint("ERROR: Could not bootstrap replication")
+		logprint(err)
+	}
 	return
 }

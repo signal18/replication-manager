@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os/exec"
@@ -36,74 +37,82 @@ var bootstrapCmd = &cobra.Command{
 		sme.Init()
 		repmgrFlagCheck()
 		newServerList()
-		if cleanall {
-			log.Println("INFO : Cleaning up replication on existing servers")
-			for _, server := range servers {
-				err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
-				if err != nil {
-					log.Fatal(err)
-				}
-				err = dbhelper.ResetMaster(server.Conn)
-				if err != nil {
-					log.Fatal(err)
-				}
-				err = dbhelper.StopAllSlaves(server.Conn)
-				if err != nil {
-					log.Fatal(err)
-				}
-				err = dbhelper.ResetAllSlaves(server.Conn)
-				if err != nil {
-					log.Fatal(err)
-				}
-				_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-		} else {
-			err := topologyDiscover()
-			if err == nil {
-				log.Fatal("ERROR: Environment already has an existing master/slave setup")
-			}
-		}
-		masterKey := 0
-		if prefMaster != "" {
-			masterKey = func() int {
-				for k, server := range servers {
-					if server.URL == prefMaster {
-						return k
-					}
-				}
-				return -1
-			}()
-		}
-		if masterKey == -1 {
-			log.Fatal("ERROR: Preferred master could not be found in existing servers")
-		}
-		_, err := servers[masterKey].Conn.Exec("RESET MASTER")
+		err := bootstrap()
 		if err != nil {
-			log.Println("WARN : RESET MASTER failed on master")
+			log.Println(err)
 		}
-		for key, server := range servers {
-			if key == masterKey {
-				dbhelper.FlushTables(server.Conn)
-				dbhelper.SetReadOnly(server.Conn, false)
-				continue
-			} else {
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", masterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, masterConnectRetry)
-				_, err := server.Conn.Exec(stmt)
-				if err != nil {
-					log.Fatal(stmt, err)
-				}
-				_, err = server.Conn.Exec("START SLAVE '" + masterConn + "'")
-				if err != nil {
-					log.Fatal("Start slave: ", err)
-				}
-				dbhelper.SetReadOnly(server.Conn, true)
+	},
+}
+
+func bootstrap() error {
+	if cleanall {
+		log.Println("INFO : Cleaning up replication on existing servers")
+		for _, server := range servers {
+			err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+			if err != nil {
+				return err
+			}
+			err = dbhelper.ResetMaster(server.Conn)
+			if err != nil {
+				return err
+			}
+			err = dbhelper.StopAllSlaves(server.Conn)
+			if err != nil {
+				return err
+			}
+			err = dbhelper.ResetAllSlaves(server.Conn)
+			if err != nil {
+				return err
+			}
+			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
+			if err != nil {
+				return err
 			}
 		}
-		log.Printf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)
-	},
+	} else {
+		err := topologyDiscover()
+		if err == nil {
+			return errors.New("ERROR: Environment already has an existing master/slave setup")
+		}
+	}
+	masterKey := 0
+	if prefMaster != "" {
+		masterKey = func() int {
+			for k, server := range servers {
+				if server.URL == prefMaster {
+					return k
+				}
+			}
+			return -1
+		}()
+	}
+	if masterKey == -1 {
+		return errors.New("ERROR: Preferred master could not be found in existing servers")
+	}
+	_, err := servers[masterKey].Conn.Exec("RESET MASTER")
+	if err != nil {
+		logprint("WARN : RESET MASTER failed on master")
+	}
+	for key, server := range servers {
+		if key == masterKey {
+			dbhelper.FlushTables(server.Conn)
+			dbhelper.SetReadOnly(server.Conn, false)
+			continue
+		} else {
+			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", masterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, masterConnectRetry)
+			_, err := server.Conn.Exec(stmt)
+			if err != nil {
+				return errors.New(fmt.Sprintln("ERROR:", stmt, err))
+			}
+			_, err = server.Conn.Exec("START SLAVE '" + masterConn + "'")
+			if err != nil {
+				return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+			}
+			dbhelper.SetReadOnly(server.Conn, true)
+		}
+	}
+	logprintf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)
+	return nil
 }
 
 var provisionCmd = &cobra.Command{
