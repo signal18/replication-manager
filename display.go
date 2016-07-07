@@ -94,11 +94,11 @@ func printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interfa
 func logprint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	if logfile != "" {
-		s := fmt.Sprint(stamp, " ", fmt.Sprintln(msg...))
-		io.WriteString(logPtr, fmt.Sprint(s))
+		s := fmt.Sprint(stamp, " ", fmt.Sprint(msg...))
+		io.WriteString(logPtr, fmt.Sprintln(s))
 	}
 	if tlog.Len > 0 {
-		tlog.Add(fmt.Sprintln(msg...))
+		tlog.Add(fmt.Sprint(msg...))
 		display()
 	} else {
 		log.Println(msg...)
