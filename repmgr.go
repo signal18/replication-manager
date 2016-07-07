@@ -45,6 +45,7 @@ var (
 	exitMsg     string
 	termlength  int
 	sme         *state.StateMachine
+	swChan      = make(chan bool)
 )
 
 // Configuration variables - do not put global variables in that list
@@ -305,6 +306,15 @@ var monitorCmd = &cobra.Command{
 					wg.Wait()
 					topologyDiscover()
 					checkfailed()
+					select {
+					case sig := <-swChan:
+						logprint("INFO: Receiving switchover message from channel")
+						if sig {
+							masterFailover(false)
+						}
+					default:
+						//do nothing
+					}
 				}
 				sme.ClearState()
 
@@ -366,9 +376,6 @@ var monitorCmd = &cobra.Command{
 
 func checkfailed() {
 	// Don't trigger a failover if a switchover is happening
-	if swlock {
-		return
-	}
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
