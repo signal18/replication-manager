@@ -1,9 +1,10 @@
 ## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
 **replication-manager** is an high availability solution to manage MariaDB 10.x GTID replication.  
-It detects topology and monitor health to trigger slave to master promotion (aka switchover), or elect a new master on failure detection (aka failover).
 
-To perform switchover, preserving data consistency, replication-manager uses a mechanism similar to common MySQL failover tools such as MHA:
+Main goal detects topology and monitor a leader health to trigger on demand slave to master promotion (aka switchover), or elect a new master on failure detection (aka failover).
+
+To perform switchover, preserving data consistency, replication-manager uses a proven mechanism similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
@@ -19,7 +20,7 @@ To perform switchover, preserving data consistency, replication-manager uses a m
   * Put up the IP address on new master by calling an optional script
   * Switch other slaves and old master to be slaves of the new master and set them as read-only
 
-When **replication-manager** is used as an arbitrator it will have to drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
+**replication-manager** is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
 - A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology via similar settings:
 
@@ -66,6 +67,28 @@ This is achieved via following drawbacks:
    * ACID can be preserved via route to leader always
    * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind feature
 
+
+Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", **replication-manager** will track failover SLA (Service Level Availability).
+
+
+Because it is not always desirable to perform an automatic failover in an asynchronous cluster, **replication-manager** enforces some tunable settings to constraint the architecture state in which the failover can happen.
+
+
+In the field, a regular scenario is to have long periods of time between hardware crashes: what was the state of the replication when crash happens?
+
+We can classify SLA and failover scenario in 3 cases
+  * Replica stream in sync   
+  * Replica stream not sync but sate allow failover      
+  * Replica stream not sync but sate can't allow failover
+
+## CASE 1: IN SYNC
+
+If the replication was in sync, the failover can be done without loss of data, provided that **replication-manager** wait for all replicated events to be applied to the elected replica, before re-opening traffic.
+
+In order to reach this state most of the time, we advise following settings:
+
+### Running replication at full speed
+
 The history of MariaDB replication has reached a point that replication can almost in any case catch with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
 
 MariaDB 10.1 settings for in-order optimistic parallel replication:
@@ -79,8 +102,9 @@ sync_binlog = 1
 log_slave_updates = ON
 ```
 
-Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and possibly with "No Data Loss" under some given SLA (Service Level Availability).      
-Because it is not always desirable to perform automatic failover in an asynchronous cluster, **replication-manager** enforces some tunable settings to constraint the architecture state in which the failover can happen. In the field, a regular scenario is to have long periods of time between hardware crashes: what was the state of the replication when this happens? If the replication was in sync, the failover can be done without loss of data, provided that we wait for all replicated events to be applied to the elected replica, before re-opening traffic. In order to reach this state most of the time, we advise usage of semi-synchronous replication that enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
+## Usage of semi-synchronous
+
+semi-synchronous enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
 
 The MariaDB recommended settings for semi-sync are the following:
 
@@ -91,6 +115,8 @@ rpl_semi_sync_slave = ON
 loose_rpl_semi_sync_master_enabled = ON  
 loose_rpl_semi_sync_slave_enabled = ON
 ```
+
+## CASE 2: NOT IN SYNC & FAILABLE
 
 **replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will lose data, giving to HA a bigger priority compared to the quantity of possible data lost. This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, number of possible failovers exceeded, all slave delays exceeded, time before next failover not yet reached, no slave available to failover.
 
@@ -113,6 +139,9 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
+### CASE 3: NOT IN SYNC & UNFAILABLE
+
+This is the opportunity to work on long running WRITE transactions to split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
 
 ## Procedural command line examples
 
