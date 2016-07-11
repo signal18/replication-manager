@@ -206,7 +206,8 @@ var failoverCmd = &cobra.Command{
 var switchoverCmd = &cobra.Command{
 	Use:   "switchover",
 	Short: "Perform a master switch",
-	Long:  `Trigger failover on a dead master by promoting a slave.`,
+	Long: `Performs an online master switch by promoting a slave to master
+and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		repmgrFlagCheck()
 		sme = new(state.StateMachine)
@@ -229,7 +230,8 @@ var switchoverCmd = &cobra.Command{
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "Start the interactive replication monitor",
-	Long:  `Trigger failover on a dead master by promoting a slave.`,
+	Long: `Starts replication-manager in stateful monitor daemon mode.
+Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		repmgrFlagCheck()
