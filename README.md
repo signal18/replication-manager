@@ -118,12 +118,21 @@ loose_rpl_semi_sync_slave_enabled = ON
 
 ## CASE 2: NOT IN SYNC & FAILABLE
 
-**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will lose data, giving to HA a bigger priority compared to the quantity of possible data lost. This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, number of possible failovers exceeded, all slave delays exceeded, time before next failover not yet reached, no slave available to failover.
+**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will lose data, giving to HA a bigger priority compared to the quantity of possible data lost. This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, all slave delays not yet exceeded,
 
-The first SLA is the one that tracks the presence of a valid topology from  **replication-manager**, when a leader is reachable.                        
 
-Consistency during switchover and in case of split brain on active active routers:
-**replication-manager** has no other way on the long run to prevent additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by **replication-manager**, additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and use the last one connection by not killing himself. This works but in yet unknown scenarios we would not let a node in a state where it cannot be connected to anymore, so we advise using extra port provided with MariaDB pool of threads feature :
+## CASE 3: NOT IN SYNC & UNFAILABLE
+
+The first SLA is the one that tracks the presence of a valid topology from  **replication-manager**, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
+
+
+This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
+
+## DATA CONSISTENCY IN SWITCHOVER
+
+**replication-manager** prevent additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by **replication-manager**.
+
+Some additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and  consume last possible connection by not killing himself. This works but to avoid a scenario where a node is left in a state where it cannot be connected anymore ( Crashing replication-manager in this critical section),  we advise using extra port provided with MariaDB pool of threads feature :
 
 ```
 thread_handling = pool-of-threads  
@@ -139,9 +148,7 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
-## CASE 3: NOT IN SYNC & UNFAILABLE
 
-This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
 
 ## Procedural command line examples
 
