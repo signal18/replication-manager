@@ -65,7 +65,7 @@ func (SM *StateMachine) AddState(key string, s State) {
 }
 
 func (SM *StateMachine) GetUptime() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptime)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptime)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
 	//fmt.Printf("INFO : Uptime %f", float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime))
 	if up == "100.00000" {
 		up = "99.99999"
@@ -74,14 +74,14 @@ func (SM *StateMachine) GetUptime() string {
 }
 func (SM *StateMachine) GetUptimeSemiSync() string {
 
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(SM.lasttime -SM.firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
 	return up
 }
 func (SM *StateMachine) GetUptimeFailable() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(time.Now().Unix()-SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(SM.lasttime -SM.firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
