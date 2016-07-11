@@ -74,14 +74,14 @@ func (SM *StateMachine) GetUptime() string {
 }
 func (SM *StateMachine) GetUptimeSemiSync() string {
 
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(SM.lasttime -SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
 	return up
 }
 func (SM *StateMachine) GetUptimeFailable() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(SM.lasttime -SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
@@ -137,14 +137,14 @@ func (SM *StateMachine) GetState() []string {
 	var log []string
 	for key2, value2 := range *SM.oldState {
 		if SM.curState.Search(key2) == false {
-			log = append(log, fmt.Sprintf("%s:%s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
+			log = append(log, fmt.Sprintf("%s: %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
 
 		}
 	}
 
 	for key, value := range *SM.curState {
 		if SM.oldState.Search(key) == false {
-			log = append(log, fmt.Sprintf("%s:%s %s", value.ErrType, key, value.ErrDesc))
+			log = append(log, fmt.Sprintf("%s: %s %s", value.ErrType, key, value.ErrDesc))
 
 		}
 	}
