@@ -68,7 +68,7 @@ This is achieved via following drawbacks:
 
 The history of MariaDB replication has reached a point that replication can almost in any case catch with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
 
-MariaDB 10.1 setting for in order optimistic parallel replication:
+MariaDB 10.1 settings for in-order optimistic parallel replication:
 
 ```
 slave_parallel_mode = optimistic  
@@ -80,9 +80,9 @@ log_slave_updates = ON
 ```
 
 Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and possibly with "No Data Loss" under some given SLA (Service Level Availability).      
-Because this is not always preferable to perform automatic failover in an asynchronous cluster **replication-manager** impose some tunable settings to constraint the  architecture state the failover can happen. In the field, a regular scenario is to have long period of time between hardware crashes: what was the state of the replication when this happen? If was in sync the failover can be done without data lost, keeping that we wait for all replicated events to be applied to the elected replica, before re opening traffic. For reaching this state most of the time we advice usage of semisync replication that enable to delay TRX commit until the TRX events reach at least one replica. The "In Sync" status will be lost only passing a tunable replication delay. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time i can auto failover without loosing data and can reintroduce the dead leader without re re provisioning it.
+Because it is not always desirable to perform automatic failover in an asynchronous cluster, **replication-manager** enforces some tunable settings to constraint the architecture state in which the failover can happen. In the field, a regular scenario is to have long periods of time between hardware crashes: what was the state of the replication when this happens? If the replication was in sync, the failover can be done without loss of data, provided that we wait for all replicated events to be applied to the elected replica, before re-opening traffic. In order to reach this state most of the time, we advise usage of semi-synchronous replication that enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
 
-MariaDB setting for semisync are the following
+The MariaDB recommended settings for semi-sync are the following:
 
 ```
 plugin_load = "semisync_master.so;semisync_slave.so"  
@@ -92,12 +92,12 @@ loose_rpl_semi_sync_master_enabled = ON
 loose_rpl_semi_sync_slave_enabled = ON
 ```
 
-**replication-manager** can still auto failover when replication is delay up to reasonable time, in such case i will lose data giving to HA a bigger priority compare to the quantity of possible data lost. This is the second SLA display. This SLA track the time i can failover under the conditions that was predefined in the **replication-manager** parameters, number of possible failover exceeded, all slaves delays exceeded, time before next failover not yet reached, no slave to failover.
+**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will lose data, giving to HA a bigger priority compared to the quantity of possible data lost. This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, number of possible failovers exceeded, all slave delays exceeded, time before next failover not yet reached, no slave available to failover.
 
-First SLA is the one that track the presence of a valid topology from  **replication-manager**, when a leader is reachable.                        
+The first SLA is the one that tracks the presence of a valid topology from  **replication-manager**, when a leader is reachable.                        
 
 Consistency during switchover and in case of split brain on active active routers:
-**replication-manager** have no other way on the long run to prevent additional writes to set READ_ONLY flag on the old leader, if routers still sending WRITE TRX, they can pill up until timeout, despite being killed by **replication-manager**, additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and use the last one connection by not killing himself         This works but in yet unknown scenarios we would not let a node in a state it can be connected any more so we advice using extra port provided with MariaDB pool of thread feature :
+**replication-manager** has no other way on the long run to prevent additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by **replication-manager**, additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and use the last one connection by not killing himself. This works but in yet unknown scenarios we would not let a node in a state where it cannot be connected to anymore, so we advise using extra port provided with MariaDB pool of threads feature :
 
 ```
 thread_handling = pool-of-threads  
@@ -105,7 +105,7 @@ extra_port = 3307
 extra_max_connections = 10
 ```   
 
-Also to better protect consistency it is strongly advice to not enable SUPER PRIVILEGES to users that performs writes, such as the MaxScale user when read write split module is instructed to check for replication lags  
+Also, to better protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag.  
 
 ```
 [Splitter Service]
@@ -120,23 +120,19 @@ Run replication-manager in switchover mode with master host db1 and slaves db2 a
 
 `replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
 
-Run replication-manager for a failover in interactive mode using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
-`replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15 --interactive=true`
-
-Run replication-manager for a failover non-interactively of a dead master (similar setup as above):
-
-`replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" --post-failover-script="/usr/local/bin/vipup.sh" --interactive=false`
+`replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
 ## Monitoring
 
-Start replication-manager in terminal to monitor the cluster
+Start replication-manager in console mode to monitor the cluster
 
 `replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
 
-Start replication-manager in background to monitor the cluster
+Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon`
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
 
 ## Available commands
 
@@ -181,7 +177,7 @@ At a minimum, required options are: a list of hosts (replication-manager can aut
 
   * --gtidcheck `<boolean>`
 
-    Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If false, mariadb-repmgr will wait for the slaves to be in sync before initiating.
+    _DEPRECATED_ Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If false, mariadb-repmgr will wait for the slaves to be in sync before initiating.
 
   * --hosts `<address>:[port],`
 
