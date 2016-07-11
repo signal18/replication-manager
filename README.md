@@ -130,9 +130,28 @@ Start replication-manager in console mode to monitor the cluster
 
 `replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
 
+![mrmconsole](https://cloud.githubusercontent.com/assets/971260/16738035/45f2bbf2-4794-11e6-8286-65f9a3179e31.png)
+
+The console mode accepts several commands:
+
+```
+Ctrl-D  Print debug information
+Ctrl-F  Manual Failover
+Ctrl-R  Set slaves read-only
+Ctrl-S  Switchover
+Ctrl-Q  Quit
+Ctrl-W  Set slaves read-write
+```
+
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
 `replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
+
+The http server is accessible on http://localhost:10001 by default, and looks like this:
+
+![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
+
+The http dashboard is an experimental angularjs application, please don't use it in production as it has no protected access for now (or use creativity to restrict access to it).
 
 ## Available commands
 
