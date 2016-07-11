@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
@@ -207,7 +206,8 @@ var failoverCmd = &cobra.Command{
 var switchoverCmd = &cobra.Command{
 	Use:   "switchover",
 	Short: "Perform a master switch",
-	Long:  `Trigger failover on a dead master by promoting a slave.`,
+	Long: `Performs an online master switch by promoting a slave to master
+and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		repmgrFlagCheck()
 		sme = new(state.StateMachine)
@@ -230,7 +230,8 @@ var switchoverCmd = &cobra.Command{
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "Start the interactive replication monitor",
-	Long:  `Trigger failover on a dead master by promoting a slave.`,
+	Long: `Starts replication-manager in stateful monitor daemon mode.
+Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		repmgrFlagCheck()
@@ -430,16 +431,6 @@ func repmgrFlagCheck() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = splitPair(rpluser)
-	for _, url := range hostList {
-		host, port := splitHostPort(url)
-		dsn := rplUser + ":" + rplPass + "@tcp(" + host + ":" + port + ")/"
-		db, err := sqlx.Connect("mysql", dsn)
-		if err != nil {
-			log.Printf("ERROR: Could not connect to server %s to with supplied replication credentials", url)
-			log.Fatalln(err)
-		}
-		db.Close()
-	}
 
 	if ignoreSrv != "" {
 		ignoreList = strings.Split(ignoreSrv, ",")
