@@ -2,7 +2,7 @@
 
 **replication-manager** is an high availability solution to manage MariaDB 10.x GTID replication.  
 
-Main goal detects topology and monitor a leader health to trigger on demand slave to master promotion (aka switchover), or elect a new master on failure detection (aka failover).
+Main goal are topology detections and monitoring it to trigger on demand slave to master promotion (aka switchover), or elect a new master on failure detection (aka failover).
 
 To perform switchover, preserving data consistency, replication-manager uses a proven mechanism similar to common MySQL failover tools such as MHA:
 
@@ -102,7 +102,7 @@ sync_binlog = 1
 log_slave_updates = ON
 ```
 
-## Usage of semi-synchronous
+### Usage of semi-synchronous
 
 semi-synchronous enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
 
@@ -139,9 +139,9 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
-### CASE 3: NOT IN SYNC & UNFAILABLE
+## CASE 3: NOT IN SYNC & UNFAILABLE
 
-This is the opportunity to work on long running WRITE transactions to split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
+This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
 
 ## Procedural command line examples
 
