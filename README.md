@@ -79,8 +79,17 @@ sync_binlog = 1
 log_slave_updates = ON
 ```
 
-Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and possibly with "No Data Loss" under some given SLA (Service Level Availability).      
-Because this is not always preferable to perform automatic failover in an asynchronous cluster **replication-manager** impose some tunable settings to constraint the  architecture state the failover can happen. In the field, a regular scenario is to have long period of time between hardware crashes: what was the state of the replication when this happen? If was in sync the failover can be done without data lost, keeping that we wait for all replicated events to be applied to the elected replica, before re opening traffic. For reaching this state most of the time we advice usage of semisync replication that enable to delay TRX commit until the TRX events reach at least one replica. The "In Sync" status will be lost only passing a tunable replication delay. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time i can auto failover without loosing data and can reintroduce the dead leader without re re provisioning it.
+Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and possibly with "No Data Loss" under some given SLA (Service Level Availability).  
+
+That is not always preferable to perform automatic failover in an asynchronous cluster **replication-manager** impose tunable parameters to constraint the architecture state on when the failover can happen.
+
+In the field, a regular scenario is to have long period of time between hardware crashes: what was the state of the replication when this happen? Is state was in sync the failover can be done without data lost.
+
+**replication-manager** Wait for all replicated events to be applied to the elected replica, before re opening traffic.
+
+For standing inside this in sync state we advice usage of semisync replication that enable to delay TRX commit until the TRX events reach at least one replica. The "In Sync" status will be lost only passing a tunable replication delay. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time i can auto failover without loosing data and can reintroduce the dead leader without re re provisioning it.
+
+Without semi-sync **replication-manager** will only know about data lost after the lost leader show up again.  
 
 MariaDB setting for semisync are the following
 
@@ -92,7 +101,7 @@ loose_rpl_semi_sync_master_enabled = ON
 loose_rpl_semi_sync_slave_enabled = ON
 ```
 
-**replication-manager** can still auto failover when replication is delay up to reasonable time, in such case i will lose data giving to HA a bigger priority compare to the quantity of possible data lost. This is the second SLA display. This SLA track the time i can failover under the conditions that was predefined in the **replication-manager** parameters, number of possible failover exceeded, all slaves delays exceeded, time before next failover not yet reached, no slave to failover.
+**replication-manager** can still auto failover when replication is delay up to reasonable amount, in this case you agree to lose data and give higher priority to HA  compare to acceptable amount of data lost. This is the second SLA display. This SLA track the time i can failover under the conditions that was predefined in the **replication-manager** parameters, number of possible failover exceeded, all slaves delays exceeded, time before next failover not yet reached, no slave to failover.
 
 First SLA is the one that track the presence of a valid topology from  **replication-manager**, when a leader is reachable.                        
 
