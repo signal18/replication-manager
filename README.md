@@ -118,17 +118,25 @@ loose_rpl_semi_sync_slave_enabled = ON
 
 ## CASE 2: NOT IN SYNC & FAILABLE
 
-**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will lose data, giving to HA a bigger priority compared to the quantity of possible data lost. This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, all slave delays not yet exceeded,
+**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
 
+
+This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, all slave delays not yet exceeded.
+
+
+Probability to lose data is increase with a single slave topology, when the slave is delayed by a long running transaction, or was stop for maintenance, catching on replication events, with heavy single threaded writes process, network performance can't catch-up with the leader performance.
+
+
+To limit such cases we advice usage of a 3 nodes cluster that remove some of such scenarios like loosing a slave.
 
 ## CASE 3: NOT IN SYNC & UNFAILABLE
 
 The first SLA is the one that tracks the presence of a valid topology from  **replication-manager**, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
 
-This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode     
+This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode.     
 
-## DATA CONSISTENCY IN SWITCHOVER
+## DATA CONSISTENCY INSIDE SWITCHOVER
 
 **replication-manager** prevent additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by **replication-manager**.
 
