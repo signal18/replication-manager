@@ -2,7 +2,7 @@
 
 **replication-manager** is an high availability solution to manage MariaDB 10.x GTID replication.  
 
-Main goal are topology detections and monitoring it to trigger on demand slave to master promotion (aka switchover), or elect a new master on failure detection (aka failover).
+Goals are topology detection and it's monitoring, to enable on demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover).
 
 To perform switchover, preserving data consistency, replication-manager uses a proven mechanism similar to common MySQL failover tools such as MHA:
 
