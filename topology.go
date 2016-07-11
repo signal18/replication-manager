@@ -119,7 +119,7 @@ func topologyDiscover() error {
 			// Check replication user has correct privs.
 			rpriv, err := dbhelper.GetPrivileges(sv.Conn, rplUser, sv.Host)
 			if err != nil {
-				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", dbUser, sv.URL, err), ErrFrom: "CONF"})
+				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", rplUser, sv.URL, err), ErrFrom: "CONF"})
 			}
 			if rpriv.Repl_slave_priv == "N" {
 				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege.", ErrFrom: "CONF"})
