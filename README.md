@@ -21,10 +21,29 @@ To perform switchover, preserving data consistency, replication-manager uses a m
 
 When **replication-manager** is used as an arbitrator it will have to drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
-- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology.
+- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology via similar settings:
+
+```
+[MySQL Monitor]  
+type=monitor  
+module=mysqlmon  
+servers=%%ENV:SERVERS_LIST%%  
+user=root  
+passwd=%%ENV:MYROOTPWD%%  
+monitor_interval=500  
+detect_stale_master=true
+
+[Write Connection Router]  
+type=service  
+router=readconnroute  
+router_options=master  
+servers=%%ENV:SERVERS_LIST%%  
+user=root  
+passwd=%%ENV:MYROOTPWD%%  
+enable_root_user=true  
+```
 
 - With monitor-less proxies, **replication-manager** can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the **replication-manager** scripts           
-
 - Using **replication-manager** as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
 ## ADVANTAGES
@@ -37,17 +56,63 @@ A **replication-manager** Leader Election Cluster is best to use in such scenari
    * Read scalability does not impact write scalability
    * Network inter connect quality fluctuation
    * Can benefit of human expertise on false positive failure detection
+   * Can benefit a minimum cluster size of two data nodes
+   * Can benefit having different storage engine
 
 This is achieved via following drawbacks:
 
    * Overloading the leader can lead to data loss during failover  
    * READ Replica is eventually consistent  
    * ACID can be preserved via route to leader always
-   * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind status
+   * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind feature
 
 The history of MariaDB replication has reached a point that replication can almost in any case catch with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
 
-Giving the available hardware to ensure that, a synchronous cluster and an asynchronous cluster will always deliver. But Leader Asynchronous Cluster can guarantee continuity of service at close to zero cost for the leader under No Data Loss Service Level Availability.      
+MariaDB 10.1 setting for in order optimistic parallel replication:
+
+```
+slave_parallel_mode = optimistic  
+slave_domain_parallel_threads = %%ENV:CORES%%  
+slave_parallel_threads = %%ENV:CORES%%  
+expire_logs_days = 5  
+sync_binlog = 1  
+log_slave_updates = ON
+```
+
+Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and possibly with "No Data Loss" under some given SLA (Service Level Availability).      
+Because this is not always preferable to perform automatic failover in an asynchronous cluster **replication-manager** impose some tunable settings to constraint the  architecture state the failover can happen. In the field, a regular scenario is to have long period of time between hardware crashes: what was the state of the replication when this happen? If was in sync the failover can be done without data lost, keeping that we wait for all replicated events to be applied to the elected replica, before re opening traffic. For reaching this state most of the time we advice usage of semisync replication that enable to delay TRX commit until the TRX events reach at least one replica. The "In Sync" status will be lost only passing a tunable replication delay. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time i can auto failover without loosing data and can reintroduce the dead leader without re re provisioning it.
+
+MariaDB setting for semisync are the following
+
+```
+plugin_load = "semisync_master.so;semisync_slave.so"  
+rpl_semi_sync_master = ON  
+rpl_semi_sync_slave = ON  
+loose_rpl_semi_sync_master_enabled = ON  
+loose_rpl_semi_sync_slave_enabled = ON
+```
+
+**replication-manager** can still auto failover when replication is delay up to reasonable time, in such case i will lose data giving to HA a bigger priority compare to the quantity of possible data lost. This is the second SLA display. This SLA track the time i can failover under the conditions that was predefined in the **replication-manager** parameters, number of possible failover exceeded, all slaves delays exceeded, time before next failover not yet reached, no slave to failover.
+
+First SLA is the one that track the presence of a valid topology from  **replication-manager**, when a leader is reachable.                        
+
+Consistency during switchover and in case of split brain on active active routers:
+**replication-manager** have no other way on the long run to prevent additional writes to set READ_ONLY flag on the old leader, if routers still sending WRITE TRX, they can pill up until timeout, despite being killed by **replication-manager**, additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and use the last one connection by not killing himself         This works but in yet unknown scenarios we would not let a node in a state it can be connected any more so we advice using extra port provided with MariaDB pool of thread feature :
+
+```
+thread_handling = pool-of-threads  
+extra_port = 3307   
+extra_max_connections = 10
+```   
+
+Also to better protect consistency it is strongly advice to not enable SUPER PRIVILEGES to users that performs writes, such as the MaxScale user when read write split module is instructed to check for replication lags  
+
+```
+[Splitter Service]
+type=service
+router=readwritesplit
+max_slave_replication_lag=30
+```
 
 ## Procedural command line examples
 
