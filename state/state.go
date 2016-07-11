@@ -37,8 +37,8 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	curState            *Map
-	oldState            *Map
+	CurState            *Map
+	OldState            *Map
 	discovered          bool
 	lasttime            int64
 	firsttime           int64
@@ -50,8 +50,8 @@ type StateMachine struct {
 
 func (SM *StateMachine) Init() {
 
-	SM.curState = NewMap()
-	SM.oldState = NewMap()
+	SM.CurState = NewMap()
+	SM.OldState = NewMap()
 	SM.discovered = false
 	SM.lasttime = time.Now().Unix()
 	SM.firsttime = SM.lasttime
@@ -61,7 +61,7 @@ func (SM *StateMachine) Init() {
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
-	SM.curState.Add(key, s)
+	SM.CurState.Add(key, s)
 }
 
 func (SM *StateMachine) GetUptime() string {
@@ -108,15 +108,15 @@ func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsDelay bool) {
 
 // Clear copies the current map to argument map and clears it
 func (SM *StateMachine) ClearState() {
-	SM.oldState = SM.curState
-	SM.curState = nil
-	SM.curState = NewMap()
+	SM.OldState = SM.CurState
+	SM.CurState = nil
+	SM.CurState = NewMap()
 
 }
 
 func (SM *StateMachine) CanMonitor() bool {
 
-	for _, value := range *SM.curState {
+	for _, value := range *SM.CurState {
 		if value.ErrType == "ERROR" {
 			return false
 		}
@@ -135,15 +135,15 @@ func (SM *StateMachine) IsDiscovered() bool {
 func (SM *StateMachine) GetState() []string {
 
 	var log []string
-	for key2, value2 := range *SM.oldState {
-		if SM.curState.Search(key2) == false {
+	for key2, value2 := range *SM.OldState {
+		if SM.CurState.Search(key2) == false {
 			log = append(log, fmt.Sprintf("%s: %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
 
 		}
 	}
 
-	for key, value := range *SM.curState {
-		if SM.oldState.Search(key) == false {
+	for key, value := range *SM.CurState {
+		if SM.OldState.Search(key) == false {
 			log = append(log, fmt.Sprintf("%s: %s %s", value.ErrType, key, value.ErrDesc))
 
 		}
