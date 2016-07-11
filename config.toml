@@ -1,7 +1,0 @@
-# config.toml
-# Example replication-manager configuration file
-
-# hosts = "172.18.0.4,172.18.0.3,172.18.0.2"
-# user = "root:admin"
-# rpluser = "root:admin"
-# connect-timeout = 1

@@ -177,7 +177,23 @@ var failoverCmd = &cobra.Command{
 		newServerList()
 		err = topologyDiscover()
 		if err != nil {
-			log.Fatalln(err)
+			for _, s := range sme.GetState() {
+				log.Println(s)
+			}
+			// Test for ERR00012 - No master detected
+			if sme.CurState.Search("ERR00012") {
+				for _, s := range servers {
+					if s.State == "" {
+						s.State = stateFailed
+						master = s
+					}
+				}
+			} else {
+				log.Fatalln(err)
+			}
+		}
+		if master == nil {
+			log.Fatalln("ERROR: Could not find a failed server in the hosts list")
 		}
 		if faillimit > 0 && failoverCtr >= faillimit {
 			log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", faillimit)
