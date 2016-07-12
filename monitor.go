@@ -159,10 +159,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		return
 	}
 
-	// uptime monitoring
-	if server.State == stateMaster {
-		sme.SetMasterUpAndSync(server.SemiSyncMasterStatus, server.RplMasterStatus)
-	}
+	
 
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err == sql.ErrNoRows {

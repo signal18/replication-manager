@@ -3,6 +3,8 @@ package state
 import "fmt"
 import "time"
 import "strconv"
+import "sync"
+
 
 type State struct {
 	ErrType string
@@ -46,6 +48,7 @@ type StateMachine struct {
 	uptimeFailable      int64
 	uptimeSemisync      int64
 	avgReplicationDelay float32
+	sync.Mutex
 }
 
 func (SM *StateMachine) Init() {
@@ -58,10 +61,13 @@ func (SM *StateMachine) Init() {
 	SM.uptime = 0
 	SM.uptimeFailable = 0
 	SM.uptimeSemisync = 0
+
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
+  SM.Lock()
 	SM.CurState.Add(key, s)
+	SM.Unlock()
 }
 
 func (SM *StateMachine) GetUptime() string {
@@ -92,40 +98,42 @@ func (SM *StateMachine) IsFailable() bool {
  return SM.CanMonitor()
 }
 
-func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsDelay bool) {
+func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
 	var timenow int64
 	timenow = time.Now().Unix()
-	if IsSemiSynced && SM.IsFailable() {
-		SM.uptime = SM.uptime + (timenow - SM.lasttime)
+	if IsSemiSynced == true && SM.IsFailable() == true {
+	  SM.uptimeSemisync = SM.uptimeSemisync + (timenow - SM.lasttime)
+	}
+	if IsNotDelay==true && SM.IsFailable() == true {
 		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
-		SM.uptimeSemisync = SM.uptimeSemisync + (timenow - SM.lasttime)
-	} else if IsDelay==false && SM.IsFailable() {
-		SM.uptime = SM.uptime + (timenow - SM.lasttime)
-		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
-	} else {
+	}
+  if SM.IsFailable() == true 	{
 		SM.uptime = SM.uptime + (timenow - SM.lasttime)
 	}
 	SM.lasttime = timenow
 
-	//   fmt.Printf("INFO : Uptime %b  %b %d %d %d\n",IsSemiSynced ,IsDelay, SM.uptime, SM.uptimeFailable ,SM.uptimeSemisync)
+  //fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b uptime %d uptimeFailable %d uptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.uptime, SM.uptimeFailable ,SM.uptimeSemisync)
 }
 
 // Clear copies the current map to argument map and clears it
 func (SM *StateMachine) ClearState() {
+	SM.Lock()
 	SM.OldState = SM.CurState
 	SM.CurState = nil
 	SM.CurState = NewMap()
-
+  SM.Unlock()
 }
 
 func (SM *StateMachine) CanMonitor() bool {
-
+ SM.Lock()
 	for _, value := range *SM.CurState {
-		if value.ErrType == "ERROR" {
+ 		if value.ErrType == "ERROR" {
+      SM.Unlock()
 			return false
 		}
 	}
 	SM.discovered = true
+  SM.Unlock()
 	return true
 
 }
