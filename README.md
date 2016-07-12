@@ -2,7 +2,7 @@
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
-Goals are topology detection and it's monitoring, to enable on demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover).
+Goals are topology detection and its monitoring, to enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover).
 
 To perform switchover, preserving data consistency, replication-manager uses a proven mechanism similar to common MySQL failover tools such as MHA:
 
@@ -331,11 +331,11 @@ Check https://github.com/mariadb-corporation/replication-manager/issues for a li
 
  * Http daemon mode
 
- * Email alert
+ * Email alerts
 
  * Configuration file
 
- * 2 nodes Multi Master switchover support
+ * 2 nodes Multi Master Switchover support
 
  * On live mode
 
@@ -345,9 +345,9 @@ Check https://github.com/mariadb-corporation/replication-manager/issues for a li
 
  * Docker images
 
- * Docker deployment via opensvc in google cloud
+ * Docker deployment via OpenSVC in Google Cloud
 
- * Docker deployment via opensvc on promise for Unbuntu and OSX  
+ * Docker deployment via OpenSVC on premise for Ubuntu and OSX
 
 
 ## Roadmap
@@ -362,13 +362,14 @@ Check https://github.com/mariadb-corporation/replication-manager/issues for a li
 
  * Agent base server stop leader on switchover   
 
- * MariaDB integration of no slave behind https://jira.mariadb.org/browse/MDEV-8112
+ * MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
 
  * MaxScale integration to disable traffic on READ_ONLY flag https://jira.mariadb.org/browse/MXS-778
 
 ## Authors
 
 Guillaume Lefranc <guillaume@mariadb.com>
+
 Stephane Varoqui <stephane@mariadb.com>
 
 ## License
