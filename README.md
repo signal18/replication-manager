@@ -214,101 +214,49 @@ The http dashboard is an experimental angularjs application, please don't use it
   version     Print the replication manager version number
 ```
 
-## Options
+To print the help and option flags for each command, use `replication-manager [command] --help`
 
-At a minimum, required options are: a list of hosts (replication-manager can autodetect topologies), user with privileges (SUPER, REPLICATION CLIENT, RELOAD), and replication user (with REPLICATION SLAVE privileges)
+Flags help for the monitor command is given below.
 
-  * --autorejoin `bool`
+## Monitor Options
 
-    Automatically rejoin a failed server to the current master. (default true)
+```
+Flags:
+      --autorejoin                    Automatically rejoin a failed server to the current master (default true)
+      --check-type string             Type of server health check (tcp, agent) (default "tcp")
+      --connect-timeout int           Database connection timeout in seconds (default 5)
+      --daemon                        Daemon mode. Do not start the Termbox console
+      --failcount int                 Trigger failover after N failures (interval 1s) (default 5)
+      --failover-limit int            Quit monitor after N failovers (0: unlimited)
+      --failover-time-limit int       In automatic mode, Wait N seconds before attempting next failover (0: do not wait)
+      --gtidcheck                     Do not initiate failover unless slaves are fully in sync
+      --http-bind-address string      Bind HTTP monitor to this IP address (default "localhost")
+      --http-port string              HTTP monitor to listen on this port (default "10001")
+      --http-root string              Path to HTTP monitor files (default "/usr/share/replication-manager/dashboard")
+      --http-server                   Start the HTTP monitor
+      --ignore-servers string         List of servers to ignore in slave promotion operations
+      --logfile string                Write MRM messages to a log file
+      --mail-from string              Alert email sender (default "mrm@localhost")
+      --mail-smtp-addr string         Alert email SMTP server address, in host:[port] format (default "localhost:25")
+      --mail-to string                Alert email recipients, separated by commas
+      --master-connect-retry int      Specifies how many seconds to wait between slave connect retries to master (default 10)
+      --master-connection string      Connection name to use for multisource replication
+      --maxdelay int                  Maximum replication delay before initiating failover
+      --multimaster                   Turn on multi-master detection
+      --post-failover-script string   Path of post-failover script
+      --pre-failover-script string    Path of pre-failover script
+      --prefmaster string             Preferred candidate server for master failover, in host:[port] format
+      --readonly                      Set slaves as read-only after switchover (default true)
+      --wait-kill int                 Wait this many milliseconds before killing threads on demoted master (default 5000)
 
-  * --connect-timeout `secs`
-
-    Database connection timeout in seconds (default 5)
-
-  * --failover `<state>`
-
-    Start the replication manager in failover mode. `state` can be either `monitor` or `force`, whether the manager should run in monitoring or command line mode. The action will result in removing the master of the current replication topology.
-
-  * --failcount `secs`
-
-    Trigger failover after N failures (interval 1s) (default 5)
-
-  * --failover-limit `count`
-
-    In auto-monitor mode, quit after N failovers (0: unlimited)
-
-  * --failover-time-limit `secs`
-
-    In auto-monitor mode, wait N seconds before attempting next failover (0: do not wait)
-
-  * --gtidcheck `<boolean>`
-
-    _DEPRECATED_ Check that GTID sequence numbers are identical before initiating failover. Default false. This must be used if you want your servers to be perfectly in sync before initiating master switchover. If false, mariadb-repmgr will wait for the slaves to be in sync before initiating.
-
-  * --hosts `<address>:[port],`
-
-    List of MariaDB hosts IP and port (optional), specified in the `host:[port]` format and comma-separated.
-
-  * --ignore-servers `<address>:[port],`
-
-    List of servers in the `host:[port]` format to be ignored for slave promotion operations.
-
-  * --interactive `<boolean>`
-
-    Runs the MariaDB monitor in interactive mode (default), asking for user interaction when failures are detected. A value of false also allows mariadb-repmgr to invoke switchover without displaying the interactive monitor.
-
-  * --logfile `path`
-
-    Write MRM messages to a log file.
-
-  * --maxdelay `<seconds>`
-
-    Maximum slave replication delay allowed for initiating switchover, in seconds.
-
-  * --post-failover-script `<path>`
-
-    Path of post-failover script, to be invoked after new master promotion.
-
-  * --pre-failover-script `<path>`
-
-    Path of pre-failover script to be invoked before master election.
-
-  * --prefmaster `<address>`
-
-    Preferred candidate server for master failover, in `host:[port]` format.
-
-  * --readonly `<boolean>`
-
-    Set slaves as read-only when performing switchover. Default true.
-
-  * --rpluser `<user>:[password]`
-
-    Replication user and password. This user must have REPLICATION SLAVE privileges and is used to setup the old master as a new slave.
-
-  * --switchover `<action>`
-
-    Starts the replication manager in switchover mode. Action can be either `keep` to degrade the old master as a new slave, or `kill` to remove the old master from the replication topology.
-
-  * --socket `<path>`
-
-    Path of MariaDB unix socket. Default is "/var/run/mysqld/mysqld.sock"
-
-  * --user `<user>:[password]`
-
-    User for MariaDB login, specified in the `user:[password]` format. Must have administrative privileges. This user is used to perform switchover.
-
-  * --verbose
-
-    Print detailed execution information.
-
-  * --version
-
-    Return softawre version.
-
-  * --wait-kill `<msecs>`
-
-    Wait this many milliseconds before killing threads on demoted master. Default 5000 ms.
+Global Flags:
+      --hosts string     List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas
+      --interactive      Ask for user interaction when failures are detected (default true)
+      --log-level int    Log verbosity level
+      --rpluser string   Replication user in the [user]:[password] format
+      --user string      User for MariaDB login, specified in the [user]:[password] format
+      --verbose          Print detailed execution info
+```
 
 ## System Requirements
 
