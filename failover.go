@@ -26,8 +26,12 @@ func masterFailover(fail bool) bool {
 		}
 	}
 	logprint("INFO : Electing a new master")
-	key := master.electCandidate(slaves)
+	for _, s := range slaves {
+		s.refresh()
+	}
+	key := electCandidate(slaves)
 	if key == -1 {
+		logprint("ERROR: No candidates found")
 		return false
 	}
 	logprintf("INFO : Slave %s [%d] has been elected as a new master", slaves[key].URL, key)
@@ -201,4 +205,77 @@ func masterFailover(fail bool) bool {
 		failoverTs = time.Now().Unix()
 	}
 	return true
+}
+
+// Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
+func electCandidate(l []*ServerMonitor) int {
+	ll := len(l)
+	seqList := make([]uint64, ll)
+	hiseq := 0
+	var max uint64
+	for i, sl := range l {
+		/* If server is in the ignore list, do not elect it */
+		if contains(ignoreList, sl.URL) {
+			if loglevel > 2 {
+				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
+			}
+			continue
+		}
+		// TODO: refresh state outside evaluation
+		if loglevel > 2 {
+			logprintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
+		}
+		if multiMaster == true && sl.State == stateMaster {
+			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
+			continue
+		}
+		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+			continue
+		}
+		if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+			logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
+			continue
+		}
+		if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+			logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+			continue
+		}
+		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+		if ss.Seconds_Behind_Master.Valid == false {
+			logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+			continue
+		}
+		if ss.Seconds_Behind_Master.Int64 > maxDelay {
+			logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
+			continue
+		}
+		if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
+			logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
+			continue
+		}
+		/* Rig the election if the examined slave is preferred candidate master */
+		if sl.URL == prefMaster {
+			if loglevel > 2 {
+				logprintf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
+			}
+			return i
+		}
+		seqnos := sl.SlaveGtid.GetSeqNos()
+		if loglevel > 2 {
+			logprintf("DEBUG: Got sequence(s) %v for server [%d]", seqnos, i)
+		}
+		for _, v := range seqnos {
+			seqList[i] += v
+		}
+		if seqList[i] > max {
+			max = seqList[i]
+			hiseq = i
+		}
+	}
+	if max > 0 {
+		/* Return key of slave with the highest seqno. */
+		return hiseq
+	}
+	// logprint("ERROR: No suitable candidates found.") TODO: move this outside func
+	return -1
 }

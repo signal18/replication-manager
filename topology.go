@@ -174,6 +174,12 @@ func topologyDiscover() error {
 		}
 	}
 
+	// Slave eligibility check
+
+	if electCandidate(slaves) == -1 {
+		sme.AddState("ERR00016", state.State{ErrType: "ERROR", ErrDesc: "Cannot find any candidate master", ErrFrom: "TOPO"})
+	}
+
 	if slaves != nil {
 		// Depending if we are doing a failover or a switchover, we will find the master in the list of
 		// failed hosts or unconnected hosts.
