@@ -95,11 +95,11 @@ func (SM *StateMachine) IsFailable() bool {
 func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsDelay bool) {
 	var timenow int64
 	timenow = time.Now().Unix()
-	if IsSemiSynced {
+	if IsSemiSynced && SM.IsFailable() {
 		SM.uptime = SM.uptime + (timenow - SM.lasttime)
 		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
 		SM.uptimeSemisync = SM.uptimeSemisync + (timenow - SM.lasttime)
-	} else if IsDelay==false || SM.IsFailable() {
+	} else if IsDelay==false && SM.IsFailable() {
 		SM.uptime = SM.uptime + (timenow - SM.lasttime)
 		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
 	} else {
