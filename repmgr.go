@@ -453,6 +453,10 @@ func repmgrFlagCheck() {
 	}
 
 	// Check if preferred master is included in Host List
+	pfa := strings.Split(prefMaster, ",")
+	if len(pfa) > 1 {
+		log.Fatal("ERROR: prefmaster option takes exactly one argument")
+	}
 	ret := func() bool {
 		for _, v := range hostList {
 			if v == prefMaster {
