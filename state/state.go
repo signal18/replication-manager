@@ -88,8 +88,8 @@ func (SM *StateMachine) GetUptimeFailable() string {
 	return up
 }
 
-func (SM *StateMachine) IsFailable() {
- return CanMonitor()
+func (SM *StateMachine) IsFailable() bool {
+ return SM.CanMonitor()
 }
 
 func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsDelay bool) {
