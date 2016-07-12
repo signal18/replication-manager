@@ -1,6 +1,6 @@
 ## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
-**replication-manager** is an high availability solution to manage MariaDB 10.x GTID replication.  
+__replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
 Goals are topology detection and it's monitoring, to enable on demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover).
 
@@ -12,7 +12,7 @@ To perform switchover, preserving data consistency, replication-manager uses a p
   * Elect a new master (usually the most up to date, but it could also be a designated candidate)
   * Put down the IP address on master by calling an optional script
   * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
-  * Reject writes on master by setting READ_ONLY FLAG
+  * Reject writes on master by setting READ_ONLY flag
   * Reject writes on master by decreasing MAX_CONNECTIONS
   * Kill pending connections on master if any remaining
   * Watching for all slaves to catch up to the current GTID position
@@ -20,7 +20,7 @@ To perform switchover, preserving data consistency, replication-manager uses a p
   * Put up the IP address on new master by calling an optional script
   * Switch other slaves and old master to be slaves of the new master and set them as read-only
 
-**replication-manager** is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
+__replication-manager__ is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
 - A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology via similar settings:
 
@@ -44,12 +44,12 @@ passwd=%%ENV:MYROOTPWD%%
 enable_root_user=true  
 ```
 
-- With monitor-less proxies, **replication-manager** can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the **replication-manager** scripts           
-- Using **replication-manager** as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
+- With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
+- Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
 ## ADVANTAGES
 
-A **replication-manager** Leader Election Cluster is best to use in such scenarios:
+A __replication-manager__ Leader Election Cluster is best to use in such scenarios:
 
    * Dysfunctional node does not impact Availability and Performance  
    * Heterogeneous node in configuration and resources does not impact Availability and Performance  
@@ -68,22 +68,21 @@ This is achieved via following drawbacks:
    * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind feature
 
 
-Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", **replication-manager** will track failover SLA (Service Level Availability).
+Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", __replication-manager__ will track failover SLA (Service Level Availability).
 
 
-Because it is not always desirable to perform an automatic failover in an asynchronous cluster, **replication-manager** enforces some tunable settings to constraint the architecture state in which the failover can happen.
-
+Because it is not always desirable to perform an automatic failover in an asynchronous cluster, __replication-manager__ enforces some tunable settings to constraint the architecture state in which the failover can happen.
 
 In the field, a regular scenario is to have long periods of time between hardware crashes: what was the state of the replication when crash happens?
 
-We can classify SLA and failover scenario in 3 cases
+We can classify SLA and failover scenario into 3 cases:
   * Replica stream in sync   
-  * Replica stream not sync but sate allow failover      
-  * Replica stream not sync but sate can't allow failover
+  * Replica stream not sync but state allows failover      
+  * Replica stream not sync but state does not allow failover
 
 ## CASE 1: IN SYNC
 
-If the replication was in sync, the failover can be done without loss of data, provided that **replication-manager** wait for all replicated events to be applied to the elected replica, before re-opening traffic.
+If the replication was in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
 In order to reach this state most of the time, we advise following settings:
 
@@ -102,9 +101,9 @@ sync_binlog = 1
 log_slave_updates = ON
 ```
 
-### Usage of semi-synchronous
+### Usage of semi-synchronous replication
 
-semi-synchronous enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by **replication-manager** to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
+Semi-synchronous replication enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by __replication-manager__ to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
 
 The MariaDB recommended settings for semi-sync are the following:
 
@@ -118,29 +117,29 @@ loose_rpl_semi_sync_slave_enabled = ON
 
 ## CASE 2: NOT IN SYNC & FAILABLE
 
-**replication-manager** can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
+__replication-manager__ can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
 
 
-This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the **replication-manager** parameters, all slave delays not yet exceeded.
+This is the second SLA display. This SLA tracks the time we can failover under the conditions that were predefined in the __replication-manager__ parameters, all slave delays not yet exceeded.
 
 
-Probability to lose data is increase with a single slave topology, when the slave is delayed by a long running transaction, or was stop for maintenance, catching on replication events, with heavy single threaded writes process, network performance can't catch-up with the leader performance.
+Probability to lose data is increased with a single slave topology, when the slave is delayed by a long running transaction or was stopped for maintenance, catching on replication events, with heavy single threaded writes process, network performance can't catch up with the leader performance.
 
 
-To limit such cases we advice usage of a 3 nodes cluster that remove some of such scenarios like loosing a slave.
+To limit such cases we advise usage of a 3 nodes cluster that removes some of such scenarios like losing a slave.
 
 ## CASE 3: NOT IN SYNC & UNFAILABLE
 
-The first SLA is the one that tracks the presence of a valid topology from  **replication-manager**, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
+The first SLA is the one that tracks the presence of a valid topology from  __replication-manager__, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
 
-This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimized time in this state as failover would not be possible without big impact that  **replication-manager** can force in interactive mode.     
+This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimize time in this state as failover would not be possible without big impact that  __replication-manager__ can force in interactive mode.     
 
 ## DATA CONSISTENCY INSIDE SWITCHOVER
 
-**replication-manager** prevent additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by **replication-manager**.
+__replication-manager__ prevents additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by __replication-manager__.
 
-Some additional caution to make sure that piled writes do not happen is that **replication-manager** will decrease max_connections to the server to 1 and  consume last possible connection by not killing himself. This works but to avoid a scenario where a node is left in a state where it cannot be connected anymore ( Crashing replication-manager in this critical section),  we advise using extra port provided with MariaDB pool of threads feature :
+Some additional caution to make sure that piled writes do not happen is that __replication-manager__ will decrease max_connections to the server to 1 and consume last possible connection by not killing himself. This works but to avoid a scenario where a node is left in a state where it cannot be connected anymore (crashing replication-manager in this critical section), we advise using extra port provided with MariaDB pool of threads feature:
 
 ```
 thread_handling = pool-of-threads  
@@ -170,7 +169,7 @@ Run replication-manager in non-interactive failover mode, using full host and po
 
 ## Monitoring
 
-Start replication-manager in console mode to monitor the cluster
+Start replication-manager in console mode to monitor the cluster:
 
 `replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
 
@@ -338,4 +337,4 @@ You should have received a copy of the GNU General Public License along with thi
 
 ## Version
 
-**replication-manager** 0.7.0
+__replication-manager__ 0.7.0
