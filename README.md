@@ -117,6 +117,7 @@ rpl_semi_sync_master = ON
 rpl_semi_sync_slave = ON  
 loose_rpl_semi_sync_master_enabled = ON  
 loose_rpl_semi_sync_slave_enabled = ON
+rpl_semi_sync_master_timeout = 10
 ```
 
 ## CASE 2: NOT IN SYNC & FAILABLE
@@ -340,6 +341,15 @@ Check https://github.com/mariadb-corporation/replication-manager/issues for a li
 
  * Failover SLA tracking
 
+ * Log facilities and verbosity
+
+ * Docker images
+
+ * Docker deployment via opensvc in google cloud
+
+ * Docker deployment via opensvc on promise for Unbuntu and OSX  
+
+
 ## Roadmap
 
  * Maxscale binlog server support
@@ -351,6 +361,10 @@ Check https://github.com/mariadb-corporation/replication-manager/issues for a li
  * Load and non regression simulator  
 
  * Agent base server stop leader on switchover   
+
+ * MariaDB integration of no slave behind https://jira.mariadb.org/browse/MDEV-8112
+
+ * MaxScale integration to disable traffic on READ_ONLY flag https://jira.mariadb.org/browse/MXS-778
 
 ## Authors
 
