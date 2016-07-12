@@ -9,7 +9,7 @@ To perform switchover, preserving data consistency, replication-manager uses a p
   * Verify replication settings
   * Check (configurable) replication on the slaves
   * Check for long running queries on master
-  * Elect a new master (usually the most up to date, but it could also be a designated candidate)
+  * Elect a new master (default to most up to date, but it could also be a designated candidate)
   * Put down the IP address on master by calling an optional script
   * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
   * Reject writes on master by setting READ_ONLY flag
@@ -49,10 +49,10 @@ enable_root_user=true
 
 ## ADVANTAGES
 
-A __replication-manager__ Leader Election Cluster is best to use in such scenarios:
+Leader Election Cluster is best to use in such scenarios:
 
-   * Dysfunctional node does not impact Availability and Performance  
-   * Heterogeneous node in configuration and resources does not impact Availability and Performance  
+   * Dysfunctional node does not impact leader performance
+   * Heterogeneous node in configuration and resources does not impact leader performance
    * Leader Pick Performance is not impacted by the data replication
    * Read scalability does not impact write scalability
    * Network inter connect quality fluctuation
@@ -63,9 +63,12 @@ A __replication-manager__ Leader Election Cluster is best to use in such scenari
 This is achieved via following drawbacks:
 
    * Overloading the leader can lead to data loss during failover  
-   * READ Replica is eventually consistent  
+   * READ on replica is eventually consistent  
    * ACID can be preserved via route to leader always
-   * READ Replica can be guaranteed COMMITTED READ under monitoring of semi-sync no slave behind feature
+
+Coming soon in MariaDB 10.2:
+
+   * READ on replica can be COMMITTED READ under using semi-sync no slave behind feature
 
 
 Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", __replication-manager__ will track failover SLA (Service Level Availability).
@@ -76,6 +79,7 @@ Because it is not always desirable to perform an automatic failover in an asynch
 In the field, a regular scenario is to have long periods of time between hardware crashes: what was the state of the replication when crash happens?
 
 We can classify SLA and failover scenario into 3 cases:
+
   * Replica stream in sync   
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
@@ -314,13 +318,39 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 
 Check https://github.com/mariadb-corporation/replication-manager/issues for a list of issues.
 
-## Roadmap
+## Features
 
  * High availability support with leader election
 
  * Semi-sync replication support
 
  * Provisioning
+
+ * Bootstrap
+
+ * Http daemon mode
+
+ * Email alert
+
+ * Configuration file
+
+ * 2 nodes Multi Master switchover support
+
+ * On live mode
+
+ * Failover SLA tracking
+
+## Roadmap
+
+ * Maxscale binlog server support
+
+ * Maxscale state display
+
+ * Trends display
+
+ * Load and non regression simulator  
+
+ * Agent base server stop leader on switchover   
 
 ## Authors
 
