@@ -45,6 +45,7 @@ type ServerMonitor struct {
 	SQLError             string
 	FailCount            int
 	SemiSyncMasterStatus bool
+	SemiSyncSlaveStatus  bool
 	RplMasterStatus      bool
 }
 
@@ -235,7 +236,11 @@ func (server *ServerMonitor) refresh() error {
 	} else {
 		server.SemiSyncMasterStatus = false
 	}
-
+	if su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" {
+		server.SemiSyncSlaveStatus = true
+	} else {
+		server.SemiSyncSlaveStatus = false
+	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""

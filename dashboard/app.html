@@ -59,6 +59,8 @@ td {
 				<th>Slave SQL Thread</th>
 				<th>Delay</th>
 				<th>Read Only</th>
+				<th>Master Sync</th>
+				<th>Slave Sync</th>
 			</tr>
 			<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': (server.IOThread=='No' && server.State=='Slave')}">
 				<td>{{server.Host}}</td>
@@ -71,6 +73,8 @@ td {
 				<td>{{server.SQLThread}}</td>
 				<td>{{server.Delay.Int64}}</td>
 				<td>{{server.ReadOnly}}</td>
+				<td>{{server.SemiSyncMasterStatus}}</td>
+				<td>{{server.SemiSyncSlaveStatus}}</td>
 			</tr>
 		</table>
 		<p>
