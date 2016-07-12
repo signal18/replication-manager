@@ -29,6 +29,9 @@ app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers'
   $interval(function(){
   Servers.query({}, function(data) {
     $scope.servers = data;
+    $scope.reserror = false;
+  }, function(error) {
+    $scope.reserror = true;
   });
   Log.query({}, function(data) {
     $scope.log = data;
