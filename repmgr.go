@@ -322,6 +322,10 @@ Interactive console and HTTP dashboards are available for control`,
 					}
 					wg.Wait()
 					topologyDiscover()
+					states := sme.GetState()
+					for i := range states {
+						logprint(states[i])
+					}
 					checkfailed()
 					select {
 					case sig := <-swChan:
