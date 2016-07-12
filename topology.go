@@ -263,6 +263,8 @@ var topologyCmd = &cobra.Command{
 	Short: "Print replication topology",
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
+		sme = new(state.StateMachine)
+		sme.Init()
 		repmgrFlagCheck()
 		newServerList()
 		err := topologyDiscover()
