@@ -120,6 +120,8 @@ loose_rpl_semi_sync_slave_enabled = ON
 rpl_semi_sync_master_timeout = 10
 ```
 
+Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF. 
+
 ## CASE 2: NOT IN SYNC & FAILABLE
 
 __replication-manager__ can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
