@@ -22,7 +22,7 @@ func display() {
 	printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	tlog.Line = 3
 	for _, server := range servers {
-		server.refresh()
+		// server.refresh()
 		var gtidCurr string
 		var gtidSlave string
 		if server.CurrentGtid != nil {
