@@ -38,7 +38,6 @@ func newServerList() {
 
 func pingServerList() {
 	wg := new(sync.WaitGroup)
-	mx := new(sync.Mutex)
 	for _, sv := range servers {
 		wg.Add(1)
 		go func(sv *ServerMonitor) {
@@ -48,14 +47,10 @@ func pingServerList() {
 				if driverErr, ok := err.(*mysql.MySQLError); ok {
 					if driverErr.Number == 1045 {
 						sv.State = stateUnconn
-						mx.Lock()
 						sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
-						mx.Unlock()
 					}
 				} else {
-					mx.Lock()
 					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
-					mx.Unlock()
 					sv.State = stateFailed
 				}
 			}
