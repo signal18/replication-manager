@@ -105,6 +105,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&mailTo, "mail-to", "", "Alert email recipients, separated by commas")
 	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
+	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
 	autorejoin = viper.GetBool("autorejoin")
@@ -117,6 +118,7 @@ func init() {
 	mailFrom = viper.GetString("mail-from")
 	mailSMTPAddr = viper.GetString("mail-smtp-addr")
 	daemon = viper.GetBool("daemon")
+	interactive = viper.GetBool("interactive")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -278,9 +280,9 @@ Interactive console and HTTP dashboards are available for control`,
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = termlog.NewTermLog(loglen)
 		if interactive {
-			tlog.Add("Monitor started in interactive mode")
+			tlog.Add("INFO : Monitor started in manual mode")
 		} else {
-			tlog.Add("Monitor started in automatic mode")
+			tlog.Add("INFO : Monitor started in automatic mode")
 		}
 
 		newServerList()
@@ -372,11 +374,7 @@ Interactive console and HTTP dashboards are available for control`,
 						}
 					}
 					if event.Key == termbox.KeyCtrlI {
-						if interactive == true {
-							interactive = false
-						} else {
-							interactive = true
-						}
+						toggleInteractive()
 					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
@@ -478,5 +476,15 @@ func repmgrFlagCheck() {
 	}
 	if ret() == false && prefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the hosts option")
+	}
+}
+
+func toggleInteractive() {
+	if interactive == true {
+		interactive = false
+		logprintf("INFO : Failover monitor switched to automatic mode")
+	} else {
+		interactive = true
+		logprintf("INFO : Failover monitor switched to manual mode")
 	}
 }

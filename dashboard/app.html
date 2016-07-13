@@ -38,7 +38,7 @@ td {
 				<th>SLA Can Failover No Data Loss</th>
 			</tr>
 			<tr>
-				<td><span ng-if="settings.interactive=='true'" class="label label-primary">on-call</span><span ng-if="settings.interactive=='false'" class="label label-warning">on-leave</span></td>
+				<td><span ng-if="settings.interactive=='true'" class="label label-primary">on-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">on-leave (auto)</span></td>
 				<td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
 				<td>{{settings.lastfailover}}</td>
 				<td>{{settings.uptime}}</td>

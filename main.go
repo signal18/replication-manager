@@ -20,7 +20,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
-	rootCmd.PersistentFlags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&loglevel, "log-level", 0, "Log verbosity level")
 	viper.BindPFlags(rootCmd.PersistentFlags())

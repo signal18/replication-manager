@@ -117,11 +117,7 @@ func handlerFailover(w http.ResponseWriter, r *http.Request) {
 
 func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if interactive == true {
-		interactive = false
-	} else {
-		interactive = true
-	}
+	toggleInteractive()
 	return
 }
 
