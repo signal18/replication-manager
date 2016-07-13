@@ -187,6 +187,7 @@ The console mode accepts several commands:
 ```
 Ctrl-D  Print debug information
 Ctrl-F  Manual Failover
+Ctrl-I  Toggle automatic/manual failover mode
 Ctrl-R  Set slaves read-only
 Ctrl-S  Switchover
 Ctrl-Q  Quit
