@@ -54,7 +54,7 @@ func pingServerList() {
 					}
 				} else {
 					mx.Lock()
-					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("INFO : Server %s is dead.", sv.URL), ErrFrom: "TOPO"})
+					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
 					mx.Unlock()
 					sv.State = stateFailed
 				}
@@ -239,7 +239,7 @@ func topologyDiscover() error {
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
 				}
-				 
+
 				if sl.Delay.Int64 <= maxDelay {
 
 					master.RplMasterStatus = true
