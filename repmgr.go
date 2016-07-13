@@ -371,6 +371,13 @@ Interactive console and HTTP dashboards are available for control`,
 							dbhelper.SetReadOnly(sl.Conn, false)
 						}
 					}
+					if event.Key == termbox.KeyCtrlI {
+						if interactive == true {
+							interactive = false
+						} else {
+							interactive = true
+						}
+					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
 					}
