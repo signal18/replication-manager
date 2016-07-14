@@ -275,6 +275,8 @@ Global Flags:
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
+Replication user and `replication-manager` need to be define from the hosts `replication-manager` runs, but and from each of the monitored database nodes as set in the configuration. The '%' is accepted as well.   
+
 ## System Requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
