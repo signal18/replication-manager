@@ -52,7 +52,8 @@ func masterFailover(fail bool) bool {
 	// Call pre-failover script
 	if preScript != "" {
 		logprintf("INFO : Calling pre-failover script")
-		out, err := exec.Command(preScript, oldMaster.Host, master.Host).CombinedOutput()
+		var out []byte
+		out, err = exec.Command(preScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
@@ -92,7 +93,8 @@ func masterFailover(fail bool) bool {
 	// Call post-failover script before unlocking the old master.
 	if postScript != "" {
 		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
+		var out []byte
+		out, err = exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
