@@ -231,19 +231,26 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
 		}
+		// The tests below should run only in case of a switchover as they require the master to be up.
+		if master.State != stateFailed {
+			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
+				continue
+			}
+			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+				continue
+			}
+			if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
+				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
+				continue
+			}
+		}
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 			continue
 		}
-		if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
-			logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
-			continue
-		}
-		if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
-			logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
-			continue
-		}
 		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-		if ss.Seconds_Behind_Master.Valid == false {
+		if ss.Seconds_Behind_Master.Valid == false && master.State != stateFailed {
 			logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 			continue
 		}
@@ -251,10 +258,7 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}
-		if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false {
-			logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
-			continue
-		}
+
 		/* Rig the election if the examined slave is preferred candidate master */
 		if sl.URL == prefMaster {
 			if loglevel > 2 {
