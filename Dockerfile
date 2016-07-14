@@ -5,7 +5,7 @@ WORKDIR /go/src/github.com/mariadb-corporation/replication-manager
 COPY . /go/src/github.com/mariadb-corporation/replication-manager/
 RUN go install .
 RUN mkdir -p /etc/replication-manager && mkdir -p /usr/share/replication-manager/dashboard
-COPY config.toml /etc/replication-manager/
+COPY etc/config.toml.sample /etc/replication-manager/
 COPY dashboard/* /usr/share/replication-manager/dashboard/
 RUN rm -rf /go/src
 WORKDIR /go/bin
