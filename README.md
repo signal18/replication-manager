@@ -47,7 +47,7 @@ enable_root_user=true
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-## ADVANTAGES
+## replication-manager advantages
 
 Leader Election Cluster is best to use in such scenarios:
 
@@ -84,7 +84,7 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-## CASE 1: IN SYNC
+## State: in-sync
 
 If the replication was in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
@@ -122,7 +122,7 @@ rpl_semi_sync_master_timeout = 10
 
 Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF.
 
-## CASE 2: NOT IN SYNC & FAILABLE
+## State: Not in-sync & failable
 
 __replication-manager__ can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
 
@@ -135,14 +135,14 @@ Probability to lose data is increased with a single slave topology, when the sla
 
 To limit such cases we advise usage of a 3 nodes cluster that removes some of such scenarios like losing a slave.
 
-## CASE 3: NOT IN SYNC & UNFAILABLE
+## State: Not in-sync & unfailable
 
 The first SLA is the one that tracks the presence of a valid topology from  __replication-manager__, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
 
 This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimize time in this state as failover would not be possible without big impact that  __replication-manager__ can force in interactive mode.     
 
-## DATA CONSISTENCY INSIDE SWITCHOVER
+## Data consistency inside switchover
 
 __replication-manager__ prevents additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by __replication-manager__.
 
@@ -231,7 +231,7 @@ To print the help and option flags for each command, use `replication-manager [c
 
 Flags help for the monitor command is given below.
 
-## Monitor Options
+## Monitor options
 
 ```
 Flags:
@@ -277,7 +277,7 @@ All the options above are settable in a configuration file that must be located 
 
 Replication user and `replication-manager` need to be define from the hosts `replication-manager` runs, but and from each of the monitored database nodes as set in the configuration. The '%' is accepted as well.   
 
-## System Requirements
+## System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
 On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
