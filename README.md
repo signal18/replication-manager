@@ -154,7 +154,7 @@ extra_port = 3307
 extra_max_connections = 10
 ```   
 
-Also, to better protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag.  
+Also, to better protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
 
 ```
 [Splitter Service]
@@ -163,6 +163,16 @@ router=readwritesplit
 max_slave_replication_lag=30
 ```
 
+Use the following example grant for your MaxScale user:
+
+```
+CREATE USER 'maxadmin'@'%' IDENTIFIED BY 'maxpwd';
+GRANT SELECT ON mysql.user TO 'maxadmin'@'%';
+GRANT SELECT ON mysql.db TO 'maxadmin'@'%';
+GRANT SELECT ON mysql.tables_priv TO 'maxadmin'@'%';
+GRANT SHOW DATABASES, REPLICATION CLIENT ON *.* TO 'maxadmin'@'%';
+GRANT ALL ON maxscale_schema.* TO 'maxadmin'@'%';
+```
 
 ## Procedural command line examples
 
