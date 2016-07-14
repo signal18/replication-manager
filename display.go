@@ -79,6 +79,16 @@ func display() {
 	}
 }
 
+func displayHelp() {
+	logprint("HELP : Ctrl-D  Print debug information")
+	logprint("HELP : Ctrl-F  Manual Failover")
+	logprint("HELP : Ctrl-I  Toggle automatic/manual failover mode")
+	logprint("HELP : Ctrl-R  Set slaves read-only")
+	logprint("HELP : Ctrl-S  Switchover")
+	logprint("HELP : Ctrl-Q  Quit")
+	logprint("HELP : Ctrl-W  Set slaves read-write")
+}
+
 func printTb(x, y int, fg, bg termbox.Attribute, msg string) {
 	for _, c := range msg {
 		termbox.SetCell(x, y, c, fg, bg)

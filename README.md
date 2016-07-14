@@ -120,7 +120,7 @@ loose_rpl_semi_sync_slave_enabled = ON
 rpl_semi_sync_master_timeout = 10
 ```
 
-Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF. 
+Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF.
 
 ## CASE 2: NOT IN SYNC & FAILABLE
 
@@ -260,6 +260,10 @@ Global Flags:
       --user string      User for MariaDB login, specified in the [user]:[password] format
       --verbose          Print detailed execution info
 ```
+
+## Configuration file
+
+All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
 ## System Requirements
 

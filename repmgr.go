@@ -376,6 +376,9 @@ Interactive console and HTTP dashboards are available for control`,
 					if event.Key == termbox.KeyCtrlI {
 						toggleInteractive()
 					}
+					if event.Key == termbox.KeyCtrlH {
+						displayHelp()
+					}
 					if event.Key == termbox.KeyCtrlQ {
 						exit = true
 					}
