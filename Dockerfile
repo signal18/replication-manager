@@ -1,13 +1,29 @@
-FROM golang:1.6-alpine
-RUN apk add --update git && rm -rf /var/cache/apk/*
+FROM alpine
+
+# set env from golang container
+ENV \
+    GOPATH="/go" \
+    PATH="/go/bin:/usr/local/go/bin:$PATH"
+
 RUN mkdir -p /go/src/github.com/mariadb-corporation/replication-manager
 WORKDIR /go/src/github.com/mariadb-corporation/replication-manager
 COPY . /go/src/github.com/mariadb-corporation/replication-manager/
-RUN go install .
-RUN mkdir -p /etc/replication-manager && mkdir -p /usr/share/replication-manager/dashboard
+
+RUN mkdir -p \
+        /go/bin \
+        /etc/replication-manager \
+        /usr/share/replication-manager/dashboard
+
+RUN \
+    apk --no-cache --update add git go && \
+    go install . && \
+    apk --no-cache del git go && \
+    rm -rf /go/src /go/pkg && \
+    rm -rf /var/cache/apk/*
+
 COPY etc/config.toml.sample /etc/replication-manager/
 COPY dashboard/* /usr/share/replication-manager/dashboard/
-RUN rm -rf /go/src
+
 WORKDIR /go/bin
 ENTRYPOINT ["replication-manager"]
 CMD ["monitor", "--daemon", "--http-server"]
