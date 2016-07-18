@@ -159,7 +159,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		return
 	}
 
-	
+
 
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err == sql.ErrNoRows {
@@ -276,8 +276,10 @@ func (server *ServerMonitor) healthCheck() string {
 			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
-		} else {
+		} else if server.SQLThread == "No" && server.IOThread == "No"  {
 			return "NOT OK, ALL Stopped"
+		} else {
+		 	return "Running OK"
 		}
 	} else {
 		if server.Delay.Int64 > 0 {

@@ -47,6 +47,7 @@ type StateMachine struct {
 	uptime              int64
 	uptimeFailable      int64
 	uptimeSemisync      int64
+  lastState 					int64
 	avgReplicationDelay float32
 	sync.Mutex
 }
@@ -61,7 +62,7 @@ func (SM *StateMachine) Init() {
 	SM.uptime = 0
 	SM.uptimeFailable = 0
 	SM.uptimeSemisync = 0
-
+  SM.lastState = 0
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
