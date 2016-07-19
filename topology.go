@@ -38,6 +38,7 @@ func newServerList() {
 
 func pingServerList() {
 	wg := new(sync.WaitGroup)
+	mx := new(sync.Mutex)
 	for _, sv := range servers {
 		wg.Add(1)
 		go func(sv *ServerMonitor) {
@@ -47,10 +48,14 @@ func pingServerList() {
 				if driverErr, ok := err.(*mysql.MySQLError); ok {
 					if driverErr.Number == 1045 {
 						sv.State = stateUnconn
+						mx.Lock()
 						sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
+						mx.Unlock()
 					}
 				} else {
-					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
+					mx.Lock()
+					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("INFO : Server %s is dead.", sv.URL), ErrFrom: "TOPO"})
+					mx.Unlock()
 					sv.State = stateFailed
 				}
 			}
@@ -92,6 +97,7 @@ func topologyDiscover() error {
 					logprintf("DEBUG: Server %s has no slaves connected", sv.URL)
 				}
 			} else {
+					logprintf("DEBUG: Topology found and set master" )
 				master = servers[k]
 				master.State = stateMaster
 			}
@@ -156,9 +162,8 @@ func topologyDiscover() error {
 		}
 		if srw > 1 {
 			sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to prefered master.", ErrFrom: "TOPO"})
-			// 		    server:=GetPreferedMaster()
-			//			    dbhelper.SetReadOnly(server.Conn, true)
-
+			server:=getPreferedMaster()
+			dbhelper.SetReadOnly(server.Conn, false)
 		}
 	} else if readonly {
 		// In non-multimaster mode, enforce read-only flag if the option is set
@@ -185,7 +190,7 @@ func topologyDiscover() error {
 					break
 				}
 			}
-			if multiMaster == true {
+			if multiMaster == true && servers[k].State != stateFailed {
 				if s.ReadOnly == "OFF" {
 					master = servers[k]
 					master.State = stateMaster
@@ -234,9 +239,7 @@ func topologyDiscover() error {
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
 				}
-
 				if sl.Delay.Int64 <= maxDelay {
-
 					master.RplMasterStatus = true
 				}
 			}
@@ -253,6 +256,18 @@ func printTopology() {
 	for k, v := range servers {
 		logprintf("DEBUG: Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
+}
+
+func getPreferedMaster() *ServerMonitor{
+	for _, server := range servers {
+ 		if loglevel > 2 {
+ 		   logprintf("DEBUG: Server %s was lookup if prefered master: %s", server.URL ,prefMaster )
+     }
+		 if server.URL == prefMaster {
+			 return server
+		 }
+	 }
+	 return nil
 }
 
 var topologyCmd = &cobra.Command{

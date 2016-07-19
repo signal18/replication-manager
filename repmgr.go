@@ -414,11 +414,17 @@ func checkfailed() {
 					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Exiting on failover completion.", ErrFrom: "MON"})
 				}
 			} else if failtime > 0 && rem%10 == 0 {
-
 				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds.", rem)
+			} else {
+				logprintf("WARN : Contraint is blocking for failover failtime failoverCtr ")
 			}
-		}
-	}
+
+ 		} else {
+		//	logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
+	  }
+	} else {
+		logprintf("WARN : Unknow master when checking failover ")
+  }
 }
 
 func newTbChan() chan termbox.Event {

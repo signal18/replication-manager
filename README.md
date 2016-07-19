@@ -277,6 +277,27 @@ All the options above are settable in a configuration file that must be located 
 
 Replication user and `replication-manager` need to be define from the hosts `replication-manager` runs, but and from each of the monitored database nodes as set in the configuration. The '%' is accepted as well.   
 
+## Multi master
+
+`replication-manager` support 2 nodes multi master topology detection, this is not required to specify it in `replication-manager`  configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
+
+```
+read_only = 1
+```
+
+This flag ensure that in case of split brain + leader crash , when old leader is reintroduce it will not show up as a possible leader for WRITES.
+
+MaxScale can follow multi master setting by tracking the read-only flag and route query to the node where it's possible to write.
+
+```    
+[Multi-Master Monitor]
+type=monitor
+module=mmmon
+servers=server1,server2,server3
+user=myuser
+passwd=mypwd
+```
+
 ## System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
