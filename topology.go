@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
-
+  "strings"
 	"github.com/go-sql-driver/mysql"
 	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
@@ -33,6 +33,38 @@ func newServerList() {
 		if verbose {
 			tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[k].URL))
 		}
+	}
+	// Spider shard discover
+	if spider == true {
+	for _, s := range servers {
+		tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
+		mon,err:=  dbhelper.GetSpiderMonitor(s.Conn)
+
+		if err == nil {
+			if mon!= "" {
+				tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
+				extra_url,err:=   dbhelper.GetSpiderShardUrl(s.Conn)
+				if err == nil {
+					if extra_url!= "" {
+
+						for j, url := range strings.Split(extra_url, ",") {
+							var err error
+							srv ,err := newServerMonitor(url)
+							srv.State=stateShard
+
+							servers =  append(servers,srv)
+							if err != nil {
+								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
+							}
+							if verbose {
+								tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	}
 }
 
@@ -136,10 +168,8 @@ func topologyDiscover() error {
 	// Check that all slave servers have the same master.
 	if multiMaster == false {
 		for _, sl := range slaves {
-
 			if sl.hasSiblings(slaves) == false {
 				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring.", ErrFrom: "TOPO"})
-
 				multiMaster = true
 			}
 		}
@@ -163,7 +193,12 @@ func topologyDiscover() error {
 		if srw > 1 {
 			sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to prefered master.", ErrFrom: "TOPO"})
 			server:=getPreferedMaster()
-			dbhelper.SetReadOnly(server.Conn, false)
+      if server != nil {
+			  dbhelper.SetReadOnly(server.Conn, false)
+			} else
+			{
+				sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a prefered master.", ErrFrom: "TOPO"})
+		  }
 		}
 	} else if readonly {
 		// In non-multimaster mode, enforce read-only flag if the option is set
