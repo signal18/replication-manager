@@ -92,7 +92,6 @@ func topologyDiscover() error {
 					logprintf("DEBUG: Server %s has no slaves connected", sv.URL)
 				}
 			} else {
-				logprintf("DEBUG: Topology found and set master")
 				master = servers[k]
 				master.State = stateMaster
 			}
