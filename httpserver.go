@@ -124,6 +124,7 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	failoverCtr = 0
+	failoverTs = 0
 	return
 }
 
