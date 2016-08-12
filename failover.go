@@ -166,7 +166,7 @@ func masterFailover(fail bool) bool {
 				sl.log()
 			}
 		}
-		logprint("INFO : Change master on slave", sl.URL)
+		logprintf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
