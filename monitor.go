@@ -240,8 +240,8 @@ func (server *ServerMonitor) refresh() error {
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""
-		server.IOThread = ""
-		server.SQLThread = ""
+		server.IOThread = "No"
+		server.SQLThread = "No"
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
 		server.MasterServerID = 0
 		server.MasterHost = ""
