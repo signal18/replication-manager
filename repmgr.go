@@ -17,7 +17,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
 )

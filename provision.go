@@ -14,9 +14,9 @@ import (
 	"log"
 	"os/exec"
 
-	"github.com/tanji/replication-manager/state"
 	"github.com/spf13/cobra"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/state"
 )
 
 var (

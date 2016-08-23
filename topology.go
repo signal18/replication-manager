@@ -17,7 +17,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/tanji/replication-manager/state"
 	"github.com/spf13/cobra"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 )
 
 type topologyError struct {

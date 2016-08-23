@@ -13,7 +13,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 )
 
 /* Triggers a master switchover. Returns the new master's URL */
