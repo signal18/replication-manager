@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/mariadb-corporation/replication-manager/state"
-	"github.com/mariadb-corporation/replication-manager/termlog"
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/state"
+	"github.com/tanji/replication-manager/termlog"
 )
 
 const repmgrVersion string = "0.7-dev"

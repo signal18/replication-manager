@@ -305,7 +305,7 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 
 ## Bugs
 
-Check https://github.com/mariadb-corporation/replication-manager/issues for a list of issues.
+Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 ## Features
 

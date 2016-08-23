@@ -6,7 +6,7 @@ import (
 	"log"
 	"os/exec"
 
-	"github.com/mariadb-corporation/replication-manager/state"
+	"github.com/tanji/replication-manager/state"
 	"github.com/spf13/cobra"
 	"github.com/tanji/mariadb-tools/dbhelper"
 )

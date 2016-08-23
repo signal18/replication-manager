@@ -12,9 +12,9 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/mariadb-corporation/replication-manager/alert"
-	"github.com/mariadb-corporation/replication-manager/gtid"
 	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/alert"
+	"github.com/tanji/replication-manager/gtid"
 )
 
 // ServerMonitor defines a server to monitor.
