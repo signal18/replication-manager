@@ -307,6 +307,22 @@ func (server *ServerMonitor) freeze() bool {
 	return true
 }
 
+func (server *ServerMonitor) readAllRelayLogs() error {
+	ss, err := dbhelper.GetSlaveStatus(server.Conn)
+	if err != nil {
+		return err
+	}
+	logprintf("INFO : Reading all relay logs on %s", server.URL)
+	for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
+		ss, err = dbhelper.GetSlaveStatus(server.Conn)
+		if err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil
+}
+
 func (server *ServerMonitor) log() {
 	server.refresh()
 	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())

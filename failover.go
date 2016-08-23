@@ -68,7 +68,9 @@ func masterFailover(fail bool) bool {
 			logprintf("WARN : Could not lock tables on %s (old master) %s", oldMaster.URL, err)
 		}
 	}
-	logprint("INFO : Switching master")
+	// Sync candidate depending on the master status.
+	// If it's a switchover, use MASTER_POS_WAIT to sync.
+	// If it's a failover, wait for the SQL thread to read all relay logs.
 	if fail == false {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
@@ -80,6 +82,11 @@ func masterFailover(fail bool) bool {
 		if verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
+		}
+	} else {
+		err = master.readAllRelayLogs()
+		if err != nil {
+			logprintf("ERROR: Error while reading relay logs on candidate: %s", err)
 		}
 	}
 	// Phase 3: Prepare new master
