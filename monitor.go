@@ -276,15 +276,13 @@ func (server *ServerMonitor) healthCheck() string {
 			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "No" {
 			return "NOT OK, ALL Stopped"
-		} else {
-			return "Running OK"
-		}
-	} else {
-		if server.Delay.Int64 > 0 {
-			return "Behind master"
 		}
 		return "Running OK"
 	}
+	if server.Delay.Int64 > 0 {
+		return "Behind master"
+	}
+	return "Running OK"
 }
 
 /* Handles write freeze and existing transactions on a server */
