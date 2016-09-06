@@ -207,14 +207,6 @@ func masterFailover(fail bool) bool {
 			}
 		}
 	}
-	if postScript != "" {
-		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
-		if err != nil {
-			logprint("ERROR:", err)
-		}
-		logprint("INFO : Post-failover script complete", string(out))
-	}
 	logprintf("INFO : Master switch on %s complete", master.URL)
 	master.FailCount = 0
 	if fail == true {
