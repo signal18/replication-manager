@@ -293,6 +293,16 @@ func (server *ServerMonitor) healthCheck() string {
 	return "Running OK"
 }
 
+/* Check Consistency parameters on server */
+func (server *ServerMonitor) acidTest() bool {
+	syncBin := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
+	logFlush := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
+	if syncBin == "1" && logFlush == "1" {
+		return true
+	}
+	return false
+}
+
 /* Handles write freeze and existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
