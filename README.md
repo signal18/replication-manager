@@ -242,7 +242,7 @@ Flags:
       --failcount int                 Trigger failover after N failures (interval 1s) (default 5)
       --failover-limit int            Quit monitor after N failovers (0: unlimited)
       --failover-time-limit int       In automatic mode, Wait N seconds before attempting next failover (0: do not wait)
-      --gtidcheck                     Do not initiate failover unless slaves are fully in sync
+      --gtidcheck                     Do not initiate switchover unless one of the slaves is fully synced
       --http-bind-address string      Bind HTTP monitor to this IP address (default "localhost")
       --http-port string              HTTP monitor to listen on this port (default "10001")
       --http-root string              Path to HTTP monitor files (default "/usr/share/replication-manager/dashboard")
