@@ -248,7 +248,7 @@ func topologyDiscover() error {
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
 				}
-				if sl.Delay.Int64 <= maxDelay {
+				if sl.Delay.Int64 <= maxDelay && sl.SQLThread == "Yes" {
 					master.RplMasterStatus = true
 				}
 			}
