@@ -1,3 +1,11 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// Authors: Guillaume Lefranc <guillaume.lefranc@mariadb.com>
+//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+// This source code is licensed under the GNU General Public License, version 3.
+// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
+// an additional term, ALL code must carry the original Author(s) credit in comment form.
+// See LICENSE in this directory for the integral text.
+
 // monitor.go
 package main
 
@@ -12,9 +20,9 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/mariadb-corporation/replication-manager/alert"
-	"github.com/mariadb-corporation/replication-manager/gtid"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/alert"
+	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/gtid"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -277,15 +285,23 @@ func (server *ServerMonitor) healthCheck() string {
 			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "No" {
 			return "NOT OK, ALL Stopped"
-		} else {
-			return "Running OK"
-		}
-	} else {
-		if server.Delay.Int64 > 0 {
-			return "Behind master"
 		}
 		return "Running OK"
 	}
+	if server.Delay.Int64 > 0 {
+		return "Behind master"
+	}
+	return "Running OK"
+}
+
+/* Check Consistency parameters on server */
+func (server *ServerMonitor) acidTest() bool {
+	syncBin := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
+	logFlush := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
+	if syncBin == "1" && logFlush == "1" {
+		return true
+	}
+	return false
 }
 
 /* Handles write freeze and existing transactions on a server */
@@ -308,6 +324,22 @@ func (server *ServerMonitor) freeze() bool {
 	logprintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
 	return true
+}
+
+func (server *ServerMonitor) readAllRelayLogs() error {
+	ss, err := dbhelper.GetSlaveStatus(server.Conn)
+	if err != nil {
+		return err
+	}
+	logprintf("INFO : Reading all relay logs on %s", server.URL)
+	for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
+		ss, err = dbhelper.GetSlaveStatus(server.Conn)
+		if err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil
 }
 
 func (server *ServerMonitor) log() {

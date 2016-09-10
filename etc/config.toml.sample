@@ -53,7 +53,7 @@ check-type = "tcp"
 # Failover after N failures detection
 # Monitoring is stopped after N failovers
 # Wait N seconds for next failover
-# Don't initiate failover unless slaves are fully in sync
+# Switchover only if one of the slaves is fully synced with the master (based on GTID equality)
 # Don't failover when replication pass delay
 
 failcount = 5

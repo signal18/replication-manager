@@ -6,6 +6,3 @@ import:
 - package: github.com/spf13/cobra
 - package: github.com/spf13/viper
 - package: github.com/jordan-wright/email
-- package: github.com/tanji/mariadb-tools
-  subpackages:
-  - dbhelper

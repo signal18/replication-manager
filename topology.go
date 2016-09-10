@@ -1,3 +1,11 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// Authors: Guillaume Lefranc <guillaume.lefranc@mariadb.com>
+//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+// This source code is licensed under the GNU General Public License, version 3.
+// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
+// an additional term, ALL code must carry the original Author(s) credit in comment form.
+// See LICENSE in this directory for the integral text.
+
 package main
 
 import (
@@ -7,9 +15,9 @@ import (
 	"sync"
   "strings"
 	"github.com/go-sql-driver/mysql"
-	"github.com/mariadb-corporation/replication-manager/state"
 	"github.com/spf13/cobra"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/state"
 )
 
 type topologyError struct {
@@ -129,6 +137,9 @@ func topologyDiscover() error {
 			}
 		}
 		// Check user privileges on live servers
+		if loglevel > 2 {
+			logprintf("DEBUG: Check loop on %s", sv.URL)
+		}
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
 			if err != nil {
@@ -150,6 +161,10 @@ func topologyDiscover() error {
 			}
 			if rpriv.Repl_slave_priv == "N" {
 				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege.", ErrFrom: "CONF"})
+			}
+			// Additional health checks go here
+			if sv.acidTest() == false && sme.IsDiscovered() {
+				sme.AddState("WARN00006", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 			}
 		}
 	}
@@ -263,12 +278,12 @@ func topologyDiscover() error {
 					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 				}
 				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
-					sme.AddState("WARN00005", state.State{ErrType: "WARN", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", master.URL, master.Host), ErrFrom: "TOPO"})
+					sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", master.URL, master.Host), ErrFrom: "TOPO"})
 				}
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
 				}
-				if sl.Delay.Int64 <= maxDelay {
+				if sl.Delay.Int64 <= maxDelay && sl.SQLThread == "Yes" {
 					master.RplMasterStatus = true
 				}
 			}

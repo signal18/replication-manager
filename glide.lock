@@ -1,14 +1,14 @@
-hash: 5ee2b1bcf442f780c7000774aea726b9e7c2788dd91fbda169d92062465ccc89
-updated: 2016-07-05T16:21:50.295192944+02:00
+hash: e7e69529dfa94520785a74c5b05f8a81be2d81c9b4ce0c7573bc5ad68c9e86a6
+updated: 2016-08-23T15:13:45.728945138+02:00
 imports:
 - name: github.com/BurntSushi/toml
-  version: f0aeabca5a127c4078abb8c8d64298b147264b55
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/fsnotify/fsnotify
-  version: a8a77c9133d2d6fd8334f3260d06f60e8d80a5fb
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/go-sql-driver/mysql
-  version: 3654d25ec346ee8ce71a68431025458d52a38ac0
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/hashicorp/hcl
-  version: 61f5143284c041681f76a5b63efcb232aaa94737
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
   subpackages:
   - hcl/ast
   - hcl/parser
@@ -19,39 +19,35 @@ imports:
   - json/scanner
   - json/token
 - name: github.com/inconshreveable/mousetrap
-  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/jmoiron/sqlx
-  version: bdae0c3219c3bdb92f3d7c70825018712787c933
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
   subpackages:
   - reflectx
 - name: github.com/jordan-wright/email
-  version: fd703108daeb23d77c124d12978e9b6c4f28f034
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/magiconair/properties
-  version: c265cfa48dda6474e208715ca93e987829f572f8
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/mattn/go-runewidth
-  version: d6bea18f789704b5f83375793155289da36a3c7f
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/mitchellh/mapstructure
-  version: d2dd0262208475919e1a362f675cfc0e7c10e905
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/nsf/termbox-go
-  version: c45773466a30b680355d6494cc8826113c93cd0f
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/spf13/cast
-  version: 27b586b42e29bec072fe7379259cc719e1289da6
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/spf13/cobra
-  version: 6a8bd97bdb1fc0d08a83459940498ea49d3e8c93
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/spf13/jwalterweatherman
-  version: 33c24e77fb80341fe7130ee7c594256ff08ccc46
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/spf13/pflag
-  version: 367864438f1b1a3c7db4da06a2f55b144e6784e0
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: github.com/spf13/viper
-  version: c1ccc378a054ea8d4e38d8c67f6938d4760b53dd
-- name: github.com/tanji/mariadb-tools
-  version: 7fce291b174884fc6167fd4fde188524b524d340
-  subpackages:
-  - dbhelper
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 - name: golang.org/x/sys
-  version: a408501be4d17ee978c04a618e7a1b22af058c0e
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
   subpackages:
   - unix
 - name: gopkg.in/yaml.v2
-  version: a83829b6f1293c91addabc89d0571c246397bbf4
+  version: 02ec6e10988f01eff03d90f79ab4aafe86a07a9a
 testImports: []

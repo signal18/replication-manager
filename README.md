@@ -1,4 +1,4 @@
-## replication-manager [![Build Status](https://travis-ci.org/mariadb-corporation/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=master)](https://travis-ci.org/mariadb-corporation/replication-manager)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
@@ -242,7 +242,7 @@ Flags:
       --failcount int                 Trigger failover after N failures (interval 1s) (default 5)
       --failover-limit int            Quit monitor after N failovers (0: unlimited)
       --failover-time-limit int       In automatic mode, Wait N seconds before attempting next failover (0: do not wait)
-      --gtidcheck                     Do not initiate failover unless slaves are fully in sync
+      --gtidcheck                     Do not initiate switchover unless one of the slaves is fully synced
       --http-bind-address string      Bind HTTP monitor to this IP address (default "localhost")
       --http-port string              HTTP monitor to listen on this port (default "10001")
       --http-root string              Path to HTTP monitor files (default "/usr/share/replication-manager/dashboard")
@@ -305,7 +305,7 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 
 ## Bugs
 
-Check https://github.com/mariadb-corporation/replication-manager/issues for a list of issues.
+Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 ## Features
 

@@ -1,3 +1,11 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// Authors: Guillaume Lefranc <guillaume.lefranc@mariadb.com>
+//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+// This source code is licensed under the GNU General Public License, version 3.
+// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
+// an additional term, ALL code must carry the original Author(s) credit in comment form.
+// See LICENSE in this directory for the integral text.
+
 package main
 
 import (
@@ -5,7 +13,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 )
 
 /* Triggers a master switchover. Returns the new master's URL */
@@ -68,7 +76,9 @@ func masterFailover(fail bool) bool {
 			logprintf("WARN : Could not lock tables on %s (old master) %s", oldMaster.URL, err)
 		}
 	}
-	logprint("INFO : Switching master")
+	// Sync candidate depending on the master status.
+	// If it's a switchover, use MASTER_POS_WAIT to sync.
+	// If it's a failover, wait for the SQL thread to read all relay logs.
 	if fail == false {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
@@ -80,6 +90,11 @@ func masterFailover(fail bool) bool {
 		if verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
+		}
+	} else {
+		err = master.readAllRelayLogs()
+		if err != nil {
+			logprintf("ERROR: Error while reading relay logs on candidate: %s", err)
 		}
 	}
 	// Phase 3: Prepare new master
@@ -166,7 +181,7 @@ func masterFailover(fail bool) bool {
 				sl.log()
 			}
 		}
-		logprint("INFO : Change master on slave", sl.URL)
+		logprintf("INFO : Change master on slave %s", sl.URL)
 		err := dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
@@ -191,14 +206,6 @@ func masterFailover(fail bool) bool {
 				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		}
-	}
-	if postScript != "" {
-		logprintf("INFO : Calling post-failover script")
-		out, err := exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
-		if err != nil {
-			logprint("ERROR:", err)
-		}
-		logprint("INFO : Post-failover script complete", string(out))
 	}
 	logprintf("INFO : Master switch on %s complete", master.URL)
 	master.FailCount = 0
