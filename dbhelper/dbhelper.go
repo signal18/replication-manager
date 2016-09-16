@@ -108,6 +108,14 @@ type Privileges struct {
 	Reload_priv      string
 }
 
+type SpiderTableNoSync struct {
+	Tbl_src string
+	Tbl_src_link   string
+	Tbl_dest string
+	Srv_dsync string
+	Srv_sync string
+}
+
 /* Connect to a MySQL server. Must be deprecated, use MySQLConnect instead */
 func Connect(user string, password string, address string) *sqlx.DB {
 	db, _ := sqlx.Open("mysql", user+":"+password+"@"+address+"/")
@@ -506,3 +514,40 @@ func CheckHostAddr(h string) (string, error) {
 		}
 	}
 }
+
+func GetSpiderShardUrl(db *sqlx.DB) (string, error) {
+	var value string
+	value =""
+	err := db.QueryRowx("select  coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_tables st left join mysql.servers s on st.server=s.server_name").Scan(&value)
+	if err != nil {
+		log.Println("ERROR: Could not get spider shards", err)
+	}
+	return value, err
+}
+
+func GetSpiderMonitor(db *sqlx.DB) (string, error) {
+	var value string
+  value =""
+	err := db.QueryRowx("select  coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_link_mon_servers st left join mysql.servers s on st.server=s.server_name").Scan(&value)
+	if err != nil {
+		log.Println("ERROR: Could not get spider shards", err)
+	}
+	return value, err
+}
+
+func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
+	vars := make(map[string]SpiderTableNoSync)
+	rows, err := db.Queryx(`
+		select usync.*, sync.srv_sync from (
+		  select  group_concat( distinct concat(db_name, '.',substring_index(table_name,'#P#', 1))) as tbl_src ,  group_concat( distinct concat(db_name, '.', table_name)) as tbl_src_link,concat( coalesce(st.tgt_db_name,s.db) ,'.', tgt_table_name ) as tbl_dest, concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port)) as srv_desync  from (select * from mysql.spider_tables where link_status=3) st left join mysql.servers s on st.server=s.server_name group by tbl_dest, srv_desync
+		) usync inner join (
+		  select  group_concat( distinct concat(db_name, '.',table_name)) as tbl_src ,concat( coalesce(st.tgt_db_name,s.db) ,'.', tgt_table_name ) as tbl_dest, concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port)) as srv_sync  from (select * from mysql.spider_tables where link_status=1) st left join mysql.servers s on st.server=s.server_name group by tbl_dest, srv_sync
+		) sync ON  usync.tbl_src_link= sync.tbl_src and usync.tbl_dest=sync.tbl_dest
+		`)
+		for rows.Next() {
+			var v SpiderTableNoSync
+			rows.Scan(&v.Tbl_src, &v.Tbl_src_link,&v.Tbl_dest,&v.Srv_dsync ,&v.Srv_sync)
+			vars[v.Tbl_src] = v
+		}
+		return vars,err
+	}
