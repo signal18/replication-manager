@@ -37,6 +37,7 @@ func httpserver() {
 	http.HandleFunc("/interactive", handlerInteractiveToggle)
 	http.HandleFunc("/settings", handlerSettings)
 	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
+	http.HandleFunc("/force", handlerForce)
 	http.HandleFunc("/bootstrap", handlerBootstrap)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
@@ -126,6 +127,13 @@ func handlerFailover(w http.ResponseWriter, r *http.Request) {
 func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	toggleInteractive()
+	return
+}
+
+func handlerForce(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	logprint(fmt.Sprintf("INFO: Force to ingnore conditions %b" , force) )
+	force = !force
 	return
 }
 

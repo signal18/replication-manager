@@ -67,6 +67,7 @@ const (
 	stateSlave   string = "Slave"
 	stateUnconn  string = "Unconnected"
 	stateSuspect string = "Suspect"
+	stateShard string = "Shard"
 )
 
 /* Initializes a server object */
