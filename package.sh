@@ -2,7 +2,7 @@
 git checkout 0.7
 head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
-go build .
+./build.sh
 rm -rf build
 mkdir -p build/usr/bin
 mkdir -p build/usr/share/replication-manager/dashboard
