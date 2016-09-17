@@ -16,7 +16,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-var loglevel int
+var (
+	loglevel int
+  Version string
+  Build   string
+)
 
 func init() {
 	viper.SetConfigType("toml")
@@ -48,6 +52,7 @@ func main() {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
+	
 }
 
 var rootCmd = &cobra.Command{
@@ -66,5 +71,7 @@ var versionCmd = &cobra.Command{
 	Long:  `All software has versions. This is ours`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
+		fmt.Println("Version: ", Version)
+		fmt.Println("Build Time: ", Build)
 	},
 }

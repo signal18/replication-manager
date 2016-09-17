@@ -22,7 +22,7 @@ import (
 	"github.com/tanji/replication-manager/termlog"
 )
 
-const repmgrVersion string = "0.7-dev"
+const repmgrVersion string = "0.7"
 
 // Global variables
 var (
