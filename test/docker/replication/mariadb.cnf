@@ -1,0 +1,12 @@
+[mysqld]
+log-bin
+general-log
+gtid_strict_mode = ON
+plugin_load = "semisync_master.so;semisync_slave.so"  
+rpl_semi_sync_master = ON  
+rpl_semi_sync_slave = ON  
+loose_rpl_semi_sync_master_enabled = ON  
+loose_rpl_semi_sync_slave_enabled = ON
+rpl_semi_sync_master_timeout = 10
+sync_binlog = 1 
+log_slave_updates = 1 
