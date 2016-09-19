@@ -74,7 +74,7 @@ var (
 	checktype          string
 	masterConn         string
 	multiMaster        bool
-	spider        		 bool
+	spider             bool
 	bindaddr           string
 	httpport           string
 	httpserv           bool
@@ -147,7 +147,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	cmd.Flags().BoolVar(&failsync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
-
 
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -423,7 +422,7 @@ func checkfailed() {
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
-			if (failtime == 0) ||  (rplchecks == false) || (failtime > 0 && (rem <= 0 || failoverCtr == 0))  {
+			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
 				masterFailover(true)
 				if failoverCtr == faillimit {
 					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
