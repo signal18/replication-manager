@@ -468,6 +468,20 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	}
 }
 
+
+func CheckSlaveSemiSync(dbS *sqlx.DB) bool {
+	if debug {
+		log.Printf("CheckSlaveSemiSync called")
+	}
+	sync := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS")
+	
+	if sync == "ON" {
+		return true
+	} else {
+		return false
+	}
+}
+
 func MasterPosWait(db *sqlx.DB, gtid string, timeout int) error {
 	_, err := db.Exec("SELECT MASTER_GTID_WAIT(?, ?)", gtid, timeout)
 	return err
