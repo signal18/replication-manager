@@ -3,3 +3,4 @@ replication-manager
 *.rpm
 *.deb
 copyright.*
+*.tar.gz
