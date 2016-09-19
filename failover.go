@@ -248,20 +248,25 @@ func electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
-			if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && force == false {
+			if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && rplchecks == true {
 				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
+			if sl.SemiSyncSlaveStatus == false   && faillsync == true && rplchecks == true {
+				logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
+				continue
+			}
 		}
+		/* binlog + ping  */
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 			continue
 		}
 		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-		if ss.Seconds_Behind_Master.Valid == false && master.State != stateFailed &&  force == false {
+		if ss.Seconds_Behind_Master.Valid == false && master.State != stateFailed &&  rplchecks == true {
 			logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 			continue
 		}
-		if ss.Seconds_Behind_Master.Int64 > maxDelay  &&  force == false {
+		if ss.Seconds_Behind_Master.Int64 > maxDelay  &&  rplchecks == true {
 			logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}

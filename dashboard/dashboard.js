@@ -98,6 +98,34 @@ if (r == true) {
   }
 };
 
+$scope.rplchecks = function() {
+var r = confirm("Confirm Change Replication Checks?");
+if (r == true) {
+  var response = $http.get('/rplchecks');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
+
+$scope.failsync = function() {
+var r = confirm("Confirm Change Sync Checks?");
+if (r == true) {
+  var response = $http.get('/failsync');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
+
 $scope.bootstrap = function() {
 var r = confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?");
 if (r == true) {

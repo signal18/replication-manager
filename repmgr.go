@@ -84,7 +84,8 @@ var (
 	mailTo             string
 	mailSMTPAddr       string
 	masterConnectRetry int
-	force              bool
+	rplchecks          bool
+	failsync           bool
 )
 
 func init() {
@@ -108,7 +109,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
-	monitorCmd.Flags().BoolVar(&force, "force", false, "Force failover to ignore failable conditions")
+	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "failover to ignore replications checks")
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
 	autorejoin = viper.GetBool("autorejoin")
@@ -122,7 +123,8 @@ func init() {
 	mailSMTPAddr = viper.GetString("mail-smtp-addr")
 	daemon = viper.GetBool("daemon")
 	interactive = viper.GetBool("interactive")
-	force = viper.GetBool("force")
+	rplchecks = viper.GetBool("rplchecks")
+	failsync = viper.GetBool("failover-at-sync")
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
@@ -138,12 +140,14 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
-	cmd.Flags().BoolVar(&multiMaster, "spider", false, "Turn on spider detection")
+	cmd.Flags().BoolVar(&spider, "spider", false, "Turn on spider detection")
 
 	viper.BindPFlags(cmd.Flags())
 	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	cmd.Flags().BoolVar(&failsync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
+
 
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -161,6 +165,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	faillimit = viper.GetInt("failover-limit")
 	failtime = int64(viper.GetInt("failover-time-limit"))
 	masterConnectRetry = viper.GetInt("master-connect-retry")
+	failsync = viper.GetBool("failover-at-sync")
+
 }
 
 var failoverCmd = &cobra.Command{
@@ -417,7 +423,7 @@ func checkfailed() {
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
-			if (failtime == 0) ||  (force == true) || (failtime > 0 && (rem <= 0 || failoverCtr == 0))  {
+			if (failtime == 0) ||  (rplchecks == false) || (failtime > 0 && (rem <= 0 || failoverCtr == 0))  {
 				masterFailover(true)
 				if failoverCtr == faillimit {
 					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
