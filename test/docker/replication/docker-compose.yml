@@ -30,7 +30,7 @@ services:
       - "6603:6603"
       - "4442:4442"
   mrm:
-    build: ../../Dockerfile
+    build: ../../../
     command: replication-manager monitor --daemon --verbose --http-server --interactive=false
     volumes:
       - ./config.toml:/etc/replication-manager/config.toml
