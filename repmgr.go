@@ -284,6 +284,7 @@ Interactive console and HTTP dashboards are available for control`,
 
 		if daemon {
 			termlength = 40
+			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {
