@@ -50,6 +50,22 @@ func validateHostPort(h string, p string) bool {
 	return false
 }
 
+/* Get local host IP */
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Fatalln("Error getting local IP address")
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
+}
+
 func getSeqFromGtid(gtid string) uint64 {
 	e := strings.Split(gtid, "-")
 	if len(e) != 3 {

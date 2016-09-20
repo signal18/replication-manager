@@ -141,7 +141,7 @@ func topologyDiscover() error {
 			logprintf("DEBUG: Check loop on %s", sv.URL)
 		}
 		if sv.State != stateFailed {
-			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, sv.Host)
+			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname)
 			if err != nil {
 				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", dbUser, sv.URL, err), ErrFrom: "CONF"})
 			}
@@ -155,7 +155,7 @@ func topologyDiscover() error {
 				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege.", ErrFrom: "CONF"})
 			}
 			// Check replication user has correct privs.
-			rpriv, err := dbhelper.GetPrivileges(sv.Conn, rplUser, sv.Host)
+			rpriv, err := dbhelper.GetPrivileges(sv.Conn, rplUser, repmgrHostname)
 			if err != nil {
 				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", rplUser, sv.URL, err), ErrFrom: "CONF"})
 			}

@@ -26,25 +26,26 @@ const repmgrVersion string = "0.7"
 
 // Global variables
 var (
-	hostList    []string
-	servers     serverList
-	slaves      serverList
-	master      *ServerMonitor
-	exit        bool
-	dbUser      string
-	dbPass      string
-	rplUser     string
-	rplPass     string
-	failCount   int
-	failoverCtr int
-	failoverTs  int64
-	tlog        termlog.TermLog
-	ignoreList  []string
-	logPtr      *os.File
-	exitMsg     string
-	termlength  int
-	sme         *state.StateMachine
-	swChan      = make(chan bool)
+	hostList       []string
+	servers        serverList
+	slaves         serverList
+	master         *ServerMonitor
+	exit           bool
+	dbUser         string
+	dbPass         string
+	rplUser        string
+	rplPass        string
+	failCount      int
+	failoverCtr    int
+	failoverTs     int64
+	tlog           termlog.TermLog
+	ignoreList     []string
+	logPtr         *os.File
+	exitMsg        string
+	termlength     int
+	sme            *state.StateMachine
+	swChan         = make(chan bool)
+	repmgrHostname string
 )
 
 // Configuration variables - do not put global variables in that list
@@ -125,6 +126,12 @@ func init() {
 	interactive = viper.GetBool("interactive")
 	rplchecks = viper.GetBool("rplchecks")
 	failsync = viper.GetBool("failover-at-sync")
+
+	var err error
+	repmgrHostname, err = os.Hostname()
+	if err != nil {
+		log.Fatalln("ERROR: replication-manager could not get hostname from system")
+	}
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
