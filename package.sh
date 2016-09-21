@@ -4,6 +4,9 @@ head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
 ./build.sh
 rm -rf build
+rm *.tar.gz
+rm *.deb
+rm *.rpm
 mkdir -p build/usr/bin
 mkdir -p build/usr/share/replication-manager/dashboard
 mkdir -p build/etc/replication-manager
