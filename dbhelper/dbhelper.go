@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/tanji/replication-manager/misc"
 )
 
 const debug = false
@@ -109,11 +110,11 @@ type Privileges struct {
 }
 
 type SpiderTableNoSync struct {
-	Tbl_src string
-	Tbl_src_link   string
-	Tbl_dest string
-	Srv_dsync string
-	Srv_sync string
+	Tbl_src      string
+	Tbl_src_link string
+	Tbl_dest     string
+	Srv_dsync    string
+	Srv_sync     string
 }
 
 /* Connect to a MySQL server. Must be deprecated, use MySQLConnect instead */
@@ -160,10 +161,13 @@ func GetPrivileges(db *sqlx.DB, user string, host string) (Privileges, error) {
 	stmt := "SELECT Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv, Reload_priv FROM mysql.user WHERE user = ? AND host = ?"
 	row := db.QueryRowx(stmt, user, host)
 	err := row.StructScan(&priv)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			row := db.QueryRowx(stmt, user, "%")
+	if err != nil && err == sql.ErrNoRows {
+		row := db.QueryRowx(stmt, user, "%")
+		err = row.StructScan(&priv)
+		if err != nil && err == sql.ErrNoRows {
+			row := db.QueryRowx(stmt, user, misc.GetLocalIP())
 			err = row.StructScan(&priv)
+			return priv, err
 		}
 		return priv, err
 	}
@@ -468,13 +472,12 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	}
 }
 
-
 func CheckSlaveSemiSync(dbS *sqlx.DB) bool {
 	if debug {
 		log.Printf("CheckSlaveSemiSync called")
 	}
 	sync := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS")
-	
+
 	if sync == "ON" {
 		return true
 	} else {
@@ -531,7 +534,7 @@ func CheckHostAddr(h string) (string, error) {
 
 func GetSpiderShardUrl(db *sqlx.DB) (string, error) {
 	var value string
-	value =""
+	value = ""
 	err := db.QueryRowx("select  coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_tables st left join mysql.servers s on st.server=s.server_name").Scan(&value)
 	if err != nil {
 		log.Println("ERROR: Could not get spider shards", err)
@@ -541,7 +544,7 @@ func GetSpiderShardUrl(db *sqlx.DB) (string, error) {
 
 func GetSpiderMonitor(db *sqlx.DB) (string, error) {
 	var value string
-  value =""
+	value = ""
 	err := db.QueryRowx("select  coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_link_mon_servers st left join mysql.servers s on st.server=s.server_name").Scan(&value)
 	if err != nil {
 		log.Println("ERROR: Could not get spider shards", err)
@@ -558,10 +561,10 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 		  select  group_concat( distinct concat(db_name, '.',table_name)) as tbl_src ,concat( coalesce(st.tgt_db_name,s.db) ,'.', tgt_table_name ) as tbl_dest, concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port)) as srv_sync  from (select * from mysql.spider_tables where link_status=1) st left join mysql.servers s on st.server=s.server_name group by tbl_dest, srv_sync
 		) sync ON  usync.tbl_src_link= sync.tbl_src and usync.tbl_dest=sync.tbl_dest
 		`)
-		for rows.Next() {
-			var v SpiderTableNoSync
-			rows.Scan(&v.Tbl_src, &v.Tbl_src_link,&v.Tbl_dest,&v.Srv_dsync ,&v.Srv_sync)
-			vars[v.Tbl_src] = v
-		}
-		return vars,err
+	for rows.Next() {
+		var v SpiderTableNoSync
+		rows.Scan(&v.Tbl_src, &v.Tbl_src_link, &v.Tbl_dest, &v.Srv_dsync, &v.Srv_sync)
+		vars[v.Tbl_src] = v
 	}
+	return vars, err
+}
