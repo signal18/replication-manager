@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 )
 
@@ -129,9 +130,9 @@ var provisionCmd = &cobra.Command{
 	Long: `The provision command is used to create a new replication server
 using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
-		dbHost, dbPort := splitHostPort(source)
-		destHost, destPort := splitHostPort(destination)
-		dbUser, dbPass = splitPair(user)
+		dbHost, dbPort := misc.SplitHostPort(source)
+		destHost, destPort := misc.SplitHostPort(destination)
+		dbUser, dbPass = misc.SplitPair(user)
 		hostArg := fmt.Sprintf("--host=%s", dbHost)
 		portArg := fmt.Sprintf("--port=%s", dbPort)
 		userArg := fmt.Sprintf("--user=%s", dbUser)

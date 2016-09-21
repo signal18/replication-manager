@@ -23,6 +23,7 @@ import (
 	"github.com/tanji/replication-manager/alert"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/gtid"
+	"github.com/tanji/replication-manager/misc"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -67,14 +68,14 @@ const (
 	stateSlave   string = "Slave"
 	stateUnconn  string = "Unconnected"
 	stateSuspect string = "Suspect"
-	stateShard string = "Shard"
+	stateShard   string = "Shard"
 )
 
 /* Initializes a server object */
 func newServerMonitor(url string) (*ServerMonitor, error) {
 	server := new(ServerMonitor)
 	server.URL = url
-	server.Host, server.Port = splitHostPort(url)
+	server.Host, server.Port = misc.SplitHostPort(url)
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {

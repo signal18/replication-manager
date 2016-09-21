@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tanji/replication-manager/misc"
 )
 
 func init() {
@@ -74,5 +75,5 @@ func agentFlagCheck() {
 	if user == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = splitPair(user)
+	dbUser, dbPass = misc.SplitPair(user)
 }

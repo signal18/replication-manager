@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
 )
@@ -482,12 +483,12 @@ func repmgrFlagCheck() {
 	if user == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = splitPair(user)
+	dbUser, dbPass = misc.SplitPair(user)
 
 	if rpluser == "" {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
-	rplUser, rplPass = splitPair(rpluser)
+	rplUser, rplPass = misc.SplitPair(rpluser)
 
 	if ignoreSrv != "" {
 		ignoreList = strings.Split(ignoreSrv, ",")

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/misc"
 )
 
 /* Triggers a master switchover. Returns the new master's URL */
@@ -224,7 +225,7 @@ func electCandidate(l []*ServerMonitor) int {
 	var max uint64
 	for i, sl := range l {
 		/* If server is in the ignore list, do not elect it */
-		if contains(ignoreList, sl.URL) {
+		if misc.Contains(ignoreList, sl.URL) {
 			if loglevel > 2 {
 				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
 			}

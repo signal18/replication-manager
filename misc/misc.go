@@ -6,8 +6,7 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-// common.go
-package main
+package misc
 
 import (
 	"log"
@@ -17,7 +16,7 @@ import (
 )
 
 /* Returns two host and port items from a pair, e.g. host:port */
-func splitHostPort(s string) (string, string) {
+func SplitHostPort(s string) (string, string) {
 	items := strings.Split(s, ":")
 	if len(items) == 1 {
 		return items[0], "3306"
@@ -26,7 +25,7 @@ func splitHostPort(s string) (string, string) {
 }
 
 /* Returns generic items from a pair, e.g. user:pass */
-func splitPair(s string) (string, string) {
+func SplitPair(s string) (string, string) {
 	items := strings.Split(s, ":")
 	if len(items) == 1 {
 		return items[0], ""
@@ -35,7 +34,7 @@ func splitPair(s string) (string, string) {
 }
 
 /* Validate server host and port */
-func validateHostPort(h string, p string) bool {
+func ValidateHostPort(h string, p string) bool {
 	if net.ParseIP(h) == nil {
 		return false
 	}
@@ -51,7 +50,7 @@ func validateHostPort(h string, p string) bool {
 }
 
 /* Get local host IP */
-func getLocalIP() string {
+func GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		log.Fatalln("Error getting local IP address")
@@ -66,19 +65,7 @@ func getLocalIP() string {
 	return ""
 }
 
-func getSeqFromGtid(gtid string) uint64 {
-	e := strings.Split(gtid, "-")
-	if len(e) != 3 {
-		log.Fatalln("Error splitting GTID:", gtid)
-	}
-	s, err := strconv.ParseUint(e[2], 10, 64)
-	if err != nil {
-		log.Fatalln("Error getting sequence from GTID:", err)
-	}
-	return s
-}
-
-func contains(s []string, e string) bool {
+func Contains(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {
 			return true
