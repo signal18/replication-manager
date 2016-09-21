@@ -143,24 +143,24 @@ func topologyDiscover() error {
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname)
 			if err != nil {
-				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", dbUser, sv.URL, err), ErrFrom: "CONF"})
+				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, repmgrHostname, err), ErrFrom: "CONF"})
 			}
 			if priv.Repl_client_priv == "N" {
-				sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege.", ErrFrom: "CONF"})
+				sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege", ErrFrom: "CONF"})
 			}
 			if priv.Super_priv == "N" {
-				sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege.", ErrFrom: "CONF"})
+				sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege", ErrFrom: "CONF"})
 			}
 			if priv.Reload_priv == "N" {
-				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege.", ErrFrom: "CONF"})
+				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege", ErrFrom: "CONF"})
 			}
 			// Check replication user has correct privs.
 			rpriv, err := dbhelper.GetPrivileges(sv.Conn, rplUser, repmgrHostname)
 			if err != nil {
-				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s.", rplUser, sv.URL, err), ErrFrom: "CONF"})
+				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s", rplUser, sv.URL, err), ErrFrom: "CONF"})
 			}
 			if rpriv.Repl_slave_priv == "N" {
-				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege.", ErrFrom: "CONF"})
+				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege", ErrFrom: "CONF"})
 			}
 			// Additional health checks go here
 			if sv.acidTest() == false && sme.IsDiscovered() {
@@ -171,14 +171,16 @@ func topologyDiscover() error {
 
 	// If no slaves are detected, generate an error
 	if len(slaves) == 0 {
-		sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected.", ErrFrom: "TOPO"})
+		sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected", ErrFrom: "TOPO"})
 	}
 
 	// Check that all slave servers have the same master.
 	if multiMaster == false {
 		for _, sl := range slaves {
+
 			if sl.hasSiblings(slaves) == false {
-				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring.", ErrFrom: "TOPO"})
+				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
+
 				multiMaster = true
 			}
 		}
@@ -191,7 +193,7 @@ func topologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			sme.AddState("WARN00003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master.", ErrFrom: "TOPO"})
+			sme.AddState("WARN00003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
 		for _, s := range servers {
@@ -267,7 +269,7 @@ func topologyDiscover() error {
 	// Final check if master has been found
 	if master == nil {
 
-		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master.", ErrFrom: "TOPO"})
+		sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master", ErrFrom: "TOPO"})
 
 	} else {
 		master.RplMasterStatus = false
@@ -281,7 +283,7 @@ func topologyDiscover() error {
 					sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", master.URL, master.Host), ErrFrom: "TOPO"})
 				}
 				if sl.LogBin == "OFF" {
-					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s.", sl.URL), ErrFrom: "TOPO"})
+					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
 				}
 				if sl.Delay.Int64 <= maxDelay && sl.SQLThread == "Yes" {
 					master.RplMasterStatus = true
