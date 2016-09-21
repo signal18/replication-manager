@@ -140,7 +140,12 @@ To limit such cases we advise usage of a 3 nodes cluster that removes some of su
 The first SLA is the one that tracks the presence of a valid topology from  __replication-manager__, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
 
-This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimize time in this state as failover would not be possible without big impact that  __replication-manager__ can force in interactive mode.     
+This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimize time in this state as failover would not be possible without big impact that  __replication-manager__ can force in interactive mode.  
+
+A good practice is to enable slow query detection on slaves using in slow query log
+```
+log_slow_slave_statements = 1
+```
 
 ## Data consistency inside switchover
 
@@ -240,6 +245,7 @@ Flags:
       --connect-timeout int           Database connection timeout in seconds (default 5)
       --daemon                        Daemon mode. Do not start the Termbox console
       --failcount int                 Trigger failover after N failures (interval 1s) (default 5)
+      --failover-at-sync              Only failover when state semisync is sync for last status
       --failover-limit int            Quit monitor after N failovers (0: unlimited)
       --failover-time-limit int       In automatic mode, Wait N seconds before attempting next failover (0: do not wait)
       --gtidcheck                     Do not initiate switchover unless one of the slaves is fully synced
@@ -260,6 +266,8 @@ Flags:
       --pre-failover-script string    Path of pre-failover script
       --prefmaster string             Preferred candidate server for master failover, in host:[port] format
       --readonly                      Set slaves as read-only after switchover (default true)
+      --rplchecks                     Failover to ignore replications checks (default true)
+      --spider                        Turn on spider detection
       --wait-kill int                 Wait this many milliseconds before killing threads on demoted master (default 5000)
 
 Global Flags:

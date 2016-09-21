@@ -42,6 +42,7 @@ func httpserver() {
 	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
 	http.HandleFunc("/rplchecks", handlerRplChecks)
 	http.HandleFunc("/failsync", handlerFailSync)
+  http.HandleFunc("/tests", handlerTests)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
@@ -162,6 +163,15 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 	if err := bootstrap(); err != nil {
 		logprint("ERROR: Could not bootstrap replication")
 		logprint(err)
+	}
+	return
+}
+
+func handlerTests(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	err := runAllTests()
+	if err == false  {
+		logprint("ERROR: Some tests failed" )
 	}
 	return
 }

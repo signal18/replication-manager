@@ -24,6 +24,14 @@ app.factory('Master', function($resource) {
   );
 });
 
+app.factory('Test', function($resource) {
+  return $resource(
+    '/tests',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 
 app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope, $interval, $http, Servers, Log, Settings, Master) {
   $interval(function(){
@@ -124,6 +132,7 @@ if (r == true) {
       console.log("Error.");
     });
   }
+
 };
 
 $scope.bootstrap = function() {
@@ -152,4 +161,19 @@ $scope.gtidstring = function(arr) {
   }
   return '';
 };
+
+$scope.test = function() {
+  var r = confirm("Confirm Tests Run, this possibly breack replication ! ");
+  if (r == true) {
+    var response = $http.get('/tests');
+       response.success(function(data, status, headers, config) {
+        console.log("Ok.");
+      });
+
+      response.error(function(data, status, headers, config) {
+        console.log("Error.");
+      });
+    }
+  };
+
 }]);

@@ -47,6 +47,7 @@ var (
 	sme            *state.StateMachine
 	swChan         = make(chan bool)
 	repmgrHostname string
+	test           bool
 )
 
 // Configuration variables - do not put global variables in that list
@@ -112,7 +113,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "failover to ignore replications checks")
-	viper.BindPFlags(monitorCmd.Flags())
+
+  viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
 	autorejoin = viper.GetBool("autorejoin")
 	checktype = viper.GetString("check-type")
@@ -128,7 +130,8 @@ func init() {
 	rplchecks = viper.GetBool("rplchecks")
 	failsync = viper.GetBool("failover-at-sync")
 
-	var err error
+
+  var err error
 	repmgrHostname, err = os.Hostname()
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
@@ -149,8 +152,9 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
 	cmd.Flags().BoolVar(&spider, "spider", false, "Turn on spider detection")
+  cmd.Flags().BoolVar(&test, "test", false, "Enable non regression tests ")
 
-	viper.BindPFlags(cmd.Flags())
+  viper.BindPFlags(cmd.Flags())
 	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
@@ -173,7 +177,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	failtime = int64(viper.GetInt("failover-time-limit"))
 	masterConnectRetry = viper.GetInt("master-connect-retry")
 	failsync = viper.GetBool("failover-at-sync")
-
+  test = viper.GetBool("test")
 }
 
 var failoverCmd = &cobra.Command{

@@ -94,6 +94,15 @@ func (SM *StateMachine) GetUptimeSemiSync() string {
 	}
 	return up
 }
+
+func (SM *StateMachine) ResetUpTime(){
+	SM.lasttime = time.Now().Unix()
+	SM.firsttime = SM.lasttime
+	SM.uptime = 0
+	SM.uptimeFailable = 0
+	SM.uptimeSemisync = 0
+}
+
 func (SM *StateMachine) GetUptimeFailable() string {
 	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
