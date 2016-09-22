@@ -9,6 +9,8 @@
 package main
 import	"github.com/tanji/replication-manager/dbhelper"
 import "time"
+//import "encoding/json"
+//import "net/http"
 
 func testSlaReplAllDelay() bool {
  return false
@@ -27,7 +29,7 @@ func testSwitchoverReplAllDelay() bool {
 }
 
 func testSlaReplAllSlavesStop() bool  {
-  cleanall = true
+
 
   bootstrap()
   sme.ResetUpTime()
@@ -48,12 +50,39 @@ func testSlaReplAllSlavesStop() bool  {
    }
 }
 
+
 func testSlaReplOneSlavesStop() bool {
   for _, s := range slaves {
     dbhelper.StopSlave(s.Conn)
   }
   return false
 }
+
+func testSwitchOverAllNodes() bool  {
+  maxfail = len(servers) + 1
+  for i := 0; i < len(servers);  {
+//  for _, sv := range servers {
+     oldMasterID:=master.ServerID
+     masterFailover(false)
+     newMasterID:= master.ServerID
+     if oldMasterID==newMasterID {
+       return false
+     }
+  }
+  time.Sleep( 3 * time.Second )
+  for _, s := range slaves {
+    if s.IOThread != "Yes" || s.SQLThread!="Yes" || s.MasterServerID != master.ServerID {
+      return false
+    }
+
+	}
+
+//  resp, err := http.Get("http://" + bindaddr+":"+httpport +"/servers")
+
+  return true
+}
+
+
 func getTestResultLabel( res bool) string {
   if res == false	{
     return "FAILED"
@@ -63,10 +92,17 @@ func getTestResultLabel( res bool) string {
 }
 
 func runAllTests() bool {
+  cleanall = true
   ret:=true
   logprintf("TESTING : Starting Test %s", "testSlaReplAllSlavesStop" )
   res:=  testSlaReplAllSlavesStop()
   logprintf("TESTING : End of Test %s -> %s", "testSlaReplAllSlavesStop", getTestResultLabel(res) )
   if res==false { ret=res}
+  logprintf("TESTING : Starting Test %s", "testSwitchOverAllNodes" )
+  res = testSwitchOverAllNodes()
+  logprintf("TESTING : End of Test %s -> %s", "testSwitchOverAllNodes", getTestResultLabel(res) )
+  if res==false { ret=res}
+
+  cleanall = false
   return ret
 }
