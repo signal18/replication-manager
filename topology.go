@@ -12,8 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
-  "strings"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
@@ -44,28 +45,29 @@ func newServerList() {
 	}
 	// Spider shard discover
 	if spider == true {
-	for _, s := range servers {
-		tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
-		mon,err:=  dbhelper.GetSpiderMonitor(s.Conn)
+		for _, s := range servers {
+			tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
+			mon, err := dbhelper.GetSpiderMonitor(s.Conn)
 
-		if err == nil {
-			if mon!= "" {
-				tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-				extra_url,err:=   dbhelper.GetSpiderShardUrl(s.Conn)
-				if err == nil {
-					if extra_url!= "" {
+			if err == nil {
+				if mon != "" {
+					tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
+					extra_url, err := dbhelper.GetSpiderShardUrl(s.Conn)
+					if err == nil {
+						if extra_url != "" {
 
-						for j, url := range strings.Split(extra_url, ",") {
-							var err error
-							srv ,err := newServerMonitor(url)
-							srv.State=stateShard
+							for j, url := range strings.Split(extra_url, ",") {
+								var err error
+								srv, err := newServerMonitor(url)
+								srv.State = stateShard
 
-							servers =  append(servers,srv)
-							if err != nil {
-								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
-							}
-							if verbose {
-								tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
+								servers = append(servers, srv)
+								if err != nil {
+									log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
+								}
+								if verbose {
+									tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
+								}
 							}
 						}
 					}
@@ -73,12 +75,11 @@ func newServerList() {
 			}
 		}
 	}
-	}
 }
 
 func pingServerList() {
-	if (sme.IsInState("WARN00008")  ) {
-		logprintf("DEBUG: In Failover skip topology detection" )
+	if sme.IsInState("WARN00008") {
+		logprintf("DEBUG: In Failover skip topology detection")
 		return
 	}
 	wg := new(sync.WaitGroup)
@@ -106,14 +107,14 @@ func pingServerList() {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
-  if (sme.IsInFailover() ) {
-    logprintf("DEBUG: In Failover skip topology detection" )
-	 	return nil
-  }
-  if loglevel > 2 {
-    logprintf("DEBUG: Entering topology detection" )
+	if sme.IsInFailover() {
+		logprintf("DEBUG: In Failover skip topology detection")
+		return nil
 	}
-  slaves = nil
+	if loglevel > 2 {
+		logprintf("DEBUG: Entering topology detection")
+	}
+	slaves = nil
 	for k, sv := range servers {
 		err := sv.refresh()
 		if err != nil {
@@ -191,8 +192,8 @@ func topologyDiscover() error {
 
 			if sl.hasSiblings(slaves) == false {
 				// possibly buggy code
-        // sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
-				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected)
+				// sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
+				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected"})
 				// multiMaster = true
 			}
 		}
@@ -215,14 +216,13 @@ func topologyDiscover() error {
 		}
 		if srw > 1 {
 			sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to prefered master.", ErrFrom: "TOPO"})
-			server:=getPreferedMaster()
-      if server != nil {
-			  dbhelper.SetReadOnly(server.Conn, false)
-			} else
-			{
+			server := getPreferedMaster()
+			if server != nil {
+				dbhelper.SetReadOnly(server.Conn, false)
+			} else {
 				sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a prefered master.", ErrFrom: "TOPO"})
-		  }
- 	  }
+			}
+		}
 	} else if readonly {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		for _, s := range slaves {
