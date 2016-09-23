@@ -98,7 +98,7 @@ td {
 		<button type="button" class="btn btn-primary" ng-click="failsync()">Failover Sync</button>
 		<button type="button" class="btn btn-primary" ng-click="rplchecks()">Replication Checks Change</button>
 		<button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-    <button ng-if="test != false" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
+    <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
 </p>
 	<pre>
 <span ng-repeat="logline in log track by $index">{{ logline }}

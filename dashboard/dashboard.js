@@ -163,7 +163,7 @@ $scope.gtidstring = function(arr) {
 };
 
 $scope.test = function() {
-  var r = confirm("Confirm Tests Run, this possibly breack replication ! ");
+  var r = confirm("Confirm test run, this could cause replication to break!");
   if (r == true) {
     var response = $http.get('/tests');
        response.success(function(data, status, headers, config) {

@@ -19,14 +19,15 @@ import (
 type settings struct {
 	Interactive    string `json:"interactive"`
 	FailoverCtr    string `json:"failoverctr"`
-	MaxDelay    	 string `json:"maxdelay"`
+	MaxDelay       string `json:"maxdelay"`
 	Faillimit      string `json:"faillimit"`
 	LastFailover   string `json:"lastfailover"`
 	Uptime         string `json:"uptime"`
 	UptimeFailable string `json:"uptimefailable"`
 	UptimeSemiSync string `json:"uptimesemisync"`
-	RplChecks 	   string `json:"rplchecks"`
-	FailSync			 string `json:"failsync"`
+	RplChecks      string `json:"rplchecks"`
+	FailSync       string `json:"failsync"`
+	Test           string `json:"test"`
 }
 
 func httpserver() {
@@ -42,7 +43,7 @@ func httpserver() {
 	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
 	http.HandleFunc("/rplchecks", handlerRplChecks)
 	http.HandleFunc("/failsync", handlerFailSync)
-  http.HandleFunc("/tests", handlerTests)
+	http.HandleFunc("/tests", handlerTests)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
@@ -80,14 +81,15 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(settings)
 	s.Interactive = fmt.Sprintf("%v", interactive)
-	s.RplChecks = fmt.Sprintf("%v",rplchecks)
-	s.FailSync = fmt.Sprintf("%v",failsync)
-	s.MaxDelay =  fmt.Sprintf("%v",maxDelay)
+	s.RplChecks = fmt.Sprintf("%v", rplchecks)
+	s.FailSync = fmt.Sprintf("%v", failsync)
+	s.MaxDelay = fmt.Sprintf("%v", maxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
 	s.Faillimit = fmt.Sprintf("%d", faillimit)
 	s.Uptime = sme.GetUptime()
 	s.UptimeFailable = sme.GetUptimeFailable()
 	s.UptimeSemiSync = sme.GetUptimeSemiSync()
+	s.Test = fmt.Sprintf("%v", test)
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()
@@ -139,14 +141,14 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 
 func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprint(fmt.Sprintf("INFO: Force to ingnore conditions %b" , rplchecks) )
+	logprint("INFO: Force to ignore conditions %v", rplchecks)
 	rplchecks = !rplchecks
 	return
 }
 
 func handlerFailSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprint(fmt.Sprintf("INFO: Force failover on status sync %b" , failsync) )
+	logprintf("INFO: Force failover on status sync %v", failsync)
 	failsync = !failsync
 	return
 }
@@ -170,8 +172,8 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	err := runAllTests()
-	if err == false  {
-		logprint("ERROR: Some tests failed" )
+	if err == false {
+		logprint("ERROR: Some tests failed")
 	}
 	return
 }
