@@ -77,6 +77,10 @@ func newServerList() {
 }
 
 func pingServerList() {
+	if (sme.IsInState("WARN00008")  ) {
+		logprintf("DEBUG: In Failover skip topology detection" )
+		return
+	}
 	wg := new(sync.WaitGroup)
 	for _, sv := range servers {
 		wg.Add(1)
@@ -102,7 +106,14 @@ func pingServerList() {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func topologyDiscover() error {
-	slaves = nil
+  if (sme.IsInFailover() ) {
+    logprintf("DEBUG: In Failover skip topology detection" )
+	 	return nil
+  }
+  if loglevel > 2 {
+    logprintf("DEBUG: Entering topology detection" )
+	}
+  slaves = nil
 	for k, sv := range servers {
 		err := sv.refresh()
 		if err != nil {
@@ -164,7 +175,7 @@ func topologyDiscover() error {
 			}
 			// Additional health checks go here
 			if sv.acidTest() == false && sme.IsDiscovered() {
-				sme.AddState("WARN00006", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+				sme.AddState("WARN00007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 			}
 		}
 	}

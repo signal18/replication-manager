@@ -99,7 +99,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-
+	if (sme.IsInFailover() ) {
+      logprintf("DEBUG: Inside failover skip server check " )
+	 		return
+  }
 	if server.PrevState != server.State {
 		server.PrevState = server.State
 	}

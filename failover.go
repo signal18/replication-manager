@@ -20,6 +20,7 @@ import (
 /* Triggers a master switchover. Returns the new master's URL */
 func masterFailover(fail bool) bool {
 	logprint("INFO : Starting master switch")
+	sme.SetFailoverState()
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
@@ -31,6 +32,7 @@ func masterFailover(fail bool) bool {
 		logprint("INFO : Checking long running updates on master")
 		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 			logprint("ERROR: Long updates running on master. Cannot switchover")
+      sme.RemoveFailoverState()
 			return false
 		}
 	}
@@ -41,6 +43,7 @@ func masterFailover(fail bool) bool {
 	key := electCandidate(slaves)
 	if key == -1 {
 		logprint("ERROR: No candidates found")
+    sme.RemoveFailoverState()
 		return false
 	}
 	logprintf("INFO : Slave %s [%d] has been elected as a new master", slaves[key].URL, key)
@@ -214,6 +217,7 @@ func masterFailover(fail bool) bool {
 		failoverCtr++
 		failoverTs = time.Now().Unix()
 	}
+  sme.RemoveFailoverState()
 	return true
 }
 

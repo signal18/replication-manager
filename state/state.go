@@ -32,7 +32,10 @@ func (m Map) Add(key string, s State) {
 		m[key] = s
 
 	}
+}
 
+func (m Map) Delete(key string) {
+	 delete(m, key)
 }
 
 func (m Map) Search(key string) bool {
@@ -57,6 +60,7 @@ type StateMachine struct {
 	lastState           int64
 	avgReplicationDelay float32
 	sync.Mutex
+  inFailover	 				bool
 }
 
 func (SM *StateMachine) Init() {
@@ -72,9 +76,46 @@ func (SM *StateMachine) Init() {
 	SM.lastState = 0
 }
 
+func (SM *StateMachine) SetFailoverState() {
+	SM.Lock()
+	SM.inFailover= true
+	SM.Unlock()
+}
+
+
+func (SM *StateMachine) RemoveFailoverState() {
+	SM.Lock()
+	SM.inFailover= false
+	SM.Unlock()
+}
+
+func (SM *StateMachine)  IsInFailover() bool {
+	return SM.inFailover
+}
+
 func (SM *StateMachine) AddState(key string, s State) {
 	SM.Lock()
 	SM.CurState.Add(key, s)
+	SM.Unlock()
+}
+
+
+
+
+func (SM *StateMachine) IsInState(key string) bool {
+	SM.Lock()
+   if SM.CurState.Search(key) == false {
+		SM.Unlock()
+		return false
+   } else {
+	   SM.Unlock()
+	   return false
+	 }
+}
+
+func (SM *StateMachine) DeleteState(key string) {
+	SM.Lock()
+	SM.CurState.Delete(key)
 	SM.Unlock()
 }
 

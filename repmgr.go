@@ -366,8 +366,9 @@ Interactive console and HTTP dashboards are available for control`,
 						//do nothing
 					}
 				}
-				sme.ClearState()
-
+				if (!sme.IsInFailover() ) {
+					sme.ClearState()
+			  }
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:

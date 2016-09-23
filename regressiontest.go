@@ -61,9 +61,12 @@ func testSlaReplOneSlavesStop() bool {
 func testSwitchOverAllNodes() bool  {
   maxfail = len(servers) + 1
   for i := 0; i < len(servers);  {
-//  for _, sv := range servers {
      oldMasterID:=master.ServerID
      masterFailover(false)
+//     swChan <- true
+     for (sme.IsInFailover()) {
+       time.Sleep(  2* time.Second )
+     }
      newMasterID:= master.ServerID
      if oldMasterID==newMasterID {
        return false
