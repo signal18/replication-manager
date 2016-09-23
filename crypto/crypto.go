@@ -50,8 +50,6 @@ func (p *Password) Decrypt() {
 		panic(err)
 	}
 
-	// The IV needs to be unique, but not secure. Therefore it's common to
-	// include it at the beginning of the ciphertext.
 	if len(ciphertext) < aes.BlockSize {
 		panic("ciphertext too short")
 	}
@@ -60,7 +58,6 @@ func (p *Password) Decrypt() {
 
 	stream := cipher.NewCFBDecrypter(block, iv)
 
-	// XORKeyStream can work in-place if the two arguments are the same.
 	stream.XORKeyStream(ciphertext, ciphertext)
 	p.PlainText = string(ciphertext)
 	return
