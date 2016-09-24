@@ -30,6 +30,7 @@ import (
 type ServerMonitor struct {
 	Conn                 *sqlx.DB
 	URL                  string
+  DSN 								 string
 	Host                 string
 	Port                 string
 	IP                   string
@@ -92,7 +93,8 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		}
 		return dsn
 	}
-	server.Conn, err = sqlx.Open("mysql", mydsn())
+  server.DSN=mydsn()
+	server.Conn, err = sqlx.Open("mysql", server.DSN)
 	return server, err
 }
 

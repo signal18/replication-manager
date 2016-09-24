@@ -192,7 +192,7 @@ func topologyDiscover() error {
 			if sl.hasSiblings(slaves) == false {
 				// possibly buggy code
         // sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
-				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected)
+				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
 				// multiMaster = true
 			}
 		}

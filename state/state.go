@@ -202,10 +202,10 @@ func (SM *StateMachine) IsDiscovered() bool {
 
 func (SM *StateMachine) GetState() []string {
 	var log []string
+  SM.Lock()
 	for key2, value2 := range *SM.OldState {
 		if SM.CurState.Search(key2) == false {
 			log = append(log, fmt.Sprintf("%-5s: %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
-
 		}
 	}
 
@@ -215,5 +215,6 @@ func (SM *StateMachine) GetState() []string {
 
 		}
 	}
+  SM.Unlock()
 	return log
 }

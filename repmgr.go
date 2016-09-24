@@ -432,6 +432,10 @@ Interactive console and HTTP dashboards are available for control`,
 }
 
 func checkfailed() {
+if (sme.IsInFailover() ) {
+	logprintf("DEBUG: In Failover skip checking failed master" )
+	return
+}
 	// Don't trigger a failover if a switchover is happening
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {

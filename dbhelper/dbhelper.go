@@ -14,9 +14,11 @@ import (
 	"log"
 	"net"
 	"strings"
-
-	"github.com/jmoiron/sqlx"
+	"sync"
+	"sync/atomic"
+  "github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/misc"
+
 )
 
 const debug = false
@@ -567,4 +569,140 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 		vars[v.Tbl_src] = v
 	}
 	return vars, err
+}
+
+
+
+func runPreparedExecConcurrent(db *sqlx.DB, n int, co int) error {
+	stmt, err := db.Prepare("UPATE replication_manager_schema.bench SET val=val+1 ")
+	if err != nil {
+		return err
+	}
+
+	remain := int64(n)
+	var wg sync.WaitGroup
+	wg.Add(co)
+
+	for i := 0; i < co; i++ {
+		go func() {
+			for {
+				if atomic.AddInt64(&remain, -1) < 0 {
+					wg.Done()
+					return
+				}
+
+				if _, err1 := stmt.Exec(); err1 != nil {
+					wg.Done()
+					err = err1
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	stmt.Close()
+	return err
+}
+
+func runPreparedQueryConcurrent(db *sqlx.DB, n int, co int) error {
+	stmt, err := db.Prepare("SELECT ?, \"foobar\"")
+	if err != nil {
+		return err
+	}
+
+	remain := int64(n)
+	var wg sync.WaitGroup
+	wg.Add(co)
+
+	for i := 0; i < co; i++ {
+		go func() {
+			var id int
+			var str string
+			for {
+				if atomic.AddInt64(&remain, -1) < 0 {
+					wg.Done()
+					return
+				}
+
+				if err1 := stmt.QueryRow(i).Scan(&id, &str); err1 != nil {
+					wg.Done()
+					err = err1
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	stmt.Close()
+	return err
+}
+
+func benchPreparedExecConcurrent1(db *sqlx.DB, n int) error {
+	return runPreparedExecConcurrent(db, n, 1)
+}
+
+func benchPreparedExecConcurrent2(db *sqlx.DB, n int) error {
+	return runPreparedExecConcurrent(db, n, 2)
+}
+
+func benchPreparedExecConcurrent4(db *sqlx.DB, n int) error {
+	return runPreparedExecConcurrent(db, n, 4)
+}
+
+func benchPreparedExecConcurrent8(db *sqlx.DB, n int) error {
+	return runPreparedExecConcurrent(db, n, 8)
+}
+
+func benchPreparedExecConcurrent16(db *sqlx.DB, n int) error {
+	return runPreparedExecConcurrent(db, n, 16)
+}
+
+
+func benchWarmup(db *sqlx.DB) error {
+	db.SetMaxIdleConns(16)
+  _,  err := db.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
+	if err != nil {
+		return err
+	}
+  _, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(val bigint unsigned )")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench VALUES(1)")
+	if err != nil {
+		return err
+	}
+
+
+for i := 0; i < 2; i++ {
+		rows, err := db.Query("SELECT val FROM replication_manager_schema.bench")
+		if err != nil {
+			return err
+		}
+
+		if err = rows.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func WriteConcurrent2(dsn string, qt int)  (string, error) {
+var err error
+
+	bs := BenchmarkSuite{
+		WarmUp:      benchWarmup,
+		Repetitions: 3,
+		PrintStats:  true,
+	}
+
+	if err = bs.AddDriver("mysql", "mysql", dsn ); err != nil {
+	  return "", err
+	}
+
+	bs.AddBenchmark("PreparedExecConcurrent2", qt, benchPreparedExecConcurrent2)
+
+
+	result := bs.Run()
+  return result, nil
 }
