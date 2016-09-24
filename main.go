@@ -29,7 +29,7 @@ func init() {
 	viper.AddConfigPath("/etc/replication-manager/")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
-	if err != nil {
+	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
 	rootCmd.AddCommand(versionCmd)
