@@ -32,7 +32,7 @@ func masterFailover(fail bool) bool {
 		logprint("INFO : Checking long running updates on master")
 		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
 			logprint("ERROR: Long updates running on master. Cannot switchover")
-      sme.RemoveFailoverState()
+			sme.RemoveFailoverState()
 			return false
 		}
 	}
@@ -43,7 +43,7 @@ func masterFailover(fail bool) bool {
 	key := electCandidate(slaves)
 	if key == -1 {
 		logprint("ERROR: No candidates found")
-    sme.RemoveFailoverState()
+		sme.RemoveFailoverState()
 		return false
 	}
 	logprintf("INFO : Slave %s [%d] has been elected as a new master", slaves[key].URL, key)
@@ -222,7 +222,7 @@ func masterFailover(fail bool) bool {
 		failoverCtr++
 		failoverTs = time.Now().Unix()
 	}
-  sme.RemoveFailoverState()
+	sme.RemoveFailoverState()
 	return true
 }
 
