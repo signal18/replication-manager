@@ -472,7 +472,7 @@ func newTbChan() chan termbox.Event {
 func repmgrFlagCheck() {
 	if logfile != "" {
 		var err error
-		logPtr, err = os.Create(logfile)
+		logPtr, err = os.OpenFile(logfile, os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
 			logfile = ""
