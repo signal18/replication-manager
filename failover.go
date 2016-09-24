@@ -163,6 +163,11 @@ func masterFailover(fail bool) bool {
 			if err != nil {
 				logprintf("ERROR: Could not set old master as read-only, %s", err)
 			}
+		} else {
+			err = dbhelper.SetReadOnly(oldMaster.Conn, false)
+			if err != nil {
+				logprintf("ERROR: Could not set old master as read-write, %s", err)
+			}
 		}
 		_, err = oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
 		// Add the old master to the slaves list
