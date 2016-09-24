@@ -358,7 +358,6 @@ Interactive console and HTTP dashboards are available for control`,
 					checkfailed()
 					select {
 					case sig := <-swChan:
-						logprint("INFO: Receiving switchover message from channel")
 						if sig {
 							masterFailover(false)
 						}
