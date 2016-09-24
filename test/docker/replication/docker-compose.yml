@@ -7,6 +7,9 @@ services:
     command: mysqld --server-id=1
     volumes:
       - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.1
   db2:
     image: mariadb:latest
     environment:
@@ -14,6 +17,9 @@ services:
     command: mysqld --server-id=2
     volumes:
       - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.2
   db3:
     image: mariadb:latest
     environment:
@@ -21,6 +27,9 @@ services:
     command: mysqld --server-id=3
     volumes:
       - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.3
   mxs:
     image: tanji/maxscale:2.0.0
     volumes:
@@ -29,8 +38,22 @@ services:
       - "4006:4006"
       - "6603:6603"
       - "4442:4442"
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.4
   mrm:
     build: ../../../
     command: replication-manager monitor --daemon --verbose --http-server --interactive=false
     volumes:
       - ./config.toml:/etc/replication-manager/config.toml
+
+networks:
+  nw1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv4: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.1.0/24
+          gateway: 172.16.1.254

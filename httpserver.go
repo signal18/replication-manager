@@ -122,7 +122,6 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
-	logprint("INFO: Sending switchover message to channel")
 	swChan <- true
 	return
 }
