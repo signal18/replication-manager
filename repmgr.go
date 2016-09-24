@@ -17,6 +17,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
@@ -493,6 +494,20 @@ func repmgrFlagCheck() {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
 	rplUser, rplPass = misc.SplitPair(rpluser)
+
+	// If there's an existing encryption key, decrypt the passwords
+	k, err := readKey()
+	if err != nil {
+		log.Println("INFO : No existing password encryption scheme:", err)
+	} else {
+		p := crypto.Password{Key: k}
+		p.CipherText = dbPass
+		p.Decrypt()
+		dbPass = p.PlainText
+		p.CipherText = rplPass
+		p.Decrypt()
+		rplPass = p.PlainText
+	}
 
 	if ignoreSrv != "" {
 		ignoreList = strings.Split(ignoreSrv, ",")

@@ -337,9 +337,11 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
  * Configuration file
 
+ * AES Password encryption
+
  * 2 nodes Multi Master Switchover support
 
- * On live mode
+ * On-leave mode
 
  * Failover SLA tracking
 

@@ -18,8 +18,8 @@ import (
 
 var (
 	loglevel int
-  Version string
-  Build   string
+	Version  string
+	Build    string
 )
 
 func init() {
@@ -32,12 +32,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
+	rootCmd.Flags().StringVar(&keyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&loglevel, "log-level", 0, "Log verbosity level")
 	viper.BindPFlags(rootCmd.PersistentFlags())
 	user = viper.GetString("user")
 	hosts = viper.GetString("hosts")
 	rpluser = viper.GetString("rpluser")
+	keyPath = viper.GetString("keypath")
 	loglevel = viper.GetInt("log-level")
 	if verbose == true && loglevel == 0 {
 		loglevel = 1
@@ -52,7 +54,7 @@ func main() {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
-	
+
 }
 
 var rootCmd = &cobra.Command{
