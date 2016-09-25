@@ -108,6 +108,9 @@ func TestMaps(t *testing.T) {
 	var stringMapStringSliceMultiple = map[string][]string{"key 1": []string{"value 1", "value 2", "value 3"}, "key 2": []string{"value 1", "value 2", "value 3"}, "key 3": []string{"value 1", "value 2", "value 3"}}
 	var stringMapStringSliceSingle = map[string][]string{"key 1": []string{"value 1"}, "key 2": []string{"value 2"}, "key 3": []string{"value 3"}}
 
+	var stringMapInterface1 = map[string]interface{}{"key 1": []string{"value 1"}, "key 2": []string{"value 2"}}
+	var stringMapInterfaceResult1 = map[string][]string{"key 1": []string{"value 1"}, "key 2": []string{"value 2"}}
+
 	assert.Equal(t, ToStringMap(taxonomies), map[string]interface{}{"tag": "tags", "group": "groups"})
 	assert.Equal(t, ToStringMapBool(stringMapBool), map[string]bool{"v1": true, "v2": false})
 
@@ -128,6 +131,7 @@ func TestMaps(t *testing.T) {
 	assert.Equal(t, ToStringMapStringSlice(interfaceMapInterfaceSlice), stringMapStringSlice)
 	assert.Equal(t, ToStringMapStringSlice(interfaceMapString), stringMapStringSingleSliceFieldsResult)
 	assert.Equal(t, ToStringMapStringSlice(interfaceMapInterface), stringMapStringSingleSliceFieldsResult)
+	assert.Equal(t, ToStringMapStringSlice(stringMapInterface1), stringMapInterfaceResult1)
 }
 
 func TestSlices(t *testing.T) {
@@ -137,6 +141,10 @@ func TestSlices(t *testing.T) {
 	assert.Equal(t, []int{1, 3}, ToIntSlice([]interface{}{1.2, 3.2}))
 	assert.Equal(t, []int{2, 3}, ToIntSlice([]string{"2", "3"}))
 	assert.Equal(t, []int{2, 3}, ToIntSlice([2]string{"2", "3"}))
+	assert.Equal(t, []bool{true, false, true}, ToBoolSlice([]bool{true, false, true}))
+	assert.Equal(t, []bool{true, false, true}, ToBoolSlice([]interface{}{true, false, true}))
+	assert.Equal(t, []bool{true, false, true}, ToBoolSlice([]int{1,0,1}))
+	assert.Equal(t, []bool{true, false, true}, ToBoolSlice([]string{"true","false","true"}))
 }
 
 func TestToBool(t *testing.T) {
@@ -170,10 +178,29 @@ func TestIndirectPointers(t *testing.T) {
 }
 
 func TestToDuration(t *testing.T) {
-	a := time.Second * 5
-	ai := int64(a)
-	b := time.Second * 5
-	bf := float64(b)
-	assert.Equal(t, ToDuration(ai), a)
-	assert.Equal(t, ToDuration(bf), b)
+	var td time.Duration = 5
+	tests := []struct {
+		input    interface{}
+		expected time.Duration
+	}{
+		{time.Duration(5), td},
+		{int64(5), td},
+		{int32(5), td},
+		{int16(5), td},
+		{int8(5), td},
+		{int(5), td},
+		{float64(5), td},
+		{float32(5), td},
+		{string("5"), td},
+		{string("5ns"), td},
+		{string("5us"), time.Microsecond * td},
+		{string("5µs"), time.Microsecond * td},
+		{string("5ms"), time.Millisecond * td},
+		{string("5s"), time.Second * td},
+		{string("5m"), time.Minute * td},
+		{string("5h"), time.Hour * td},
+	}
+	for _, v := range tests {
+		assert.Equal(t, v.expected, ToDuration(v.input))
+	}
 }
