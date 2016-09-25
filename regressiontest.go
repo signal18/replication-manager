@@ -264,6 +264,175 @@ func testSwitchOverBackPreferedMaster() bool  {
   return true
 }
 
+
+func testSwitchOverAllSlavesStop() bool  {
+  rplchecks=true
+  logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStop" )
+  for _, s := range servers {
+  _, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+  if err != nil  {
+    logprintf("TESTING : %s", err)
+  }
+  _, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+  if err != nil {
+    logprintf("TESTING : %s", err)
+  }
+ }
+ for _, s := range slaves {
+  dbhelper.StopSlave(s.Conn)
+ }
+ time.Sleep( 2 * time.Second )
+
+  SaveMasterURL:=master.URL
+  for i := 0; i < 1; i++ {
+
+     logprintf("INFO :  Master  is %d",master.URL )
+
+     swChan <- true
+
+    time.Sleep(  recover_time * time.Second )
+    logprintf("INFO : New Master  %s ",master.URL )
+
+
+  }
+  for _, s := range slaves {
+   dbhelper.StartSlave(s.Conn)
+  }
+  time.Sleep( 2 * time.Second )
+  if master.URL!=SaveMasterURL  {
+      logprintf("INFO : Saved Prefered master %s <>  from saved %s  ",SaveMasterURL,master.URL  )
+      return false
+  }
+  return true
+}
+
+func testSwitchOverAllSlavesStopNoChecks() bool  {
+  rplchecks=false
+  logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStopNoChecks" )
+  for _, s := range servers {
+  _, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+  if err != nil  {
+    logprintf("TESTING : %s", err)
+  }
+  _, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+  if err != nil {
+    logprintf("TESTING : %s", err)
+  }
+ }
+ for _, s := range slaves {
+  dbhelper.StopSlave(s.Conn)
+ }
+ time.Sleep( 2 * time.Second )
+
+  SaveMasterURL:=master.URL
+  for i := 0; i < 1; i++ {
+
+     logprintf("INFO :  Master  is %d",master.URL )
+
+     swChan <- true
+
+    time.Sleep(  recover_time * time.Second )
+    logprintf("INFO : New Master  %s ",master.URL )
+
+
+  }
+  for _, s := range slaves {
+   dbhelper.StartSlave(s.Conn)
+  }
+  time.Sleep( 2 * time.Second )
+  if master.URL==SaveMasterURL  {
+      logprintf("INFO : Saved Prefered master %s <>  from saved %s  ",SaveMasterURL,master.URL  )
+      return false
+  }
+  return true
+}
+
+
+func testSwitchOverAllSlavesDelay() bool  {
+  rplchecks=true
+  maxDelay =8
+  logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesDelay" )
+  for _, s := range servers {
+      _, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+      if err != nil  {
+        logprintf("TESTING : %s", err)
+      }
+      _, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+      if err != nil {
+        logprintf("TESTING : %s", err)
+      }
+ }
+ for _, s := range slaves {
+  dbhelper.StopSlave(s.Conn)
+ }
+ time.Sleep(15 * time.Second )
+
+  SaveMasterURL:=master.URL
+  for i := 0; i < 1; i++ {
+
+     logprintf("INFO :  Master  is %d",master.URL )
+
+     swChan <- true
+
+    time.Sleep(  recover_time * time.Second )
+    logprintf("INFO : New Master  %s ",master.URL )
+
+
+  }
+  for _, s := range slaves {
+   dbhelper.StartSlave(s.Conn)
+  }
+  time.Sleep( 2 * time.Second )
+  if master.URL!=SaveMasterURL  {
+      logprintf("INFO : Saved Prefered master %s <>  from saved %s  ",SaveMasterURL,master.URL  )
+      return false
+  }
+  return true
+}
+
+func testSwitchOverAllSlavesDelayNoChecks() bool  {
+  rplchecks=false
+  maxDelay =8
+  logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesDelayNoChecks" )
+  for _, s := range servers {
+    _, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+    if err != nil  {
+      logprintf("TESTING : %s", err)
+    }
+    _, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+    if err != nil {
+      logprintf("TESTING : %s", err)
+    }
+ }
+ for _, s := range slaves {
+  dbhelper.StopSlave(s.Conn)
+ }
+ time.Sleep(15*time.Second)
+
+  SaveMasterURL:=master.URL
+  for i := 0; i < 1; i++ {
+
+     logprintf("INFO :  Master  is %d",master.URL )
+
+     swChan <- true
+
+    time.Sleep(  recover_time * time.Second )
+    logprintf("INFO : New Master  %s ",master.URL )
+
+
+  }
+  for _, s := range slaves {
+   dbhelper.StartSlave(s.Conn)
+  }
+  time.Sleep( 2 * time.Second )
+  if master.URL==SaveMasterURL  {
+      logprintf("INFO : Saved Prefered master %s <>  from saved %s  ",SaveMasterURL,master.URL  )
+      return false
+  }
+  return true
+}
+
+
 func getTestResultLabel( res bool) string {
   if res == false	{
     return "FAILED"
@@ -299,10 +468,25 @@ func runAllTests() bool {
   allTests["2 Switchover Back Prefered Master <rplchecks=false>"] = getTestResultLabel(res)
   if res==false { ret=res}
 
-  res=  testSlaReplAllSlavesStopNoSemiSync()
-  allTests["SLA Can Failover (All Slaves Stop) (Semisync=false)"] = getTestResultLabel(res)
+  res= testSwitchOverAllSlavesStop()
+  allTests["Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
   if res==false { ret=res}
 
+  res= testSwitchOverAllSlavesDelay()
+  allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
+  if res==false { ret=res}
+
+  res= testSwitchOverAllSlavesDelayNoChecks()
+  allTests["Can Switchover All Slaves Delay <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+  if res==false { ret=res}
+
+ res= testSwitchOverAllSlavesStopNoChecks()
+  allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+  if res==false { ret=res}
+
+  res=  testSlaReplAllSlavesStopNoSemiSync()
+  allTests["SLA Decrease Can't Failover All Slaves Stop (Semisync=false)"] = getTestResultLabel(res)
+  if res==false { ret=res}
 
 
   //bootstrap()
