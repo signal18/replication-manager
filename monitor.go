@@ -102,11 +102,17 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	if sme.IsInFailover() {
-		logprintf("DEBUG: Inside failover skip server check ")
+		if loglevel > 2 {
+			logprintf("DEBUG: Inside failover, skip server check")
+		}
 		return
 	}
 	if server.PrevState != server.State {
 		server.PrevState = server.State
+	}
+
+	if loglevel > 2 {
+		// logprint("DEBUG: Checking server", server.Host)
 	}
 
 	var err error
@@ -124,6 +130,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
+		if loglevel > 2 {
+			logprintf("DEBUG: Failure detection handling for server %s", server.URL)
+		}
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
 			if server.URL == master.URL {

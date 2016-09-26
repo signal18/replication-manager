@@ -212,6 +212,9 @@ var failoverCmd = &cobra.Command{
 				for _, s := range servers {
 					if s.State == "" {
 						s.State = stateFailed
+						if loglevel > 2 {
+							logprint("DEBUG: State failed set by state detection ERR00012")
+						}
 						master = s
 					}
 				}

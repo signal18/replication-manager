@@ -96,7 +96,15 @@ func pingServerList() {
 					}
 				} else {
 					sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
-					sv.State = stateFailed
+					// We can set the failed state at this point if we're in the initial loop
+					// Otherwise, let the monitor check function handle failures
+					if sv.State == "" {
+						if loglevel > 2 {
+							logprint("DEBUG: State failed set by topology detection INF00001")
+						}
+						sv.State = stateFailed
+					}
+
 				}
 			}
 		}(sv)
@@ -134,6 +142,9 @@ func topologyDiscover() error {
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='binlog dump'")
 			if err != nil {
 				sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting binlog dump count on server %s: %s", sv.URL, err), ErrFrom: "CONF"})
+				if loglevel > 2 {
+					logprint("DEBUG: State failed set by topology detection ERR00014")
+				}
 				sv.State = stateFailed
 				continue
 			}
@@ -150,7 +161,7 @@ func topologyDiscover() error {
 		}
 		// Check user privileges on live servers
 		if loglevel > 2 {
-			logprintf("DEBUG: Check loop on %s", sv.URL)
+			logprintf("DEBUG: Privilege check on %s", sv.URL)
 		}
 		if sv.State != stateFailed {
 			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname)
