@@ -31,7 +31,7 @@ services:
       nw1:
         ipv4_address: 172.16.1.3
   mxs:
-    image: tanji/maxscale:2.0.0
+    build: ./maxscale
     volumes:
       - ./maxscale.cnf:/etc/maxscale.cnf
     ports:

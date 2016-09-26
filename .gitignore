@@ -4,3 +4,5 @@ replication-manager
 *.deb
 copyright.*
 *.tar.gz
+build
+maxscale*.rpm
