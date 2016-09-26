@@ -410,6 +410,7 @@ Interactive console and HTTP dashboards are available for control`,
 						displayHelp()
 					}
 					if event.Key == termbox.KeyCtrlQ {
+						logprint("INFO : Quitting monitor")
 						exit = true
 					}
 				}
