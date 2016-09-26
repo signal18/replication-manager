@@ -12,13 +12,15 @@ services:
   replication-manager:
     image: replication-manager
     build: ../..
-    command: monitor --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --verbose
+    command: monitor --daemon --interactive=false --hosts=mariadb1,mariadb2,mariadb3 --user=root --rpluser=repl:pass --http-server --http-bind-address=0.0.0.0
     depends_on:
       - agent1
       - agent2
       - agent3
     tty: true
     stdin_open: true
+    ports:
+      - "10001"
 
   mariadb1:
     image: mariadb
@@ -32,7 +34,7 @@ services:
   agent1:
     image: replication-manager
     build: ../..
-    command: agent --interactive=false --hosts=mariadb1 --user=root --rpluser=repl:pass
+    command: agent --hosts=mariadb1 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb1
 
@@ -42,7 +44,7 @@ services:
   agent2:
     image: replication-manager
     build: ../..
-    command: agent --interactive=false --hosts=mariadb2 --user=root --rpluser=repl:pass
+    command: agent --hosts=mariadb2 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb2
 
@@ -52,6 +54,6 @@ services:
   agent3:
     image: replication-manager
     build: ../..
-    command: agent --interactive=false --hosts=mariadb3 --user=root --rpluser=repl:pass
+    command: agent --hosts=mariadb3 --user=root --rpluser=repl:pass
     depends_on:
       - mariadb3
