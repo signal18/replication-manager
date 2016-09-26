@@ -5,8 +5,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"io"
+	"log"
 )
 
 type Password struct {
@@ -26,14 +26,15 @@ func (p *Password) Encrypt() {
 	plaintext := []byte(p.PlainText)
 	block, err := aes.NewCipher(p.Key)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Println("ERROR: Could not get new cipher:", err)
 		return
 	}
 
 	ciphertext := make([]byte, aes.BlockSize+len(p.PlainText))
 	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		panic(err)
+		log.Println("ERROR: Could not read ciphertext:", err)
+		return
 	}
 
 	stream := cipher.NewCFBEncrypter(block, iv)
@@ -47,11 +48,13 @@ func (p *Password) Decrypt() {
 
 	block, err := aes.NewCipher(p.Key)
 	if err != nil {
-		panic(err)
+		log.Println("ERROR: Could not get new cipher:", err)
+		return
 	}
 
 	if len(ciphertext) < aes.BlockSize {
-		panic("ciphertext too short")
+		log.Println("ERROR: ciphertext too short")
+		return
 	}
 	iv := ciphertext[:aes.BlockSize]
 	ciphertext = ciphertext[aes.BlockSize:]
