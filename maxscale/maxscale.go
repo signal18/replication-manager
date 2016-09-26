@@ -43,7 +43,6 @@ func (m *MaxScale) connect() error {
 		return errors.New(ErrorReader)
 	}
 	if res != 4 {
-		fmt.Println("got", string(buf))
 		return errors.New(ErrorNegotiation)
 	}
 	writer := bufio.NewWriter(m.conn)
@@ -54,7 +53,6 @@ func (m *MaxScale) connect() error {
 		return errors.New(ErrorReader)
 	}
 	if res != 8 {
-		fmt.Println("got", buf)
 		return errors.New(ErrorNegotiation)
 	}
 	fmt.Fprint(writer, m.pass)
