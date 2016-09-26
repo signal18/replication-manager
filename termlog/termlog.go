@@ -11,6 +11,7 @@
 package termlog
 
 import (
+	"sync"
 	"time"
 
 	"github.com/nsf/termbox-go"
@@ -20,6 +21,7 @@ type TermLog struct {
 	Buffer []string
 	Len    int
 	Line   int
+	L      sync.Mutex
 }
 
 func NewTermLog(sz int) TermLog {
@@ -32,7 +34,9 @@ func NewTermLog(sz int) TermLog {
 func (tl *TermLog) Add(s string) {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 	s = " " + ts + " " + s
+	tl.L.Lock()
 	tl.Shift(s)
+	tl.L.Unlock()
 }
 
 func (tl *TermLog) Shift(e string) {
