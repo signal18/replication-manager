@@ -225,7 +225,9 @@ The http dashboard is an experimental angularjs application, please don't use it
   agent       Starts replication monitoring agent
   bootstrap   Bootstrap a replication environment
   failover    Failover a dead master
+  keygen      Generate a new encryption key
   monitor     Start the interactive replication monitor
+  password    Encrypt a clear text password
   provision   Provision a replica server
   switchover  Perform a master switch
   topology    Print replication topology
@@ -272,6 +274,7 @@ Flags:
 
 Global Flags:
       --hosts string     List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas
+      --keypath string   Encryption key file path (default "/etc/replication-manager/.replication-manager.key")
       --interactive      Ask for user interaction when failures are detected (default true)
       --log-level int    Log verbosity level
       --rpluser string   Replication user in the [user]:[password] format
