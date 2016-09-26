@@ -306,9 +306,9 @@ Interactive console and HTTP dashboards are available for control`,
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = termlog.NewTermLog(loglen)
 		if interactive {
-			tlog.Add("INFO : Monitor started in manual mode")
+			logprint("INFO : Monitor started in manual mode")
 		} else {
-			tlog.Add("INFO : Monitor started in automatic mode")
+			logprint("INFO : Monitor started in automatic mode")
 		}
 
 		newServerList()
