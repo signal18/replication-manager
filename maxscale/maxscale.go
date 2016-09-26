@@ -12,11 +12,11 @@ import (
 )
 
 type MaxScale struct {
-	host string
-	port string
-	user string
-	pass string
-	conn net.Conn
+	Host string
+	Port string
+	User string
+	Pass string
+	Conn net.Conn
 }
 
 const (
@@ -29,14 +29,14 @@ const (
 	ErrorReader      = "Error reading from buffer"
 )
 
-func (m *MaxScale) connect() error {
+func (m *MaxScale) Connect() error {
 	var err error
-	address := fmt.Sprintf("%s:%s", m.host, m.port)
-	m.conn, err = net.DialTimeout("tcp", address, maxDefaultTimeout)
+	address := fmt.Sprintf("%s:%s", m.Host, m.Port)
+	m.Conn, err = net.DialTimeout("tcp", address, maxDefaultTimeout)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Connection failed to address %s", address))
 	}
-	reader := bufio.NewReader(m.conn)
+	reader := bufio.NewReader(m.Conn)
 	buf := make([]byte, 80)
 	res, err := reader.Read(buf)
 	if err != nil {
@@ -45,8 +45,8 @@ func (m *MaxScale) connect() error {
 	if res != 4 {
 		return errors.New(ErrorNegotiation)
 	}
-	writer := bufio.NewWriter(m.conn)
-	fmt.Fprint(writer, m.user)
+	writer := bufio.NewWriter(m.Conn)
+	fmt.Fprint(writer, m.User)
 	writer.Flush()
 	res, err = reader.Read(buf)
 	if err != nil {
@@ -55,7 +55,7 @@ func (m *MaxScale) connect() error {
 	if res != 8 {
 		return errors.New(ErrorNegotiation)
 	}
-	fmt.Fprint(writer, m.pass)
+	fmt.Fprint(writer, m.Pass)
 	writer.Flush()
 	res, err = reader.Read(buf)
 	if err != nil {
@@ -67,11 +67,9 @@ func (m *MaxScale) connect() error {
 	return nil
 }
 
-func (m *MaxScale) showServers() ([]byte, error) {
-	writer := bufio.NewWriter(m.conn)
-	fmt.Fprint(writer, "show serversjson")
-	writer.Flush()
-	reader := bufio.NewReader(m.conn)
+func (m *MaxScale) ShowServers() ([]byte, error) {
+	m.Command("show serversjson")
+	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 80)
 	for {
@@ -86,4 +84,11 @@ func (m *MaxScale) showServers() ([]byte, error) {
 		response = append(response, buf[0:res]...)
 	}
 	return response, nil
+}
+
+func (m *MaxScale) Command(cmd string) error {
+	writer := bufio.NewWriter(m.Conn)
+	fmt.Fprint(writer, cmd)
+	err := writer.Flush()
+	return err
 }
