@@ -215,15 +215,13 @@ func masterFailover(fail bool) bool {
 				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		} else {
-	  	err = dbhelper.SetReadOnly(sl.Conn, false)
-	 		if err != nil {
-		 		logprintf("ERROR: Could not remove slave %s as read-only, %s", sl.URL, err)
-	 		}
+			err = dbhelper.SetReadOnly(sl.Conn, false)
+			if err != nil {
+				logprintf("ERROR: Could not remove slave %s as read-only, %s", sl.URL, err)
+			}
 		}
 
 	}
-
-
 
 	logprintf("INFO : Master switch on %s complete", master.URL)
 	master.FailCount = 0

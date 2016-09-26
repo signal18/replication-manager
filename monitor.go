@@ -30,7 +30,7 @@ import (
 type ServerMonitor struct {
 	Conn                 *sqlx.DB
 	URL                  string
-  DSN 								 string
+	DSN                  string
 	Host                 string
 	Port                 string
 	IP                   string
@@ -93,7 +93,7 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		}
 		return dsn
 	}
-  server.DSN=mydsn()
+	server.DSN = mydsn()
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 	return server, err
 }
@@ -101,10 +101,10 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-	if (sme.IsInFailover() ) {
-      logprintf("DEBUG: Inside failover skip server check " )
-	 		return
-  }
+	if sme.IsInFailover() {
+		logprintf("DEBUG: Inside failover skip server check ")
+		return
+	}
 	if server.PrevState != server.State {
 		server.PrevState = server.State
 	}
