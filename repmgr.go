@@ -113,7 +113,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
-	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "failover to ignore replications checks")
+	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "Ignore replication checks for failover purposes")
 
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
