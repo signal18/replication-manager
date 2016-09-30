@@ -292,10 +292,31 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
+## Failover Default Workflow
+
+## Failover Default Workflow
+
+After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
+
+When manual failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
+
+Per default following checks are disabled but are defined in the configuration template and advised to set:
+- Exceeding a given replication delay (maxdelay=0)
+- Failover did not happen previously in less than a given time interval (failtime=0)  
+- Failover limit was not reached (faillimit=0)
+
+A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
+
+Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi- sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
+
+- Last semi sync status was SYNC  (failsync=false)  
+
+A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console use "Failover Sync" button
+
 
 ## Multi-master
 
-`replication-manager` supports 2-node multi-master topology detection. It is not required to specify it explictely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
+`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explictely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 
 ```
 read_only = 1

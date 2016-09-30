@@ -574,7 +574,7 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 
 
 func runPreparedExecConcurrent(db *sqlx.DB, n int, co int) error {
-	stmt, err := db.Prepare("UPATE replication_manager_schema.bench SET val=val+1 ")
+	stmt, err := db.Prepare("UPDATE replication_manager_schema.bench SET val=val+1 ")
 	if err != nil {
 		return err
 	}
@@ -657,6 +657,14 @@ func benchPreparedExecConcurrent16(db *sqlx.DB, n int) error {
 	return runPreparedExecConcurrent(db, n, 16)
 }
 
+func InjectLongTrx(db *sqlx.DB) error {
+_, err := db.Exec("set binlog_format='STATEMENT'")
+_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep(10) from dual")
+if err != nil {
+	return err
+}
+ return nil
+}
 
 func benchWarmup(db *sqlx.DB) error {
 	db.SetMaxIdleConns(16)
@@ -692,7 +700,7 @@ var err error
 
 	bs := BenchmarkSuite{
 		WarmUp:      benchWarmup,
-		Repetitions: 3,
+		Repetitions: 1,
 		PrintStats:  true,
 	}
 
