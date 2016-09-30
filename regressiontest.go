@@ -506,7 +506,7 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 
 		logprintf("INFO :  Master is %s", master.URL)
 
-		swChan <- false
+		checkfailed()
 
 		time.Sleep(recover_time * time.Second)
 		logprintf("INFO : New Master  %s ", master.URL)
@@ -564,7 +564,7 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 
 		logprintf("INFO :  Master is %s", master.URL)
 
-		swChan <- false
+	  checkfailed()
 
 		time.Sleep(recover_time * time.Second)
 		logprintf("INFO : New Master  %s ", master.URL)
@@ -593,7 +593,7 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 	maxDelay = 4
 
 
-	logprintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayRplChecksNoSemiSync")
+	logprintf("TESTING : Starting Test %s", "testFailOverNoRplChecksNoSemiSync")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
 		if err != nil {
@@ -610,7 +610,7 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 
 	logprintf("INFO :  Master is %s", master.URL)
 
-	swChan <- false
+	checkfailed()
 
 	time.Sleep(recover_time * time.Second)
 	logprintf("INFO : New Master  %s ", master.URL)
