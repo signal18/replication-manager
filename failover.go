@@ -225,11 +225,17 @@ func masterFailover(fail bool) bool {
 	}
 
 	// Signal MaxScale that we have a new topology
-	m := maxscale.MaxScale{Host: mxsHost, Port: mxsPort, User: mxsUser, Pass: mxsPass}
-	m.Connect()
-	err = m.Command("set server " + master.Host + " master")
-	if err != nil {
-		logprint("ERROR: MaxScale client could not send command:", err)
+	if mxsOn {
+		m := maxscale.MaxScale{Host: mxsHost, Port: mxsPort, User: mxsUser, Pass: mxsPass}
+		err = m.Connect()
+		if err != nil {
+			logprint("ERROR: Could not connect to MaxScale:", err)
+		} else {
+			err = m.Command("set server " + master.Host + " master")
+			if err != nil {
+				logprint("ERROR: MaxScale client could not send command:", err)
+			}
+		}
 	}
 
 	logprintf("INFO : Master switch on %s complete", master.URL)

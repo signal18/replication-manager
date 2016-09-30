@@ -121,9 +121,9 @@ func init() {
 	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "Ignore replication checks for failover purposes")
 	monitorCmd.Flags().BoolVar(&mxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
 	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
-	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-port", "6603", "MaxScale admin port")
-	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-user", "admin", "MaxScale admin user")
-	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-pass", "mariadb", "MaxScale admin password")
+	monitorCmd.Flags().StringVar(&mxsPort, "maxscale-port", "6603", "MaxScale admin port")
+	monitorCmd.Flags().StringVar(&mxsUser, "maxscale-user", "admin", "MaxScale admin user")
+	monitorCmd.Flags().StringVar(&mxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
 
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
