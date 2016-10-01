@@ -244,51 +244,54 @@ func topologyDiscover() error {
 	}
 
 	if slaves != nil {
-		// Depending if we are doing a failover or a switchover, we will find the master in the list of
-		// failed hosts or unconnected hosts.
-		// First of all, get a server id from the slaves slice, they should be all the same
-		sid := slaves[0].MasterServerID
-		for k, s := range servers {
-			if multiMaster == false && s.State == stateUnconn {
-				if s.ServerID == sid {
-					master = servers[k]
-					master.State = stateMaster
-					if loglevel > 2 {
-						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
-					}
-					break
-				}
-			}
-			if multiMaster == true && servers[k].State != stateFailed {
-				if s.ReadOnly == "OFF" {
-					master = servers[k]
-					master.State = stateMaster
-					if loglevel > 2 {
-						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
-					}
-					break
-				}
-			}
-		}
+		 if len(slaves) >0 {
+			// Depending if we are doing a failover or a switchover, we will find the master in the list of
+			// failed hosts or unconnected hosts.
+			// First of all, get a server id from the slaves slice, they should be all the same
 
-		// If master is not initialized, find it in the failed hosts list
-		if master == nil {
-			// Slave master_host variable must point to failed master
-			smh := slaves[0].MasterHost
-			for k, s := range servers {
-				if s.State == stateFailed {
-					if s.Host == smh || s.IP == smh {
+				sid := slaves[0].MasterServerID
+				for k, s := range servers {
+				if multiMaster == false && s.State == stateUnconn {
+					if s.ServerID == sid {
 						master = servers[k]
-						master.PrevState = stateMaster
+						master.State = stateMaster
 						if loglevel > 2 {
-							logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
+							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
+						}
+						break
+					}
+				}
+				if multiMaster == true && servers[k].State != stateFailed {
+					if s.ReadOnly == "OFF" {
+						master = servers[k]
+						master.State = stateMaster
+						if loglevel > 2 {
+							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
 				}
 			}
+
+			// If master is not initialized, find it in the failed hosts list
+			if master == nil {
+				// Slave master_host variable must point to failed master
+				smh := slaves[0].MasterHost
+				for k, s := range servers {
+					if s.State == stateFailed {
+						if s.Host == smh || s.IP == smh {
+							master = servers[k]
+							master.PrevState = stateMaster
+							if loglevel > 2 {
+								logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
+							}
+							break
+						}
+					}
+				}
+			}
 		}
-	}
+  }
 	// Final check if master has been found
 	if master == nil {
 

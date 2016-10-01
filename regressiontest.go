@@ -96,7 +96,7 @@ func testSwitchOverReadOnlyNoRplCheck() bool {
 		}
 	}
 	swChan <- true
-	time.Sleep(recover_time * time.Second)
+	wait_failover_end()
 	logprintf("INFO : New Master is %s ", master.URL)
 	for _, s := range slaves {
 		logprintf("INFO : Server  %s is %s", s.URL, s.ReadOnly)
@@ -120,7 +120,7 @@ func testSwitchOverNoReadOnlyNoRplCheck() bool {
 	}
 	SaveMasterURL := master.URL
 	swChan <- true
-	time.Sleep(recover_time * time.Second)
+	wait_failover_end()
 	logprintf("INFO : New Master is %s ", master.URL)
 	if SaveMasterURL == master.URL {
 		logprintf("INFO : same server URL after switchover")
@@ -158,7 +158,7 @@ func testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck() bool {
 		SaveMasterURL := master.URL
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 		if SaveMasterURL == master.URL {
@@ -204,7 +204,7 @@ func testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bool {
 		SaveMasterURL := master.URL
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 		if SaveMasterURL == master.URL {
@@ -249,7 +249,7 @@ func testSwitchOverBackPreferedMasterNoRplCheckSemiSync() bool {
 
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 	}
@@ -258,6 +258,7 @@ func testSwitchOverBackPreferedMasterNoRplCheckSemiSync() bool {
 		return false
 	}
 	return true
+
 }
 
 func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
@@ -276,7 +277,7 @@ func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 	for _, s := range slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	SaveMasterURL := master.URL
 	for i := 0; i < 1; i++ {
@@ -284,8 +285,8 @@ func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 		logprintf("INFO :  Master is %s", master.URL)
 
 		swChan <- true
+ 		wait_failover_end()
 
-		time.Sleep(recover_time * time.Second)
 		logprintf("INFO : New Master  %s ", master.URL)
 
 	}
@@ -325,7 +326,7 @@ func testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck() bool {
 
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 	}
@@ -366,7 +367,7 @@ func testSwitchOverAllSlavesDelayRplCheckNoSemiSync() bool {
 
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 	}
@@ -410,7 +411,7 @@ func testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 
 		swChan <- true
 
-		time.Sleep(recover_time * time.Second)
+		wait_failover_end()
 		logprintf("INFO : New Master  %s ", master.URL)
 
 	}
@@ -442,7 +443,7 @@ func testSwitchOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	for _, s := range slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
-	time.Sleep(15 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	SaveMasterURL := master.URL
 	for i := 0; i < 1; i++ {
@@ -467,15 +468,9 @@ func testSwitchOverAllSlavesDelayRplChecksNoSemiSync() bool {
 }
 
 func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
-  interactive=false
-  master.FailCount= maxfail
-  master.State = stateFailed
-  faillimit=0
-  failtime=0
-  failoverCtr=0
-	rplchecks = false
 
-	maxDelay = 4
+	bootstrap()
+	time.Sleep(5 * time.Second)
 
 	logprintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayNoRplChecksNoSemiSync")
 	for _, s := range servers {
@@ -489,7 +484,7 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 		}
 	}
 	SaveMasterURL := master.URL
-
+ logprintf("BENCH: Stopping replication" )
  for _, s := range slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
@@ -497,43 +492,47 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 	if err != nil {
 		logprintf("BENCH : %s %s", err.Error(), result)
 	}
+	logprintf("BENCH : Write Concurrent Insert" )
+
   dbhelper.InjectLongTrx(master.Conn)
+  logprintf("BENCH : Inject Long Trx" )
 	time.Sleep(10 * time.Second)
-	for _, s := range slaves {
+  logprintf("BENCH : Sarting replication" )
+  for _, s := range slaves {
  	 dbhelper.StartSlave(s.Conn)
   }
-	for i := 0; i < 1; i++ {
 
-		logprintf("INFO :  Master is %s", master.URL)
 
-		checkfailed()
+	logprintf("INFO :  Master is %s", master.URL)
+	interactive=false
+  master.FailCount= maxfail
+  master.State = stateFailed
+  faillimit=0
+  failtime=0
+  failoverCtr=0
+	rplchecks = false
+	maxDelay = 4
+	checkfailed()
 
-		time.Sleep(recover_time * time.Second)
-		logprintf("INFO : New Master  %s ", master.URL)
+	wait_failover_end()
+	logprintf("INFO : New Master  %s ", master.URL)
 
-	}
+
 
 	time.Sleep(2 * time.Second)
 	if master.URL == SaveMasterURL {
-		logprintf("INFO : Old master %s ==  Nex master %s  ", SaveMasterURL, master.URL)
+		logprintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, master.URL)
 
 		return false
 	}
-  bootstrap()
-  time.Sleep(5 * time.Second)
+
 	return true
 }
 
 func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
-  master.State = stateFailed
-  interactive = false
-  master.FailCount= maxfail
-  faillimit=0
-  failtime=0
-  failoverCtr=0
-	rplchecks = true
-	maxDelay = 4
 
+  bootstrap()
+  wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayRplChecksNoSemiSync")
 	for _, s := range servers {
@@ -560,38 +559,38 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	for _, s := range slaves {
  	 dbhelper.StartSlave(s.Conn)
   }
-	for i := 0; i < 1; i++ {
+	logprintf("INFO :  Master is %s", master.URL)
 
-		logprintf("INFO :  Master is %s", master.URL)
-
-	  checkfailed()
-
-		time.Sleep(recover_time * time.Second)
-		logprintf("INFO : New Master  %s ", master.URL)
-
-	}
-
-	time.Sleep(2 * time.Second)
-	if master.URL != SaveMasterURL {
-		logprintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, master.URL)
-
-		return false
-	}
-  bootstrap()
-  time.Sleep(5 * time.Second)
-	return true
-}
-
-func testFailOverNoRplChecksNoSemiSync() bool {
-  master.State = stateFailed
-  interactive= false
+	master.State = stateFailed
+  interactive = false
   master.FailCount= maxfail
   faillimit=0
   failtime=0
   failoverCtr=0
-	rplchecks = false
+	rplchecks = true
 	maxDelay = 4
+	checkfailed()
 
+	wait_failover_end()
+	logprintf("INFO : New Master  %s ", master.URL)
+
+
+
+	time.Sleep(2 * time.Second)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, master.URL)
+
+		return false
+	}
+  bootstrap()
+  wait_failover_end()
+	return true
+}
+
+func testFailOverNoRplChecksNoSemiSync() bool {
+
+	bootstrap()
+  wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testFailOverNoRplChecksNoSemiSync")
 	for _, s := range servers {
@@ -609,22 +608,24 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 
 
 	logprintf("INFO :  Master is %s", master.URL)
-
+	master.State = stateFailed
+  interactive= false
+  master.FailCount= maxfail
+  faillimit=0
+  failtime=0
+  failoverCtr=0
+	rplchecks = false
+	maxDelay = 4
 	checkfailed()
 
-	time.Sleep(recover_time * time.Second)
+	wait_failover_end()
 	logprintf("INFO : New Master  %s ", master.URL)
-
-
-
-	time.Sleep(2 * time.Second)
 	if master.URL == SaveMasterURL {
 		logprintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, master.URL)
 
 		return false
 	}
-  bootstrap()
-  time.Sleep(5 * time.Second)
+
 	return true
 }
 
@@ -640,11 +641,15 @@ func getTestResultLabel(res bool) string {
 
 func runAllTests() bool {
 
-	var allTests = map[string]string{}
+
+
+  var allTests = map[string]string{}
 	cleanall = true
+  bootstrap()
+	wait_failover_end()
 	ret := true
 	var res bool
-/*
+
 	res = testSwitchOverNoReadOnlyNoRplCheck()
 	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
 	if res == false {
@@ -705,7 +710,7 @@ func runAllTests() bool {
 	if res == false {
 		ret = res
 	}
-*/
+
   res =  testFailOverNoRplChecksNoSemiSync()
   allTests["1 Failover <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
 	if res == false {
@@ -736,4 +741,12 @@ func runAllTests() bool {
 
 	cleanall = false
 	return ret
+}
+
+
+func wait_failover_end(){
+ for sme.IsInFailover() {
+   time.Sleep(time.Second)
+ }
+ time.Sleep(recover_time * time.Second)
 }

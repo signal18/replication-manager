@@ -435,11 +435,12 @@ Interactive console and HTTP dashboards are available for control`,
 }
 
 func checkfailed() {
-	if sme.IsInFailover() {
+  // Don't trigger a failover if a switchover is happening
+  if sme.IsInFailover() {
 		logprintf("DEBUG: In Failover skip checking failed master")
 		return
 	}
-	// Don't trigger a failover if a switchover is happening
+  //  logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
@@ -455,8 +456,9 @@ func checkfailed() {
 				logprintf("WARN : Constraint is blocking for failover")
 			}
 
-		} else {
-			//	logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
+		} else  if master.State == stateFailed && master.FailCount < maxfail {
+			 logprintf("WARN : Waiting more prove of master death")
+
 		}
 	} else {
 		logprintf("WARN : Unknown master when checking failover")
