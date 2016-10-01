@@ -308,6 +308,7 @@ Interactive console and HTTP dashboards are available for control`,
 		sme.Init()
 
 		if daemon {
+			interactive = false
 			termlength = 40
 			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
 		} else {
