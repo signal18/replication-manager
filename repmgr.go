@@ -460,11 +460,12 @@ func checkfailed() {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
 			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-				masterFailover(true)
 				if failoverCtr == faillimit {
 					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
 					interactive = true
 				}
+				masterFailover(true)
+	
 			} else if failtime > 0 && rem%10 == 0 {
 				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
 			} else {
