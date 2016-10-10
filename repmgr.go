@@ -49,7 +49,7 @@ var (
 	swChan         = make(chan bool)
 	repmgrHostname string
 	test           bool
-	run_uuid       uuid.UUID
+	runUUID        uuid.UUID
 )
 
 // Configuration variables - do not put global variables in that list
@@ -101,7 +101,7 @@ var (
 
 func init() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
-	run_uuid = uuid.NewV4()
+	runUUID = uuid.NewV4()
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
