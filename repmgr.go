@@ -15,9 +15,9 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
+	"github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-  "github.com/satori/go.uuid"
 	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
@@ -50,7 +50,7 @@ var (
 	swChan         = make(chan bool)
 	repmgrHostname string
 	test           bool
-  run_uuid       uuid.UUID
+	run_uuid       uuid.UUID
 )
 
 // Configuration variables - do not put global variables in that list
@@ -92,12 +92,17 @@ var (
 	masterConnectRetry int
 	rplchecks          bool
 	failsync           bool
-	heartbeat					 bool
+	heartbeat          bool
+	mxsOn              bool
+	mxsHost            string
+	mxsPort            string
+	mxsUser            string
+	mxsPass            string
 )
 
 func init() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
-  run_uuid =  uuid.NewV4()
+	run_uuid = uuid.NewV4()
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
@@ -117,8 +122,13 @@ func init() {
 	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
 	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
-	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "failover to ignore replications checks")
-	
+	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "Ignore replication checks for failover purposes")
+	monitorCmd.Flags().BoolVar(&mxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
+	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
+	monitorCmd.Flags().StringVar(&mxsPort, "maxscale-port", "6603", "MaxScale admin port")
+	monitorCmd.Flags().StringVar(&mxsUser, "maxscale-user", "admin", "MaxScale admin user")
+	monitorCmd.Flags().StringVar(&mxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
+
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
 	autorejoin = viper.GetBool("autorejoin")
@@ -134,7 +144,7 @@ func init() {
 	interactive = viper.GetBool("interactive")
 	rplchecks = viper.GetBool("rplchecks")
 	failsync = viper.GetBool("failover-at-sync")
-  heartbeat = viper.GetBool("heartbeat-table")
+	heartbeat = viper.GetBool("heartbeat-table")
 	var err error
 	repmgrHostname, err = os.Hostname()
 	if err != nil {
@@ -165,7 +175,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&failsync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&heartbeat, "heartbeat-table", true, "hearbeat for active/passive or multi mrm setup")
 
-
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
 	maxDelay = int64(viper.GetInt("maxdelay"))
@@ -184,7 +193,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	masterConnectRetry = viper.GetInt("master-connect-retry")
 	failsync = viper.GetBool("failover-at-sync")
 	test = viper.GetBool("test")
-  heartbeat = viper.GetBool("heartbeat-table")
+	heartbeat = viper.GetBool("heartbeat-table")
 }
 
 var failoverCmd = &cobra.Command{
@@ -442,12 +451,12 @@ Interactive console and HTTP dashboards are available for control`,
 }
 
 func checkfailed() {
-  // Don't trigger a failover if a switchover is happening
-  if sme.IsInFailover() {
+	// Don't trigger a failover if a switchover is happening
+	if sme.IsInFailover() {
 		logprintf("DEBUG: In Failover skip checking failed master")
 		return
 	}
-  //  logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
+	//  logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
@@ -463,8 +472,8 @@ func checkfailed() {
 				logprintf("WARN : Constraint is blocking for failover")
 			}
 
-		} else  if master.State == stateFailed && master.FailCount < maxfail {
-			 logprintf("WARN : Waiting more prove of master death")
+		} else if master.State == stateFailed && master.FailCount < maxfail {
+			logprintf("WARN : Waiting more prove of master death")
 
 		}
 	} else {

@@ -88,7 +88,9 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 
 func (m *MaxScale) Command(cmd string) error {
 	writer := bufio.NewWriter(m.Conn)
-	fmt.Fprint(writer, cmd)
+	if _, err := fmt.Fprint(writer, cmd); err != nil {
+		return err
+	}
 	err := writer.Flush()
 	return err
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
 )
 
@@ -191,7 +192,7 @@ func masterFailover(fail bool) bool {
 			}
 		}
 		logprintf("INFO : Change master on slave %s", sl.URL)
-		err := dbhelper.StopSlave(sl.Conn)
+		err = dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
@@ -221,6 +222,20 @@ func masterFailover(fail bool) bool {
 			}
 		}
 
+	}
+
+	// Signal MaxScale that we have a new topology
+	if mxsOn {
+		m := maxscale.MaxScale{Host: mxsHost, Port: mxsPort, User: mxsUser, Pass: mxsPass}
+		err = m.Connect()
+		if err != nil {
+			logprint("ERROR: Could not connect to MaxScale:", err)
+		} else {
+			err = m.Command("set server " + master.Host + " master")
+			if err != nil {
+				logprint("ERROR: MaxScale client could not send command:", err)
+			}
+		}
 	}
 
 	logprintf("INFO : Master switch on %s complete", master.URL)
@@ -255,6 +270,7 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
 		}
+		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
 		// The tests below should run only in case of a switchover as they require the master to be up.
 		if master.State != stateFailed {
 			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
@@ -273,20 +289,22 @@ func electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
 				continue
 			}
+			if ss.Seconds_Behind_Master.Valid == false && rplchecks == true {
+				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+				continue
+			}
 		}
 		/* binlog + ping  */
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 			logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
 			continue
 		}
-		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-		if ss.Seconds_Behind_Master.Valid == false && master.State != stateFailed && rplchecks == true {
-			logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {
+			logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}
-		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {
-			logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
-			continue
+		if ss.Slave_SQL_Running == "No" && rplchecks {
+			logprintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master */

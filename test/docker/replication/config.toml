@@ -2,3 +2,4 @@ hosts = "db1,db2,db3"
 user = "root:admin"
 rpluser = "root:admin"
 connect-timeout = 1
+http-bind-address = "0.0.0.0"

@@ -118,7 +118,8 @@ func logprint(msg ...interface{}) {
 	if tlog.Len > 0 {
 		tlog.Add(fmt.Sprint(msg...))
 		display()
-	} else {
+	}
+	if daemon {
 		log.Println(msg...)
 	}
 }
@@ -131,7 +132,8 @@ func logprintf(format string, args ...interface{}) {
 	if tlog.Len > 0 {
 		tlog.Add(fmt.Sprintf(format, args...))
 		display()
-	} else {
+	}
+	if daemon {
 		log.Printf(format, args...)
 	}
 }

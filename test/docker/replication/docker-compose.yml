@@ -43,9 +43,12 @@ services:
         ipv4_address: 172.16.1.4
   mrm:
     build: ../../../
-    command: replication-manager monitor --daemon --verbose --http-server --interactive=false
     volumes:
       - ./config.toml:/etc/replication-manager/config.toml
+    ports:
+      - "10001:10001"
+    networks:
+      nw1:
 
 networks:
   nw1:
