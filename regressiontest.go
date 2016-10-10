@@ -638,6 +638,95 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 
 
 
+func testNumberFailOverLimitReach() bool {
+	maxDelay = 0
+	bootstrap()
+  wait_failover_end()
+
+	logprintf("TESTING : Starting Test %s", "testNumberFailOverLimitReach")
+	for _, s := range servers {
+		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+	}
+	SaveMasterURL := master.URL
+
+
+
+	logprintf("INFO :  Master is %s", master.URL)
+	master.State = stateFailed
+  interactive= false
+  master.FailCount= maxfail
+  faillimit=3
+  failtime=0
+  failoverCtr=3
+	rplchecks = false
+	maxDelay = 20
+	checkfailed()
+
+	wait_failover_end()
+	logprintf("INFO : New Master  %s ", master.URL)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, master.URL)
+
+		return false
+	}
+
+	return true
+}
+
+
+func testFailOverTimeNotReach() bool {
+	maxDelay = 0
+	bootstrap()
+  wait_failover_end()
+
+	logprintf("TESTING : Starting Test %s", "testFailOverTimeNotReach")
+	for _, s := range servers {
+		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+	}
+	SaveMasterURL := master.URL
+
+
+
+	logprintf("INFO :  Master is %s", master.URL)
+	master.State = stateFailed
+  interactive= false
+  master.FailCount= maxfail
+	failoverTs =  time.Now().Unix()
+  faillimit=3
+  failtime=20
+  failoverCtr=1
+	rplchecks = false
+	maxDelay = 20
+	checkfailed()
+
+	wait_failover_end()
+	logprintf("INFO : New Master  %s ", master.URL)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, master.URL)
+
+		return false
+	}
+
+	return true
+}
+
+
+
+
 func getTestResultLabel(res bool) string {
 	if res == false {
 		return "FAILED"
@@ -693,11 +782,11 @@ func runAllTests() bool {
 		ret = res
 	}
 
-		res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
-		allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-		if res == false {
-			ret = res
-		}
+	res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
+	allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
 	res = testSwitchOverAllSlavesDelayRplCheckNoSemiSync()
 	allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
@@ -735,6 +824,19 @@ func runAllTests() bool {
 	if res == false {
 		ret = res
 	}
+
+  res =   testNumberFailOverLimitReach()
+	allTests["1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
+
+	res =   testFailOverTimeNotReach()
+	allTests["1 Failover Before Time Limit <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
+
 
 	keys := make([]string, 0, len(allTests))
 	for key := range allTests {
