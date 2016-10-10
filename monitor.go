@@ -300,6 +300,8 @@ func (server *ServerMonitor) healthCheck() string {
 			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "No" {
 			return "NOT OK, ALL Stopped"
+		} else if server.IOThread == "Connecting" {
+			return "NOT OK, IO Connecting"
 		}
 		return "Running OK"
 	}
