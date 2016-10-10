@@ -38,7 +38,6 @@ var (
 	dbPass         string
 	rplUser        string
 	rplPass        string
-	failCount      int
 	failoverCtr    int
 	failoverTs     int64
 	tlog           termlog.TermLog
