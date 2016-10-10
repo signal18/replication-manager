@@ -192,7 +192,7 @@ func masterFailover(fail bool) bool {
 			}
 		}
 		logprintf("INFO : Change master on slave %s", sl.URL)
-		err := dbhelper.StopSlave(sl.Conn)
+		err = dbhelper.StopSlave(sl.Conn)
 		if err != nil {
 			logprintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
@@ -270,6 +270,7 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
 		}
+		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
 		// The tests below should run only in case of a switchover as they require the master to be up.
 		if master.State != stateFailed {
 			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
@@ -288,14 +289,13 @@ func electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
 				continue
 			}
+			if ss.Seconds_Behind_Master.Valid == false && rplchecks == true {
+				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+				continue
+			}
 		}
 		/* binlog + ping  */
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
-			continue
-		}
-		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-		if ss.Seconds_Behind_Master.Valid == false && master.State != stateFailed && rplchecks == true {
-			logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 			continue
 		}
 		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {
