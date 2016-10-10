@@ -299,8 +299,11 @@ func electCandidate(l []*ServerMonitor) int {
 			continue
 		}
 		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {
-			logprintf("WARN : Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
+			logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
+		}
+		if ss.Slave_SQL_Running == "No" && rplchecks {
+			logprintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master */
