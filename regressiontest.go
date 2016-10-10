@@ -36,7 +36,7 @@ func testSwitchoverReplAllDelay() bool {
 
 func testSlaReplAllSlavesStopNoSemiSync() bool {
 	logprintf("TESTING : Starting Test %s", "testSlaReplAllSlavesStopNoSemySync")
-
+	maxDelay = 0
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
 		if err != nil {
@@ -86,6 +86,7 @@ func testSlaReplOneSlavesStop() bool {
 
 func testSwitchOverReadOnlyNoRplCheck() bool {
 	rplchecks = false
+ 	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverReadOnlyNoRplCheck")
 	logprintf("INFO : Master is %s", master.URL)
 	readonly = true
@@ -109,6 +110,7 @@ func testSwitchOverReadOnlyNoRplCheck() bool {
 
 func testSwitchOverNoReadOnlyNoRplCheck() bool {
 	rplchecks = false
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverNoReadOnlyNoRplCheck")
 	logprintf("INFO : Master is %s", master.URL)
 	readonly = false
@@ -136,6 +138,7 @@ func testSwitchOverNoReadOnlyNoRplCheck() bool {
 }
 func testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck() bool {
 	rplchecks = false
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOver2TimesReplicationOk")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
@@ -182,6 +185,7 @@ func testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck() bool {
 
 func testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bool {
 	rplchecks = false
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOver2TimesReplicationOkSemisync")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='ON'")
@@ -228,6 +232,7 @@ func testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bool {
 
 func testSwitchOverBackPreferedMasterNoRplCheckSemiSync() bool {
 	rplchecks = false
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverBackPreferedMasterNoRplCheckSemiSync")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='ON'")
@@ -262,6 +267,7 @@ func testSwitchOverBackPreferedMasterNoRplCheckSemiSync() bool {
 }
 
 func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
+	maxDelay = 0
 	rplchecks = true
 	logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStopRplCheckNoSemiSync")
 	for _, s := range servers {
@@ -303,6 +309,7 @@ func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 
 func testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck() bool {
 	rplchecks = false
+  maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStopNoRplCheck")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
@@ -507,7 +514,7 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 	interactive=false
   master.FailCount= maxfail
   master.State = stateFailed
-  faillimit=0
+  faillimit=5
   failtime=0
   failoverCtr=0
 	rplchecks = false
@@ -564,7 +571,7 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	master.State = stateFailed
   interactive = false
   master.FailCount= maxfail
-  faillimit=0
+  faillimit=5
   failtime=0
   failoverCtr=0
 	rplchecks = true
@@ -588,7 +595,7 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 }
 
 func testFailOverNoRplChecksNoSemiSync() bool {
-
+	maxDelay = 0
 	bootstrap()
   wait_failover_end()
 
@@ -611,7 +618,7 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 	master.State = stateFailed
   interactive= false
   master.FailCount= maxfail
-  faillimit=0
+  faillimit=5
   failtime=0
   failoverCtr=0
 	rplchecks = false

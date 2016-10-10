@@ -18,7 +18,8 @@ import (
 	"sync/atomic"
   "github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/misc"
-
+	"hash/crc64"
+  "fmt"
 )
 
 const debug = false
@@ -199,6 +200,59 @@ func GetAllSlavesStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 	err := udb.Select(&ss, "SHOW ALL SLAVES STATUS")
 	return ss, err
 }
+
+func SetHeartbeatTable(db *sqlx.DB)  (error) {
+	stmt := "SET sql_log_bin=0"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
+	stmt = "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(uuid varchar(128) PRIMARY KEY,date timestamp, status CHAR(1) ) engine=innodb"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func WriteHeartbeat(db *sqlx.DB,uuid string, status string) (error) {
+ 	stmt := "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) SELECT '" + uuid + "', NOW(),'" + status + "'"
+	_, err := db.Exec(stmt)
+	return err
+}
+
+func SetMultiSourceRepl(db *sqlx.DB,master_host string, master_port string, master_user string, master_password string, master_filter string ) (error) {
+  crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
+	checksum64 :=fmt.Sprintf("%d", crc64.Checksum( []byte( master_host + ":" + master_port ), crcTable))
+
+	stmt := "CHANGE MASTER 'mrm_"+checksum64+"' TO master_host='" + master_host+ "', master_port=" + master_port+ ", master_user='"+master_user+ "', master_password='"+master_password+"' , master_use_gtid=slave_pos"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	if master_filter != "" {
+	  stmt = "SET GLOBAL mrm_"+checksum64+".replicate_do_table='"+ master_filter +"'"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	stmt = "START SLAVE 'mrm_"+checksum64+"'"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+
 
 func ResetAllSlaves(db *sqlx.DB) error {
 	ss, err := GetAllSlavesStatus(db)

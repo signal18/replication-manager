@@ -276,6 +276,7 @@ func electCandidate(l []*ServerMonitor) int {
 		}
 		/* binlog + ping  */
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+			logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
 			continue
 		}
 		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
