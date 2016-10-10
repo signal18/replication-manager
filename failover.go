@@ -296,6 +296,7 @@ func electCandidate(l []*ServerMonitor) int {
 		}
 		/* binlog + ping  */
 		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+			logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
 			continue
 		}
 		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {

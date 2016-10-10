@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
+	"github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/crypto"
@@ -49,6 +50,7 @@ var (
 	swChan         = make(chan bool)
 	repmgrHostname string
 	test           bool
+	run_uuid       uuid.UUID
 )
 
 // Configuration variables - do not put global variables in that list
@@ -90,6 +92,7 @@ var (
 	masterConnectRetry int
 	rplchecks          bool
 	failsync           bool
+	heartbeat          bool
 	mxsOn              bool
 	mxsHost            string
 	mxsPort            string
@@ -99,6 +102,7 @@ var (
 
 func init() {
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
+	run_uuid = uuid.NewV4()
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
@@ -140,7 +144,7 @@ func init() {
 	interactive = viper.GetBool("interactive")
 	rplchecks = viper.GetBool("rplchecks")
 	failsync = viper.GetBool("failover-at-sync")
-
+	heartbeat = viper.GetBool("heartbeat-table")
 	var err error
 	repmgrHostname, err = os.Hostname()
 	if err != nil {
@@ -169,6 +173,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	cmd.Flags().BoolVar(&failsync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
+	cmd.Flags().BoolVar(&heartbeat, "heartbeat-table", true, "hearbeat for active/passive or multi mrm setup")
 
 	preScript = viper.GetString("pre-failover-script")
 	postScript = viper.GetString("post-failover-script")
@@ -188,6 +193,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	masterConnectRetry = viper.GetInt("master-connect-retry")
 	failsync = viper.GetBool("failover-at-sync")
 	test = viper.GetBool("test")
+	heartbeat = viper.GetBool("heartbeat-table")
 }
 
 var failoverCmd = &cobra.Command{
@@ -445,11 +451,12 @@ Interactive console and HTTP dashboards are available for control`,
 }
 
 func checkfailed() {
+	// Don't trigger a failover if a switchover is happening
 	if sme.IsInFailover() {
 		logprintf("DEBUG: In Failover skip checking failed master")
 		return
 	}
-	// Don't trigger a failover if a switchover is happening
+	//  logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if master != nil {
 		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
 			rem := (failoverTs + failtime) - time.Now().Unix()
@@ -465,8 +472,9 @@ func checkfailed() {
 				logprintf("WARN : Constraint is blocking for failover")
 			}
 
-		} else {
-			//	logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
+		} else if master.State == stateFailed && master.FailCount < maxfail {
+			logprintf("WARN : Waiting more prove of master death")
+
 		}
 	} else {
 		logprintf("WARN : Unknown master when checking failover")

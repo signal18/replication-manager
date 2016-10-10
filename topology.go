@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/state"
+	"github.com/tanji/replication-manager/misc"
 )
 
 type topologyError struct {
@@ -42,32 +43,39 @@ func newServerList() {
 		if verbose {
 			tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[k].URL))
 		}
-	}
+		if heartbeat {
+			err:=dbhelper.SetHeartbeatTable(servers[k].Conn)
+			if err != nil {
+					log.Fatalf("ERROR: Can not set heartbeat table to  %s  ",url)
+			}
+		}
+  }
 	// Spider shard discover
 	if spider == true {
-		for _, s := range servers {
-			tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
-			mon, err := dbhelper.GetSpiderMonitor(s.Conn)
+		SpiderShardsDiscovery()
+	}
+}
 
-			if err == nil {
-				if mon != "" {
-					tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-					extra_url, err := dbhelper.GetSpiderShardUrl(s.Conn)
-					if err == nil {
-						if extra_url != "" {
-
-							for j, url := range strings.Split(extra_url, ",") {
-								var err error
-								srv, err := newServerMonitor(url)
-								srv.State = stateShard
-
-								servers = append(servers, srv)
-								if err != nil {
-									log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
-								}
-								if verbose {
-									tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
-								}
+func SpiderShardsDiscovery() {
+	for _, s := range servers {
+		tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
+		mon, err := dbhelper.GetSpiderMonitor(s.Conn)
+		if err == nil {
+			if mon != "" {
+				tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
+				extra_url, err := dbhelper.GetSpiderShardUrl(s.Conn)
+				if err == nil {
+					if extra_url != "" {
+						for j, url := range strings.Split(extra_url, ",") {
+							var err error
+							srv, err := newServerMonitor(url)
+							srv.State = stateShard
+							servers = append(servers, srv)
+							if err != nil {
+								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
+							}
+							if verbose {
+								tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
 							}
 						}
 					}
@@ -76,6 +84,30 @@ func newServerList() {
 		}
 	}
 }
+
+func SpiderSetShardsRepl() {
+	for k, s := range servers {
+		url:= s.URL
+		
+		if heartbeat {
+			for _, s2 := range servers {
+			 url2:= s2.URL
+			 if url2!=url  {
+					host, port := misc.SplitHostPort(url2)
+					err:=dbhelper.SetHeartbeatTable(servers[k].Conn)
+					if err != nil {
+							log.Fatalf("ERROR: Can not set heartbeat table to  %s  ",url)
+					}
+					err=dbhelper.SetMultiSourceRepl(servers[k].Conn, host,port,rplUser, rplPass,"")
+					if err != nil {
+							log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url ,url2,err)
+					}
+				}
+			}
+		}
+	}
+}
+
 
 func pingServerList() {
 	if sme.IsInState("WARN00008") {
@@ -244,51 +276,54 @@ func topologyDiscover() error {
 	}
 
 	if slaves != nil {
-		// Depending if we are doing a failover or a switchover, we will find the master in the list of
-		// failed hosts or unconnected hosts.
-		// First of all, get a server id from the slaves slice, they should be all the same
-		sid := slaves[0].MasterServerID
-		for k, s := range servers {
-			if multiMaster == false && s.State == stateUnconn {
-				if s.ServerID == sid {
-					master = servers[k]
-					master.State = stateMaster
-					if loglevel > 2 {
-						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
-					}
-					break
-				}
-			}
-			if multiMaster == true && servers[k].State != stateFailed {
-				if s.ReadOnly == "OFF" {
-					master = servers[k]
-					master.State = stateMaster
-					if loglevel > 2 {
-						logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
-					}
-					break
-				}
-			}
-		}
+		 if len(slaves) >0 {
+			// Depending if we are doing a failover or a switchover, we will find the master in the list of
+			// failed hosts or unconnected hosts.
+			// First of all, get a server id from the slaves slice, they should be all the same
 
-		// If master is not initialized, find it in the failed hosts list
-		if master == nil {
-			// Slave master_host variable must point to failed master
-			smh := slaves[0].MasterHost
-			for k, s := range servers {
-				if s.State == stateFailed {
-					if s.Host == smh || s.IP == smh {
+				sid := slaves[0].MasterServerID
+				for k, s := range servers {
+				if multiMaster == false && s.State == stateUnconn {
+					if s.ServerID == sid {
 						master = servers[k]
-						master.PrevState = stateMaster
+						master.State = stateMaster
 						if loglevel > 2 {
-							logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
+							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
+						}
+						break
+					}
+				}
+				if multiMaster == true && servers[k].State != stateFailed {
+					if s.ReadOnly == "OFF" {
+						master = servers[k]
+						master.State = stateMaster
+						if loglevel > 2 {
+							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
 				}
 			}
+
+			// If master is not initialized, find it in the failed hosts list
+			if master == nil {
+				// Slave master_host variable must point to failed master
+				smh := slaves[0].MasterHost
+				for k, s := range servers {
+					if s.State == stateFailed {
+						if s.Host == smh || s.IP == smh {
+							master = servers[k]
+							master.PrevState = stateMaster
+							if loglevel > 2 {
+								logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
+							}
+							break
+						}
+					}
+				}
+			}
 		}
-	}
+  }
 	// Final check if master has been found
 	if master == nil {
 
