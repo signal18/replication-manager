@@ -311,6 +311,15 @@ func (server *ServerMonitor) healthCheck() string {
 	return "Running OK"
 }
 
+func (sl serverList) checkAllSlavesRunning() bool {
+	for _, s := range sl {
+		if s.SQLThread != "Yes" || s.IOThread != "Yes" {
+			return false
+		}
+	}
+	return true
+}
+
 /* Check Consistency parameters on server */
 func (server *ServerMonitor) acidTest() bool {
 	syncBin := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")

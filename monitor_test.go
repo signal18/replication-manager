@@ -20,15 +20,31 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func TestHasSiblings(t *testing.T) {
+	if !Tservers[0].hasSiblings(Tservers) {
+		t.Fatal("Returned false, expected true")
+	}
+}
+
+func TestCheckAllSlavesRunning(t *testing.T) {
+	Tservers[0].IOThread = "Yes"
+	Tservers[0].SQLThread = "Yes"
+	Tservers[1].IOThread = "Yes"
+	Tservers[1].SQLThread = "Yes"
+	Tservers[2].IOThread = "Yes"
+	Tservers[2].SQLThread = "Yes"
+	if !Tservers.checkAllSlavesRunning() {
+		t.Fatal("Returned false, expected true")
+	}
+	Tservers[0].IOThread = "No"
+	if Tservers.checkAllSlavesRunning() {
+		t.Fatal("Returned true, expected false")
+	}
+}
+
 func TestDelete(t *testing.T) {
 	Tservers[1].delete(&Tservers)
 	if len(Tservers) != 2 {
 		t.Fatalf("List length was %d, expected 2", len(servers))
-	}
-}
-
-func TestHasSiblings(t *testing.T) {
-	if !Tservers[0].hasSiblings(Tservers) {
-		t.Fatal("Returned false, expected true")
 	}
 }
