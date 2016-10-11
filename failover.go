@@ -18,8 +18,6 @@ import (
 	"github.com/tanji/replication-manager/misc"
 )
 
-
-
 /* Triggers a master switchover. Returns the new master's URL */
 func masterFailover(fail bool) bool {
 	logprint("INFO : Starting master switch")
@@ -28,24 +26,24 @@ func masterFailover(fail bool) bool {
 	var err error
 	if fail == false {
 		logprintf("INFO : Flushing tables on %s (master)", master.URL)
-	  workerFlushTable := make(chan error, 1)
+		workerFlushTable := make(chan error, 1)
 
 		go func() {
-				var err error
-		 		err = dbhelper.FlushTablesNoLog(master.Conn)
+			var err error
+			err = dbhelper.FlushTablesNoLog(master.Conn)
 
-		    workerFlushTable	<- err
+			workerFlushTable <- err
 		}()
 		select {
-    case err = <-workerFlushTable:
-				if err != nil {
-				 logprintf("WARN : Could not flush tables on master", err)
-				}
-    case <-time.After(time.Second * time.Duration(waitTrx)):
-		   logprint("ERROR: Long  running trx on master. Cannot switchover")
-		   sme.RemoveFailoverState()
-		   return false
-    }
+		case err = <-workerFlushTable:
+			if err != nil {
+				logprintf("WARN : Could not flush tables on master", err)
+			}
+		case <-time.After(time.Second * time.Duration(waitTrx)):
+			logprint("ERROR: Long  running trx on master. Cannot switchover")
+			sme.RemoveFailoverState()
+			return false
+		}
 
 		logprint("INFO : Checking long running updates on master")
 		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {

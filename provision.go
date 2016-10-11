@@ -54,7 +54,7 @@ var bootstrapCmd = &cobra.Command{
 }
 
 func bootstrap() error {
-  sme.SetFailoverState()
+	sme.SetFailoverState()
 	if cleanall {
 		log.Println("INFO : Cleaning up replication on existing servers")
 		for _, server := range servers {
@@ -96,11 +96,11 @@ func bootstrap() error {
 		masterKey = func() int {
 			for k, server := range servers {
 				if server.URL == prefMaster {
-          sme.RemoveFailoverState()
+					sme.RemoveFailoverState()
 					return k
 				}
 			}
-      sme.RemoveFailoverState()
+			sme.RemoveFailoverState()
 			return -1
 		}()
 	}
@@ -120,19 +120,19 @@ func bootstrap() error {
 			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", masterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, masterConnectRetry)
 			_, err := server.Conn.Exec(stmt)
 			if err != nil {
-        sme.RemoveFailoverState()
+				sme.RemoveFailoverState()
 				return errors.New(fmt.Sprintln("ERROR:", stmt, err))
 			}
 			_, err = server.Conn.Exec("START SLAVE '" + masterConn + "'")
 			if err != nil {
-        sme.RemoveFailoverState()
+				sme.RemoveFailoverState()
 				return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
 			}
 			dbhelper.SetReadOnly(server.Conn, true)
 		}
 	}
 	logprintf("INFO : Environment bootstrapped with %s as master", servers[masterKey].URL)
-  sme.RemoveFailoverState()
+	sme.RemoveFailoverState()
 	return nil
 }
 

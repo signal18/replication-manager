@@ -69,7 +69,7 @@ var (
 	prefMaster         string
 	ignoreSrv          string
 	waitKill           int64
-	waitTrx           int64
+	waitTrx            int64
 	readonly           bool
 	maxfail            int
 	autorejoin         bool

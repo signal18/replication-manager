@@ -34,8 +34,8 @@ func testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool {
 	}
 
 	SaveMasterURL := master.URL
-  go dbhelper.InjectLongTrx(master.Conn,20)
-  for i := 0; i < 1; i++ {
+	go dbhelper.InjectLongTrx(master.Conn, 20)
+	for i := 0; i < 1; i++ {
 
 		logprintf("INFO :  Master is %s", master.URL)
 
@@ -123,7 +123,7 @@ func testSlaReplOneSlavesStop() bool {
 
 func testSwitchOverReadOnlyNoRplCheck() bool {
 	rplchecks = false
- 	maxDelay = 0
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverReadOnlyNoRplCheck")
 	logprintf("INFO : Master is %s", master.URL)
 	readonly = true
@@ -328,7 +328,7 @@ func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 		logprintf("INFO :  Master is %s", master.URL)
 
 		swChan <- true
- 		wait_failover_end()
+		wait_failover_end()
 
 		logprintf("INFO : New Master  %s ", master.URL)
 
@@ -346,7 +346,7 @@ func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 
 func testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck() bool {
 	rplchecks = false
-  maxDelay = 0
+	maxDelay = 0
 	logprintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStopNoRplCheck")
 	for _, s := range servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
@@ -525,40 +525,37 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 		}
 	}
 	SaveMasterURL := master.URL
- logprintf("BENCH: Stopping replication" )
- for _, s := range slaves {
+	logprintf("BENCH: Stopping replication")
+	for _, s := range slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
 	result, err := dbhelper.WriteConcurrent2(master.DSN, 10)
 	if err != nil {
 		logprintf("BENCH : %s %s", err.Error(), result)
 	}
-	logprintf("BENCH : Write Concurrent Insert" )
+	logprintf("BENCH : Write Concurrent Insert")
 
-  dbhelper.InjectLongTrx(master.Conn,10)
-  logprintf("BENCH : Inject Long Trx" )
+	dbhelper.InjectLongTrx(master.Conn, 10)
+	logprintf("BENCH : Inject Long Trx")
 	time.Sleep(10 * time.Second)
-  logprintf("BENCH : Sarting replication" )
-  for _, s := range slaves {
- 	 dbhelper.StartSlave(s.Conn)
-  }
-
+	logprintf("BENCH : Sarting replication")
+	for _, s := range slaves {
+		dbhelper.StartSlave(s.Conn)
+	}
 
 	logprintf("INFO :  Master is %s", master.URL)
-	interactive=false
-  master.FailCount= maxfail
-  master.State = stateFailed
-  faillimit=5
-  failtime=0
-  failoverCtr=0
+	interactive = false
+	master.FailCount = maxfail
+	master.State = stateFailed
+	faillimit = 5
+	failtime = 0
+	failoverCtr = 0
 	rplchecks = false
 	maxDelay = 4
 	checkfailed()
 
 	wait_failover_end()
 	logprintf("INFO : New Master  %s ", master.URL)
-
-
 
 	time.Sleep(2 * time.Second)
 	if master.URL == SaveMasterURL {
@@ -572,8 +569,8 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 
 func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 
-  bootstrap()
-  wait_failover_end()
+	bootstrap()
+	wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayRplChecksNoSemiSync")
 	for _, s := range servers {
@@ -588,26 +585,26 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	}
 	SaveMasterURL := master.URL
 
- for _, s := range slaves {
+	for _, s := range slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
 	result, err := dbhelper.WriteConcurrent2(master.DSN, 10)
 	if err != nil {
 		logprintf("BENCH : %s %s", err.Error(), result)
 	}
-  dbhelper.InjectLongTrx(master.Conn,10)
+	dbhelper.InjectLongTrx(master.Conn, 10)
 	time.Sleep(10 * time.Second)
 	for _, s := range slaves {
- 	 dbhelper.StartSlave(s.Conn)
-  }
+		dbhelper.StartSlave(s.Conn)
+	}
 	logprintf("INFO :  Master is %s", master.URL)
 
 	master.State = stateFailed
-  interactive = false
-  master.FailCount= maxfail
-  faillimit=5
-  failtime=0
-  failoverCtr=0
+	interactive = false
+	master.FailCount = maxfail
+	faillimit = 5
+	failtime = 0
+	failoverCtr = 0
 	rplchecks = true
 	maxDelay = 4
 	checkfailed()
@@ -615,23 +612,21 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	wait_failover_end()
 	logprintf("INFO : New Master  %s ", master.URL)
 
-
-
 	time.Sleep(2 * time.Second)
 	if master.URL != SaveMasterURL {
 		logprintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, master.URL)
 
 		return false
 	}
-  bootstrap()
-  wait_failover_end()
+	bootstrap()
+	wait_failover_end()
 	return true
 }
 
 func testFailOverNoRplChecksNoSemiSync() bool {
 	maxDelay = 0
 	bootstrap()
-  wait_failover_end()
+	wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testFailOverNoRplChecksNoSemiSync")
 	for _, s := range servers {
@@ -646,15 +641,13 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 	}
 	SaveMasterURL := master.URL
 
-
-
 	logprintf("INFO :  Master is %s", master.URL)
 	master.State = stateFailed
-  interactive= false
-  master.FailCount= maxfail
-  faillimit=5
-  failtime=0
-  failoverCtr=0
+	interactive = false
+	master.FailCount = maxfail
+	faillimit = 5
+	failtime = 0
+	failoverCtr = 0
 	rplchecks = false
 	maxDelay = 4
 	checkfailed()
@@ -670,12 +663,10 @@ func testFailOverNoRplChecksNoSemiSync() bool {
 	return true
 }
 
-
-
 func testNumberFailOverLimitReach() bool {
 	maxDelay = 0
 	bootstrap()
-  wait_failover_end()
+	wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testNumberFailOverLimitReach")
 	for _, s := range servers {
@@ -690,15 +681,13 @@ func testNumberFailOverLimitReach() bool {
 	}
 	SaveMasterURL := master.URL
 
-
-
 	logprintf("INFO :  Master is %s", master.URL)
 	master.State = stateFailed
-  interactive= false
-  master.FailCount= maxfail
-  faillimit=3
-  failtime=0
-  failoverCtr=3
+	interactive = false
+	master.FailCount = maxfail
+	faillimit = 3
+	failtime = 0
+	failoverCtr = 3
 	rplchecks = false
 	maxDelay = 20
 	checkfailed()
@@ -714,11 +703,10 @@ func testNumberFailOverLimitReach() bool {
 	return true
 }
 
-
 func testFailOverTimeNotReach() bool {
 	maxDelay = 0
 	bootstrap()
-  wait_failover_end()
+	wait_failover_end()
 
 	logprintf("TESTING : Starting Test %s", "testFailOverTimeNotReach")
 	for _, s := range servers {
@@ -733,16 +721,14 @@ func testFailOverTimeNotReach() bool {
 	}
 	SaveMasterURL := master.URL
 
-
-
 	logprintf("INFO :  Master is %s", master.URL)
 	master.State = stateFailed
-  interactive= false
-  master.FailCount= maxfail
-	failoverTs =  time.Now().Unix()
-  faillimit=3
-  failtime=20
-  failoverCtr=1
+	interactive = false
+	master.FailCount = maxfail
+	failoverTs = time.Now().Unix()
+	faillimit = 3
+	failtime = 20
+	failoverCtr = 1
 	rplchecks = false
 	maxDelay = 20
 	checkfailed()
@@ -758,9 +744,6 @@ func testFailOverTimeNotReach() bool {
 	return true
 }
 
-
-
-
 func getTestResultLabel(res bool) string {
 	if res == false {
 		return "FAILED"
@@ -771,118 +754,115 @@ func getTestResultLabel(res bool) string {
 
 func runAllTests() bool {
 
-
-
-  var allTests = map[string]string{}
+	var allTests = map[string]string{}
 	cleanall = true
-  bootstrap()
+	bootstrap()
 	wait_failover_end()
 	ret := true
 	var res bool
 
-   res = testSwitchOverLongTransactionNoRplCheckNoSemiSync()
-	 allTests["1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true>"] = getTestResultLabel(res)
-	 if res == false {
-	 	ret = res
-	 }
-/*
-	res = testSwitchOverNoReadOnlyNoRplCheck()
-	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
+	res = testSwitchOverLongTransactionNoRplCheckNoSemiSync()
+	allTests["1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true>"] = getTestResultLabel(res)
 	if res == false {
 		ret = res
 	}
+	/*
+	   	res = testSwitchOverNoReadOnlyNoRplCheck()
+	   	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverReadOnlyNoRplCheck()
-	allTests["1 Switchover <readonly=true> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverReadOnlyNoRplCheck()
+	   	allTests["1 Switchover <readonly=true> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck()
-	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck()
+	   	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck()
-	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck()
+	   	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverBackPreferedMasterNoRplCheckSemiSync()
-	allTests["2 Switchover Back Prefered Master <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverBackPreferedMasterNoRplCheckSemiSync()
+	   	allTests["2 Switchover Back Prefered Master <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverAllSlavesStopRplCheckNoSemiSync()
-	allTests["Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverAllSlavesStopRplCheckNoSemiSync()
+	   	allTests["Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
-	allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
+	   	allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverAllSlavesDelayRplCheckNoSemiSync()
-	allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverAllSlavesDelayRplCheckNoSemiSync()
+	   	allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res = testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync()
-	allTests["Can Switchover All Slaves Delay <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync()
+	   	allTests["Can Switchover All Slaves Delay <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
 
-	res = testSlaReplAllSlavesStopNoSemiSync()
-	allTests["SLA Decrease Can't Switchover All Slaves Stop <Semisync=false>"] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res = testSlaReplAllSlavesStopNoSemiSync()
+	   	allTests["SLA Decrease Can't Switchover All Slaves Stop <Semisync=false>"] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-  res =  testFailOverNoRplChecksNoSemiSync()
-  allTests["1 Failover <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	     res =  testFailOverNoRplChecksNoSemiSync()
+	     allTests["1 Failover <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-  res =  testFailOverAllSlavesDelayNoRplChecksNoSemiSync()
-	allTests["1 Failover All Slave Delay <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	     res =  testFailOverAllSlavesDelayNoRplChecksNoSemiSync()
+	   	allTests["1 Failover All Slave Delay <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res =  testFailOverAllSlavesDelayRplChecksNoSemiSync()
-	allTests["1 Failover All Slave Delay <rplchecks=true> <Semisync=false> "] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	   	res =  testFailOverAllSlavesDelayRplChecksNoSemiSync()
+	   	allTests["1 Failover All Slave Delay <rplchecks=true> <Semisync=false> "] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-  res =   testNumberFailOverLimitReach()
-	allTests["1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
+	     res =   testNumberFailOverLimitReach()
+	   	allTests["1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
 
-	res =   testFailOverTimeNotReach()
-	allTests["1 Failover Before Time Limit <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	if res == false {
-		ret = res
-	}
-  */
->>>>>>> regtests
+	   	res =   testFailOverTimeNotReach()
+	   	allTests["1 Failover Before Time Limit <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	   	if res == false {
+	   		ret = res
+	   	}
+	*/
 	keys := make([]string, 0, len(allTests))
 	for key := range allTests {
-        keys = append(keys, key)
-    }
-    sort.Strings(keys)
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 
 	for _, v := range keys {
 		logprintf("TESTS : Result  %s -> %s", v, allTests[v])
@@ -892,10 +872,9 @@ func runAllTests() bool {
 	return ret
 }
 
-
-func wait_failover_end(){
- for sme.IsInFailover() {
-   time.Sleep(time.Second)
- }
- time.Sleep(recover_time * time.Second)
+func wait_failover_end() {
+	for sme.IsInFailover() {
+		time.Sleep(time.Second)
+	}
+	time.Sleep(recover_time * time.Second)
 }
