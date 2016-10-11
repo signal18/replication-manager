@@ -298,9 +298,7 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-## Failover Default Workflow
-
-## Failover Default Workflow
+## Default Failover Workflow
 
 After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
 
@@ -308,8 +306,8 @@ When manual failover is triggered, conditions for a possible failover are checke
 
 Per default following checks are disabled but are defined in the configuration template and advised to set:
 - Exceeding a given replication delay (maxdelay=0)
-- Failover did not happen previously in less than a given time interval (failtime=0)  
-- Failover limit was not reached (faillimit=0)
+- Failover did not happen previously in less than a given time interval (failover-time-limit=0)  
+- Failover limit was not reached (failover-limit=0)
 
 A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
 

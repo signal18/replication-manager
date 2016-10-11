@@ -711,9 +711,9 @@ func benchPreparedExecConcurrent16(db *sqlx.DB, n int) error {
 	return runPreparedExecConcurrent(db, n, 16)
 }
 
-func InjectLongTrx(db *sqlx.DB) error {
+func InjectLongTrx(db *sqlx.DB,time int) error {
 _, err := db.Exec("set binlog_format='STATEMENT'")
-_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep(10) from dual")
+_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep("+ fmt.Sprintf("%d",time)  + ") from dual")
 if err != nil {
 	return err
 }
