@@ -18,6 +18,44 @@ import "sort"
 
 const recover_time = 8
 
+func testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool {
+	rplchecks = false
+	maxDelay = 8
+	logprintf("TESTING : Starting Test %s", "testSwitchOverLongTransactionNoRplCheckNoSemiSync")
+	for _, s := range servers {
+		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+	}
+
+	SaveMasterURL := master.URL
+  go dbhelper.InjectLongTrx(master.Conn,20)
+  for i := 0; i < 1; i++ {
+
+		logprintf("INFO :  Master is %s", master.URL)
+
+		swChan <- true
+
+		wait_failover_end()
+		logprintf("INFO : New Master  %s ", master.URL)
+
+	}
+	for _, s := range slaves {
+		dbhelper.StartSlave(s.Conn)
+	}
+	time.Sleep(2 * time.Second)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, master.URL)
+		return false
+	}
+	return true
+}
+
 func testSlaReplAllDelay() bool {
 	return false
 }
@@ -74,7 +112,6 @@ func testSlaReplAllSlavesStopNoSemiSync() bool {
 	} else {
 		return true
 	}
-
 }
 
 func testSlaReplOneSlavesStop() bool {
@@ -136,6 +173,7 @@ func testSwitchOverNoReadOnlyNoRplCheck() bool {
 	}
 	return true
 }
+
 func testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck() bool {
 	rplchecks = false
 	maxDelay = 0
@@ -263,7 +301,6 @@ func testSwitchOverBackPreferedMasterNoRplCheckSemiSync() bool {
 		return false
 	}
 	return true
-
 }
 
 func testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
@@ -389,9 +426,6 @@ func testSwitchOverAllSlavesDelayRplCheckNoSemiSync() bool {
 	return true
 }
 
-
-
-
 func testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 	rplchecks = false
 	maxDelay = 8
@@ -501,7 +535,7 @@ func testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 	}
 	logprintf("BENCH : Write Concurrent Insert" )
 
-  dbhelper.InjectLongTrx(master.Conn)
+  dbhelper.InjectLongTrx(master.Conn,10)
   logprintf("BENCH : Inject Long Trx" )
 	time.Sleep(10 * time.Second)
   logprintf("BENCH : Sarting replication" )
@@ -561,7 +595,7 @@ func testFailOverAllSlavesDelayRplChecksNoSemiSync() bool {
 	if err != nil {
 		logprintf("BENCH : %s %s", err.Error(), result)
 	}
-  dbhelper.InjectLongTrx(master.Conn)
+  dbhelper.InjectLongTrx(master.Conn,10)
 	time.Sleep(10 * time.Second)
 	for _, s := range slaves {
  	 dbhelper.StartSlave(s.Conn)
@@ -746,6 +780,12 @@ func runAllTests() bool {
 	ret := true
 	var res bool
 
+   res = testSwitchOverLongTransactionNoRplCheckNoSemiSync()
+	 allTests["1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true>"] = getTestResultLabel(res)
+	 if res == false {
+	 	ret = res
+	 }
+/*
 	res = testSwitchOverNoReadOnlyNoRplCheck()
 	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
 	if res == false {
@@ -836,8 +876,7 @@ func runAllTests() bool {
 	if res == false {
 		ret = res
 	}
-
-
+  */
 	keys := make([]string, 0, len(allTests))
 	for key := range allTests {
         keys = append(keys, key)

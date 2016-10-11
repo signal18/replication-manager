@@ -70,6 +70,7 @@ var (
 	prefMaster         string
 	ignoreSrv          string
 	waitKill           int64
+	waitTrx           int64
 	readonly           bool
 	maxfail            int
 	autorejoin         bool
@@ -160,6 +161,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	cmd.Flags().StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	cmd.Flags().Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
+	cmd.Flags().Int64Var(&waitTrx, "wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
 	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
 	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
@@ -182,6 +184,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	prefMaster = viper.GetString("prefmaster")
 	ignoreSrv = viper.GetString("ignore-servers")
 	waitKill = int64(viper.GetInt("wait-kill"))
+	waitTrx = int64(viper.GetInt("wait-trx"))
 	readonly = viper.GetBool("readonly")
 	logfile = viper.GetString("logfile")
 	timeout = viper.GetInt("connect-timeout")
@@ -466,7 +469,7 @@ func checkfailed() {
 					interactive = true
 				}
 				masterFailover(true)
-	
+
 			} else if failtime > 0 && rem%10 == 0 {
 				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
 			} else {
