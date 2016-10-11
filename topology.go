@@ -18,8 +18,8 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/misc"
+	"github.com/tanji/replication-manager/state"
 )
 
 type topologyError struct {
@@ -44,12 +44,12 @@ func newServerList() {
 			tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[k].URL))
 		}
 		if heartbeat {
-			err:=dbhelper.SetHeartbeatTable(servers[k].Conn)
+			err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 			if err != nil {
-					log.Fatalf("ERROR: Can not set heartbeat table to  %s  ",url)
+				log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
 			}
 		}
-  }
+	}
 	// Spider shard discover
 	if spider == true {
 		SpiderShardsDiscovery()
@@ -87,27 +87,26 @@ func SpiderShardsDiscovery() {
 
 func SpiderSetShardsRepl() {
 	for k, s := range servers {
-		url:= s.URL
-		
+		url := s.URL
+
 		if heartbeat {
 			for _, s2 := range servers {
-			 url2:= s2.URL
-			 if url2!=url  {
+				url2 := s2.URL
+				if url2 != url {
 					host, port := misc.SplitHostPort(url2)
-					err:=dbhelper.SetHeartbeatTable(servers[k].Conn)
+					err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 					if err != nil {
-							log.Fatalf("ERROR: Can not set heartbeat table to  %s  ",url)
+						log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
 					}
-					err=dbhelper.SetMultiSourceRepl(servers[k].Conn, host,port,rplUser, rplPass,"")
+					err = dbhelper.SetMultiSourceRepl(servers[k].Conn, host, port, rplUser, rplPass, "")
 					if err != nil {
-							log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url ,url2,err)
+						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
 					}
 				}
 			}
 		}
 	}
 }
-
 
 func pingServerList() {
 	if sme.IsInState("WARN00008") {
@@ -276,13 +275,13 @@ func topologyDiscover() error {
 	}
 
 	if slaves != nil {
-		 if len(slaves) >0 {
+		if len(slaves) > 0 {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the slaves slice, they should be all the same
 
-				sid := slaves[0].MasterServerID
-				for k, s := range servers {
+			sid := slaves[0].MasterServerID
+			for k, s := range servers {
 				if multiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {
 						master = servers[k]
@@ -323,7 +322,7 @@ func topologyDiscover() error {
 				}
 			}
 		}
-  }
+	}
 	// Final check if master has been found
 	if master == nil {
 
@@ -332,6 +331,8 @@ func topologyDiscover() error {
 	} else {
 		master.RplMasterStatus = false
 		// End of autodetection code
+
+		// Replication checks
 		if multiMaster == false {
 			for _, sl := range slaves {
 				if loglevel > 2 {
