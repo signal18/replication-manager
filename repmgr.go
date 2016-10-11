@@ -357,11 +357,11 @@ Interactive console and HTTP dashboards are available for control`,
 					if loglevel > 2 {
 						logprint("DEBUG: Monitoring server loop")
 						for k, v := range servers {
-							logprintf("DEBUG: Server [%d]: %v", k, v)
+							logprintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
-						logprintf("DEBUG: Master: %v", master)
+						logprintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", master.URL, master.State, master.PrevState)
 						for k, v := range slaves {
-							logprintf("DEBUG: Slave [%d]: %v", k, v)
+							logprintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
 					}
 					wg := new(sync.WaitGroup)
