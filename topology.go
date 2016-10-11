@@ -350,7 +350,7 @@ func topologyDiscover() error {
 			}
 		}
 
-		if master.State == stateFailed && !slaves.checkAllSlavesRunning() {
+		if master.State == stateFailed && slaves.checkAllSlavesRunning() {
 			sme.AddState("ERR00016", state.State{
 				ErrType: "ERROR",
 				ErrDesc: "Network issue - Master is unreachable but slaves are replicating",
