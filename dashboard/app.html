@@ -47,6 +47,18 @@ td {
 				<td>{{settings.lastfailover}}</td>
 			</tr>
 		</table>
+		<p class="sectionheader">SLA</p>
+		<table ng-if="settings" class="table">
+			<tr>
+				<th>Master Available</th>
+				<th>Can Failover Acceptable Data Loss</th>
+				<th>Can Failover No Data Loss</th>
+			</tr><tr>
+				<td>{{settings.uptime}}</td>
+				<td>{{settings.uptimefailable}}</td>
+				<td>{{settings.uptimesemisync}}</td>
+			</tr>
+		</table>
 		<p class="sectionheader">Server Status</p>
 		<table ng-if="servers" class="table">
 			<tr>
@@ -78,19 +90,6 @@ td {
 				<td>{{server.SemiSyncSlaveStatus}}</td>
 			</tr>
 		</table>
-		<p class="sectionheader">SLA</p>
-		<table ng-if="settings" class="table">
-			<tr>
-			  <th>Master Available</th>
-			  <th>Can Failover Acceptable Data Loss</th>
-			  <th>Can Failover No Data Loss</th>
-		  </tr><tr>
-			  <td>{{settings.uptime}}</td>
-		    <td>{{settings.uptimefailable}}</td>
-		    <td>{{settings.uptimesemisync}}</td>
-		  </tr>
-		</table>
-		<p>
 		<button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
 		<button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
 		<button type="button" class="btn btn-primary" ng-click="inttoggle()">Mode Change</button>
@@ -99,7 +98,6 @@ td {
 		<button type="button" class="btn btn-primary" ng-click="rplchecks()">Replication Checks Change</button>
 		<button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
     <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-</p>
 	<pre>
 <span ng-repeat="logline in log track by $index">{{ logline }}
 </span>
