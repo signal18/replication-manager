@@ -28,6 +28,8 @@ type settings struct {
 	RplChecks      string `json:"rplchecks"`
 	FailSync       string `json:"failsync"`
 	Test           string `json:"test"`
+	Heartbeat      string `json:"heartbeat"`
+	Status         string `json:"run_status"`
 }
 
 func httpserver() {
@@ -44,10 +46,11 @@ func httpserver() {
 	http.HandleFunc("/rplchecks", handlerRplChecks)
 	http.HandleFunc("/failsync", handlerFailSync)
 	http.HandleFunc("/tests", handlerTests)
+	http.HandleFunc("/setactive", handlerSetActive)
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
-	http.ListenAndServe(bindaddr+":"+httpport, nil)
+	log.Fatal(http.ListenAndServe(bindaddr+":"+httpport, nil))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +93,8 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.UptimeFailable = sme.GetUptimeFailable()
 	s.UptimeSemiSync = sme.GetUptimeSemiSync()
 	s.Test = fmt.Sprintf("%v", test)
+	s.Heartbeat = fmt.Sprintf("%v", heartbeat)
+	s.Status = fmt.Sprintf("%v", run_status)
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()
@@ -123,6 +128,12 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	swChan <- true
+	return
+}
+
+func handlerSetActive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	getActiveStatus()
 	return
 }
 

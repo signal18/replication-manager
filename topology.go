@@ -139,7 +139,27 @@ func pingServerList() {
 				}
 			}
 		}(sv)
+		// If not yet dicovered we can initiate hearbeat table on each node
+		if heartbeat {
+			if sme.IsDiscovered() == false {
+				err := dbhelper.SetHeartbeatTable(sv.Conn)
+				if err != nil {
+					sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable heartbeat table can't create table", ErrFrom: "RUN"})
+					heartbeat = false
+				}
+			}
+
+			if run_status == "A" && dbhelper.CheckHeartbeat(sv.Conn, run_uuid, "A") != true {
+				sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: "Multiple Active Replication Monitor Switching Passive Mode", ErrFrom: "RUN"})
+				run_status = "P"
+			}
+			if run_status == "P" {
+				sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: "Monitoring in Passive Mode Can't Failover", ErrFrom: "RUN"})
+			}
+			dbhelper.WriteHeartbeat(sv.Conn, run_uuid, run_status)
+		}
 	}
+
 	wg.Wait()
 }
 
