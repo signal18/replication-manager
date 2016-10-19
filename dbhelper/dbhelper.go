@@ -12,13 +12,14 @@ package dbhelper
 import (
 	"database/sql"
 	"fmt"
-	"github.com/jmoiron/sqlx"
 	"hash/crc64"
 	"log"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/jmoiron/sqlx"
 )
 
 const debug = false
@@ -148,18 +149,21 @@ func GetAddress(host string, port string, socket string) string {
 	return address
 }
 
-func GetProcesslist(db *sqlx.DB) []Processlist {
+func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
 	pl := []Processlist{}
 	err := db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Database`, Command, Time_ms as Time, State FROM INFORMATION_SCHEMA.PROCESSLIST")
 	if err != nil {
-		log.Fatalln("ERROR: Could not get processlist", err)
+		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
-	return pl
+	return pl, nil
 }
 
 func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	pl := []Processlist{}
-	pl = GetProcesslist(db)
+	pl, err := GetProcesslist(db)
+	if err != nil {
+		return "N/A"
+	}
 	for i := range pl {
 		if pl[i].User == user {
 			return strings.Split(pl[i].Host, ":")[0]
@@ -167,6 +171,7 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	}
 	return "N/A"
 }
+
 func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges, error) {
 	db.MapperFunc(strings.Title)
 	splitip := strings.Split(ip, ".")
@@ -427,7 +432,7 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 	}
 	for rows.Next() {
 		var v Variable
-		err := rows.Scan(&v.Variable_name, &v.Value)
+		err = rows.Scan(&v.Variable_name, &v.Value)
 		if err != nil {
 			return vars, err
 		}
