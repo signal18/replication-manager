@@ -35,6 +35,7 @@ func testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool {
 
 	SaveMasterURL := master.URL
 	masterTest, _ := newServerMonitor(master.URL)
+	defer masterTest.Conn.Close()
 	go masterTest.Conn.Exec("start transaction")
 	time.Sleep(12 * time.Second)
 	for i := 0; i < 1; i++ {
