@@ -238,8 +238,56 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 }
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, status string) error {
-	stmt := "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) SELECT '" + uuid + "', NOW(),'" + status + "'"
+	stmt := "SET sql_log_bin=0"
 	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
+	stmt = "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) VALUES('" + uuid + "', NOW(),'" + status + "') ON DUPLICATE KEY UPDATE date=NOW(),status='" + status + "'"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "DELETE FROM replication_manager_schema.heartbeat WHERE date < NOW() - INTERVAL 3 SECOND"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func CheckHeartbeat(db *sqlx.DB, uuid string, status string) bool {
+	var count int
+	stmt := "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE date > NOW() - INTERVAL 3 SECOND AND status IN ('A','F') and uuid<>'" + uuid + "'"
+	err := db.QueryRowx(stmt).Scan(&count)
+	if err != nil {
+		return true
+	}
+	if count > 0 {
+		return false
+	}
+	return true
+}
+
+func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string) error {
+	/*	stmt := "START TRANSACTION"
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+	*/
+	stmt := "TRUNCATE TABLE replication_manager_schema.heartbeat"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	err = WriteHeartbeat(db, uuid, status)
+	/*	stmt = "COMMIT"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}*/
 	return err
 }
 
