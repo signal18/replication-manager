@@ -625,7 +625,7 @@ func SetReadOnly(db *sqlx.DB, flag bool) error {
 
 func CheckLongRunningWrites(db *sqlx.DB, thresh int) int {
 	var count int
-	err := db.QueryRowx("select count(*) from information_schema.processlist where command = 'Query' and time >= ? and info not like 'select%'", thresh).Scan(&count)
+	err := db.QueryRowx("select SUM(ct) from ( select count(*) as ct from information_schema.processlist  where command = 'Query' and time >= ? and info not like 'select%' union all select count(*) as ct  FROM  INFORMATION_SCHEMA.INNODB_TRX trx WHERE trx.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND) A", thresh, thresh).Scan(&count)
 	if err != nil {
 		log.Println("ERROR: Could not check long running writes", err)
 	}

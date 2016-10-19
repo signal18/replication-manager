@@ -34,6 +34,79 @@ func testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool {
 	}
 
 	SaveMasterURL := master.URL
+	go master.Conn.Exec("start transaction")
+	time.Sleep(12 * time.Second)
+	for i := 0; i < 1; i++ {
+
+		logprintf("INFO :  Master is %s", master.URL)
+
+		swChan <- true
+
+		wait_failover_end()
+		logprintf("INFO : New Master  %s ", master.URL)
+
+	}
+
+	time.Sleep(2 * time.Second)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, master.URL)
+		return false
+	}
+	return true
+}
+
+func testSwitchOverLongQueryNoRplCheckNoSemiSync() bool {
+	rplchecks = false
+	maxDelay = 8
+	logprintf("TESTING : Starting Test %s", "testSwitchOverLongQueryNoRplCheckNoSemiSync")
+	for _, s := range servers {
+		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+	}
+
+	SaveMasterURL := master.URL
+	go dbhelper.InjectLongTrx(master.Conn, 20)
+	for i := 0; i < 1; i++ {
+
+		logprintf("INFO :  Master is %s", master.URL)
+
+		swChan <- true
+
+		wait_failover_end()
+		logprintf("INFO : New Master  %s ", master.URL)
+
+	}
+
+	time.Sleep(20 * time.Second)
+	if master.URL != SaveMasterURL {
+		logprintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, master.URL)
+		return false
+	}
+	return true
+}
+
+func testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync() bool {
+	rplchecks = false
+	maxDelay = 8
+	logprintf("TESTING : Starting Test %s", "testSwitchOverLongTransactionNoRplCheckNoSemiSync")
+	for _, s := range servers {
+		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
+		if err != nil {
+			logprintf("TESTING : %s", err)
+		}
+	}
+
+	SaveMasterURL := master.URL
 	go dbhelper.InjectLongTrx(master.Conn, 20)
 	for i := 0; i < 1; i++ {
 
@@ -763,6 +836,12 @@ func runAllTests() bool {
 
 	res = testSwitchOverLongTransactionNoRplCheckNoSemiSync()
 	allTests["1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
+
+	res = testSwitchOverLongQueryNoRplCheckNoSemiSync()
+	allTests["1 Switchover Concurrent Long Query <readonly=false> <rplchecks=true>"] = getTestResultLabel(res)
 	if res == false {
 		ret = res
 	}
