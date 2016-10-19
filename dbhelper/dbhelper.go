@@ -11,15 +11,15 @@ package dbhelper
 
 import (
 	"database/sql"
+	"fmt"
+	"github.com/jmoiron/sqlx"
+	"github.com/tanji/replication-manager/misc"
+	"hash/crc64"
 	"log"
 	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
-  "github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/misc"
-	"hash/crc64"
-  "fmt"
 )
 
 const debug = false
@@ -201,7 +201,7 @@ func GetAllSlavesStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 	return ss, err
 }
 
-func SetHeartbeatTable(db *sqlx.DB)  (error) {
+func SetHeartbeatTable(db *sqlx.DB) error {
 	stmt := "SET sql_log_bin=0"
 	_, err := db.Exec(stmt)
 	if err != nil {
@@ -221,29 +221,29 @@ func SetHeartbeatTable(db *sqlx.DB)  (error) {
 	return err
 }
 
-func WriteHeartbeat(db *sqlx.DB,uuid string, status string) (error) {
- 	stmt := "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) SELECT '" + uuid + "', NOW(),'" + status + "'"
+func WriteHeartbeat(db *sqlx.DB, uuid string, status string) error {
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) SELECT '" + uuid + "', NOW(),'" + status + "'"
 	_, err := db.Exec(stmt)
 	return err
 }
 
-func SetMultiSourceRepl(db *sqlx.DB,master_host string, master_port string, master_user string, master_password string, master_filter string ) (error) {
-  crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
-	checksum64 :=fmt.Sprintf("%d", crc64.Checksum( []byte( master_host + ":" + master_port ), crcTable))
+func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, master_user string, master_password string, master_filter string) error {
+	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
+	checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(master_host+":"+master_port), crcTable))
 
-	stmt := "CHANGE MASTER 'mrm_"+checksum64+"' TO master_host='" + master_host+ "', master_port=" + master_port+ ", master_user='"+master_user+ "', master_password='"+master_password+"' , master_use_gtid=slave_pos"
+	stmt := "CHANGE MASTER 'mrm_" + checksum64 + "' TO master_host='" + master_host + "', master_port=" + master_port + ", master_user='" + master_user + "', master_password='" + master_password + "' , master_use_gtid=slave_pos"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
 	if master_filter != "" {
-	  stmt = "SET GLOBAL mrm_"+checksum64+".replicate_do_table='"+ master_filter +"'"
+		stmt = "SET GLOBAL mrm_" + checksum64 + ".replicate_do_table='" + master_filter + "'"
 		_, err = db.Exec(stmt)
 		if err != nil {
 			return err
 		}
 	}
-	stmt = "START SLAVE 'mrm_"+checksum64+"'"
+	stmt = "START SLAVE 'mrm_" + checksum64 + "'"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
@@ -251,8 +251,6 @@ func SetMultiSourceRepl(db *sqlx.DB,master_host string, master_port string, mast
 
 	return err
 }
-
-
 
 func ResetAllSlaves(db *sqlx.DB) error {
 	ss, err := GetAllSlavesStatus(db)
@@ -625,8 +623,6 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 	return vars, err
 }
 
-
-
 func runPreparedExecConcurrent(db *sqlx.DB, n int, co int) error {
 	stmt, err := db.Prepare("UPDATE replication_manager_schema.bench SET val=val+1 ")
 	if err != nil {
@@ -711,22 +707,22 @@ func benchPreparedExecConcurrent16(db *sqlx.DB, n int) error {
 	return runPreparedExecConcurrent(db, n, 16)
 }
 
-func InjectLongTrx(db *sqlx.DB,time int) error {
-_, err := db.Exec("set binlog_format='STATEMENT'")
-_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep("+ fmt.Sprintf("%d",time)  + ") from dual")
-if err != nil {
-	return err
-}
- return nil
+func InjectLongTrx(db *sqlx.DB, time int) error {
+	_, err := db.Exec("set binlog_format='STATEMENT'")
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep(" + fmt.Sprintf("%d", time) + ") from dual")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func benchWarmup(db *sqlx.DB) error {
 	db.SetMaxIdleConns(16)
-  _,  err := db.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
+	_, err := db.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	if err != nil {
 		return err
 	}
-  _, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(val bigint unsigned )")
+	_, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(val bigint unsigned )")
 	if err != nil {
 		return err
 	}
@@ -735,8 +731,7 @@ func benchWarmup(db *sqlx.DB) error {
 		return err
 	}
 
-
-for i := 0; i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		rows, err := db.Query("SELECT val FROM replication_manager_schema.bench")
 		if err != nil {
 			return err
@@ -749,8 +744,8 @@ for i := 0; i < 2; i++ {
 	return nil
 }
 
-func WriteConcurrent2(dsn string, qt int)  (string, error) {
-var err error
+func WriteConcurrent2(dsn string, qt int) (string, error) {
+	var err error
 
 	bs := BenchmarkSuite{
 		WarmUp:      benchWarmup,
@@ -758,13 +753,12 @@ var err error
 		PrintStats:  true,
 	}
 
-	if err = bs.AddDriver("mysql", "mysql", dsn ); err != nil {
-	  return "", err
+	if err = bs.AddDriver("mysql", "mysql", dsn); err != nil {
+		return "", err
 	}
 
 	bs.AddBenchmark("PreparedExecConcurrent2", qt, benchPreparedExecConcurrent2)
 
-
 	result := bs.Run()
-  return result, nil
+	return result, nil
 }

@@ -2,10 +2,10 @@ package dbhelper
 
 import (
 	"fmt"
+	"github.com/jmoiron/sqlx"
 	"runtime"
 	"sort"
 	"time"
-  "github.com/jmoiron/sqlx"
 )
 
 type driver struct {
@@ -102,11 +102,11 @@ func (bs *BenchmarkSuite) Run() string {
 	startTime := time.Now()
 
 	if len(bs.drivers) < 1 {
-			return "No drivers registered to run benchmarks with!"
+		return "No drivers registered to run benchmarks with!"
 	}
 
 	if len(bs.benchmarks) < 1 {
-			return "No benchmark functions registered!"
+		return "No benchmark functions registered!"
 	}
 
 	if bs.WarmUp != nil {
@@ -120,25 +120,24 @@ func (bs *BenchmarkSuite) Run() string {
 		fmt.Println()
 	}
 
-
 	var qps []float64
 	if bs.Repetitions > 1 && bs.PrintStats {
 		qps = make([]float64, bs.Repetitions)
 	} else {
-	     bs.PrintStats = false
+		bs.PrintStats = false
 	}
-  back:=""
+	back := ""
 	for _, benchmark := range bs.benchmarks {
-		back=back + fmt.Sprintln(benchmark.name, benchmark.n, "iterations")
+		back = back + fmt.Sprintln(benchmark.name, benchmark.n, "iterations")
 		for _, driver := range bs.drivers {
 			for i := 0; i < bs.Repetitions; i++ {
 				res := benchmark.run(driver.db)
 				if res.Err != nil {
-					back=back + fmt.Sprintln(res.Err.Error())
+					back = back + fmt.Sprintln(res.Err.Error())
 				} else {
-					back=back + fmt.Sprintln(
-						" " +
-						res.Duration.String(), "\t   ",
+					back = back + fmt.Sprintln(
+						" "+
+							res.Duration.String(), "\t   ",
 						int(res.QueriesPerSecond()+0.5), "queries/sec\t   ",
 						res.AllocsPerQuery(), "allocs/query\t   ",
 						res.BytesPerQuery(), "B/query",
@@ -150,24 +149,24 @@ func (bs *BenchmarkSuite) Run() string {
 			}
 
 			if bs.PrintStats {
-		          var totalQps float64
-		          for i := range qps {
-		               totalQps += qps[i]
-		          }
+				var totalQps float64
+				for i := range qps {
+					totalQps += qps[i]
+				}
 
-		          sort.Float64s(qps)
+				sort.Float64s(qps)
 
-		          back=back + fmt.Sprintln(
-		               " -- " +
-		               "avg", int(totalQps/float64(len(qps)) +0.5), "qps;  "+
-		               "median", int(qps[len(qps)/2]+0.5), "qps",
-		          )
-		     }
+				back = back + fmt.Sprintln(
+					" -- "+
+						"avg", int(totalQps/float64(len(qps))+0.5), "qps;  "+
+						"median", int(qps[len(qps)/2]+0.5), "qps",
+				)
+			}
 		}
 
-		back=back + fmt.Sprintln()
+		back = back + fmt.Sprintln()
 	}
 	endTime := time.Now()
-  back=back + fmt.Sprintln("Finished... Total running time:", endTime.Sub(startTime).String())
-  return back
+	back = back + fmt.Sprintln("Finished... Total running time:", endTime.Sub(startTime).String())
+	return back
 }

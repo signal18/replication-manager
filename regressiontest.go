@@ -766,98 +766,97 @@ func runAllTests() bool {
 	if res == false {
 		ret = res
 	}
-	/*
-	   	res = testSwitchOverNoReadOnlyNoRplCheck()
-	   	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
 
-	   	res = testSwitchOverReadOnlyNoRplCheck()
-	   	allTests["1 Switchover <readonly=true> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverNoReadOnlyNoRplCheck()
+	allTests["1 Switchover <readonly=false> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck()
-	   	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverReadOnlyNoRplCheck()
+	allTests["1 Switchover <readonly=true> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck()
-	   	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck()
+	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOverBackPreferedMasterNoRplCheckSemiSync()
-	   	allTests["2 Switchover Back Prefered Master <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck()
+	allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOverAllSlavesStopRplCheckNoSemiSync()
-	   	allTests["Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverBackPreferedMasterNoRplCheckSemiSync()
+	allTests["2 Switchover Back Prefered Master <semisync=true> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
-	   	allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverAllSlavesStopRplCheckNoSemiSync()
+	allTests["Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOverAllSlavesDelayRplCheckNoSemiSync()
-	   	allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck()
+	allTests["Can Switchover All Slaves Stop <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync()
-	   	allTests["Can Switchover All Slaves Delay <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSwitchOverAllSlavesDelayRplCheckNoSemiSync()
+	allTests["Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
+	res = testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync()
+	allTests["Can Switchover All Slaves Delay <semisync=false> <rplchecks=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res = testSlaReplAllSlavesStopNoSemiSync()
-	   	allTests["SLA Decrease Can't Switchover All Slaves Stop <Semisync=false>"] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testSlaReplAllSlavesStopNoSemiSync()
+	allTests["SLA Decrease Can't Switchover All Slaves Stop <Semisync=false>"] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	     res =  testFailOverNoRplChecksNoSemiSync()
-	     allTests["1 Failover <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testFailOverNoRplChecksNoSemiSync()
+	allTests["1 Failover <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	     res =  testFailOverAllSlavesDelayNoRplChecksNoSemiSync()
-	   	allTests["1 Failover All Slave Delay <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testFailOverAllSlavesDelayNoRplChecksNoSemiSync()
+	allTests["1 Failover All Slave Delay <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res =  testFailOverAllSlavesDelayRplChecksNoSemiSync()
-	   	allTests["1 Failover All Slave Delay <rplchecks=true> <Semisync=false> "] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testFailOverAllSlavesDelayRplChecksNoSemiSync()
+	allTests["1 Failover All Slave Delay <rplchecks=true> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	     res =   testNumberFailOverLimitReach()
-	   	allTests["1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
+	res = testNumberFailOverLimitReach()
+	allTests["1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
 
-	   	res =   testFailOverTimeNotReach()
-	   	allTests["1 Failover Before Time Limit <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
-	   	if res == false {
-	   		ret = res
-	   	}
-	*/
+	res = testFailOverTimeNotReach()
+	allTests["1 Failover Before Time Limit <rplchecks=false> <Semisync=false> "] = getTestResultLabel(res)
+	if res == false {
+		ret = res
+	}
+
 	keys := make([]string, 0, len(allTests))
 	for key := range allTests {
 		keys = append(keys, key)
