@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/misc"
 	"hash/crc64"
 	"log"
 	"net"
@@ -151,29 +150,46 @@ func GetAddress(host string, port string, socket string) string {
 
 func GetProcesslist(db *sqlx.DB) []Processlist {
 	pl := []Processlist{}
-	err := db.Select(&pl, "SELECT id, user, host, `db` AS `database`, command, time_ms as time, state FROM INFORMATION_SCHEMA.PROCESSLIST")
+	err := db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Database`, Command, Time_ms as Time, State FROM INFORMATION_SCHEMA.PROCESSLIST")
 	if err != nil {
 		log.Fatalln("ERROR: Could not get processlist", err)
 	}
 	return pl
 }
 
-func GetPrivileges(db *sqlx.DB, user string, host string) (Privileges, error) {
-	db.MapperFunc(strings.Title)
-	priv := Privileges{}
-	stmt := "SELECT Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv, Reload_priv FROM mysql.user WHERE user = ? AND host = ?"
-	row := db.QueryRowx(stmt, user, host)
-	err := row.StructScan(&priv)
-	if err != nil && err == sql.ErrNoRows {
-		row := db.QueryRowx(stmt, user, "%")
-		err = row.StructScan(&priv)
-		if err != nil && err == sql.ErrNoRows {
-			row := db.QueryRowx(stmt, user, misc.GetLocalIP())
-			err = row.StructScan(&priv)
-			return priv, err
+func GetHostFromProcessList(db *sqlx.DB, user string) string {
+	pl := []Processlist{}
+	pl = GetProcesslist(db)
+	for i := range pl {
+		if pl[i].User == user {
+			return strings.Split(pl[i].Host, ":")[0]
 		}
-		return priv, err
 	}
+	return "N/A"
+}
+func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges, error) {
+	db.MapperFunc(strings.Title)
+	splitip := strings.Split(ip, ".")
+
+	iprange1 := splitip[0] + ".%.%.%"
+	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
+	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
+	priv := Privileges{}
+	stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+	row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
+	//	fmt.Println("'" + user + "',''" + host + "','" + ip + "', ''" + ip + "/255.0.0.0'" + ", ''" + ip + "/255.255.0.0'" + "','" + ip + "/255.255.255.0" + "','" + iprange1 + "','" + iprange2 + "','" + iprange3)
+	err := row.StructScan(&priv)
+	/*
+		if err != nil && err == sql.ErrNoRows {
+			row := db.QueryRowx(stmt, user, "%")
+			err = row.StructScan(&priv)
+			if err != nil && err == sql.ErrNoRows {
+				row := db.QueryRowx(stmt, user, misc.GetLocalIP())
+				err = row.StructScan(&priv)
+				return priv, err
+			}
+			return priv, err
+		} */
 	return priv, err
 }
 
@@ -589,7 +605,7 @@ func CheckHostAddr(h string) (string, error) {
 func GetSpiderShardUrl(db *sqlx.DB) (string, error) {
 	var value string
 	value = ""
-	err := db.QueryRowx("select  coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_tables st left join mysql.servers s on st.server=s.server_name").Scan(&value)
+	err := db.QueryRowx("select coalesce(group_concat(distinct concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port))),'') as value  from mysql.spider_tables st left join mysql.servers s on st.server=s.server_name").Scan(&value)
 	if err != nil {
 		log.Println("ERROR: Could not get spider shards", err)
 	}
