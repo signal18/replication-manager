@@ -135,6 +135,21 @@ if (r == true) {
 
 };
 
+$scope.setactive = function() {
+var r = confirm("Confirm Active Status?");
+if (r == true) {
+  var response = $http.get('/setactive');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+
+};
+
 $scope.bootstrap = function() {
 var r = confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?");
 if (r == true) {
