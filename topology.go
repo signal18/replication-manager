@@ -11,15 +11,16 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
-	"strings"
-	"sync"
-
 	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
+
+	"log"
+	"net"
+	"strings"
+	"sync"
 )
 
 type topologyError struct {
@@ -210,12 +211,19 @@ func topologyDiscover() error {
 				master.State = stateMaster
 			}
 		}
-		// Check user privileges on live servers
+		// Check replication manager user privileges on live servers
 		if loglevel > 2 {
 			logprintf("DEBUG: Privilege check on %s", sv.URL)
 		}
 		if sv.State != stateFailed {
-			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname)
+
+			myhost := dbhelper.GetHostFromProcessList(sv.Conn, dbUser)
+			myip, err2 := net.LookupIP(myhost)
+
+			if err2 != nil {
+				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, sv.URL, err), ErrFrom: "CONF"})
+			}
+			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname, myip[0].String())
 			if err != nil {
 				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, repmgrHostname, err), ErrFrom: "CONF"})
 			}
@@ -229,16 +237,22 @@ func topologyDiscover() error {
 				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege", ErrFrom: "CONF"})
 			}
 			// Check replication user has correct privs.
-			rpriv, err := dbhelper.GetPrivileges(sv.Conn, rplUser, repmgrHostname)
-			if err != nil {
-				sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s", rplUser, sv.URL, err), ErrFrom: "CONF"})
-			}
-			if rpriv.Repl_slave_priv == "N" {
-				sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege", ErrFrom: "CONF"})
-			}
-			// Additional health checks go here
-			if sv.acidTest() == false && sme.IsDiscovered() {
-				sme.AddState("WARN00007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+			for _, sv2 := range servers {
+				if sv2.URL != sv.URL {
+					rplhost, _ := net.LookupIP(sv2.Host)
+					//	fmt.Print("Found IP", rplhost[0])
+					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, rplUser, sv2.Host, rplhost[0].String())
+					if err != nil {
+						sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s", rplUser, sv2.URL, err), ErrFrom: "CONF"})
+					}
+					if rpriv.Repl_slave_priv == "N" {
+						sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege", ErrFrom: "CONF"})
+					}
+					// Additional health checks go here
+					if sv.acidTest() == false && sme.IsDiscovered() {
+						sme.AddState("WARN00007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+					}
+				}
 			}
 		}
 	}
