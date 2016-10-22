@@ -34,7 +34,6 @@ type settings struct {
 
 func httpserver() {
 	http.HandleFunc("/", handlerApp)
-	http.HandleFunc("/dashboard.js", handlerJS)
 	http.HandleFunc("/servers", handlerServers)
 	http.HandleFunc("/master", handlerMaster)
 	http.HandleFunc("/log", handlerLog)
@@ -47,6 +46,10 @@ func httpserver() {
 	http.HandleFunc("/failsync", handlerFailSync)
 	http.HandleFunc("/tests", handlerTests)
 	http.HandleFunc("/setactive", handlerSetActive)
+	http.HandleFunc("/dashboard.js", handlerJS)
+
+	http.Handle("/static/", http.FileServer(http.Dir(httproot)))
+
 	if verbose {
 		logprint("INFO : Starting http monitor on port " + httpport)
 	}
