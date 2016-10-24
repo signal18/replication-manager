@@ -252,6 +252,9 @@ func masterFailover(fail bool) bool {
 			}
 		}
 	}
+	if haproxyOn {
+		initHaproxy()
+	}
 
 	logprintf("INFO : Master switch on %s complete", master.URL)
 	master.FailCount = 0

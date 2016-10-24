@@ -1,0 +1,977 @@
+2016/10/11 15:35:24 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/11 15:35:24 INFO : Monitor started in manual mode
+2016/10/11 15:35:26 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 10:58:05 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 10:58:05 INFO : Monitor started in manual mode
+2016/10/14 10:58:07 INFO : INF00001 Server 127.0.0.1:5112 is down
+2016/10/14 10:58:07 ERROR: ERR00010 No slaves were detected
+2016/10/14 10:58:07 ERROR: ERR00012 Could not autodetect a master
+2016/10/14 12:04:37 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 12:04:37 INFO : Monitor started in manual mode
+2016/10/14 12:04:51 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 12:05:44 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 12:05:44 INFO : Monitor started in manual mode
+2016/10/14 12:05:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 15:03:27 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 15:03:27 INFO : Monitor started in manual mode
+2016/10/14 15:03:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 15:04:33 INFO : Monitor started in manual mode
+2016/10/14 15:04:36 ERROR: ERR00019 Multiple Replication Monitor Running Switching Passive Mode
+2016/10/14 15:04:36 ERROR: ERR00020 Monitoring in Passive Mode Can't Failever
+2016/10/14 15:04:36 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 15:33:13 INFO : Quitting monitor
+2016/10/14 15:33:26 INFO : Monitor started in manual mode
+2016/10/14 15:33:29 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 15:33:29 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 15:33:29 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 15:33:29 ERROR: ERR00019 Multiple Replication Monitor Running Switching Passive Mode
+2016/10/14 15:33:29 ERROR: ERR00020 Monitoring in Passive Mode Can't Failever
+2016/10/14 15:33:30 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 15:33:31 ERROR: ERR00019 HAS BEEN FIXED, Multiple Replication Monitor Running Switching Passive Mode
+2016/10/14 15:38:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 15:38:02 INFO : Monitor started in manual mode
+2016/10/14 15:38:05 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 16:29:35 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 16:29:35 INFO : Monitor started in manual mode
+2016/10/14 16:29:37 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 16:33:04 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 16:33:04 INFO : Monitor started in manual mode
+2016/10/14 16:33:07 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:05:22 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:05:22 INFO : Monitor started in manual mode
+2016/10/14 18:05:25 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:15:07 INFO : Starting master switch
+2016/10/14 18:15:07 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/14 18:15:07 INFO : Checking long running updates on master
+2016/10/14 18:15:07 INFO : Electing a new master
+2016/10/14 18:15:07 WARN : Slave 127.0.0.1:5112 not in sync. Skipping
+2016/10/14 18:15:07 ERROR: No candidates found
+2016/10/14 18:16:27 ERROR: ERR00010 No slaves were detected
+2016/10/14 18:16:41 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/14 18:16:42 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/14 18:16:58 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:16:58 INFO : Monitor started in manual mode
+2016/10/14 18:17:01 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:17:33 INFO : Quitting monitor
+2016/10/14 18:17:39 INFO : Monitor started in manual mode
+2016/10/14 18:17:42 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:17:52 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:17:52 INFO : Monitor started in manual mode
+2016/10/14 18:17:54 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:18:15 INFO : Quitting monitor
+2016/10/14 18:18:32 INFO : Monitor started in manual mode
+2016/10/14 18:18:34 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:18:47 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:18:47 INFO : Monitor started in manual mode
+2016/10/14 18:18:50 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:18:50 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:18:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:18:50 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:18:50 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:18:51 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:18:52 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:22:39 INFO : Quitting monitor
+2016/10/14 18:23:08 INFO : Monitor started in manual mode
+2016/10/14 18:23:11 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:23:25 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:23:25 INFO : Monitor started in manual mode
+2016/10/14 18:23:30 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:23:30 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:23:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:23:31 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:23:32 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:23:32 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:23:33 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:23:53 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/14 18:30:30 DEBUG: Server [0] 127.0.0.1:5154 Master Master
+2016/10/14 18:30:30 DEBUG: Server [1] 127.0.0.1:5112 Slave Slave
+2016/10/14 18:30:32 INFO : Quitting monitor
+2016/10/14 18:30:51 INFO : Monitor started in manual mode
+2016/10/14 18:30:54 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:31:00 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:31:00 INFO : Monitor started in manual mode
+2016/10/14 18:31:02 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:31:02 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:31:03 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:31:03 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:31:04 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:31:05 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:31:27 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/14 18:34:18 INFO : Quitting monitor
+2016/10/14 18:34:37 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:34:37 INFO : Monitor started in manual mode
+2016/10/14 18:34:40 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:35:57 INFO : Monitor started in manual mode
+2016/10/14 18:35:59 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:35:59 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:36:00 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:36:00 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:36:02 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:36:02 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:37:49 DEBUG: Server [0] 127.0.0.1:5154 Master 
+2016/10/14 18:37:49 DEBUG: Server [1] 127.0.0.1:5112 Slave 
+2016/10/14 18:37:57 INFO : Quitting monitor
+2016/10/14 18:37:58 INFO : Monitor started in manual mode
+2016/10/14 18:38:02 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:38:53 INFO : Starting master switch
+2016/10/14 18:38:53 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/14 18:38:53 INFO : Checking long running updates on master
+2016/10/14 18:38:53 INFO : Electing a new master
+2016/10/14 18:38:53 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/14 18:38:53 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/14 18:38:53 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/14 18:38:53 INFO : Waiting for candidate Master to synchronize
+2016/10/14 18:38:53 INFO : Stopping slave thread on new master
+2016/10/14 18:38:54 INFO : Resetting slave on new master and set read/write mode on
+2016/10/14 18:38:54 INFO : Switching old master as a slave
+2016/10/14 18:38:57 INFO : Switching other slaves to the new master
+2016/10/14 18:38:57 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/14 18:39:08 INFO : Quitting monitor
+2016/10/14 18:40:44 INFO : Monitor started in manual mode
+2016/10/14 18:40:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:41:00 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:41:00 INFO : Monitor started in manual mode
+2016/10/14 18:41:02 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:41:02 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:41:02 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:41:02 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:41:04 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:41:04 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:42:43 INFO : Quitting monitor
+2016/10/14 18:42:48 INFO : Monitor started in manual mode
+2016/10/14 18:42:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/14 18:43:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:43:02 INFO : Monitor started in manual mode
+2016/10/14 18:43:04 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:43:04 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:43:06 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:45:26 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/14 18:45:26 INFO : Monitor started in manual mode
+2016/10/14 18:45:29 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/14 18:45:29 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/14 18:45:30 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 00:05:43 INFO : Quitting monitor
+2016/10/15 00:13:16 INFO : Monitor started in manual mode
+2016/10/15 00:13:19 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/15 00:14:13 INFO : Quitting monitor
+2016/10/15 14:06:53 INFO : Monitor started in manual mode
+2016/10/15 14:06:56 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/15 14:06:58 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/15 14:06:58 INFO : Monitor started in manual mode
+2016/10/15 14:14:36 INFO : Quitting monitor
+2016/10/15 14:15:11 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/15 14:15:11 INFO : Monitor started in manual mode
+2016/10/15 14:15:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/15 14:15:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/15 14:15:18 INFO : Monitor started in manual mode
+2016/10/15 14:15:20 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:15:20 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/15 14:15:22 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:25:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/15 14:25:18 INFO : Monitor started in manual mode
+2016/10/15 14:25:21 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/15 14:25:43 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/15 14:25:43 INFO : Monitor started in manual mode
+2016/10/15 14:25:45 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:25:45 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/15 14:25:48 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:26:15 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:26:15 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/15 14:26:15 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/15 14:26:16 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/15 14:26:16 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/15 14:26:17 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:46:41 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/15 14:46:41 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/15 14:46:43 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/15 14:46:43 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/17 10:36:53 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:36:53 INFO : Monitor started in manual mode
+2016/10/17 10:36:55 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/10/17 10:36:55 ERROR: ERR00010 No slaves were detected
+2016/10/17 10:36:55 ERROR: ERR00012 Could not autodetect a master
+2016/10/17 10:38:14 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:38:14 INFO : Monitor started in manual mode
+2016/10/17 10:38:49 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:38:49 INFO : Monitor started in manual mode
+2016/10/17 10:47:33 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:47:33 INFO : Monitor started in manual mode
+2016/10/17 10:48:14 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:48:14 INFO : Monitor started in manual mode
+2016/10/17 10:51:22 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:51:22 INFO : Monitor started in manual mode
+2016/10/17 10:51:24 WARNING: WARN00010 Disable heartbeat table can't create table
+2016/10/17 10:51:24 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/10/17 10:51:24 ERROR: ERR00010 No slaves were detected
+2016/10/17 10:51:24 ERROR: ERR00012 Could not autodetect a master
+2016/10/17 10:51:26 WARNING: WARN00010 HAS BEEN FIXED, Disable heartbeat table can't create table
+2016/10/17 10:52:56 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:52:56 INFO : Monitor started in manual mode
+2016/10/17 10:52:58 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/10/17 10:52:58 ERROR: ERR00010 No slaves were detected
+2016/10/17 10:52:58 ERROR: ERR00012 Could not autodetect a master
+2016/10/17 10:53:53 INFO : Monitor started in manual mode
+2016/10/17 10:53:56 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/10/17 10:53:56 ERROR: ERR00010 No slaves were detected
+2016/10/17 10:53:56 ERROR: ERR00012 Could not autodetect a master
+2016/10/17 10:54:10 INFO : Quitting monitor
+2016/10/17 10:56:08 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:56:08 INFO : Monitor started in manual mode
+2016/10/17 10:58:12 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 10:58:12 INFO : Monitor started in manual mode
+2016/10/17 11:01:29 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 11:01:29 INFO : Monitor started in manual mode
+2016/10/17 12:48:19 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:48:19 INFO : Monitor started in manual mode
+2016/10/17 12:53:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:53:18 INFO : Monitor started in manual mode
+2016/10/17 12:54:21 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:54:21 INFO : Monitor started in manual mode
+2016/10/17 12:54:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:54:46 INFO : Monitor started in manual mode
+2016/10/17 12:57:41 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:57:41 INFO : Monitor started in manual mode
+2016/10/17 12:58:57 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 12:58:57 INFO : Monitor started in manual mode
+2016/10/17 13:00:12 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 13:00:12 INFO : Monitor started in manual mode
+2016/10/17 13:01:04 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 13:01:04 INFO : Monitor started in manual mode
+2016/10/17 13:06:01 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 13:06:01 INFO : Monitor started in manual mode
+2016/10/17 13:06:04 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: statement expects 9 inputs; got 2
+2016/10/17 13:06:04 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: statement expects 9 inputs; got 2
+2016/10/17 13:06:04 ERROR: ERR00012 Could not autodetect a master
+2016/10/17 13:08:57 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/17 13:08:57 INFO : Monitor started in manual mode
+2016/10/17 13:08:59 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: statement expects 9 inputs; got 2
+2016/10/17 13:08:59 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: statement expects 9 inputs; got 2
+2016/10/17 13:08:59 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 10:13:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 10:13:02 INFO : Monitor started in manual mode
+2016/10/18 10:13:05 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: missing destination name MAX(Select_priv)
+2016/10/18 10:13:05 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: missing destination name MAX(Select_priv)
+2016/10/18 10:13:05 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 10:16:15 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 10:16:15 INFO : Monitor started in manual mode
+2016/10/18 10:16:17 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 10:16:17 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 10:16:17 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 10:26:19 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 10:26:19 INFO : Monitor started in manual mode
+2016/10/18 10:26:21 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 10:26:21 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 10:26:21 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:06:20 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:06:20 INFO : Monitor started in manual mode
+2016/10/18 12:06:22 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:06:22 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:06:22 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:06:51 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:06:51 INFO : Monitor started in manual mode
+2016/10/18 12:06:53 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:06:53 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:06:53 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:12:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:12:02 INFO : Monitor started in manual mode
+2016/10/18 12:12:04 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:12:04 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:12:04 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:17:23 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:17:23 INFO : Monitor started in manual mode
+2016/10/18 12:17:25 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:17:25 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:17:25 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:24:27 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:24:27 INFO : Monitor started in manual mode
+2016/10/18 12:24:50 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:24:50 ERROR: ERR00012 Could not autodetect a master
+2016/10/18 12:24:50 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:27:18 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 12:27:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:27:46 INFO : Monitor started in manual mode
+2016/10/18 12:27:50 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:27:50 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:37:53 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:37:53 INFO : Monitor started in manual mode
+2016/10/18 12:37:56 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:37:56 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:43:06 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:43:06 INFO : Monitor started in manual mode
+2016/10/18 12:43:09 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:43:09 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:46:21 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 12:46:21 INFO : Monitor started in manual mode
+2016/10/18 12:46:25 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 12:46:25 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 13:15:19 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 13:15:19 INFO : Monitor started in manual mode
+2016/10/18 13:15:22 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 13:15:22 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 13:18:43 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 13:18:43 INFO : Monitor started in manual mode
+2016/10/18 13:18:47 ERROR: ERR00005 Error getting privileges for user skysql@Stephanes-MacBook-Pro-3.local: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 13:18:47 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: sql: Scan error on column index 0: unsupported driver -> Scan pair: <nil> -> *string
+2016/10/18 13:58:49 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 13:58:49 INFO : Monitor started in manual mode
+2016/10/18 13:58:53 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 13:59:22 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 13:59:22 INFO : Monitor started in manual mode
+2016/10/18 13:59:26 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:00:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 14:00:02 INFO : Monitor started in manual mode
+2016/10/18 14:00:05 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:04:13 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 14:04:13 INFO : Monitor started in manual mode
+2016/10/18 14:04:16 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:04:49 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 14:04:49 INFO : Monitor started in manual mode
+2016/10/18 14:05:02 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 14:05:02 INFO : Monitor started in manual mode
+2016/10/18 14:05:05 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:05:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/18 14:05:18 INFO : Monitor started in manual mode
+2016/10/18 14:05:21 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/18 14:05:21 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/18 14:05:23 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/18 14:09:24 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/18 14:09:24 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/18 14:09:24 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:09:25 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/18 14:09:25 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/18 14:09:27 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/18 14:56:00 DEBUG: In Failover skip topology detection
+2016/10/18 14:56:01 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:56:01 DEBUG: In Failover skip checking failed master
+2016/10/18 14:56:06 ERROR: ERR00010 No slaves were detected
+2016/10/18 14:56:16 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 14:56:16 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/18 14:56:24 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/18 14:56:24 INFO :  Master is 127.0.0.1:5154
+2016/10/18 14:56:24 INFO : Starting master switch
+2016/10/18 14:56:24 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:56:34 ERROR: Long  running trx on master. Cannot switchover
+2016/10/18 14:56:42 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:56:44 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/18 14:56:44 INFO : Master is 127.0.0.1:5154
+2016/10/18 14:56:46 INFO : Starting master switch
+2016/10/18 14:56:46 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:56:46 INFO : Checking long running updates on master
+2016/10/18 14:56:47 INFO : Electing a new master
+2016/10/18 14:56:47 ERROR: No candidates found
+2016/10/18 14:56:55 INFO : New Master is 127.0.0.1:5154 
+2016/10/18 14:56:55 INFO : same server URL after switchover
+2016/10/18 14:56:55 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/18 14:56:55 INFO : Master is 127.0.0.1:5154
+2016/10/18 14:56:56 INFO : Starting master switch
+2016/10/18 14:56:56 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:56:56 INFO : Checking long running updates on master
+2016/10/18 14:56:57 INFO : Electing a new master
+2016/10/18 14:56:57 ERROR: No candidates found
+2016/10/18 14:57:06 INFO : New Master is 127.0.0.1:5154 
+2016/10/18 14:57:06 INFO : Server  127.0.0.1:5112 is ON
+2016/10/18 14:57:06 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/18 14:57:13 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:57:14 INFO : Starting master switch
+2016/10/18 14:57:14 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:57:14 INFO : Checking long running updates on master
+2016/10/18 14:57:15 INFO : Electing a new master
+2016/10/18 14:57:15 ERROR: No candidates found
+2016/10/18 14:57:24 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:57:24 INFO : same server URL after switchover
+2016/10/18 14:57:24 TESTING : Starting Test testSwitchOver2TimesReplicationOkSemisync
+2016/10/18 14:57:39 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:57:40 INFO : Starting master switch
+2016/10/18 14:57:40 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:57:40 INFO : Checking long running updates on master
+2016/10/18 14:57:41 INFO : Electing a new master
+2016/10/18 14:57:41 ERROR: No candidates found
+2016/10/18 14:57:49 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:57:49 INFO : same server URL after switchover
+2016/10/18 14:57:49 TESTING : Starting Test testSwitchOverBackPreferedMasterNoRplCheckSemiSync
+2016/10/18 14:57:49 TESTING : Set prefMaster prefMaster
+2016/10/18 14:57:51 INFO : New Master  127.0.0.1:5154 Failover counter 0
+2016/10/18 14:57:52 INFO : Starting master switch
+2016/10/18 14:57:52 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:57:52 INFO : Checking long running updates on master
+2016/10/18 14:57:53 INFO : Electing a new master
+2016/10/18 14:57:53 ERROR: No candidates found
+2016/10/18 14:58:01 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:58:01 INFO : New Master  127.0.0.1:5154 Failover counter 1
+2016/10/18 14:58:02 INFO : Starting master switch
+2016/10/18 14:58:02 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:58:02 INFO : Checking long running updates on master
+2016/10/18 14:58:03 INFO : Electing a new master
+2016/10/18 14:58:03 ERROR: No candidates found
+2016/10/18 14:58:11 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:58:11 TESTING : Starting Test testSwitchOverAllSlavesStopRplCheckNoSemiSync
+2016/10/18 14:58:16 INFO :  Master is 127.0.0.1:5154
+2016/10/18 14:58:18 INFO : Starting master switch
+2016/10/18 14:58:18 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:58:18 INFO : Checking long running updates on master
+2016/10/18 14:58:19 INFO : Electing a new master
+2016/10/18 14:58:19 WARN : Slave 127.0.0.1:5112 not in sync. Skipping
+2016/10/18 14:58:19 ERROR: No candidates found
+2016/10/18 14:58:27 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:58:30 TESTING : Starting Test testSwitchOverAllSlavesStopNoRplCheck
+2016/10/18 14:58:32 INFO : Master is 127.0.0.1:5154
+2016/10/18 14:58:34 INFO : Starting master switch
+2016/10/18 14:58:34 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:58:34 INFO : Checking long running updates on master
+2016/10/18 14:58:35 INFO : Electing a new master
+2016/10/18 14:58:35 ERROR: No candidates found
+2016/10/18 14:58:43 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:58:46 INFO : Saved Prefered master 127.0.0.1:5154 <>  from saved 127.0.0.1:5154  
+2016/10/18 14:58:46 TESTING : Starting Test testSwitchOverAllSlavesDelayRplCheckNoSemySync
+2016/10/18 14:59:01 INFO :  Master is 127.0.0.1:5154
+2016/10/18 14:59:02 INFO : Starting master switch
+2016/10/18 14:59:02 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:59:02 INFO : Checking long running updates on master
+2016/10/18 14:59:03 INFO : Electing a new master
+2016/10/18 14:59:03 WARN : Slave 127.0.0.1:5112 not in sync. Skipping
+2016/10/18 14:59:03 ERROR: No candidates found
+2016/10/18 14:59:11 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:59:14 TESTING : Starting Test testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/18 14:59:29 INFO :  Master is 127.0.0.1:5154
+2016/10/18 14:59:30 INFO : Starting master switch
+2016/10/18 14:59:30 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/18 14:59:30 INFO : Checking long running updates on master
+2016/10/18 14:59:31 INFO : Electing a new master
+2016/10/18 14:59:31 ERROR: No candidates found
+2016/10/18 14:59:39 INFO : New Master  127.0.0.1:5154 
+2016/10/18 14:59:41 INFO : Saved Prefered master 127.0.0.1:5154 <>  from saved 127.0.0.1:5154  
+2016/10/18 14:59:41 TESTING : Starting Test testSlaReplAllSlavesStopNoSemySync
+2016/10/18 14:59:54 DEBUG: In Failover skip topology detection
+2016/10/18 14:59:54 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 14:59:54 DEBUG: In Failover skip checking failed master
+2016/10/18 15:00:10 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:00:18 TESTING : Starting Test testFailOverNoRplChecksNoSemiSync
+2016/10/18 15:00:18 INFO :  Master is 127.0.0.1:5154
+2016/10/18 15:00:18 INFO : Starting master switch
+2016/10/18 15:00:18 INFO : Electing a new master
+2016/10/18 15:00:18 DEBUG: In Failover skip topology detection
+2016/10/18 15:00:18 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:00:18 DEBUG: In Failover skip checking failed master
+2016/10/18 15:00:18 DEBUG: In Failover skip topology detection
+2016/10/18 15:00:18 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:00:18 DEBUG: In Failover skip checking failed master
+2016/10/18 15:00:18 ERROR: No candidates found
+2016/10/18 15:00:26 INFO : New Master  127.0.0.1:5154 
+2016/10/18 15:00:26 INFO : Old master 127.0.0.1:5154 ==  Next master 127.0.0.1:5154  
+2016/10/18 15:00:29 DEBUG: In Failover skip topology detection
+2016/10/18 15:00:29 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:00:29 DEBUG: In Failover skip checking failed master
+2016/10/18 15:00:35 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:00:40 TESTING : Starting Test testFailOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/18 15:00:40 BENCH: Stopping replication
+2016/10/18 15:00:44 BENCH : Write Concurrent Insert
+2016/10/18 15:00:54 BENCH : Inject Long Trx
+2016/10/18 15:01:04 BENCH : Sarting replication
+2016/10/18 15:01:06 INFO :  Master is 127.0.0.1:5154
+2016/10/18 15:01:06 INFO : Starting master switch
+2016/10/18 15:01:06 INFO : Electing a new master
+2016/10/18 15:01:06 ERROR: No candidates found
+2016/10/18 15:01:14 INFO : New Master  127.0.0.1:5154 
+2016/10/18 15:01:16 INFO : Old master 127.0.0.1:5154 ==  New master 127.0.0.1:5154  
+2016/10/18 15:01:17 DEBUG: In Failover skip topology detection
+2016/10/18 15:01:17 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:01:17 DEBUG: In Failover skip checking failed master
+2016/10/18 15:01:19 DEBUG: In Failover skip topology detection
+2016/10/18 15:01:19 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:01:19 DEBUG: In Failover skip checking failed master
+2016/10/18 15:01:24 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:01:32 TESTING : Starting Test testFailOverAllSlavesDelayRplChecksNoSemiSync
+2016/10/18 15:01:58 INFO :  Master is 127.0.0.1:5154
+2016/10/18 15:01:58 INFO : Starting master switch
+2016/10/18 15:01:58 INFO : Electing a new master
+2016/10/18 15:01:58 DEBUG: In Failover skip topology detection
+2016/10/18 15:01:58 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:01:58 DEBUG: In Failover skip checking failed master
+2016/10/18 15:01:58 ERROR: No candidates found
+2016/10/18 15:02:06 INFO : New Master  127.0.0.1:5154 
+2016/10/18 15:02:11 DEBUG: In Failover skip topology detection
+2016/10/18 15:02:11 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:02:11 DEBUG: In Failover skip checking failed master
+2016/10/18 15:02:17 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:02:27 DEBUG: In Failover skip topology detection
+2016/10/18 15:02:27 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:02:27 DEBUG: In Failover skip checking failed master
+2016/10/18 15:02:32 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:02:40 TESTING : Starting Test testNumberFailOverLimitReach
+2016/10/18 15:02:40 INFO :  Master is 127.0.0.1:5154
+2016/10/18 15:02:40 INFO : Starting master switch
+2016/10/18 15:02:40 INFO : Electing a new master
+2016/10/18 15:02:41 ERROR: No candidates found
+2016/10/18 15:02:42 INFO : INF00002 Failover limit reached. Switching to manual mode
+2016/10/18 15:02:44 INFO : INF00002 HAS BEEN FIXED, Failover limit reached. Switching to manual mode
+2016/10/18 15:02:49 INFO : New Master  127.0.0.1:5154 
+2016/10/18 15:02:51 DEBUG: In Failover skip topology detection
+2016/10/18 15:02:51 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/18 15:02:51 DEBUG: In Failover skip checking failed master
+2016/10/18 15:02:57 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/18 15:03:05 TESTING : Starting Test testFailOverTimeNotReach
+2016/10/18 15:03:05 INFO :  Master is 127.0.0.1:5154
+2016/10/18 15:03:05 WARN : Failover time limit enforced. Next failover available in 20 seconds
+2016/10/18 15:03:13 INFO : New Master  127.0.0.1:5154 
+2016/10/18 15:03:13 TESTS : Result  1 Failover <rplchecks=false> <Semisync=false>  -> FAILED
+2016/10/18 15:03:13 TESTS : Result  1 Failover All Slave Delay <rplchecks=false> <Semisync=false>  -> FAILED
+2016/10/18 15:03:13 TESTS : Result  1 Failover All Slave Delay <rplchecks=true> <Semisync=false>  -> PASS
+2016/10/18 15:03:13 TESTS : Result  1 Failover Before Time Limit <rplchecks=false> <Semisync=false>  -> PASS
+2016/10/18 15:03:13 TESTS : Result  1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false>  -> PASS
+2016/10/18 15:03:13 TESTS : Result  1 Switchover <readonly=false> <rplchecks=false> -> FAILED
+2016/10/18 15:03:13 TESTS : Result  1 Switchover <readonly=true> <rplchecks=false> -> PASS
+2016/10/18 15:03:13 TESTS : Result  1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true> -> PASS
+2016/10/18 15:03:13 TESTS : Result  2 Switchover Back Prefered Master <semisync=true> <rplchecks=false> -> PASS
+2016/10/18 15:03:13 TESTS : Result  2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false> -> FAILED
+2016/10/18 15:03:13 TESTS : Result  2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false> -> FAILED
+2016/10/18 15:03:13 TESTS : Result  Can Switchover All Slaves Delay <semisync=false> <rplchecks=false> -> FAILED
+2016/10/18 15:03:13 TESTS : Result  Can Switchover All Slaves Stop <semisync=false> <rplchecks=false> -> FAILED
+2016/10/18 15:03:13 TESTS : Result  Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true> -> PASS
+2016/10/18 15:03:13 TESTS : Result  Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true> -> PASS
+2016/10/18 15:03:13 TESTS : Result  SLA Decrease Can't Switchover All Slaves Stop <Semisync=false> -> PASS
+2016/10/18 15:03:13 ERROR: Some tests failed
+2016/10/19 19:12:07 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/19 19:12:07 INFO : Monitor started in manual mode
+2016/10/19 19:12:10 ERROR: ERR00019 Multiple Active Replication Monitor Switching Passive Mode
+2016/10/19 19:12:10 ERROR: ERR00020 Monitoring in Passive Mode Can't Failover
+2016/10/19 19:12:12 ERROR: ERR00019 HAS BEEN FIXED, Multiple Active Replication Monitor Switching Passive Mode
+2016/10/19 19:14:30 DEBUG: In Failover skip topology detection
+2016/10/19 19:14:30 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:14:30 DEBUG: In Failover skip checking failed master
+2016/10/19 19:14:32 DEBUG: In Failover skip topology detection
+2016/10/19 19:14:32 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:14:32 DEBUG: In Failover skip checking failed master
+2016/10/19 19:14:33 ERROR: ERR00010 No slaves were detected
+2016/10/19 19:14:44 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:14:45 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/19 19:14:52 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/19 19:14:52 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:14:52 INFO : Starting master switch
+2016/10/19 19:14:52 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:15:02 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:15:10 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:15:12 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/19 19:15:12 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:15:14 INFO : Starting master switch
+2016/10/19 19:15:14 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:15:42 DEBUG: In Failover skip topology detection
+2016/10/19 19:15:43 DEBUG: In Failover skip topology detection
+2016/10/19 19:15:46 ERROR: ERR00010 No slaves were detected
+2016/10/19 19:15:48 ERROR: ERR00020 HAS BEEN FIXED, Monitoring in Passive Mode Can't Failover
+2016/10/19 19:16:14 DEBUG: In Failover skip topology detection
+2016/10/19 19:16:14 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/19 19:16:17 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:17:17 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:17:17 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:17:18 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/19 19:17:25 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/19 19:17:25 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/19 19:17:37 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:17:37 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:17:38 INFO : Starting master switch
+2016/10/19 19:17:38 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:17:38 INFO : Checking long running updates on master
+2016/10/19 19:17:38 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:17:40 INFO : Starting master switch
+2016/10/19 19:17:40 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:17:40 INFO : Checking long running updates on master
+2016/10/19 19:17:40 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:17:47 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:17:49 TESTING : Starting Test testSwitchOverLongQueryNoRplCheckNoSemiSync
+2016/10/19 19:17:49 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:17:49 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:17:50 INFO : Starting master switch
+2016/10/19 19:17:50 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:17:51 TESTING : Starting Test testSwitchOverLongQueryNoRplCheckNoSemiSync
+2016/10/19 19:17:51 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:18:00 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:18:00 INFO : Starting master switch
+2016/10/19 19:18:00 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:18:08 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:18:10 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/19 19:18:10 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:18:10 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:18:10 INFO : Starting master switch
+2016/10/19 19:18:10 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:18:18 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:18:20 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/19 19:18:20 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:18:20 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:18:20 INFO : Starting master switch
+2016/10/19 19:18:20 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:18:28 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:18:28 INFO : same server URL after switchover
+2016/10/19 19:18:28 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/19 19:18:28 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:18:30 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:18:31 INFO : Starting master switch
+2016/10/19 19:18:31 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:18:38 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:18:38 INFO : same server URL after switchover
+2016/10/19 19:18:38 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/19 19:18:38 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:18:41 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:18:42 INFO : Starting master switch
+2016/10/19 19:18:42 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:18:49 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:18:49 INFO : Server  127.0.0.1:5112 is ON
+2016/10/19 19:18:49 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/19 19:18:52 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:19:00 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:19:00 INFO : Server  127.0.0.1:5112 is ON
+2016/10/19 19:19:00 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/19 19:19:02 BENCH : Error on driver 'mysql': Error 1040: Too many connections 
+2016/10/19 19:19:02 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:19:04 INFO : Starting master switch
+2016/10/19 19:19:04 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:19:14 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:19:22 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:19:22 INFO : same server URL after switchover
+2016/10/19 19:19:22 TESTING : Starting Test testSwitchOver2TimesReplicationOkSemisync
+2016/10/19 19:19:24 BENCH : Error on driver 'mysql': Error 1040: Too many connections 
+2016/10/19 19:19:24 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:19:26 INFO : Starting master switch
+2016/10/19 19:19:26 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:19:36 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:19:36 WARN : Master Failure detected! Retry 1/5
+2016/10/19 19:19:36 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: Error 1040: Too many connections
+2016/10/19 19:19:37 WARN : Master Failure detected! Retry 2/5
+2016/10/19 19:19:39 WARN : Master Failure detected! Retry 3/5
+2016/10/19 19:19:41 WARN : Master Failure detected! Retry 4/5
+2016/10/19 19:19:43 WARN : Master Failure detected! Retry 5/5
+2016/10/19 19:19:43 WARN : Declaring master as failed
+2016/10/19 19:19:44 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:19:44 INFO : same server URL after switchover
+2016/10/19 19:19:44 TESTING : Starting Test testSwitchOverBackPreferedMasterNoRplCheckSemiSync
+2016/10/19 19:19:44 TESTING : Error 1040: Too many connections
+2016/10/19 19:19:44 TESTING : Error 1040: Too many connections
+2016/10/19 19:19:44 TESTING : Set prefMaster prefMaster
+2016/10/19 19:19:46 INFO : New Master  127.0.0.1:5154 Failover counter 0
+2016/10/19 19:19:48 INFO : Starting master switch
+2016/10/19 19:19:48 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:19:48 WARN : Could not flush tables on master
+%!(EXTRA *mysql.MySQLError=Error 1040: Too many connections)2016/10/19 19:19:48 INFO : Checking long running updates on master
+2016/10/19 19:19:48 INFO : Electing a new master
+2016/10/19 19:19:48 ERROR: No candidates found
+2016/10/19 19:19:57 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:19:57 INFO : New Master  127.0.0.1:5154 Failover counter 1
+2016/10/19 19:19:58 INFO : Starting master switch
+2016/10/19 19:19:58 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:19:58 WARN : Could not flush tables on master
+%!(EXTRA *mysql.MySQLError=Error 1040: Too many connections)2016/10/19 19:19:58 INFO : Checking long running updates on master
+2016/10/19 19:19:58 INFO : Electing a new master
+2016/10/19 19:19:58 ERROR: No candidates found
+2016/10/19 19:20:07 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:20:07 TESTING : Starting Test testSwitchOverAllSlavesStopRplCheckNoSemiSync
+2016/10/19 19:20:07 TESTING : Error 1040: Too many connections
+2016/10/19 19:20:07 TESTING : Error 1040: Too many connections
+2016/10/19 19:20:12 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5154: Error 1040: Too many connections
+2016/10/19 19:20:12 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:20:14 INFO : Starting master switch
+2016/10/19 19:20:14 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:20:24 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:20:32 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:20:34 TESTING : Starting Test testSwitchOverAllSlavesStopNoRplCheck
+2016/10/19 19:20:36 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:20:36 INFO : Starting master switch
+2016/10/19 19:20:36 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:20:46 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:20:54 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:20:57 INFO : Saved Prefered master 127.0.0.1:5154 <>  from saved 127.0.0.1:5154  
+2016/10/19 19:20:57 TESTING : Starting Test testSwitchOverAllSlavesDelayRplCheckNoSemySync
+2016/10/19 19:21:12 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:21:14 INFO : Starting master switch
+2016/10/19 19:21:14 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:21:24 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:21:32 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:21:35 TESTING : Starting Test testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/19 19:21:50 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:21:52 INFO : Starting master switch
+2016/10/19 19:21:52 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:22:02 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:22:10 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:22:13 INFO : Saved Prefered master 127.0.0.1:5154 <>  from saved 127.0.0.1:5154  
+2016/10/19 19:22:13 TESTING : Starting Test testSlaReplAllSlavesStopNoSemySync
+2016/10/19 19:22:26 DEBUG: In Failover skip topology detection
+2016/10/19 19:22:26 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:22:26 DEBUG: In Failover skip checking failed master
+2016/10/19 19:22:41 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:22:49 TESTING : Starting Test testFailOverNoRplChecksNoSemiSync
+2016/10/19 19:22:49 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:22:49 INFO : Starting master switch
+2016/10/19 19:22:49 INFO : Electing a new master
+2016/10/19 19:22:49 ERROR: No candidates found
+2016/10/19 19:22:57 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:22:57 INFO : Old master 127.0.0.1:5154 ==  Next master 127.0.0.1:5154  
+2016/10/19 19:22:58 DEBUG: In Failover skip topology detection
+2016/10/19 19:22:58 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:22:58 DEBUG: In Failover skip checking failed master
+2016/10/19 19:23:00 DEBUG: In Failover skip topology detection
+2016/10/19 19:23:00 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:23:00 DEBUG: In Failover skip checking failed master
+2016/10/19 19:23:05 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:23:10 TESTING : Starting Test testFailOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/19 19:23:10 BENCH: Stopping replication
+2016/10/19 19:23:58 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/19 19:23:58 INFO : Monitor started in manual mode
+2016/10/19 19:24:00 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:26:24 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:26:26 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/19 19:26:26 INFO : Monitor started in manual mode
+2016/10/19 19:26:28 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:26:56 DEBUG: In Failover skip checking failed master
+2016/10/19 19:26:58 DEBUG: In Failover skip topology detection
+2016/10/19 19:26:58 DEBUG: In Failover skip checking failed master
+2016/10/19 19:27:03 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:27:11 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/19 19:27:23 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:29:15 INFO : Starting master switch
+2016/10/19 19:29:15 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:29:15 INFO : Checking long running updates on master
+2016/10/19 19:29:16 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:29:24 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:29:26 TESTING : Starting Test testSwitchOverLongQueryNoRplCheckNoSemiSync
+2016/10/19 19:29:26 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:31:17 INFO : Starting master switch
+2016/10/19 19:31:17 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:31:27 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:31:35 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:31:55 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/19 19:31:55 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:31:56 INFO : Starting master switch
+2016/10/19 19:31:56 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:31:56 INFO : Checking long running updates on master
+2016/10/19 19:31:56 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:32:05 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:32:05 INFO : same server URL after switchover
+2016/10/19 19:32:05 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/19 19:32:05 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:32:06 INFO : Starting master switch
+2016/10/19 19:32:06 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:32:06 INFO : Checking long running updates on master
+2016/10/19 19:32:07 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:32:15 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:32:15 INFO : Server  127.0.0.1:5112 is ON
+2016/10/19 19:32:15 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/19 19:43:28 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/19 19:43:28 INFO : Monitor started in manual mode
+2016/10/19 19:43:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:43:54 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:43:56 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/19 19:43:56 INFO : Monitor started in manual mode
+2016/10/19 19:43:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:44:04 DEBUG: In Failover skip topology detection
+2016/10/19 19:44:04 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:44:04 DEBUG: In Failover skip checking failed master
+2016/10/19 19:44:06 DEBUG: In Failover skip topology detection
+2016/10/19 19:44:06 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/19 19:44:06 DEBUG: In Failover skip checking failed master
+2016/10/19 19:44:12 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/19 19:44:20 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/19 19:44:32 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:44:32 INFO : Starting master switch
+2016/10/19 19:44:32 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:44:32 INFO : Checking long running updates on master
+2016/10/19 19:44:33 ERROR: Long updates running on master. Cannot switchover
+2016/10/19 19:44:41 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:44:43 TESTING : Starting Test testSwitchOverLongQueryNoRplCheckNoSemiSync
+2016/10/19 19:44:43 INFO :  Master is 127.0.0.1:5154
+2016/10/19 19:44:44 INFO : Starting master switch
+2016/10/19 19:44:44 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:44:54 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:45:02 INFO : New Master  127.0.0.1:5154 
+2016/10/19 19:45:22 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/19 19:45:22 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:45:24 INFO : Starting master switch
+2016/10/19 19:45:24 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:45:34 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:45:42 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:45:42 INFO : same server URL after switchover
+2016/10/19 19:45:42 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/19 19:45:42 INFO : Master is 127.0.0.1:5154
+2016/10/19 19:45:44 INFO : Starting master switch
+2016/10/19 19:45:44 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/19 19:45:54 ERROR: Long  running trx on master. Cannot switchover
+2016/10/19 19:46:02 INFO : New Master is 127.0.0.1:5154 
+2016/10/19 19:46:02 INFO : Server  127.0.0.1:5112 is ON
+2016/10/19 19:46:02 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/20 17:36:00 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:36:00 INFO : Monitor started in manual mode
+2016/10/20 17:36:03 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:39:07 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:39:07 INFO : Monitor started in manual mode
+2016/10/20 17:39:09 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:40:31 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:40:31 INFO : Monitor started in manual mode
+2016/10/20 17:40:33 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:41:04 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:41:04 INFO : Monitor started in manual mode
+2016/10/20 17:41:06 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:46:28 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:46:28 INFO : Monitor started in manual mode
+2016/10/20 17:46:31 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:46:54 INFO : Monitor started in manual mode
+2016/10/20 17:46:57 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:47:09 INFO : Quitting monitor
+2016/10/20 17:47:11 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:47:11 INFO : Monitor started in manual mode
+2016/10/20 17:47:14 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:47:25 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:47:25 INFO : Monitor started in manual mode
+2016/10/20 17:47:27 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/20 17:48:23 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/20 17:48:23 INFO : Monitor started in manual mode
+2016/10/20 17:48:25 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 08:33:28 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 08:33:28 INFO : Monitor started in manual mode
+2016/10/21 08:34:12 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:30:33 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:30:33 INFO : Monitor started in manual mode
+2016/10/21 15:30:35 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:31:33 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:31:33 INFO : Monitor started in manual mode
+2016/10/21 15:31:35 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:37:40 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:37:40 INFO : Monitor started in manual mode
+2016/10/21 15:37:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:42:21 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:42:21 INFO : Monitor started in manual mode
+2016/10/21 15:42:24 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:43:12 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:43:12 INFO : Monitor started in manual mode
+2016/10/21 15:43:14 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:43:49 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:43:49 INFO : Monitor started in manual mode
+2016/10/21 15:43:52 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:45:00 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:45:00 INFO : Monitor started in manual mode
+2016/10/21 15:45:02 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 15:58:49 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 15:58:49 INFO : Monitor started in manual mode
+2016/10/21 15:58:51 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:07:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:07:18 INFO : Monitor started in manual mode
+2016/10/21 16:07:20 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:16:10 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:16:10 INFO : Monitor started in manual mode
+2016/10/21 16:16:12 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:21:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:21:46 INFO : Monitor started in manual mode
+2016/10/21 16:21:48 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:23:45 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:23:45 INFO : Monitor started in manual mode
+2016/10/21 16:23:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:28:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:28:46 INFO : Monitor started in manual mode
+2016/10/21 16:28:48 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:29:16 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:29:16 INFO : Monitor started in manual mode
+2016/10/21 16:29:18 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:30:28 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:30:28 INFO : Monitor started in manual mode
+2016/10/21 16:30:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:32:41 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:32:41 INFO : Monitor started in manual mode
+2016/10/21 16:32:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:37:50 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:37:50 INFO : Monitor started in manual mode
+2016/10/21 16:37:52 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:38:58 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:38:58 INFO : Monitor started in manual mode
+2016/10/21 16:39:00 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 16:39:31 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 16:39:31 INFO : Monitor started in manual mode
+2016/10/21 16:39:33 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 18:13:25 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 18:13:25 INFO : Monitor started in manual mode
+2016/10/21 18:13:28 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 18:17:27 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 18:17:27 INFO : Monitor started in manual mode
+2016/10/21 18:17:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 18:26:45 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 18:26:45 INFO : Monitor started in manual mode
+2016/10/21 18:26:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 18:28:53 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 18:28:53 INFO : Monitor started in manual mode
+2016/10/21 18:28:56 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/21 19:24:47 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/21 19:24:47 INFO : Monitor started in manual mode
+2016/10/21 19:24:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/22 11:17:47 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/22 11:17:47 INFO : Monitor started in manual mode
+2016/10/22 11:17:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/22 12:06:33 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/22 12:06:33 INFO : Monitor started in manual mode
+2016/10/22 12:06:36 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 10:51:12 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 10:51:12 INFO : Monitor started in manual mode
+2016/10/24 10:51:16 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 14:34:55 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 14:34:55 INFO : Monitor started in manual mode
+2016/10/24 14:42:24 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 14:42:24 INFO : Monitor started in manual mode
+2016/10/24 14:45:12 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 14:45:12 INFO : Monitor started in manual mode
+2016/10/24 14:45:14 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 14:48:05 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 14:48:05 INFO : Monitor started in manual mode
+2016/10/24 14:48:07 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 15:48:58 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 15:48:58 INFO : Monitor started in manual mode
+2016/10/24 15:49:01 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:28:21 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:28:21 INFO : Monitor started in manual mode
+2016/10/24 16:28:23 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:32:38 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:32:38 INFO : Monitor started in manual mode
+2016/10/24 16:32:40 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:33:15 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:33:15 INFO : Monitor started in manual mode
+2016/10/24 16:33:17 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:34:00 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:34:00 INFO : Monitor started in manual mode
+2016/10/24 16:35:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:35:18 INFO : Monitor started in manual mode
+2016/10/24 16:40:30 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:40:30 INFO : Monitor started in manual mode
+2016/10/24 16:40:32 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:57:36 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:57:37 INFO : Monitor started in manual mode
+2016/10/24 16:57:39 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 16:58:53 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 16:58:53 INFO : Monitor started in manual mode
+2016/10/24 16:58:56 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:00:56 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:00:56 INFO : Monitor started in manual mode
+2016/10/24 17:00:58 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:35:57 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:35:57 INFO : Monitor started in manual mode
+2016/10/24 17:36:00 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:37:29 INFO : Starting master switch
+2016/10/24 17:37:29 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 17:37:29 INFO : Checking long running updates on master
+2016/10/24 17:37:29 INFO : Electing a new master
+2016/10/24 17:37:29 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 17:37:29 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 17:37:29 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 17:37:29 INFO : Waiting for candidate Master to synchronize
+2016/10/24 17:37:29 INFO : Stopping slave thread on new master
+2016/10/24 17:37:30 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 17:37:40 INFO : Switching old master as a slave
+2016/10/24 17:37:43 INFO : Switching other slaves to the new master
+2016/10/24 17:37:43 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 17:42:42 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:42:42 INFO : Monitor started in manual mode
+2016/10/24 17:42:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:43:35 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:43:35 INFO : Monitor started in manual mode
+2016/10/24 17:43:37 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:46:56 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:46:56 INFO : Monitor started in manual mode
+2016/10/24 17:46:58 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:49:52 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:49:52 INFO : Monitor started in manual mode
+2016/10/24 17:49:55 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 17:51:48 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 17:51:48 INFO : Monitor started in manual mode
+2016/10/24 17:51:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

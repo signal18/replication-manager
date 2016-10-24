@@ -29,28 +29,29 @@ const repmgrVersion string = "0.7"
 
 // Global variables
 var (
-	hostList       []string
-	servers        serverList
-	slaves         serverList
-	master         *ServerMonitor
-	exit           bool
-	dbUser         string
-	dbPass         string
-	rplUser        string
-	rplPass        string
-	failoverCtr    int
-	failoverTs     int64
-	tlog           termlog.TermLog
-	ignoreList     []string
-	logPtr         *os.File
-	exitMsg        string
-	termlength     int
-	sme            *state.StateMachine
-	swChan         = make(chan bool)
-	repmgrHostname string
-	test           bool
-	run_uuid       string
-	run_status     string
+	hostList             []string
+	servers              serverList
+	slaves               serverList
+	master               *ServerMonitor
+	exit                 bool
+	dbUser               string
+	dbPass               string
+	rplUser              string
+	rplPass              string
+	failoverCtr          int
+	failoverTs           int64
+	tlog                 termlog.TermLog
+	ignoreList           []string
+	logPtr               *os.File
+	exitMsg              string
+	termlength           int
+	sme                  *state.StateMachine
+	swChan               = make(chan bool)
+	repmgrHostname       string
+	test                 bool
+	run_uuid             string
+	run_status           string
+	runOnceAfterTopology bool
 )
 
 // Configuration variables - do not put global variables in that list
@@ -99,11 +100,16 @@ var (
 	mxsPort            string
 	mxsUser            string
 	mxsPass            string
+	haproxyOn          bool
+	haproxyWritePort   int
+	haproxyReadPort    int
+	haproxyBinaryPath  string
 )
 
 func init() {
 	run_uuid = uuid.NewV4().String()
 	run_status = "A"
+	runOnceAfterTopology = true
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
@@ -130,6 +136,10 @@ func init() {
 	monitorCmd.Flags().StringVar(&mxsPort, "maxscale-port", "6603", "MaxScale admin port")
 	monitorCmd.Flags().StringVar(&mxsUser, "maxscale-user", "admin", "MaxScale admin user")
 	monitorCmd.Flags().StringVar(&mxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
+	monitorCmd.Flags().BoolVar(&haproxyOn, "haproxy", false, "Wrapper running haproxy on same host")
+	monitorCmd.Flags().IntVar(&haproxyWritePort, "haproxy-write-port", 3306, "haproxy read-write port to leader")
+	monitorCmd.Flags().IntVar(&haproxyReadPort, "haproxy-read-port", 3307, "haproxy load balance read port to all nodes")
+	monitorCmd.Flags().StringVar(&haproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "MaxScale admin user")
 
 	viper.BindPFlags(monitorCmd.Flags())
 	maxfail = viper.GetInt("failcount")
@@ -147,6 +157,11 @@ func init() {
 	rplchecks = viper.GetBool("rplchecks")
 	failsync = viper.GetBool("failover-at-sync")
 	heartbeat = viper.GetBool("heartbeat-table")
+	haproxyOn = viper.GetBool("haproxy")
+	haproxyBinaryPath = viper.GetString("haproxy-binary-path")
+	haproxyWritePort = viper.GetInt("haproxy-write-port")
+	haproxyReadPort = viper.GetInt("haproxy-read-port")
+
 	var err error
 	repmgrHostname, err = os.Hostname()
 	if err != nil {
@@ -356,6 +371,16 @@ Interactive console and HTTP dashboards are available for control`,
 				}
 				display()
 				if sme.CanMonitor() {
+					/* run once */
+					if runOnceAfterTopology {
+						if master != nil {
+							if haproxyOn {
+								initHaproxy()
+							}
+							runOnceAfterTopology = false
+						}
+					}
+
 					if loglevel > 2 {
 						logprint("DEBUG: Monitoring server loop")
 						for k, v := range servers {

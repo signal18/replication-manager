@@ -20,8 +20,8 @@ prefmaster = "127.0.0.1:5012"
 # HTTP
 # ----
 
-http-server = true  
-http-bind-address = "0.0.0.0"   
+http-server = true
+http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
 
@@ -62,3 +62,11 @@ failover-time-limit = 10
 gtidcheck = true
 maxdelay = 30
 
+# HA PROXY WRAPPER MODE
+# ---------------------
+haproxy = false
+haproxy-binary-path = "/usr/sbin/haproxy"
+# Read write traffic
+haproxy-write-port=3306
+# Read only load balance least connection traffic
+haproxy-read-port=3307
