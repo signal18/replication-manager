@@ -11,9 +11,17 @@ package misc
 import "testing"
 
 func TestGetLocalIP(t *testing.T) {
-	ip := getLocalIP()
+	ip := GetLocalIP()
 	if ip == "" {
-		t.Fatal("getLocalIP() returned empty string, expected IP")
+		t.Fatal("Returned empty string, expected IP")
 	}
 	t.Log("got Local IP:", ip)
+}
+
+func TestSplitPair(t *testing.T) {
+	pwd := "root:1234#!:$abcd"
+	u, p := SplitPair(pwd)
+	if u != "root" || p != "1234#!:$abcd" {
+		t.Fatalf("Expected root and 1234#!:$abcd, got %s and %s instead", u, p)
+	}
 }

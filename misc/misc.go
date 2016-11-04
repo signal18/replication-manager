@@ -30,6 +30,9 @@ func SplitPair(s string) (string, string) {
 	if len(items) == 1 {
 		return items[0], ""
 	}
+	if len(items) > 2 {
+		return items[0], strings.Join(items[1:], ":")
+	}
 	return items[0], items[1]
 }
 
