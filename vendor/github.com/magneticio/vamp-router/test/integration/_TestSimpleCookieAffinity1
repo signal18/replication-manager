@@ -1,0 +1,70 @@
+{
+    "name": "Test Simple Cookie Affinity",
+    "useCookies" : true,
+    "cases": [
+        {
+            "url": "http://localhost:8000/session",
+            "verb": "GET",
+            "headers": [],
+            "expect": "{\"count\":0}"
+        },
+        {
+            "url": "http://localhost:8000/session",
+            "verb": "GET",
+            "headers": [],
+            "expect": "{\"count\":1}"
+        }        
+    ],
+    "containers": [
+        {
+            "outPort": 9012,
+            "inPort": 8080,
+            "name": "monarch_a",
+            "image": "magneticio/monarch",
+            "parameters": "--version=a"
+        },
+        {
+            "outPort": 9013,
+            "inPort": 8080,
+            "name": "monarch_b",
+            "image": "magneticio/monarch",
+            "parameters": "--version=b"
+        }
+    ],
+    "config": {
+        "frontends": [],
+        "backends": [],
+        "routes": [
+            {
+                "name": "route",
+                "port": 8000,
+                "protocol": "http",
+                "filters": [],
+                "services": [
+                    {
+                        "name": "service_a",
+                        "weight": 100,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9012
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_b",
+                        "weight": 0,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9013
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

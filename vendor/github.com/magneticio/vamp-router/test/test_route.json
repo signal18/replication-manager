@@ -1,0 +1,57 @@
+    {
+      "name": "test_route_2",
+      "port": 9026,
+      "protocol": "http",
+      "filters": [
+        {
+          "name": "uses_internet_explorer",
+          "condition": "hdr_sub(user-agent) MSIE",
+          "destination": "service_b"
+        }
+      ],
+      "httpQuota": {
+        "sampleWindow": "1s",
+        "rate": 10000,
+        "expiryTime": "10s"
+      },
+      "tcpQuota": {
+        "sampleWindow": "3s",
+        "rate": 10000,
+        "expiryTime": "10s"
+      },
+      "services": [
+        {
+          "name": "service_a",
+          "weight": 21,
+          "servers": [
+            {
+              "name": "paas.55f73f0d-6087-4964-a70e-b1ca1d5b24cd",
+              "host": "192.168.2.2",
+              "port": 8081
+            }
+          ]
+        },
+        {
+          "name": "service_b",
+          "weight": 32,
+          "servers": [
+            {
+              "name": "paas.fb76ea52-098f-4e2a-abbe-0238c3d48480",
+              "host": "192.168.2.2",
+              "port": 8082
+            }
+          ]
+        },
+        {
+          "name": "service_to_be_updated",
+          "weight": 32,
+          "servers": [
+            {
+              "name": "server_to_be_updated",
+              "host": "192.168.2.2",
+              "port": 8082
+            }
+          ]
+        }
+      ]
+    }

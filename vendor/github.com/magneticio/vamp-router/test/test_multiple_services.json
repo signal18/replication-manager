@@ -1,0 +1,24 @@
+[
+  {
+    "name": "service_a",
+    "weight": 34,
+    "servers": [
+      {
+        "name": "paas.55f73f0d-6087-4964-a70e-iamauuid12345",
+        "host": "192.168.2.1",
+        "port": 9001
+      }
+    ]
+  },
+    {
+    "name": "service_b",
+    "weight": 66,
+    "servers": [
+      {
+        "name": "paas.55f73f0d-6087-4964-a70e-iamauuid6789",
+        "host": "192.168.2.",
+        "port": 9002
+      }
+    ]
+  }
+]

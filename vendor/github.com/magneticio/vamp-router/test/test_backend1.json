@@ -1,0 +1,14 @@
+{
+    "name" : "addable_backend",
+    "mode" : "http",
+    "servers" : [
+        {
+            "name" : "addable",
+            "unixSock" : "/tmp/vamp_test_be_5_a.sock",
+            "weight" : 100
+        }
+    ],
+    "proxyMode" : true,
+    "options" : {
+    }
+}

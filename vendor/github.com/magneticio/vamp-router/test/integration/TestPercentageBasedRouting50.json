@@ -1,0 +1,82 @@
+{
+    "name": "Test Percentage Based Routing 50",
+    "cases": [
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "a"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "b"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "a"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "b"
+        }                                                     
+    ],
+    "containers": [
+        {
+            "outPort": 9012,
+            "inPort": 8080,
+            "name": "monarch_a",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=a"
+        },
+        {
+            "outPort": 9013,
+            "inPort": 8080,
+            "name": "monarch_b",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=b"
+        }
+    ],
+    "config": {
+        "frontends": [],
+        "backends": [],
+        "routes": [
+            {
+                "name": "route_50",
+                "port": 8000,
+                "protocol": "http",
+                "filters": [
+                ],
+                "services": [
+                    {
+                        "name": "service_a",
+                        "weight": 50,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9012
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_b",
+                        "weight": 50,
+                        "servers": [
+                            {
+                                "name": "server_2",
+                                "host": "192.168.59.103",
+                                "port": 9013
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

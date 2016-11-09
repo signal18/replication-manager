@@ -1,0 +1,12 @@
+[
+    {
+        "name" : "thisnameisillegal!",
+        "condition" : "hdr_sub(user-agent) MSIE",
+        "destination" : "test"
+    },
+        {
+        "name" : "sd",
+        "condition" : "hdr_sub(user-agent) MSIE",
+        "destination" : "test"
+    }
+  ]
