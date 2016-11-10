@@ -15,15 +15,20 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/tanji/replication-manager/config"
 )
 
+const repmgrVersion string = "0.7"
+
+var conf config.Config
+
 var (
-	loglevel int
-	Version  string
-	Build    string
+	Version string
+	Build   string
 )
 
 func init() {
+	viper.SetEnvPrefix("MRM")
 	viper.SetConfigType("toml")
 	viper.SetConfigName("config")
 	viper.AddConfigPath("/etc/replication-manager/")
@@ -32,24 +37,25 @@ func init() {
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVar(&user, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
-	rootCmd.PersistentFlags().StringVar(&hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
-	rootCmd.PersistentFlags().StringVar(&rpluser, "rpluser", "", "Replication user in the [user]:[password] format")
-	rootCmd.Flags().StringVar(&keyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
-	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Print detailed execution info")
-	rootCmd.PersistentFlags().IntVar(&loglevel, "log-level", 0, "Log verbosity level")
-	viper.BindPFlags(rootCmd.PersistentFlags())
-	user = viper.GetString("user")
-	hosts = viper.GetString("hosts")
-	rpluser = viper.GetString("rpluser")
-	keyPath = viper.GetString("keypath")
-	loglevel = viper.GetInt("log-level")
-	if verbose == true && loglevel == 0 {
-		loglevel = 1
+	if err := viper.Unmarshal(&conf); err != nil {
+		log.Fatalln("ERROR: Could not unmarshal config file:", err)
 	}
-	if verbose == false && loglevel > 0 {
-		verbose = true
+	viper.UnmarshalKey("user", &conf.OptUser)
+	viper.UnmarshalKey("hosts", &conf.OptHosts)
+	log.Printf("%v", conf)
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.PersistentFlags().StringVar(&conf.OptUser, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
+	rootCmd.PersistentFlags().StringVar(&conf.OptHosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	rootCmd.PersistentFlags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
+	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
+	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
+	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
+	viper.BindPFlags(rootCmd.PersistentFlags())
+	if conf.Verbose == true && conf.LogLevel == 0 {
+		conf.LogLevel = 1
+	}
+	if conf.Verbose == false && conf.LogLevel > 0 {
+		conf.Verbose = true
 	}
 }
 

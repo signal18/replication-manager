@@ -41,7 +41,7 @@ td {
 				<th>Last Failover Time</th>
 			</tr>
 			<tr>
-				<td><span ng-if="settings.run_status=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.run_status=='P'" class="label label-warning">PASSIVE</span></td>
+				<td><span ng-if="settings.runStatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runStatus=='P'" class="label label-warning">PASSIVE</span></td>
 				<td><span ng-if="settings.interactive=='true'" class="label label-primary">On-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">On-leave (auto)</span></td>
 				<td><span ng-if="settings.failsync=='true'" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" class="label label-warning">Off</span></td>
 				<td><span ng-if="settings.rplchecks=='true'" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" class="label label-warning">Off</span></td>

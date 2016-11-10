@@ -11,6 +11,7 @@ package main
 import (
 	"errors"
 	"fmt"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/dbhelper"
@@ -30,7 +31,7 @@ type topologyError struct {
 
 func init() {
 	rootCmd.AddCommand(topologyCmd)
-	topologyCmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
+	topologyCmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
 }
 
 func newServerList() {
@@ -41,18 +42,18 @@ func newServerList() {
 		if err != nil {
 			log.Fatalf("ERROR: Could not open connection to server %s : %s", servers[k].URL, err)
 		}
-		if verbose {
+		if conf.Verbose {
 			tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[k].URL))
 		}
-		if heartbeat {
+		if conf.Heartbeat {
 			err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 			if err != nil {
-				log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
+				log.Fatalf("ERROR: Can not set conf.Heartbeat table to  %s  ", url)
 			}
 		}
 	}
 	// Spider shard discover
-	if spider == true {
+	if conf.Spider == true {
 		SpiderShardsDiscovery()
 	}
 }
@@ -64,10 +65,10 @@ func SpiderShardsDiscovery() {
 		if err == nil {
 			if mon != "" {
 				tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-				extra_url, err := dbhelper.GetSpiderShardUrl(s.Conn)
+				extraUrl, err := dbhelper.GetSpiderShardUrl(s.Conn)
 				if err == nil {
-					if extra_url != "" {
-						for j, url := range strings.Split(extra_url, ",") {
+					if extraUrl != "" {
+						for j, url := range strings.Split(extraUrl, ",") {
 							var err error
 							srv, err := newServerMonitor(url)
 							srv.State = stateShard
@@ -75,7 +76,7 @@ func SpiderShardsDiscovery() {
 							if err != nil {
 								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", servers[j].URL, err)
 							}
-							if verbose {
+							if conf.Verbose {
 								tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", servers[j].URL))
 							}
 						}
@@ -90,18 +91,18 @@ func SpiderSetShardsRepl() {
 	for k, s := range servers {
 		url := s.URL
 
-		if heartbeat {
+		if conf.Heartbeat {
 			for _, s2 := range servers {
 				url2 := s2.URL
 				if url2 != url {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 					if err != nil {
-						log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
+						log.Fatalf("ERROR: Can not set conf.Heartbeat table to  %s  ", url)
 					}
 					err = dbhelper.SetMultiSourceRepl(servers[k].Conn, host, port, rplUser, rplPass, "")
 					if err != nil {
-						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
+						log.Fatalf("ERROR: Can not set conf.Heartbeat replication from %s to %s : %s", url, url2, err)
 					}
 				}
 			}
@@ -131,7 +132,7 @@ func pingServerList() {
 					// We can set the failed state at this point if we're in the initial loop
 					// Otherwise, let the monitor check function handle failures
 					if sv.State == "" {
-						if loglevel > 2 {
+						if conf.LogLevel > 2 {
 							logprint("DEBUG: State failed set by topology detection INF00001")
 						}
 						sv.State = stateFailed
@@ -141,23 +142,23 @@ func pingServerList() {
 			}
 		}(sv)
 		// If not yet dicovered we can initiate hearbeat table on each node
-		if heartbeat {
+		if conf.Heartbeat {
 			if sme.IsDiscovered() == false {
 				err := dbhelper.SetHeartbeatTable(sv.Conn)
 				if err != nil {
-					sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable heartbeat table can't create table", ErrFrom: "RUN"})
-					heartbeat = false
+					sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable conf.Heartbeat table can't create table", ErrFrom: "RUN"})
+					conf.Heartbeat = false
 				}
 			}
 
-			if run_status == "A" && dbhelper.CheckHeartbeat(sv.Conn, run_uuid, "A") != true {
+			if runStatus == "A" && dbhelper.CheckHeartbeat(sv.Conn, runUUID, "A") != true {
 				sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: "Multiple Active Replication Monitor Switching Passive Mode", ErrFrom: "RUN"})
-				run_status = "P"
+				runStatus = "P"
 			}
-			if run_status == "P" {
+			if runStatus == "P" {
 				sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: "Monitoring in Passive Mode Can't Failover", ErrFrom: "RUN"})
 			}
-			dbhelper.WriteHeartbeat(sv.Conn, run_uuid, run_status)
+			dbhelper.WriteHeartbeat(sv.Conn, runUUID, runStatus)
 		}
 	}
 
@@ -171,20 +172,20 @@ func topologyDiscover() error {
 		logprintf("DEBUG: In Failover skip topology detection")
 		return nil
 	}
-	if loglevel > 2 {
+	if conf.LogLevel > 2 {
 		logprintf("DEBUG: Entering topology detection")
 	}
 	slaves = nil
 	for k, sv := range servers {
 		err := sv.refresh()
 		if err != nil {
-			if loglevel > 2 {
+			if conf.LogLevel > 2 {
 				logprintf("DEBUG: Server %s could not be refreshed: %s", sv.URL, err)
 			}
 			continue
 		}
 		if sv.UsingGtid != "" {
-			if loglevel > 2 {
+			if conf.LogLevel > 2 {
 				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
 			}
 			sv.State = stateSlave
@@ -194,7 +195,7 @@ func topologyDiscover() error {
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='binlog dump'")
 			if err != nil {
 				sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting binlog dump count on server %s: %s", sv.URL, err), ErrFrom: "CONF"})
-				if loglevel > 2 {
+				if conf.LogLevel > 2 {
 					logprint("DEBUG: State failed set by topology detection ERR00014")
 				}
 				sv.State = stateFailed
@@ -203,7 +204,7 @@ func topologyDiscover() error {
 			if n == 0 {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
-				if loglevel > 2 {
+				if conf.LogLevel > 2 {
 					logprintf("DEBUG: Server %s has no slaves connected", sv.URL)
 				}
 			} else {
@@ -212,7 +213,7 @@ func topologyDiscover() error {
 			}
 		}
 		// Check replication manager user privileges on live servers
-		if loglevel > 2 {
+		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Privilege check on %s", sv.URL)
 		}
 		if sv.State != stateFailed {
@@ -263,18 +264,18 @@ func topologyDiscover() error {
 	}
 
 	// Check that all slave servers have the same master.
-	if multiMaster == false {
+	if conf.MultiMaster == false {
 		for _, sl := range slaves {
 
 			if sl.hasSiblings(slaves) == false {
 				// possibly buggy code
 				// sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
 				sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
-				// multiMaster = true
+				// conf.MultiMaster = true
 			}
 		}
 	}
-	if multiMaster == true {
+	if conf.MultiMaster == true {
 		srw := 0
 		for _, s := range servers {
 			if s.ReadOnly == "OFF" {
@@ -299,10 +300,10 @@ func topologyDiscover() error {
 				sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a prefered master.", ErrFrom: "TOPO"})
 			}
 		}
-	} else if readonly {
+	} else if conf.ReadOnly {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		for _, s := range slaves {
-			if s.ReadOnly == "OFF" && spider == false {
+			if s.ReadOnly == "OFF" && conf.Spider == false {
 				dbhelper.SetReadOnly(s.Conn, true)
 			}
 		}
@@ -316,21 +317,21 @@ func topologyDiscover() error {
 
 			sid := slaves[0].MasterServerID
 			for k, s := range servers {
-				if multiMaster == false && s.State == stateUnconn {
+				if conf.MultiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {
 						master = servers[k]
 						master.State = stateMaster
-						if loglevel > 2 {
+						if conf.LogLevel > 2 {
 							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
 				}
-				if multiMaster == true && servers[k].State != stateFailed {
+				if conf.MultiMaster == true && servers[k].State != stateFailed {
 					if s.ReadOnly == "OFF" {
 						master = servers[k]
 						master.State = stateMaster
-						if loglevel > 2 {
+						if conf.LogLevel > 2 {
 							logprintf("DEBUG: Server %s was autodetected as a master", s.URL)
 						}
 						break
@@ -347,7 +348,7 @@ func topologyDiscover() error {
 						if s.Host == smh || s.IP == smh {
 							master = servers[k]
 							master.PrevState = stateMaster
-							if loglevel > 2 {
+							if conf.LogLevel > 2 {
 								logprintf("DEBUG: Assuming failed server %s was a master", s.URL)
 							}
 							break
@@ -367,9 +368,9 @@ func topologyDiscover() error {
 		// End of autodetection code
 
 		// Replication checks
-		if multiMaster == false {
+		if conf.MultiMaster == false {
 			for _, sl := range slaves {
-				if loglevel > 2 {
+				if conf.LogLevel > 2 {
 					logprintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, master.Host)
 				}
 				if dbhelper.IsSlaveof(sl.Conn, sl.Host, master.IP) == false {
@@ -378,7 +379,7 @@ func topologyDiscover() error {
 				if sl.LogBin == "OFF" {
 					sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
 				}
-				if sl.Delay.Int64 <= maxDelay && sl.SQLThread == "Yes" {
+				if sl.Delay.Int64 <= conf.MaxDelay && sl.SQLThread == "Yes" {
 					master.RplMasterStatus = true
 				}
 			}
@@ -408,10 +409,10 @@ func printTopology() {
 
 func getPreferedMaster() *ServerMonitor {
 	for _, server := range servers {
-		if loglevel > 2 {
-			logprintf("DEBUG: Server %s was lookup if prefered master: %s", server.URL, prefMaster)
+		if conf.LogLevel > 2 {
+			logprintf("DEBUG: Server %s was lookup if prefered master: %s", server.URL, conf.PrefMaster)
 		}
-		if server.URL == prefMaster {
+		if server.URL == conf.PrefMaster {
 			return server
 		}
 	}

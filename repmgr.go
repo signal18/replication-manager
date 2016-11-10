@@ -25,8 +25,6 @@ import (
 	"github.com/tanji/replication-manager/termlog"
 )
 
-const repmgrVersion string = "0.7"
-
 // Global variables
 var (
 	hostList             []string
@@ -48,67 +46,14 @@ var (
 	sme                  *state.StateMachine
 	swChan               = make(chan bool)
 	repmgrHostname       string
-	test                 bool
-	run_uuid             string
-	run_status           string
+	runUUID              string
+	runStatus            string
 	runOnceAfterTopology bool
 )
 
-// Configuration variables - do not put global variables in that list
-var (
-	conf               string
-	version            bool
-	user               string
-	hosts              string
-	socket             string
-	rpluser            string
-	interactive        bool
-	verbose            bool
-	preScript          string
-	postScript         string
-	maxDelay           int64
-	gtidCheck          bool
-	prefMaster         string
-	ignoreSrv          string
-	waitKill           int64
-	waitTrx            int64
-	readonly           bool
-	maxfail            int
-	autorejoin         bool
-	logfile            string
-	timeout            int
-	faillimit          int
-	failtime           int64
-	checktype          string
-	masterConn         string
-	multiMaster        bool
-	spider             bool
-	bindaddr           string
-	httpport           string
-	httpserv           bool
-	httproot           string
-	daemon             bool
-	mailFrom           string
-	mailTo             string
-	mailSMTPAddr       string
-	masterConnectRetry int
-	rplchecks          bool
-	failsync           bool
-	heartbeat          bool
-	mxsOn              bool
-	mxsHost            string
-	mxsPort            string
-	mxsUser            string
-	mxsPass            string
-	haproxyOn          bool
-	haproxyWritePort   int
-	haproxyReadPort    int
-	haproxyBinaryPath  string
-)
-
 func init() {
-	run_uuid = uuid.NewV4().String()
-	run_status = "A"
+	runUUID = uuid.NewV4().String()
+	runStatus = "A"
 	runOnceAfterTopology = true
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
@@ -118,49 +63,30 @@ func init() {
 	initRepmgrFlags(switchoverCmd)
 	initRepmgrFlags(failoverCmd)
 	initRepmgrFlags(monitorCmd)
-	monitorCmd.Flags().IntVar(&maxfail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
-	monitorCmd.Flags().BoolVar(&autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
-	monitorCmd.Flags().StringVar(&checktype, "check-type", "tcp", "Type of server health check (tcp, agent)")
-	monitorCmd.Flags().BoolVar(&httpserv, "http-server", false, "Start the HTTP monitor")
-	monitorCmd.Flags().StringVar(&bindaddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
-	monitorCmd.Flags().StringVar(&httpport, "http-port", "10001", "HTTP monitor to listen on this port")
-	monitorCmd.Flags().StringVar(&httproot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
-	monitorCmd.Flags().StringVar(&mailFrom, "mail-from", "mrm@localhost", "Alert email sender")
-	monitorCmd.Flags().StringVar(&mailTo, "mail-to", "", "Alert email recipients, separated by commas")
-	monitorCmd.Flags().StringVar(&mailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
-	monitorCmd.Flags().BoolVar(&daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
-	monitorCmd.Flags().BoolVar(&interactive, "interactive", true, "Ask for user interaction when failures are detected")
-	monitorCmd.Flags().BoolVar(&rplchecks, "rplchecks", true, "Ignore replication checks for failover purposes")
-	monitorCmd.Flags().BoolVar(&mxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
-	monitorCmd.Flags().StringVar(&mxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
-	monitorCmd.Flags().StringVar(&mxsPort, "maxscale-port", "6603", "MaxScale admin port")
-	monitorCmd.Flags().StringVar(&mxsUser, "maxscale-user", "admin", "MaxScale admin user")
-	monitorCmd.Flags().StringVar(&mxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
-	monitorCmd.Flags().BoolVar(&haproxyOn, "haproxy", false, "Wrapper running haproxy on same host")
-	monitorCmd.Flags().IntVar(&haproxyWritePort, "haproxy-write-port", 3306, "haproxy read-write port to leader")
-	monitorCmd.Flags().IntVar(&haproxyReadPort, "haproxy-read-port", 3307, "haproxy load balance read port to all nodes")
-	monitorCmd.Flags().StringVar(&haproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "MaxScale admin user")
+	monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
+	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
+	monitorCmd.Flags().StringVar(&conf.CheckType, "check-type", "tcp", "Type of server health check (tcp, agent)")
+	monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", false, "Start the HTTP monitor")
+	monitorCmd.Flags().StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
+	monitorCmd.Flags().StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
+	monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
+	monitorCmd.Flags().StringVar(&conf.MailFrom, "mail-from", "mrm@localhost", "Alert email sender")
+	monitorCmd.Flags().StringVar(&conf.MailTo, "mail-to", "", "Alert email recipients, separated by commas")
+	monitorCmd.Flags().StringVar(&conf.MailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
+	monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
+	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
+	monitorCmd.Flags().BoolVar(&conf.RplChecks, "rplchecks", true, "Ignore replication checks for failover purposes")
+	monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
+	monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
+	monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
+	monitorCmd.Flags().StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
+	monitorCmd.Flags().StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
+	monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper running haproxy on same host")
+	monitorCmd.Flags().IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "haproxy read-write port to leader")
+	monitorCmd.Flags().IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "haproxy load balance read port to all nodes")
+	monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "MaxScale admin user")
 
 	viper.BindPFlags(monitorCmd.Flags())
-	maxfail = viper.GetInt("failcount")
-	autorejoin = viper.GetBool("autorejoin")
-	checktype = viper.GetString("check-type")
-	httpserv = viper.GetBool("http-server")
-	bindaddr = viper.GetString("http-bind-address")
-	httpport = viper.GetString("http-port")
-	httproot = viper.GetString("http-root")
-	mailTo = viper.GetString("mail-to")
-	mailFrom = viper.GetString("mail-from")
-	mailSMTPAddr = viper.GetString("mail-smtp-addr")
-	daemon = viper.GetBool("daemon")
-	interactive = viper.GetBool("interactive")
-	rplchecks = viper.GetBool("rplchecks")
-	failsync = viper.GetBool("failover-at-sync")
-	heartbeat = viper.GetBool("heartbeat-table")
-	haproxyOn = viper.GetBool("haproxy")
-	haproxyBinaryPath = viper.GetString("haproxy-binary-path")
-	haproxyWritePort = viper.GetInt("haproxy-write-port")
-	haproxyReadPort = viper.GetInt("haproxy-read-port")
 
 	var err error
 	repmgrHostname, err = os.Hostname()
@@ -170,49 +96,28 @@ func init() {
 }
 
 func initRepmgrFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&preScript, "pre-failover-script", "", "Path of pre-failover script")
-	cmd.Flags().StringVar(&postScript, "post-failover-script", "", "Path of post-failover script")
-	cmd.Flags().Int64Var(&maxDelay, "maxdelay", 0, "Maximum replication delay before initiating failover")
-	cmd.Flags().BoolVar(&gtidCheck, "gtidcheck", false, "Do not initiate failover unless slaves are fully in sync")
-	cmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
-	cmd.Flags().StringVar(&ignoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
-	cmd.Flags().Int64Var(&waitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
-	cmd.Flags().Int64Var(&waitTrx, "wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
-	cmd.Flags().BoolVar(&readonly, "readonly", true, "Set slaves as read-only after switchover")
-	cmd.Flags().StringVar(&logfile, "logfile", "", "Write MRM messages to a log file")
-	cmd.Flags().IntVar(&timeout, "connect-timeout", 5, "Database connection timeout in seconds")
-	cmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
-	cmd.Flags().BoolVar(&multiMaster, "multimaster", false, "Turn on multi-master detection")
-	cmd.Flags().BoolVar(&spider, "spider", false, "Turn on spider detection")
-	cmd.Flags().BoolVar(&test, "test", false, "Enable non regression tests ")
+	cmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
+	cmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
+	cmd.Flags().Int64Var(&conf.MaxDelay, "maxdelay", 0, "Maximum replication delay before initiating failover")
+	cmd.Flags().BoolVar(&conf.GtidCheck, "gtidcheck", false, "Do not initiate failover unless slaves are fully in sync")
+	cmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
+	cmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
+	cmd.Flags().Int64Var(&conf.WaitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
+	cmd.Flags().Int64Var(&conf.WaitTrx, "wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
+	cmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover")
+	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write MRM messages to a log file")
+	cmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
+	cmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
+	cmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
+	cmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
+	cmd.Flags().BoolVar(&conf.Test, "test", false, "Enable non regression tests ")
 
 	viper.BindPFlags(cmd.Flags())
-	cmd.Flags().IntVar(&faillimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
-	cmd.Flags().Int64Var(&failtime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
-	cmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
-	cmd.Flags().BoolVar(&failsync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
-	cmd.Flags().BoolVar(&heartbeat, "heartbeat-table", true, "hearbeat for active/passive or multi mrm setup")
-
-	preScript = viper.GetString("pre-failover-script")
-	postScript = viper.GetString("post-failover-script")
-	maxDelay = int64(viper.GetInt("maxdelay"))
-	gtidCheck = viper.GetBool("gtidcheck")
-	prefMaster = viper.GetString("prefmaster")
-	ignoreSrv = viper.GetString("ignore-servers")
-	waitKill = int64(viper.GetInt("wait-kill"))
-	waitTrx = int64(viper.GetInt("wait-trx"))
-	readonly = viper.GetBool("readonly")
-	logfile = viper.GetString("logfile")
-	timeout = viper.GetInt("connect-timeout")
-	masterConn = viper.GetString("master-connection")
-	multiMaster = viper.GetBool("multimaster")
-	spider = viper.GetBool("spider")
-	faillimit = viper.GetInt("failover-limit")
-	failtime = int64(viper.GetInt("failover-time-limit"))
-	masterConnectRetry = viper.GetInt("master-connect-retry")
-	failsync = viper.GetBool("failover-at-sync")
-	test = viper.GetBool("test")
-	heartbeat = viper.GetBool("heartbeat-table")
+	cmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 0, "Quit monitor after N failovers (0: unlimited)")
+	cmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
+	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
+	cmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", true, "hearbeat for active/passive or multi mrm setup")
 }
 
 var failoverCmd = &cobra.Command{
@@ -247,7 +152,7 @@ var failoverCmd = &cobra.Command{
 				for _, s := range servers {
 					if s.State == "" {
 						s.State = stateFailed
-						if loglevel > 2 {
+						if conf.LogLevel > 2 {
 							logprint("DEBUG: State failed set by state detection ERR00012")
 						}
 						master = s
@@ -260,11 +165,11 @@ var failoverCmd = &cobra.Command{
 		if master == nil {
 			log.Fatalln("ERROR: Could not find a failed server in the hosts list")
 		}
-		if faillimit > 0 && failoverCtr >= faillimit {
-			log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", faillimit)
+		if conf.FailLimit > 0 && failoverCtr >= conf.FailLimit {
+			log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", conf.FailLimit)
 		}
-		rem := (failoverTs + failtime) - time.Now().Unix()
-		if failtime > 0 && rem > 0 {
+		rem := (failoverTs + conf.FailTime) - time.Now().Unix()
+		if conf.FailTime > 0 && rem > 0 {
 			log.Fatalf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
 		}
 		if masterFailover(true) {
@@ -310,18 +215,18 @@ and demoting the old master to slave`,
 
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
-	Short: "Start the interactive replication monitor",
+	Short: "Start the conf.Interactive replication monitor",
 	Long: `Starts replication-manager in stateful monitor daemon mode.
 Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		repmgrFlagCheck()
 
-		if httpserv {
+		if conf.HttpServ {
 			go httpserver()
 		}
 
-		if !daemon {
+		if !conf.Daemon {
 			err := termbox.Init()
 			if err != nil {
 				log.Fatalln("Termbox initialization error", err)
@@ -332,7 +237,7 @@ Interactive console and HTTP dashboards are available for control`,
 		sme = new(state.StateMachine)
 		sme.Init()
 
-		if daemon {
+		if conf.Daemon {
 			termlength = 40
 			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
 		} else {
@@ -343,7 +248,7 @@ Interactive console and HTTP dashboards are available for control`,
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = termlog.NewTermLog(loglen)
-		if interactive {
+		if conf.Interactive {
 			logprint("INFO : Monitor started in manual mode")
 		} else {
 			logprint("INFO : Monitor started in automatic mode")
@@ -359,7 +264,7 @@ Interactive console and HTTP dashboards are available for control`,
 			select {
 			case <-ticker.C:
 				if sme.IsDiscovered() == false {
-					if loglevel > 2 {
+					if conf.LogLevel > 2 {
 						logprint("DEBUG: Discovering topology loop")
 					}
 					pingServerList()
@@ -374,14 +279,14 @@ Interactive console and HTTP dashboards are available for control`,
 					/* run once */
 					if runOnceAfterTopology {
 						if master != nil {
-							if haproxyOn {
+							if conf.HaproxyOn {
 								initHaproxy()
 							}
 							runOnceAfterTopology = false
 						}
 					}
 
-					if loglevel > 2 {
+					if conf.LogLevel > 2 {
 						logprint("DEBUG: Monitoring server loop")
 						for k, v := range servers {
 							logprintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
@@ -485,23 +390,23 @@ func checkfailed() {
 		logprintf("DEBUG: In Failover skip checking failed master")
 		return
 	}
-	//  logprintf("WARN : Constraint is blocking master state %s stateFailed %s interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
+	//  logprintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if master != nil {
-		if master.State == stateFailed && interactive == false && master.FailCount >= maxfail {
-			rem := (failoverTs + failtime) - time.Now().Unix()
-			if (failtime == 0) || (failtime > 0 && (rem <= 0 || failoverCtr == 0)) {
-				if failoverCtr == faillimit {
+		if master.State == stateFailed && conf.Interactive == false && master.FailCount >= conf.MaxFail {
+			rem := (failoverTs + conf.FailTime) - time.Now().Unix()
+			if (conf.FailTime == 0) || (conf.FailTime > 0 && (rem <= 0 || failoverCtr == 0)) {
+				if failoverCtr == conf.FailLimit {
 					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
-					interactive = true
+					conf.Interactive = true
 				}
 				masterFailover(true)
-			} else if failtime > 0 && rem%10 == 0 {
+			} else if conf.FailTime > 0 && rem%10 == 0 {
 				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
 			} else {
 				logprintf("WARN : Constraint is blocking for failover")
 			}
 
-		} else if master.State == stateFailed && master.FailCount < maxfail {
+		} else if master.State == stateFailed && master.FailCount < conf.MaxFail {
 			logprintf("WARN : Waiting more prove of master death")
 
 		}
@@ -524,30 +429,30 @@ func newTbChan() chan termbox.Event {
 // must lead to Fatal errors if initialized with wrong values.
 
 func repmgrFlagCheck() {
-	if logfile != "" {
+	if conf.LogFile != "" {
 		var err error
-		logPtr, err = os.OpenFile(logfile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		logPtr, err = os.OpenFile(conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
-			logfile = ""
+			conf.LogFile = ""
 		}
 	}
 	// if slaves option has been supplied, split into a slice.
-	if hosts != "" {
-		hostList = strings.Split(hosts, ",")
+	if conf.OptHosts != "" {
+		hostList = strings.Split(conf.OptHosts, ",")
 	} else {
 		log.Fatal("ERROR: No hosts list specified.")
 	}
 	// validate users
-	if user == "" {
+	if conf.OptUser == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = misc.SplitPair(user)
+	dbUser, dbPass = misc.SplitPair(conf.OptUser)
 
-	if rpluser == "" {
+	if conf.RplUser == "" {
 		log.Fatal("ERROR: No replication user/pair specified.")
 	}
-	rplUser, rplPass = misc.SplitPair(rpluser)
+	rplUser, rplPass = misc.SplitPair(conf.RplUser)
 
 	// If there's an existing encryption key, decrypt the passwords
 	k, err := readKey()
@@ -563,43 +468,43 @@ func repmgrFlagCheck() {
 		rplPass = p.PlainText
 	}
 
-	if ignoreSrv != "" {
-		ignoreList = strings.Split(ignoreSrv, ",")
+	if conf.IgnoreSrv != "" {
+		ignoreList = strings.Split(conf.IgnoreSrv, ",")
 	}
 
 	// Check if preferred master is included in Host List
-	pfa := strings.Split(prefMaster, ",")
+	pfa := strings.Split(conf.PrefMaster, ",")
 	if len(pfa) > 1 {
 		log.Fatal("ERROR: prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
 		for _, v := range hostList {
-			if v == prefMaster {
+			if v == conf.PrefMaster {
 				return true
 			}
 		}
 		return false
 	}
-	if ret() == false && prefMaster != "" {
+	if ret() == false && conf.PrefMaster != "" {
 		log.Fatal("ERROR: Preferred master is not included in the hosts option")
 	}
 }
 
 func toggleInteractive() {
-	if interactive == true {
-		interactive = false
+	if conf.Interactive == true {
+		conf.Interactive = false
 		logprintf("INFO : Failover monitor switched to automatic mode")
 	} else {
-		interactive = true
+		conf.Interactive = true
 		logprintf("INFO : Failover monitor switched to manual mode")
 	}
 }
 
 func getActiveStatus() {
 	for _, sv := range servers {
-		err := dbhelper.SetStatusActiveHeartbeat(sv.Conn, run_uuid, "A")
+		err := dbhelper.SetStatusActiveHeartbeat(sv.Conn, runUUID, "A")
 		if err == nil {
-			run_status = "A"
+			runStatus = "A"
 		}
 	}
 }

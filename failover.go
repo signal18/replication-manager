@@ -39,7 +39,7 @@ func masterFailover(fail bool) bool {
 			if err != nil {
 				logprintf("WARN : Could not flush tables on master", err)
 			}
-		case <-time.After(time.Second * time.Duration(waitTrx)):
+		case <-time.After(time.Second * time.Duration(conf.WaitTrx)):
 			logprint("ERROR: Long  running trx on master. Cannot switchover")
 			sme.RemoveFailoverState()
 			return false
@@ -74,14 +74,14 @@ func masterFailover(fail bool) bool {
 	}
 	master = servers[skey]
 	master.State = stateMaster
-	if multiMaster == false {
+	if conf.MultiMaster == false {
 		slaves[key].delete(&slaves)
 	}
 	// Call pre-failover script
-	if preScript != "" {
+	if conf.PreScript != "" {
 		logprintf("INFO : Calling pre-failover script")
 		var out []byte
-		out, err = exec.Command(preScript, oldMaster.Host, master.Host).CombinedOutput()
+		out, err = exec.Command(conf.PreScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
@@ -102,12 +102,12 @@ func masterFailover(fail bool) bool {
 	if fail == false {
 		logprint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
-		if verbose {
+		if conf.Verbose {
 			logprintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
 		}
 		dbhelper.MasterPosWait(master.Conn, oldMaster.BinlogPos.Sprint(), 30)
-		if verbose {
+		if conf.Verbose {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
 		}
@@ -118,7 +118,7 @@ func masterFailover(fail bool) bool {
 		}
 	}
 	// Phase 3: Prepare new master
-	if multiMaster == false {
+	if conf.MultiMaster == false {
 		logprint("INFO : Stopping slave thread on new master")
 		err = dbhelper.StopSlave(master.Conn)
 		if err != nil {
@@ -126,16 +126,16 @@ func masterFailover(fail bool) bool {
 		}
 	}
 	// Call post-failover script before unlocking the old master.
-	if postScript != "" {
+	if conf.PostScript != "" {
 		logprintf("INFO : Calling post-failover script")
 		var out []byte
-		out, err = exec.Command(postScript, oldMaster.Host, master.Host).CombinedOutput()
+		out, err = exec.Command(conf.PostScript, oldMaster.Host, master.Host).CombinedOutput()
 		if err != nil {
 			logprint("ERROR:", err)
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
-	if multiMaster == false {
+	if conf.MultiMaster == false {
 		logprint("INFO : Resetting slave on new master and set read/write mode on")
 		err = dbhelper.ResetSlave(master.Conn, true)
 		if err != nil {
@@ -146,7 +146,7 @@ func masterFailover(fail bool) bool {
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
-	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", master.IP, master.Port, rplUser, rplPass, masterConnectRetry)
+	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", master.IP, master.Port, rplUser, rplPass, conf.MasterConnectRetry)
 	if fail == false {
 		// Get latest GTID pos
 		oldMaster.refresh()
@@ -174,7 +174,7 @@ func masterFailover(fail bool) bool {
 		if err != nil {
 			logprint("WARN : Start slave failed on old master", err)
 		}
-		if readonly {
+		if conf.ReadOnly {
 			err = dbhelper.SetReadOnly(oldMaster.Conn, true)
 			if err != nil {
 				logprintf("ERROR: Could not set old master as read-only, %s", err)
@@ -188,7 +188,7 @@ func masterFailover(fail bool) bool {
 		_, err = oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
-		if multiMaster == false {
+		if conf.MultiMaster == false {
 			slaves = append(slaves, oldMaster)
 		}
 	}
@@ -202,7 +202,7 @@ func masterFailover(fail bool) bool {
 		if fail == false {
 			logprintf("INFO : Waiting for slave %s to sync", sl.URL)
 			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint(), 30)
-			if verbose {
+			if conf.Verbose {
 				sl.log()
 			}
 		}
@@ -225,7 +225,7 @@ func masterFailover(fail bool) bool {
 		if err != nil {
 			logprintf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
-		if readonly {
+		if conf.ReadOnly {
 			err = dbhelper.SetReadOnly(sl.Conn, true)
 			if err != nil {
 				logprintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
@@ -240,8 +240,8 @@ func masterFailover(fail bool) bool {
 	}
 
 	// Signal MaxScale that we have a new topology
-	if mxsOn {
-		m := maxscale.MaxScale{Host: mxsHost, Port: mxsPort, User: mxsUser, Pass: mxsPass}
+	if conf.MxsOn {
+		m := maxscale.MaxScale{Host: conf.MxsHost, Port: conf.MxsPort, User: conf.MxsUser, Pass: conf.MxsPass}
 		err = m.Connect()
 		if err != nil {
 			logprint("ERROR: Could not connect to MaxScale:", err)
@@ -252,7 +252,7 @@ func masterFailover(fail bool) bool {
 			}
 		}
 	}
-	if haproxyOn {
+	if conf.HaproxyOn {
 		initHaproxy()
 	}
 
@@ -275,16 +275,16 @@ func electCandidate(l []*ServerMonitor) int {
 	for i, sl := range l {
 		/* If server is in the ignore list, do not elect it */
 		if misc.Contains(ignoreList, sl.URL) {
-			if loglevel > 2 {
+			if conf.LogLevel > 2 {
 				logprintf("DEBUG: %s is in the ignore list. Skipping", sl.URL)
 			}
 			continue
 		}
 		// TODO: refresh state outside evaluation
-		if loglevel > 2 {
+		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
 		}
-		if multiMaster == true && sl.State == stateMaster {
+		if conf.MultiMaster == true && sl.State == stateMaster {
 			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
 		}
@@ -299,15 +299,15 @@ func electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
-			if gtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && rplchecks == true {
+			if conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && conf.RplChecks == true {
 				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
 				continue
 			}
-			if sl.SemiSyncSlaveStatus == false && failsync == true && rplchecks == true {
+			if sl.SemiSyncSlaveStatus == false && conf.FailSync == true && conf.RplChecks == true {
 				logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
 				continue
 			}
-			if ss.Seconds_Behind_Master.Valid == false && rplchecks == true {
+			if ss.Seconds_Behind_Master.Valid == false && conf.RplChecks == true {
 				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
 				continue
 			}
@@ -317,23 +317,23 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
 			continue
 		}
-		if ss.Seconds_Behind_Master.Int64 > maxDelay && rplchecks == true {
-			logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, maxDelay, ss.Seconds_Behind_Master.Int64)
+		if ss.Seconds_Behind_Master.Int64 > conf.MaxDelay && conf.RplChecks == true {
+			logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, conf.MaxDelay, ss.Seconds_Behind_Master.Int64)
 			continue
 		}
-		if ss.Slave_SQL_Running == "No" && rplchecks {
+		if ss.Slave_SQL_Running == "No" && conf.RplChecks {
 			logprintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master */
-		if sl.URL == prefMaster {
-			if loglevel > 2 {
+		if sl.URL == conf.PrefMaster {
+			if conf.LogLevel > 2 {
 				logprintf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
 		seqnos := sl.SlaveGtid.GetSeqNos()
-		if loglevel > 2 {
+		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Got sequence(s) %v for server [%d]", seqnos, i)
 		}
 		for _, v := range seqnos {

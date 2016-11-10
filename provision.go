@@ -32,9 +32,9 @@ func init() {
 	provisionCmd.Flags().StringVar(&source, "source", "", "Source server")
 	provisionCmd.Flags().StringVar(&destination, "destination", "", "Source server")
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
-	bootstrapCmd.Flags().StringVar(&prefMaster, "prefmaster", "", "Preferred server for master initialization")
-	bootstrapCmd.Flags().StringVar(&masterConn, "master-connection", "", "Connection name to use for multisource replication")
-	bootstrapCmd.Flags().IntVar(&masterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
+	bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
+	bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -58,7 +58,7 @@ func bootstrap() error {
 	if cleanall {
 		log.Println("INFO : Cleaning up replication on existing servers")
 		for _, server := range servers {
-			err := dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+			err := dbhelper.SetDefaultMasterConn(server.Conn, conf.MasterConn)
 			if err != nil {
 				sme.RemoveFailoverState()
 				return err
@@ -92,10 +92,10 @@ func bootstrap() error {
 		}
 	}
 	masterKey := 0
-	if prefMaster != "" {
+	if conf.PrefMaster != "" {
 		masterKey = func() int {
 			for k, server := range servers {
-				if server.URL == prefMaster {
+				if server.URL == conf.PrefMaster {
 					sme.RemoveFailoverState()
 					return k
 				}
@@ -117,13 +117,13 @@ func bootstrap() error {
 			dbhelper.SetReadOnly(server.Conn, false)
 			continue
 		} else {
-			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", masterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, masterConnectRetry)
+			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d", conf.MasterConn, servers[masterKey].IP, servers[masterKey].Port, rplUser, rplPass, conf.MasterConnectRetry)
 			_, err := server.Conn.Exec(stmt)
 			if err != nil {
 				sme.RemoveFailoverState()
 				return errors.New(fmt.Sprintln("ERROR:", stmt, err))
 			}
-			_, err = server.Conn.Exec("START SLAVE '" + masterConn + "'")
+			_, err = server.Conn.Exec("START SLAVE '" + conf.MasterConn + "'")
 			if err != nil {
 				sme.RemoveFailoverState()
 				return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
@@ -144,7 +144,7 @@ using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
 		dbHost, dbPort := misc.SplitHostPort(source)
 		destHost, destPort := misc.SplitHostPort(destination)
-		dbUser, dbPass = misc.SplitPair(user)
+		dbUser, dbPass = misc.SplitPair(conf.OptUser)
 		hostArg := fmt.Sprintf("--host=%s", dbHost)
 		portArg := fmt.Sprintf("--port=%s", dbPort)
 		userArg := fmt.Sprintf("--user=%s", dbUser)

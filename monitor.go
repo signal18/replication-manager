@@ -83,13 +83,13 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds", timeout)
+	params := fmt.Sprintf("?conf.Timeout=%ds", conf.Timeout)
 	mydsn := func() string {
 		dsn := dbUser + ":" + dbPass + "@"
 		if server.Host != "" {
 			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 		} else {
-			dsn += "unix(" + socket + ")/" + params
+			dsn += "unix(" + conf.Socket + ")/" + params
 		}
 		return dsn
 	}
@@ -102,7 +102,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	if sme.IsInFailover() {
-		if loglevel > 2 {
+		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Inside failover, skip server check")
 		}
 		return
@@ -111,12 +111,12 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.PrevState = server.State
 	}
 
-	if loglevel > 2 {
+	if conf.LogLevel > 2 {
 		// logprint("DEBUG: Checking server", server.Host)
 	}
 
 	var err error
-	switch checktype {
+	switch conf.CheckType {
 	case "tcp":
 		err = server.Conn.Ping()
 	case "agent":
@@ -130,17 +130,17 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
-		if loglevel > 2 {
+		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Failure detection handling for server %s", server.URL)
 		}
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
 			if server.URL == master.URL {
-				if master.FailCount <= maxfail {
-					logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, maxfail)
+				if master.FailCount <= conf.MaxFail {
+					logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, conf.MaxFail)
 				}
-				if server.FailCount >= maxfail {
-					if server.FailCount == maxfail {
+				if server.FailCount >= conf.MaxFail {
+					if server.FailCount == conf.MaxFail {
 						logprint("WARN : Declaring master as failed")
 					}
 					master.State = stateFailed
@@ -151,8 +151,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		} else {
 			if server.State != stateMaster && server.State != stateFailed {
 				server.FailCount++
-				if server.FailCount >= maxfail {
-					if server.FailCount == maxfail {
+				if server.FailCount >= conf.MaxFail {
+					if server.FailCount == conf.MaxFail {
 						logprintf("WARN : Declaring server %s as failed", server.URL)
 						server.State = stateFailed
 					} else {
@@ -164,20 +164,20 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			}
 		}
 		// Send alert if state has changed
-		if server.PrevState != server.State && mailTo != "" {
-			if verbose {
+		if server.PrevState != server.State && conf.MailTo != "" {
+			if conf.Verbose {
 				logprintf("INFO : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			}
 			a := alert.Alert{
-				From:        mailFrom,
-				To:          mailTo,
+				From:        conf.MailFrom,
+				To:          conf.MailTo,
 				Type:        server.State,
 				Origin:      server.URL,
-				Destination: mailSMTPAddr,
+				Destination: conf.MailSMTPAddr,
 			}
 			err = a.Email()
 			if err != nil {
-				logprint("ERROR: Could not send email alert: ", err)
+				logprint("ERROR: Could not send econf.Mail alert: ", err)
 			}
 		}
 		return
@@ -188,12 +188,12 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
-			if loglevel > 1 {
+			if conf.LogLevel > 1 {
 				logprintf("DEBUG: State comparison reinitialized failed server %s as unconnected", server.URL)
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
-			if autorejoin {
+			if conf.Autorejoin {
 				// Check if master exists in topology before rejoining.
 				if server.URL != master.URL {
 					logprintf("INFO : Rejoining previously failed server %s", server.URL)
@@ -204,7 +204,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				}
 			}
 		} else if server.State != stateMaster {
-			if loglevel > 1 {
+			if conf.LogLevel > 1 {
 				logprintf("DEBUG: State unconnected set by non-master rule on server %s", server.URL)
 			}
 			server.State = stateUnconn
@@ -217,7 +217,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.State = stateSlave
 		server.FailCount = 0
 		slaves = append(slaves, server)
-		if readonly {
+		if conf.ReadOnly {
 			err = dbhelper.SetReadOnly(server.Conn, true)
 			if err != nil {
 				logprintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
@@ -244,7 +244,7 @@ func (server *ServerMonitor) refresh() error {
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
 	server.ServerID = uint(sid)
-	err = dbhelper.SetDefaultMasterConn(server.Conn, masterConn)
+	err = dbhelper.SetDefaultMasterConn(server.Conn, conf.MasterConn)
 	if err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func (server *ServerMonitor) freeze() bool {
 		logprintf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := waitKill; i > 0; i -= 500 {
+	for i := conf.WaitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break
@@ -415,7 +415,7 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) rejoin() error {
-	if readonly {
+	if conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
 	}
 	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', MASTER_USE_GTID=CURRENT_POS"

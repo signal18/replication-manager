@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
-	"github.com/tanji/replication-manager/haproxy"
 	"hash/crc64"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/tanji/replication-manager/haproxy"
 )
 
 func initHaproxy() {
-	haproxyconfigPath := httproot
+	haproxyconfigPath := conf.HttpRoot
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := "haproxy_new.cfg"
 	haproxyjsonFile := "vamp_router.json"
@@ -21,17 +22,17 @@ func initHaproxy() {
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
 	haRuntime := haproxy.Runtime{
-		Binary:   haproxyBinaryPath,
-		SockFile: filepath.Join(httproot, "/", haproxysockFile),
+		Binary:   conf.HaproxyBinaryPath,
+		SockFile: filepath.Join(conf.HttpRoot, "/", haproxysockFile),
 	}
 	haConfig := haproxy.Config{
 		TemplateFile:  filepath.Join(haproxyconfigPath, haproxytemplateFile),
 		ConfigFile:    filepath.Join(haproxyconfigPath, haproxyconfigFile),
 		JsonFile:      filepath.Join(haproxyconfigPath, haproxyjsonFile),
 		ErrorPagesDir: filepath.Join(haproxyconfigPath, haproxyerrorPagesDir, "/"),
-		PidFile:       filepath.Join(httproot, "/", haproxypidFile),
-		SockFile:      filepath.Join(httproot, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(httproot + "/"),
+		PidFile:       filepath.Join(conf.HttpRoot, "/", haproxypidFile),
+		SockFile:      filepath.Join(conf.HttpRoot, "/", haproxysockFile),
+		WorkingDir:    filepath.Join(conf.HttpRoot + "/"),
 	}
 
 	log.Printf("Haproxy loading haproxy config at %s", haproxyconfigPath)
@@ -40,7 +41,7 @@ func initHaproxy() {
 		log.Printf("Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
-	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: haproxyWritePort, BindIp: "0.0.0.0"}
+	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: conf.HaproxyWritePort, BindIp: "0.0.0.0"}
 	if err := haConfig.AddFrontend(&few); err != nil {
 		log.Printf("Failed to add frontend write ")
 	} else {
@@ -67,7 +68,7 @@ func initHaproxy() {
 		//	log.Printf("Failed to add server to service_write ")
 	}
 
-	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: haproxyReadPort, BindIp: "0.0.0.0"}
+	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: conf.HaproxyReadPort, BindIp: "0.0.0.0"}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		log.Printf("Failed to add frontend read")
 	} else {

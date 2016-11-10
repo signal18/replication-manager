@@ -21,7 +21,7 @@ import (
 func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
-	if interactive == false {
+	if conf.Interactive == false {
 		headstr += " |  Mode: Automatic "
 	} else {
 		headstr += " |  Mode: Manual "
@@ -70,7 +70,7 @@ func display() {
 	}
 	tlog.Line = tlog.Line + 3
 	tlog.Print()
-	if !daemon {
+	if !conf.Daemon {
 		termbox.Flush()
 		_, newlen := termbox.Size()
 		if newlen == 0 {
@@ -111,7 +111,7 @@ func printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interfa
 
 func logprint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
-	if logfile != "" {
+	if conf.LogFile != "" {
 		s := fmt.Sprint(stamp, " ", fmt.Sprint(msg...))
 		io.WriteString(logPtr, fmt.Sprintln(s))
 	}
@@ -119,13 +119,13 @@ func logprint(msg ...interface{}) {
 		tlog.Add(fmt.Sprint(msg...))
 		display()
 	}
-	if daemon {
+	if conf.Daemon {
 		log.Println(msg...)
 	}
 }
 
 func logprintf(format string, args ...interface{}) {
-	if logfile != "" {
+	if conf.LogFile != "" {
 		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
 		io.WriteString(logPtr, fmt.Sprintf(f, args...))
 	}
@@ -133,7 +133,7 @@ func logprintf(format string, args ...interface{}) {
 		tlog.Add(fmt.Sprintf(format, args...))
 		display()
 	}
-	if daemon {
+	if conf.Daemon {
 		log.Printf(format, args...)
 	}
 }

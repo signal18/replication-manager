@@ -29,7 +29,7 @@ type settings struct {
 	FailSync       string `json:"failsync"`
 	Test           string `json:"test"`
 	Heartbeat      string `json:"heartbeat"`
-	Status         string `json:"run_status"`
+	Status         string `json:"runStatus"`
 }
 
 func httpserver() {
@@ -48,20 +48,20 @@ func httpserver() {
 	http.HandleFunc("/setactive", handlerSetActive)
 	http.HandleFunc("/dashboard.js", handlerJS)
 
-	http.Handle("/static/", http.FileServer(http.Dir(httproot)))
+	http.Handle("/static/", http.FileServer(http.Dir(conf.HttpRoot)))
 
-	if verbose {
-		logprint("INFO : Starting http monitor on port " + httpport)
+	if conf.Verbose {
+		logprint("INFO : Starting http monitor on port " + conf.HttpPort)
 	}
-	log.Fatal(http.ListenAndServe(bindaddr+":"+httpport, nil))
+	log.Fatal(http.ListenAndServe(conf.BindAddr+":"+conf.HttpPort, nil))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, httproot+"/app.html")
+	http.ServeFile(w, r, conf.HttpRoot+"/app.html")
 }
 
 func handlerJS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, httproot+"/dashboard.js")
+	http.ServeFile(w, r, conf.HttpRoot+"/dashboard.js")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
@@ -86,18 +86,18 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(settings)
-	s.Interactive = fmt.Sprintf("%v", interactive)
-	s.RplChecks = fmt.Sprintf("%v", rplchecks)
-	s.FailSync = fmt.Sprintf("%v", failsync)
-	s.MaxDelay = fmt.Sprintf("%v", maxDelay)
+	s.Interactive = fmt.Sprintf("%v", conf.Interactive)
+	s.RplChecks = fmt.Sprintf("%v", conf.RplChecks)
+	s.FailSync = fmt.Sprintf("%v", conf.FailSync)
+	s.MaxDelay = fmt.Sprintf("%v", conf.MaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
-	s.Faillimit = fmt.Sprintf("%d", faillimit)
+	s.Faillimit = fmt.Sprintf("%d", conf.FailLimit)
 	s.Uptime = sme.GetUptime()
 	s.UptimeFailable = sme.GetUptimeFailable()
 	s.UptimeSemiSync = sme.GetUptimeSemiSync()
-	s.Test = fmt.Sprintf("%v", test)
-	s.Heartbeat = fmt.Sprintf("%v", heartbeat)
-	s.Status = fmt.Sprintf("%v", run_status)
+	s.Test = fmt.Sprintf("%v", conf.Test)
+	s.Heartbeat = fmt.Sprintf("%v", conf.Heartbeat)
+	s.Status = fmt.Sprintf("%v", runStatus)
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()
@@ -154,15 +154,15 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 
 func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprint("INFO: Force to ignore conditions %v", rplchecks)
-	rplchecks = !rplchecks
+	logprint("INFO: Force to ignore conditions %v", conf.RplChecks)
+	conf.RplChecks = !conf.RplChecks
 	return
 }
 
 func handlerFailSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprintf("INFO: Force failover on status sync %v", failsync)
-	failsync = !failsync
+	logprintf("INFO: Force failover on status sync %v", conf.FailSync)
+	conf.FailSync = !conf.FailSync
 	return
 }
 
