@@ -1,8 +1,10 @@
 package: github.com/tanji/replication-manager
 import:
 - package: github.com/go-sql-driver/mysql
+  version: ^1.2.0
 - package: github.com/jmoiron/sqlx
 - package: github.com/nsf/termbox-go
 - package: github.com/spf13/cobra
 - package: github.com/spf13/viper
 - package: github.com/jordan-wright/email
+  version: ^2.2.0
