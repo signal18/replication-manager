@@ -117,7 +117,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
 	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
-	cmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", true, "hearbeat for active/passive or multi mrm setup")
+	cmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
 }
 
 var failoverCmd = &cobra.Command{

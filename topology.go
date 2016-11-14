@@ -98,7 +98,8 @@ func SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 					if err != nil {
-						log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
+						log.Println("WARN : Can not set heartbeat table to %s", url)
+						return
 					}
 					err = dbhelper.SetMultiSourceRepl(servers[k].Conn, host, port, rplUser, rplPass, "")
 					if err != nil {
