@@ -20,7 +20,10 @@ import (
 
 const repmgrVersion string = "0.7"
 
-var conf config.Config
+var (
+	conf    config.Config
+	cfgFile string
+)
 
 var (
 	Version string
@@ -28,11 +31,10 @@ var (
 )
 
 func init() {
-	log.Println("in init")
 	cobra.OnInitialize(initConfig)
-	log.Println("in adding flags")
 
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&conf.User, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&conf.Hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
@@ -51,13 +53,15 @@ func init() {
 }
 
 func initConfig() {
-	log.Println("in initconfig")
-
-	viper.SetEnvPrefix("MRM")
 	viper.SetConfigType("toml")
-	viper.SetConfigName("config")
-	viper.AddConfigPath("/etc/replication-manager/")
-	viper.AddConfigPath(".")
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+	} else {
+		viper.SetConfigName("config")
+		viper.AddConfigPath("/etc/replication-manager/")
+		viper.AddConfigPath(".")
+	}
+	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
 		log.Println("Using config file:", viper.ConfigFileUsed())
@@ -91,7 +95,7 @@ var versionCmd = &cobra.Command{
 	Long:  `All software has versions. This is ours`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
-		fmt.Println("Version: ", Version)
+		fmt.Println("Full Version: ", Version)
 		fmt.Println("Build Time: ", Build)
 	},
 }
