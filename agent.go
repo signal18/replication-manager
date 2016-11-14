@@ -37,7 +37,7 @@ take consensus decisions`,
 }
 
 func handlerAgent(w http.ResponseWriter, r *http.Request) {
-	db, err := newServerMonitor(conf.OptHosts)
+	db, err := newServerMonitor(conf.Hosts)
 	if err != nil {
 		log.Println("Error opening database connection: ", err)
 		http.Error(w, "Service is down", 503)
@@ -63,8 +63,8 @@ func agentFlagCheck() {
 		}
 	}
 	// if slaves option has been supplied, split into a slice.
-	if conf.OptHosts != "" {
-		hostList = strings.Split(conf.OptHosts, ",")
+	if conf.Hosts != "" {
+		hostList = strings.Split(conf.Hosts, ",")
 	} else {
 		log.Fatal("ERROR: No hosts list specified.")
 	}
@@ -72,8 +72,8 @@ func agentFlagCheck() {
 		log.Fatal("ERROR: Agent can only monitor a single host")
 	}
 	// validate users.
-	if conf.OptUser == "" {
+	if conf.User == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = misc.SplitPair(conf.OptUser)
+	dbUser, dbPass = misc.SplitPair(conf.User)
 }

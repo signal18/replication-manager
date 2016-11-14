@@ -28,29 +28,20 @@ var (
 )
 
 func init() {
-	viper.SetEnvPrefix("MRM")
-	viper.SetConfigType("toml")
-	viper.SetConfigName("config")
-	viper.AddConfigPath("/etc/replication-manager/")
-	viper.AddConfigPath(".")
-	err := viper.ReadInConfig()
-	if _, ok := err.(viper.ConfigParseError); ok {
-		log.Fatalln("ERROR: Could not parse config file:", err)
-	}
-	if err := viper.Unmarshal(&conf); err != nil {
-		log.Fatalln("ERROR: Could not unmarshal config file:", err)
-	}
-	viper.UnmarshalKey("user", &conf.OptUser)
-	viper.UnmarshalKey("hosts", &conf.OptHosts)
-	log.Printf("%v", conf)
+	log.Println("in init")
+	cobra.OnInitialize(initConfig)
+	log.Println("in adding flags")
+
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVar(&conf.OptUser, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
-	rootCmd.PersistentFlags().StringVar(&conf.OptHosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	rootCmd.PersistentFlags().StringVar(&conf.User, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
+	rootCmd.PersistentFlags().StringVar(&conf.Hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
+
 	viper.BindPFlags(rootCmd.PersistentFlags())
+
 	if conf.Verbose == true && conf.LogLevel == 0 {
 		conf.LogLevel = 1
 	}
@@ -59,12 +50,29 @@ func init() {
 	}
 }
 
+func initConfig() {
+	log.Println("in initconfig")
+
+	viper.SetEnvPrefix("MRM")
+	viper.SetConfigType("toml")
+	viper.SetConfigName("config")
+	viper.AddConfigPath("/etc/replication-manager/")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err == nil {
+		log.Println("Using config file:", viper.ConfigFileUsed())
+	}
+	if _, ok := err.(viper.ConfigParseError); ok {
+		log.Fatalln("ERROR: Could not parse config file:", err)
+	}
+	viper.Unmarshal(&conf)
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
-
 }
 
 var rootCmd = &cobra.Command{

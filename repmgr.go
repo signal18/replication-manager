@@ -220,6 +220,8 @@ var monitorCmd = &cobra.Command{
 Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
+		log.Printf("%+v", conf)
+
 		repmgrFlagCheck()
 
 		if conf.HttpServ {
@@ -438,16 +440,16 @@ func repmgrFlagCheck() {
 		}
 	}
 	// if slaves option has been supplied, split into a slice.
-	if conf.OptHosts != "" {
-		hostList = strings.Split(conf.OptHosts, ",")
+	if conf.Hosts != "" {
+		hostList = strings.Split(conf.Hosts, ",")
 	} else {
 		log.Fatal("ERROR: No hosts list specified.")
 	}
 	// validate users
-	if conf.OptUser == "" {
+	if conf.User == "" {
 		log.Fatal("ERROR: No master user/pair specified.")
 	}
-	dbUser, dbPass = misc.SplitPair(conf.OptUser)
+	dbUser, dbPass = misc.SplitPair(conf.User)
 
 	if conf.RplUser == "" {
 		log.Fatal("ERROR: No replication user/pair specified.")

@@ -48,7 +48,7 @@ func newServerList() {
 		if conf.Heartbeat {
 			err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 			if err != nil {
-				log.Fatalf("ERROR: Can not set conf.Heartbeat table to  %s  ", url)
+				log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
 			}
 		}
 	}
@@ -98,11 +98,11 @@ func SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(servers[k].Conn)
 					if err != nil {
-						log.Fatalf("ERROR: Can not set conf.Heartbeat table to  %s  ", url)
+						log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
 					}
 					err = dbhelper.SetMultiSourceRepl(servers[k].Conn, host, port, rplUser, rplPass, "")
 					if err != nil {
-						log.Fatalf("ERROR: Can not set conf.Heartbeat replication from %s to %s : %s", url, url2, err)
+						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
 					}
 				}
 			}
@@ -146,7 +146,7 @@ func pingServerList() {
 			if sme.IsDiscovered() == false {
 				err := dbhelper.SetHeartbeatTable(sv.Conn)
 				if err != nil {
-					sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable conf.Heartbeat table can't create table", ErrFrom: "RUN"})
+					sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable heartbeat table can't create table", ErrFrom: "RUN"})
 					conf.Heartbeat = false
 				}
 			}

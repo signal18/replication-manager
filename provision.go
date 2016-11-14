@@ -144,7 +144,7 @@ using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
 		dbHost, dbPort := misc.SplitHostPort(source)
 		destHost, destPort := misc.SplitHostPort(destination)
-		dbUser, dbPass = misc.SplitPair(conf.OptUser)
+		dbUser, dbPass = misc.SplitPair(conf.User)
 		hostArg := fmt.Sprintf("--host=%s", dbHost)
 		portArg := fmt.Sprintf("--port=%s", dbPort)
 		userArg := fmt.Sprintf("--user=%s", dbUser)
