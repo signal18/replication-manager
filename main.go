@@ -21,8 +21,9 @@ import (
 const repmgrVersion string = "0.7"
 
 var (
-	conf    config.Config
-	cfgFile string
+	conf     config.Config
+	cfgFile  string
+	cfgGroup string
 )
 
 var (
@@ -34,7 +35,8 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is config.toml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Configuration file (default is config.toml)")
+	rootCmd.PersistentFlags().StringVar(&cfgGroup, "config-group", "", "Configuration group (default is none)")
 	rootCmd.PersistentFlags().StringVar(&conf.User, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	rootCmd.PersistentFlags().StringVar(&conf.Hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
 	rootCmd.PersistentFlags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
@@ -64,12 +66,21 @@ func initConfig() {
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
-		log.Println("Using config file:", viper.ConfigFileUsed())
+		log.Println("INFO : Using config file:", viper.ConfigFileUsed())
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
-	viper.Unmarshal(&conf)
+	if cfgGroup != "" {
+		log.Println("INFO : Using configuration group", cfgGroup)
+		cf2 := viper.Sub(cfgGroup)
+		if cf2 == nil {
+			log.Fatalln("ERROR: Could not parse configuration group", cfgGroup)
+		}
+		cf2.Unmarshal(&conf)
+	} else {
+		viper.Unmarshal(&conf)
+	}
 }
 
 func main() {

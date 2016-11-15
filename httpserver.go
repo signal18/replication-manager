@@ -29,7 +29,8 @@ type settings struct {
 	FailSync       string `json:"failsync"`
 	Test           string `json:"test"`
 	Heartbeat      string `json:"heartbeat"`
-	Status         string `json:"runStatus"`
+	Status         string `json:"runstatus"`
+	ConfGroup      string `json:"confgroup"`
 }
 
 func httpserver() {
@@ -98,6 +99,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Test = fmt.Sprintf("%v", conf.Test)
 	s.Heartbeat = fmt.Sprintf("%v", conf.Heartbeat)
 	s.Status = fmt.Sprintf("%v", runStatus)
+	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()

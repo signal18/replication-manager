@@ -21,6 +21,9 @@ import (
 func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
+	if cfgGroup != "" {
+		headstr += fmt.Sprintf("| Group: %s", cfgGroup)
+	}
 	if conf.Interactive == false {
 		headstr += " |  Mode: Automatic "
 	} else {

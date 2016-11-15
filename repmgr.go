@@ -220,7 +220,9 @@ var monitorCmd = &cobra.Command{
 Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		log.Printf("%+v", conf)
+		if conf.LogLevel >= 2 {
+			log.Printf("%+v", conf)
+		}
 
 		repmgrFlagCheck()
 
