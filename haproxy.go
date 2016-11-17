@@ -41,7 +41,7 @@ func initHaproxy() {
 		log.Printf("Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
-	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: conf.HaproxyWritePort, BindIp: "0.0.0.0"}
+	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: conf.HaproxyWritePort, BindIp: conf.HaproxyWriteBindIp}
 	if err := haConfig.AddFrontend(&few); err != nil {
 		log.Printf("Failed to add frontend write ")
 	} else {
@@ -68,7 +68,7 @@ func initHaproxy() {
 		//	log.Printf("Failed to add server to service_write ")
 	}
 
-	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: conf.HaproxyReadPort, BindIp: "0.0.0.0"}
+	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: conf.HaproxyReadPort, BindIp: conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		log.Printf("Failed to add frontend read")
 	} else {

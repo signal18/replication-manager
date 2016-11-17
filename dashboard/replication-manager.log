@@ -975,3 +975,436 @@
 2016/10/24 17:51:48 INFO : replication-manager version 0.7 started in daemon mode
 2016/10/24 17:51:48 INFO : Monitor started in manual mode
 2016/10/24 17:51:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 18:08:14 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 18:08:14 INFO : Monitor started in manual mode
+2016/10/24 18:08:16 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:11:40 INFO : Starting master switch
+2016/10/24 20:11:40 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:11:40 INFO : Checking long running updates on master
+2016/10/24 20:11:40 INFO : Electing a new master
+2016/10/24 20:11:40 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:11:40 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:11:40 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:11:40 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:11:40 INFO : Stopping slave thread on new master
+2016/10/24 20:11:41 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:11:41 INFO : Switching old master as a slave
+2016/10/24 20:11:44 INFO : Switching other slaves to the new master
+2016/10/24 20:11:45 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:12:22 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/24 20:12:22 INFO : Monitor started in manual mode
+2016/10/24 20:12:24 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:12:32 DEBUG: In Failover skip topology detection
+2016/10/24 20:12:32 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:12:32 DEBUG: In Failover skip checking failed master
+2016/10/24 20:12:35 ERROR: ERR00010 No slaves were detected
+2016/10/24 20:12:47 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/10/24 20:12:48 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/24 20:12:55 TESTING : Starting Test testSwitchOverLongTransactionNoRplCheckNoSemiSync
+2016/10/24 20:13:08 INFO :  Master is 127.0.0.1:5154
+2016/10/24 20:13:08 INFO : Starting master switch
+2016/10/24 20:13:08 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:13:08 INFO : Checking long running updates on master
+2016/10/24 20:13:08 INFO : Electing a new master
+2016/10/24 20:13:08 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:13:08 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:13:08 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:13:08 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:13:08 INFO : Stopping slave thread on new master
+2016/10/24 20:13:09 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:13:09 INFO : Switching old master as a slave
+2016/10/24 20:13:12 INFO : Switching other slaves to the new master
+2016/10/24 20:13:12 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:13:21 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:13:23 INFO : Saved Prefered master 127.0.0.1:5154 <>  from saved 127.0.0.1:5112  
+2016/10/24 20:13:23 TESTING : Starting Test testSwitchOverLongQueryNoRplCheckNoSemiSync
+2016/10/24 20:13:23 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:13:24 INFO : Starting master switch
+2016/10/24 20:13:24 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:13:34 ERROR: Long  running trx on master. Cannot switchover
+2016/10/24 20:13:42 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:14:02 TESTING : Starting Test testSwitchOverNoReadOnlyNoRplCheck
+2016/10/24 20:14:02 INFO : Master is 127.0.0.1:5112
+2016/10/24 20:14:04 INFO : Starting master switch
+2016/10/24 20:14:04 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:14:04 INFO : Checking long running updates on master
+2016/10/24 20:14:04 INFO : Electing a new master
+2016/10/24 20:14:04 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:14:04 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:14:04 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:14:04 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:14:04 INFO : Stopping slave thread on new master
+2016/10/24 20:14:04 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:14:05 INFO : Switching old master as a slave
+2016/10/24 20:14:08 INFO : Switching other slaves to the new master
+2016/10/24 20:14:08 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:14:16 INFO : New Master is 127.0.0.1:5154 
+2016/10/24 20:14:16 INFO : Server  127.0.0.1:5112 is OFF
+2016/10/24 20:14:16 TESTING : Starting Test testSwitchOverReadOnlyNoRplCheck
+2016/10/24 20:14:16 INFO : Master is 127.0.0.1:5154
+2016/10/24 20:14:19 INFO : Starting master switch
+2016/10/24 20:14:19 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:14:19 INFO : Checking long running updates on master
+2016/10/24 20:14:19 INFO : Electing a new master
+2016/10/24 20:14:20 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:14:20 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:14:20 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:14:20 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:14:20 INFO : Stopping slave thread on new master
+2016/10/24 20:14:21 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:14:21 INFO : Switching old master as a slave
+2016/10/24 20:14:26 INFO : Switching other slaves to the new master
+2016/10/24 20:14:26 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:14:34 INFO : New Master is 127.0.0.1:5112 
+2016/10/24 20:14:34 INFO : Server  127.0.0.1:5154 is ON
+2016/10/24 20:14:34 TESTING : Starting Test testSwitchOver2TimesReplicationOk
+2016/10/24 20:14:42 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:14:43 INFO : Starting master switch
+2016/10/24 20:14:43 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:14:43 INFO : Checking long running updates on master
+2016/10/24 20:14:43 INFO : Electing a new master
+2016/10/24 20:14:43 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:14:43 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:14:43 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:14:43 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:14:43 INFO : Stopping slave thread on new master
+2016/10/24 20:14:44 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:14:44 INFO : Switching old master as a slave
+2016/10/24 20:14:47 INFO : Switching other slaves to the new master
+2016/10/24 20:14:48 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:14:57 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:15:02 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:15:03 INFO : Starting master switch
+2016/10/24 20:15:03 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:15:03 INFO : Checking long running updates on master
+2016/10/24 20:15:03 INFO : Electing a new master
+2016/10/24 20:15:03 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:15:03 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:15:03 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:15:03 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:15:03 INFO : Stopping slave thread on new master
+2016/10/24 20:15:04 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:15:04 INFO : Switching old master as a slave
+2016/10/24 20:15:08 INFO : Switching other slaves to the new master
+2016/10/24 20:15:08 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:15:17 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:15:17 TESTING : Starting Test testSwitchOver2TimesReplicationOkSemisync
+2016/10/24 20:15:35 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:15:35 INFO : Starting master switch
+2016/10/24 20:15:35 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:15:35 INFO : Checking long running updates on master
+2016/10/24 20:15:35 INFO : Electing a new master
+2016/10/24 20:15:35 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:15:35 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:15:35 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:15:35 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:15:36 INFO : Stopping slave thread on new master
+2016/10/24 20:15:36 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:15:37 INFO : Switching old master as a slave
+2016/10/24 20:15:41 INFO : Switching other slaves to the new master
+2016/10/24 20:15:41 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:15:49 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:15:54 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:15:55 INFO : Starting master switch
+2016/10/24 20:15:55 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:15:55 INFO : Checking long running updates on master
+2016/10/24 20:15:55 INFO : Electing a new master
+2016/10/24 20:15:55 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:15:55 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:15:55 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:15:55 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:15:55 INFO : Stopping slave thread on new master
+2016/10/24 20:15:56 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:15:56 INFO : Switching old master as a slave
+2016/10/24 20:15:59 INFO : Switching other slaves to the new master
+2016/10/24 20:15:59 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:16:08 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:16:08 TESTING : Starting Test testSwitchOverBackPreferedMasterNoRplCheckSemiSync
+2016/10/24 20:16:08 TESTING : Set prefMaster prefMaster
+2016/10/24 20:16:10 INFO : New Master  127.0.0.1:5112 Failover counter 0
+2016/10/24 20:16:10 INFO : Starting master switch
+2016/10/24 20:16:10 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:16:10 INFO : Checking long running updates on master
+2016/10/24 20:16:10 INFO : Electing a new master
+2016/10/24 20:16:10 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:16:10 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:16:10 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:16:10 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:16:11 INFO : Stopping slave thread on new master
+2016/10/24 20:16:12 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:16:12 INFO : Switching old master as a slave
+2016/10/24 20:16:15 INFO : Switching other slaves to the new master
+2016/10/24 20:16:16 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:16:24 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:16:24 INFO : New Master  127.0.0.1:5154 Failover counter 1
+2016/10/24 20:16:26 INFO : Starting master switch
+2016/10/24 20:16:26 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:16:26 INFO : Checking long running updates on master
+2016/10/24 20:16:26 INFO : Electing a new master
+2016/10/24 20:16:26 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:16:26 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:16:26 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:16:26 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:16:27 INFO : Stopping slave thread on new master
+2016/10/24 20:16:28 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:16:28 INFO : Switching old master as a slave
+2016/10/24 20:16:31 INFO : Switching other slaves to the new master
+2016/10/24 20:16:31 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:16:40 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:16:40 TESTING : Starting Test testSwitchOverAllSlavesStopRplCheckNoSemiSync
+2016/10/24 20:16:46 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:16:46 INFO : Starting master switch
+2016/10/24 20:16:46 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:16:46 INFO : Checking long running updates on master
+2016/10/24 20:16:46 INFO : Electing a new master
+2016/10/24 20:16:46 WARN : Slave 127.0.0.1:5154 is stopped. Skipping
+2016/10/24 20:16:46 ERROR: No candidates found
+2016/10/24 20:16:55 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:16:58 TESTING : Starting Test testSwitchOverAllSlavesStopNoRplCheck
+2016/10/24 20:17:00 INFO : Master is 127.0.0.1:5112
+2016/10/24 20:17:02 INFO : Starting master switch
+2016/10/24 20:17:02 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/10/24 20:17:02 INFO : Checking long running updates on master
+2016/10/24 20:17:02 INFO : Electing a new master
+2016/10/24 20:17:02 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:17:02 INFO : Terminating all threads on 127.0.0.1:5112
+2016/10/24 20:17:02 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/10/24 20:17:02 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:17:02 INFO : Stopping slave thread on new master
+2016/10/24 20:17:02 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:17:03 INFO : Switching old master as a slave
+2016/10/24 20:17:06 INFO : Switching other slaves to the new master
+2016/10/24 20:17:06 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:17:15 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:17:17 TESTING : Starting Test testSwitchOverAllSlavesDelayRplCheckNoSemySync
+2016/10/24 20:17:33 INFO :  Master is 127.0.0.1:5154
+2016/10/24 20:17:34 INFO : Starting master switch
+2016/10/24 20:17:34 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:17:34 INFO : Checking long running updates on master
+2016/10/24 20:17:34 INFO : Electing a new master
+2016/10/24 20:17:34 WARN : Slave 127.0.0.1:5112 is stopped. Skipping
+2016/10/24 20:17:34 ERROR: No candidates found
+2016/10/24 20:17:43 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:17:46 TESTING : Starting Test testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/24 20:18:01 INFO :  Master is 127.0.0.1:5154
+2016/10/24 20:18:02 INFO : Starting master switch
+2016/10/24 20:18:02 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/10/24 20:18:02 INFO : Checking long running updates on master
+2016/10/24 20:18:02 INFO : Electing a new master
+2016/10/24 20:18:02 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/10/24 20:18:02 INFO : Terminating all threads on 127.0.0.1:5154
+2016/10/24 20:18:02 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/10/24 20:18:02 INFO : Waiting for candidate Master to synchronize
+2016/10/24 20:18:02 INFO : Stopping slave thread on new master
+2016/10/24 20:18:02 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:18:02 INFO : Switching old master as a slave
+2016/10/24 20:18:05 INFO : Switching other slaves to the new master
+2016/10/24 20:18:06 INFO : Master switch on 127.0.0.1:5112 complete
+2016/10/24 20:18:14 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:18:16 TESTING : Starting Test testSlaReplAllSlavesStopNoSemySync
+2016/10/24 20:18:31 DEBUG: In Failover skip topology detection
+2016/10/24 20:18:31 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:18:31 DEBUG: In Failover skip checking failed master
+2016/10/24 20:18:31 DEBUG: In Failover skip topology detection
+2016/10/24 20:18:31 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:18:31 DEBUG: In Failover skip checking failed master
+2016/10/24 20:18:32 DEBUG: In Failover skip topology detection
+2016/10/24 20:18:32 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:18:32 DEBUG: In Failover skip checking failed master
+2016/10/24 20:18:35 ERROR: ERR00010 No slaves were detected
+2016/10/24 20:18:39 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:18:40 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/24 20:18:47 TESTING : Starting Test testFailOverNoRplChecksNoSemiSync
+2016/10/24 20:18:47 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:18:47 INFO : Starting master switch
+2016/10/24 20:18:47 INFO : Electing a new master
+2016/10/24 20:18:47 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:18:47 INFO : Reading all relay logs on 127.0.0.1:5154
+2016/10/24 20:18:47 INFO : Stopping slave thread on new master
+2016/10/24 20:18:47 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:18:48 INFO : Switching other slaves to the new master
+2016/10/24 20:18:48 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:18:48 INFO : Rejoining previously failed server 127.0.0.1:5112
+2016/10/24 20:18:56 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:18:56 DEBUG: In Failover skip topology detection
+2016/10/24 20:18:56 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:18:56 DEBUG: In Failover skip checking failed master
+2016/10/24 20:18:58 DEBUG: In Failover skip topology detection
+2016/10/24 20:18:58 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:18:58 DEBUG: In Failover skip checking failed master
+2016/10/24 20:19:03 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:19:08 TESTING : Starting Test testFailOverAllSlavesDelayNoRplChecksNoSemiSync
+2016/10/24 20:19:08 BENCH: Stopping replication
+2016/10/24 20:19:13 BENCH : Write Concurrent Insert
+2016/10/24 20:19:23 BENCH : Inject Long Trx
+2016/10/24 20:19:33 BENCH : Sarting replication
+2016/10/24 20:19:33 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:19:33 INFO : Starting master switch
+2016/10/24 20:19:33 INFO : Electing a new master
+2016/10/24 20:19:33 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:19:33 INFO : Reading all relay logs on 127.0.0.1:5154
+2016/10/24 20:19:33 INFO : Stopping slave thread on new master
+2016/10/24 20:19:34 DEBUG: In Failover skip topology detection
+2016/10/24 20:19:34 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:19:34 DEBUG: In Failover skip checking failed master
+2016/10/24 20:19:34 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:19:35 INFO : Switching other slaves to the new master
+2016/10/24 20:19:35 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:19:36 INFO : Rejoining previously failed server 127.0.0.1:5112
+2016/10/24 20:19:43 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:19:46 DEBUG: In Failover skip topology detection
+2016/10/24 20:19:46 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:19:46 DEBUG: In Failover skip checking failed master
+2016/10/24 20:19:48 ERROR: ERR00010 No slaves were detected
+2016/10/24 20:19:52 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:19:54 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/24 20:20:00 TESTING : Starting Test testFailOverAllSlavesDelayRplChecksNoSemiSync
+2016/10/24 20:20:25 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:20:26 INFO : Starting master switch
+2016/10/24 20:20:26 INFO : Electing a new master
+2016/10/24 20:20:26 DEBUG: In Failover skip topology detection
+2016/10/24 20:20:26 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:20:26 DEBUG: In Failover skip checking failed master
+2016/10/24 20:20:27 WARN : Unsafe failover condition. Slave 127.0.0.1:5154 has more than 4 seconds of replication delay (35). Skipping
+2016/10/24 20:20:27 ERROR: No candidates found
+2016/10/24 20:20:35 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:20:38 DEBUG: In Failover skip topology detection
+2016/10/24 20:20:38 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:20:38 DEBUG: In Failover skip checking failed master
+2016/10/24 20:20:40 DEBUG: In Failover skip topology detection
+2016/10/24 20:20:40 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:20:40 DEBUG: In Failover skip checking failed master
+2016/10/24 20:20:43 ERROR: ERR00010 No slaves were detected
+2016/10/24 20:20:45 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:20:47 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/24 20:20:54 DEBUG: In Failover skip topology detection
+2016/10/24 20:20:54 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:20:54 DEBUG: In Failover skip checking failed master
+2016/10/24 20:20:56 DEBUG: In Failover skip topology detection
+2016/10/24 20:20:56 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:20:56 DEBUG: In Failover skip checking failed master
+2016/10/24 20:21:01 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:21:09 TESTING : Starting Test testNumberFailOverLimitReach
+2016/10/24 20:21:09 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:21:09 INFO : Starting master switch
+2016/10/24 20:21:09 INFO : Electing a new master
+2016/10/24 20:21:09 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/24 20:21:09 INFO : Reading all relay logs on 127.0.0.1:5154
+2016/10/24 20:21:09 INFO : Stopping slave thread on new master
+2016/10/24 20:21:09 INFO : Resetting slave on new master and set read/write mode on
+2016/10/24 20:21:09 INFO : Switching other slaves to the new master
+2016/10/24 20:21:10 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/24 20:21:10 INFO : Rejoining previously failed server 127.0.0.1:5112
+2016/10/24 20:21:14 INFO : INF00002 Failover limit reached. Switching to manual mode
+2016/10/24 20:21:14 INFO : INF00002 HAS BEEN FIXED, Failover limit reached. Switching to manual mode
+2016/10/24 20:21:18 INFO : New Master  127.0.0.1:5154 
+2016/10/24 20:21:18 INFO : Old master 127.0.0.1:5112 ==  Next master 127.0.0.1:5154  
+2016/10/24 20:21:18 DEBUG: In Failover skip topology detection
+2016/10/24 20:21:18 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:21:18 DEBUG: In Failover skip checking failed master
+2016/10/24 20:21:20 DEBUG: In Failover skip topology detection
+2016/10/24 20:21:20 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/24 20:21:20 DEBUG: In Failover skip checking failed master
+2016/10/24 20:21:24 ERROR: ERR00010 No slaves were detected
+2016/10/24 20:21:26 INFO : Environment bootstrapped with 127.0.0.1:5112 as master
+2016/10/24 20:21:28 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/10/24 20:21:34 TESTING : Starting Test testFailOverTimeNotReach
+2016/10/24 20:21:34 INFO :  Master is 127.0.0.1:5112
+2016/10/24 20:21:34 WARN : Failover time limit enforced. Next failover available in 20 seconds
+2016/10/24 20:21:42 INFO : New Master  127.0.0.1:5112 
+2016/10/24 20:21:42 TESTS : Result  1 Failover <rplchecks=false> <Semisync=false>  -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Failover All Slave Delay <rplchecks=false> <Semisync=false>  -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Failover All Slave Delay <rplchecks=true> <Semisync=false>  -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Failover Before Time Limit <rplchecks=false> <Semisync=false>  -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Failover Number of Failover Reach <rplchecks=false> <Semisync=false>  -> FAILED
+2016/10/24 20:21:42 TESTS : Result  1 Switchover <readonly=false> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Switchover <readonly=true> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Switchover Concurrent Long Query <readonly=false> <rplchecks=true> -> PASS
+2016/10/24 20:21:42 TESTS : Result  1 Switchover Concurrent Long Transaction <readonly=false> <rplchecks=true> -> FAILED
+2016/10/24 20:21:42 TESTS : Result  2 Switchover Back Prefered Master <semisync=true> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  Can Switchover All Slaves Delay <semisync=false> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  Can Switchover All Slaves Stop <semisync=false> <rplchecks=false> -> PASS
+2016/10/24 20:21:42 TESTS : Result  Can't Switchover All Slaves Delay <semisync=false> <rplchecks=true> -> PASS
+2016/10/24 20:21:42 TESTS : Result  Can't Switchover All Slaves Stop  <semisync=false> <rplchecks=true> -> PASS
+2016/10/24 20:21:42 TESTS : Result  SLA Decrease Can't Switchover All Slaves Stop <Semisync=false> -> PASS
+2016/10/24 20:21:42 ERROR: Some tests failed
+2016/10/25 05:51:47 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/25 05:51:47 INFO : Monitor started in manual mode
+2016/10/25 05:51:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/25 05:53:14 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/25 05:53:14 INFO : Monitor started in manual mode
+2016/10/25 05:53:16 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/25 19:05:24 INFO : replication-manager version 0.7 started in daemon mode
+2016/10/25 19:05:24 INFO : Monitor started in manual mode
+2016/10/25 19:05:26 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/25 19:06:30 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/10/25 19:06:30 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5112: commands out of sync. You can't run this command now
+2016/10/25 19:06:32 WARN : Master Failure detected! Retry 1/5
+2016/10/25 19:06:33 INFO : INF00001 Server 127.0.0.1:5112 is down
+2016/10/25 19:06:34 WARN : Master Failure detected! Retry 2/5
+2016/10/25 19:06:36 WARN : Master Failure detected! Retry 3/5
+2016/10/25 19:06:38 WARN : Master Failure detected! Retry 4/5
+2016/10/25 19:06:40 WARN : Master Failure detected! Retry 5/5
+2016/10/25 19:06:40 WARN : Declaring master as failed
+2016/10/25 19:06:53 INFO : Starting master switch
+2016/10/25 19:06:53 INFO : Electing a new master
+2016/10/25 19:06:53 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/10/25 19:06:53 INFO : Reading all relay logs on 127.0.0.1:5154
+2016/10/25 19:06:53 INFO : Stopping slave thread on new master
+2016/10/25 19:06:53 INFO : Resetting slave on new master and set read/write mode on
+2016/10/25 19:06:54 INFO : Switching other slaves to the new master
+2016/10/25 19:06:54 INFO : Master switch on 127.0.0.1:5154 complete
+2016/10/25 19:06:54 ERROR: ERR00010 No slaves were detected
+2016/10/25 19:07:22 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5112 is down
+2016/10/25 19:07:22 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
+2016/10/25 19:07:22 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/07 16:58:52 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/07 16:58:52 INFO : Monitor started in manual mode
+2016/11/07 16:58:54 ERROR: ERR00010 No slaves were detected
+2016/11/07 16:58:54 ERROR: ERR00012 Could not autodetect a master
+2016/11/07 17:11:05 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/11/07 17:11:17 INFO : Monitor started in manual mode
+2016/11/07 17:11:20 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/07 17:11:48 INFO : Quitting monitor
+2016/11/07 17:11:57 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/07 17:11:57 INFO : Monitor started in manual mode
+2016/11/07 17:12:00 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/07 17:12:44 INFO : Starting master switch
+2016/11/07 17:12:44 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/11/07 17:12:44 INFO : Checking long running updates on master
+2016/11/07 17:12:44 INFO : Electing a new master
+2016/11/07 17:12:44 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/11/07 17:12:44 INFO : Terminating all threads on 127.0.0.1:5154
+2016/11/07 17:12:44 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/11/07 17:12:44 INFO : Waiting for candidate Master to synchronize
+2016/11/07 17:12:44 INFO : Stopping slave thread on new master
+2016/11/07 17:12:45 INFO : Resetting slave on new master and set read/write mode on
+2016/11/07 17:12:45 INFO : Switching old master as a slave
+2016/11/07 17:12:48 INFO : Switching other slaves to the new master
+2016/11/07 17:12:49 INFO : Master switch on 127.0.0.1:5112 complete
+2016/11/07 17:16:45 INFO : Failover monitor switched to automatic mode
+2016/11/07 17:17:06 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/07 17:17:06 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5112: commands out of sync. You can't run this command now
+2016/11/07 17:17:07 WARN : Master Failure detected! Retry 1/5
+2016/11/07 17:17:08 INFO : INF00001 Server 127.0.0.1:5112 is down
+2016/11/07 17:17:09 WARN : Master Failure detected! Retry 2/5
+2016/11/07 17:17:11 WARN : Master Failure detected! Retry 3/5
+2016/11/07 17:17:13 WARN : Master Failure detected! Retry 4/5
+2016/11/07 17:17:15 WARN : Master Failure detected! Retry 5/5
+2016/11/07 17:17:15 WARN : Declaring master as failed
+2016/11/07 17:17:16 INFO : Starting master switch
+2016/11/07 17:17:16 INFO : Electing a new master
+2016/11/07 17:17:16 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/11/07 17:17:16 INFO : Reading all relay logs on 127.0.0.1:5154
+2016/11/07 17:17:16 INFO : Stopping slave thread on new master
+2016/11/07 17:17:16 INFO : Resetting slave on new master and set read/write mode on
+2016/11/07 17:17:16 INFO : Switching other slaves to the new master
+2016/11/07 17:17:17 INFO : Master switch on 127.0.0.1:5154 complete
+2016/11/07 17:17:18 ERROR: ERR00010 No slaves were detected
+2016/11/07 17:17:49 INFO : Rejoining previously failed server 127.0.0.1:5112
+2016/11/07 17:17:55 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
+2016/11/07 17:17:55 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/11/07 17:17:55 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5112 is down
+2016/11/07 17:17:55 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

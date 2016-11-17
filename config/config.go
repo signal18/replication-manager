@@ -46,6 +46,8 @@ type Config struct {
 	HaproxyOn          bool   `mapstructure:"haproxy"`
 	HaproxyWritePort   int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort    int    `mapstructure:"haproxy-read-port"`
+	HaproxyWriteBindIp string `mapstructure:"haproxy-ip-write-bind"`
+	HaproxyReadBindIp  string `mapstructure:"haproxy-ip-read-bind"`
 	HaproxyBinaryPath  string `mapstructure:"haproxy-binary-path"`
 	KeyPath            string
 	LogLevel           int `mapstructure:"log-level"`
