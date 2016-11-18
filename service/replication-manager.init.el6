@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# replication-manager       Replication HA Management for MariaDB 10.x
+#
+# chkconfig: - 90 10
+# description: replication-manager
+# processname: replication-manager
+# config: /etc/replication-manager/config.toml
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+PROCNAME=replication-manager
+
+# See how we were called.
+case "$1" in
+  start)
+        echo -n "Starting replication-manager: "
+        /usr/bin/replication-manager monitor --daemon &
+        sleep 1
+        pkill -0 $PROCNAME
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]
+        then
+                echo_success
+                touch /var/lock/subsys/replication-manager
+        else
+                echo_failure
+        fi
+        echo
+        ;;
+  stop)
+        echo -n "Stopping replication-manager: "
+        kill $(pidof replication-manager)
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]
+        then
+                echo_success
+                rm -f /var/lock/subsys/replication-manager
+        else
+                echo_failure
+        fi
+        echo
+        ;;
+  status)
+        status $PROCNAME
+        RETVAL=$?
+        ;;
+  restart|reload)
+        $0 stop
+        $0 start
+        RETVAL=$?
+        ;;
+  *)
+        echo "Usage: replication-manager {start|stop|status|restart}"
+        exit 1
+esac
+
+exit $RETVAL
