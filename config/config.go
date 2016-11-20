@@ -37,6 +37,7 @@ type Config struct {
 	MasterConnectRetry int    `mapstructure:"master-connect-retry"`
 	RplChecks          bool
 	FailSync           bool   `mapstructure:"failover-at-sync"`
+	FailEventScheduler bool   `mapstructure:"failover-event-scheduler"`
 	Heartbeat          bool   `mapstructure:"heartbeat-table"`
 	MxsOn              bool   `mapstructure:"maxscale"`
 	MxsHost            string `mapstructure:"maxscale-host"`

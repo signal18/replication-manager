@@ -44,6 +44,7 @@ func httpserver() {
 	http.HandleFunc("/settings", handlerSettings)
 	http.HandleFunc("/resetfail", handlerResetFailoverCtr)
 	http.HandleFunc("/rplchecks", handlerRplChecks)
+	http.HandleFunc("/bootstrap", handlerBootstrap)
 	http.HandleFunc("/failsync", handlerFailSync)
 	http.HandleFunc("/tests", handlerTests)
 	http.HandleFunc("/setactive", handlerSetActive)
@@ -177,6 +178,7 @@ func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
 
 func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	cleanall = true
 	if err := bootstrap(); err != nil {
 		logprint("ERROR: Could not bootstrap replication")
 		logprint(err)

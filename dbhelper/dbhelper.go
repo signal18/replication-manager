@@ -581,6 +581,28 @@ func IsSlaveof(db *sqlx.DB, s string, m string) bool {
 	return true
 }
 
+func GetEventScheduler(dbM *sqlx.DB) bool {
+
+	sES := GetVariableByName(dbM, "EVENT_SCHEDULER")
+	if sES != "ON" {
+		return false
+	}
+	return true
+}
+
+func SetEventScheduler(db *sqlx.DB, state bool) error {
+	var err error
+	if state {
+		stmt := "SET GLOBAL event_scheduler=1"
+		_, err = db.Exec(stmt)
+	} else {
+		stmt := "SET GLOBAL event_scheduler=0"
+		_, err = db.Exec(stmt)
+	}
+
+	return err
+}
+
 /* Check if a slave is in sync with his master */
 func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	if debug {

@@ -57,6 +57,7 @@ type ServerMonitor struct {
 	SemiSyncMasterStatus bool
 	SemiSyncSlaveStatus  bool
 	RplMasterStatus      bool
+	EventScheduler       bool
 }
 
 type serverList []*ServerMonitor
@@ -83,7 +84,7 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?conf.Timeout=%ds", conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds", conf.Timeout)
 	mydsn := func() string {
 		dsn := dbUser + ":" + dbPass + "@"
 		if server.Host != "" {
@@ -235,6 +236,11 @@ func (server *ServerMonitor) refresh() error {
 	sv, err := dbhelper.GetVariables(server.Conn)
 	if err != nil {
 		return err
+	}
+	if sv["EVENT_SCHEDULER"] != "ON" {
+		server.EventScheduler = false
+	} else {
+		server.EventScheduler = true
 	}
 	server.BinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
 	server.Strict = sv["GTID_STRICT_MODE"]

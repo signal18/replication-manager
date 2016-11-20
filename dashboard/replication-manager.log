@@ -1408,3 +1408,108 @@
 2016/11/07 17:17:55 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
 2016/11/07 17:17:55 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5112 is down
 2016/11/07 17:17:55 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 13:24:47 INFO : Starting http monitor on port 10001
+2016/11/20 13:24:47 INFO : Monitor started in manual mode
+2016/11/20 13:24:49 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 13:24:49 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/11/20 13:24:49 ERROR: ERR00010 No slaves were detected
+2016/11/20 13:25:06 INFO : Quitting monitor
+2016/11/20 13:25:18 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 13:25:18 INFO : Monitor started in manual mode
+2016/11/20 13:25:18 INFO : Starting http monitor on port 10001
+2016/11/20 13:25:20 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/11/20 13:25:20 ERROR: ERR00010 No slaves were detected
+2016/11/20 13:25:20 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 14:36:58 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5154 is down
+2016/11/20 14:38:34 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 14:38:34 INFO : Starting http monitor on port 10001
+2016/11/20 14:38:34 INFO : Monitor started in manual mode
+2016/11/20 14:38:36 ERROR: ERR00010 No slaves were detected
+2016/11/20 14:38:36 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 14:43:10 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 14:43:10 INFO : Starting http monitor on port 10001
+2016/11/20 14:43:10 INFO : Monitor started in manual mode
+2016/11/20 14:43:12 ERROR: ERR00010 No slaves were detected
+2016/11/20 14:43:12 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 14:45:28 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 14:45:28 INFO : Starting http monitor on port 10001
+2016/11/20 14:45:28 INFO : Monitor started in manual mode
+2016/11/20 14:45:30 ERROR: ERR00010 No slaves were detected
+2016/11/20 14:45:30 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 14:48:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 14:48:46 INFO : Starting http monitor on port 10001
+2016/11/20 14:48:46 INFO : Monitor started in manual mode
+2016/11/20 14:48:48 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 14:48:48 ERROR: ERR00010 No slaves were detected
+2016/11/20 14:52:02 ERROR: Could not bootstrap replication
+2016/11/20 14:52:02 Error 1193: Unknown system variable 'Timeout'
+2016/11/20 15:58:42 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 15:58:42 INFO : Monitor started in manual mode
+2016/11/20 15:58:42 INFO : Starting http monitor on port 10001
+2016/11/20 15:58:45 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 15:58:45 ERROR: ERR00010 No slaves were detected
+2016/11/20 16:01:49 ERROR: Could not bootstrap replication
+2016/11/20 16:01:49 Error 1193: Unknown system variable 'Timeout'
+2016/11/20 17:54:42 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 17:54:42 INFO : Starting http monitor on port 10001
+2016/11/20 17:54:42 INFO : Monitor started in manual mode
+2016/11/20 17:54:44 ERROR: ERR00010 No slaves were detected
+2016/11/20 17:54:44 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 17:54:51 ERROR: Could not bootstrap replication
+2016/11/20 17:54:51 Error 1193: Unknown system variable 'Timeout'
+2016/11/20 17:55:10 ERROR: Could not bootstrap replication
+2016/11/20 17:55:10 Error 1193: Unknown system variable 'Timeout'
+2016/11/20 17:58:25 ERROR: Could not bootstrap replication
+2016/11/20 17:58:25 Error 1193: Unknown system variable 'Timeout'
+2016/11/20 18:12:59 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 18:12:59 INFO : Starting http monitor on port 10001
+2016/11/20 18:12:59 INFO : Monitor started in manual mode
+2016/11/20 18:13:01 ERROR: ERR00010 No slaves were detected
+2016/11/20 18:13:01 ERROR: ERR00012 Could not autodetect a master
+2016/11/20 18:16:53 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 18:16:53 INFO : Starting http monitor on port 10001
+2016/11/20 18:16:53 INFO : Monitor started in manual mode
+2016/11/20 18:16:57 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 18:17:28 DEBUG: In Failover skip topology detection
+2016/11/20 18:17:28 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 18:17:28 DEBUG: In Failover skip checking failed master
+2016/11/20 18:17:30 DEBUG: In Failover skip topology detection
+2016/11/20 18:17:30 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 18:17:30 DEBUG: In Failover skip checking failed master
+2016/11/20 18:17:35 ERROR: ERR00010 No slaves were detected
+2016/11/20 18:17:48 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2016/11/20 18:17:50 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2016/11/20 18:19:38 INFO : Starting master switch
+2016/11/20 18:19:38 INFO : Checking long running updates on master
+2016/11/20 18:19:38 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/11/20 18:19:38 INFO : Electing a new master
+2016/11/20 18:19:38 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/11/20 18:19:38 INFO : Terminating all threads on 127.0.0.1:5154
+2016/11/20 18:19:39 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/11/20 18:19:39 INFO : Waiting for candidate Master to synchronize
+2016/11/20 18:19:39 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1]
+2016/11/20 18:19:39 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1 Slave GTID: Binlog Pos:0-5054-1
+2016/11/20 18:19:39 DEBUG: MASTER_POS_WAIT executed.
+2016/11/20 18:19:39 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1 Slave GTID:0-5054-1 Binlog Pos:0-5054-1
+2016/11/20 18:19:39 INFO : Stopping slave thread on new master
+2016/11/20 18:19:40 INFO : Resetting slave on new master and set read/write mode on
+2016/11/20 18:19:40 INFO : Switching old master as a slave
+2016/11/20 18:19:43 INFO : Switching other slaves to the new master
+2016/11/20 18:19:44 INFO : Master switch on 127.0.0.1:5112 complete
+2016/11/20 18:19:58 INFO : Starting master switch
+2016/11/20 18:19:58 INFO : Checking long running updates on master
+2016/11/20 18:19:58 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/11/20 18:19:58 INFO : Electing a new master
+2016/11/20 18:19:58 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/11/20 18:19:58 INFO : Terminating all threads on 127.0.0.1:5112
+2016/11/20 18:19:58 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/11/20 18:19:58 INFO : Waiting for candidate Master to synchronize
+2016/11/20 18:19:58 DEBUG: Syncing on master GTID Binlog Pos [0-5012-2]
+2016/11/20 18:19:58 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-2 Slave GTID:0-5054-1 Binlog Pos:0-5012-2
+2016/11/20 18:19:58 DEBUG: MASTER_POS_WAIT executed.
+2016/11/20 18:19:58 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-2 Slave GTID:0-5012-2 Binlog Pos:0-5012-2
+2016/11/20 18:19:58 INFO : Stopping slave thread on new master
+2016/11/20 18:19:58 INFO : Resetting slave on new master and set read/write mode on
+2016/11/20 18:19:59 INFO : Switching old master as a slave
+2016/11/20 18:20:02 INFO : Switching other slaves to the new master
+2016/11/20 18:20:02 INFO : Master switch on 127.0.0.1:5154 complete

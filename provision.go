@@ -58,10 +58,19 @@ func bootstrap() error {
 	if cleanall {
 		log.Println("INFO : Cleaning up replication on existing servers")
 		for _, server := range servers {
+			if conf.Verbose {
+				log.Printf("INFO : SetDefaultMasterConn on server %s ", server.URL)
+			}
 			err := dbhelper.SetDefaultMasterConn(server.Conn, conf.MasterConn)
 			if err != nil {
+				if conf.Verbose {
+					log.Printf("INFO : RemoveFailoverState on server %s ", server.URL)
+				}
 				sme.RemoveFailoverState()
 				return err
+			}
+			if conf.Verbose {
+				log.Printf("INFO : ResetMaster on server %s ", server.URL)
 			}
 			err = dbhelper.ResetMaster(server.Conn)
 			if err != nil {

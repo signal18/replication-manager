@@ -25,14 +25,21 @@ func masterFailover(fail bool) bool {
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
+		logprint("INFO : Checking long running updates on master")
+		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
+			logprint("ERROR: Long updates running on master. Cannot switchover")
+			sme.RemoveFailoverState()
+			return false
+		}
+
 		logprintf("INFO : Flushing tables on %s (master)", master.URL)
 		workerFlushTable := make(chan error, 1)
 
 		go func() {
-			var err error
-			err = dbhelper.FlushTablesNoLog(master.Conn)
+			var err2 error
+			err2 = dbhelper.FlushTablesNoLog(master.Conn)
 
-			workerFlushTable <- err
+			workerFlushTable <- err2
 		}()
 		select {
 		case err = <-workerFlushTable:
@@ -45,12 +52,6 @@ func masterFailover(fail bool) bool {
 			return false
 		}
 
-		logprint("INFO : Checking long running updates on master")
-		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
-			logprint("ERROR: Long updates running on master. Cannot switchover")
-			sme.RemoveFailoverState()
-			return false
-		}
 	}
 	logprint("INFO : Electing a new master")
 	for _, s := range slaves {
@@ -87,8 +88,15 @@ func masterFailover(fail bool) bool {
 		}
 		logprint("INFO : Pre-failover script complete:", string(out))
 	}
+
 	// Phase 2: Reject updates and sync slaves
 	if fail == false {
+		if conf.FailEventScheduler {
+			err = dbhelper.SetEventScheduler(oldMaster.Conn, false)
+			if err != nil {
+				logprint("ERROR: Could not disable event scheduler on old master")
+			}
+		}
 		oldMaster.freeze()
 		logprintf("INFO : Rejecting updates on %s (old master)", oldMaster.URL)
 		err = dbhelper.FlushTablesWithReadLock(oldMaster.Conn)
@@ -111,6 +119,7 @@ func masterFailover(fail bool) bool {
 			logprint("DEBUG: MASTER_POS_WAIT executed.")
 			master.log()
 		}
+
 	} else {
 		err = master.readAllRelayLogs()
 		if err != nil {
@@ -146,6 +155,13 @@ func masterFailover(fail bool) bool {
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
+	if conf.FailEventScheduler && oldMaster.EventScheduler {
+		err = dbhelper.SetEventScheduler(master.Conn, true)
+		if err != nil {
+			logprint("ERROR: Could not enable event scheduler on the new master")
+		}
+	}
+
 	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", master.IP, master.Port, rplUser, rplPass, conf.MasterConnectRetry)
 	if fail == false {
 		// Get latest GTID pos

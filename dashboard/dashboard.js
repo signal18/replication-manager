@@ -32,6 +32,14 @@ app.factory('Test', function($resource) {
   );
 });
 
+app.factory('Bootstrap', function($resource) {
+  return $resource(
+    '/bootstrap',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 
 app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope, $interval, $http, Servers, Log, Settings, Master) {
   $interval(function(){
