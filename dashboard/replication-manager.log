@@ -1513,3 +1513,19 @@
 2016/11/20 18:19:59 INFO : Switching old master as a slave
 2016/11/20 18:20:02 INFO : Switching other slaves to the new master
 2016/11/20 18:20:02 INFO : Master switch on 127.0.0.1:5154 complete
+2016/11/20 18:49:42 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 18:49:42 INFO : Starting http monitor on port 10001
+2016/11/20 18:49:42 INFO : Monitor started in manual mode
+2016/11/20 18:49:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 22:26:44 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 22:26:44 INFO : Starting http monitor on port 10001
+2016/11/20 22:26:44 INFO : Monitor started in manual mode
+2016/11/20 22:26:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/20 22:29:32 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/20 22:29:32 INFO : Starting http monitor on port 10001
+2016/11/20 22:29:32 INFO : Monitor started in manual mode
+2016/11/20 22:29:34 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/11/21 14:40:10 INFO : replication-manager version 0.7 started in daemon mode
+2016/11/21 14:40:10 INFO : Monitor started in manual mode
+2016/11/21 14:40:10 INFO : Starting http monitor on port 10001
+2016/11/21 14:40:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

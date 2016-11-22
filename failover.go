@@ -144,6 +144,9 @@ func masterFailover(fail bool) bool {
 		}
 		logprint("INFO : Post-failover script complete", string(out))
 	}
+	if conf.HaproxyOn {
+		initHaproxy()
+	}
 	if conf.MultiMaster == false {
 		logprint("INFO : Resetting slave on new master and set read/write mode on")
 		err = dbhelper.ResetSlave(master.Conn, true)
@@ -267,9 +270,6 @@ func masterFailover(fail bool) bool {
 				logprint("ERROR: MaxScale client could not send command:", err)
 			}
 		}
-	}
-	if conf.HaproxyOn {
-		initHaproxy()
 	}
 
 	logprintf("INFO : Master switch on %s complete", master.URL)
