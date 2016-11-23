@@ -19,7 +19,6 @@ import (
 	"github.com/tanji/replication-manager/state"
 
 	"log"
-	"net"
 	"strings"
 	"sync"
 )
@@ -219,31 +218,30 @@ func topologyDiscover() error {
 		}
 		if sv.State != stateFailed {
 
-			myhost := dbhelper.GetHostFromProcessList(sv.Conn, dbUser)
-			myip, err2 := net.LookupIP(myhost)
+			myip, err := misc.GetIPSafe(dbhelper.GetHostFromProcessList(sv.Conn, dbUser))
 
-			if err2 != nil {
-				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, sv.URL, err), ErrFrom: "CONF"})
-			}
-			priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname, myip[0].String())
 			if err != nil {
-				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, repmgrHostname, err), ErrFrom: "CONF"})
-			}
-			if priv.Repl_client_priv == "N" {
-				sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege", ErrFrom: "CONF"})
-			}
-			if priv.Super_priv == "N" {
-				sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege", ErrFrom: "CONF"})
-			}
-			if priv.Reload_priv == "N" {
-				sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege", ErrFrom: "CONF"})
+				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, sv.URL, err), ErrFrom: "CONF"})
+			} else {
+				priv, err := dbhelper.GetPrivileges(sv.Conn, dbUser, repmgrHostname, myip)
+				if err != nil {
+					sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, repmgrHostname, err), ErrFrom: "CONF"})
+				}
+				if priv.Repl_client_priv == "N" {
+					sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege", ErrFrom: "CONF"})
+				}
+				if priv.Super_priv == "N" {
+					sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege", ErrFrom: "CONF"})
+				}
+				if priv.Reload_priv == "N" {
+					sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege", ErrFrom: "CONF"})
+				}
 			}
 			// Check replication user has correct privs.
 			for _, sv2 := range servers {
 				if sv2.URL != sv.URL {
-					rplhost, _ := net.LookupIP(sv2.Host)
-					//	fmt.Print("Found IP", rplhost[0])
-					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, rplUser, sv2.Host, rplhost[0].String())
+					rplhost, _ := misc.GetIPSafe(sv2.Host)
+					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, rplUser, sv2.Host, rplhost)
 					if err != nil {
 						sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s", rplUser, sv2.URL, err), ErrFrom: "CONF"})
 					}

@@ -9,6 +9,7 @@
 package misc
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -66,6 +67,18 @@ func GetLocalIP() string {
 		}
 	}
 	return ""
+}
+
+func GetIPSafe(h string) (string, error) {
+	myip, err := net.LookupIP(h)
+	if err != nil {
+		return "", err
+	}
+	if len(myip) > 0 {
+		return myip[0].String(), nil
+		// that should be improved to return an array of strings, not necessarily the first occurrence
+	}
+	return "", fmt.Errorf("Could not resolve host name %s to IP", h)
 }
 
 func Contains(s []string, e string) bool {
