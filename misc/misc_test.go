@@ -25,3 +25,16 @@ func TestSplitPair(t *testing.T) {
 		t.Fatalf("Expected root and 1234#!:$abcd, got %s and %s instead", u, p)
 	}
 }
+
+func TestGetIPSafe(t *testing.T) {
+	ip, err := GetIPSafe("localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("localhost got ip", ip)
+	ip, err = GetIPSafe("192.168.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("192.168.0.1 got ip", ip)
+}

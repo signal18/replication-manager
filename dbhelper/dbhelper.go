@@ -11,6 +11,7 @@ package dbhelper
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"log"
@@ -174,12 +175,18 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 
 func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges, error) {
 	db.MapperFunc(strings.Title)
+
+	priv := Privileges{}
+
+	if ip == "" {
+		return priv, errors.New("Error getting privileges for non-existent IP address")
+	}
+
 	splitip := strings.Split(ip, ".")
 
 	iprange1 := splitip[0] + ".%.%.%"
 	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
-	priv := Privileges{}
 	stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 	row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 	//	fmt.Println("'" + user + "',''" + host + "','" + ip + "', ''" + ip + "/255.0.0.0'" + ", ''" + ip + "/255.255.0.0'" + "','" + ip + "/255.255.255.0" + "','" + iprange1 + "','" + iprange2 + "','" + iprange3)

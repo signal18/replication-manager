@@ -75,9 +75,7 @@ func GetIPSafe(h string) (string, error) {
 		return "", err
 	}
 	for _, ip := range ips {
-		if len(ip) == net.IPv6len {
-			continue
-		} else {
+		if ip.To4() != nil {
 			return ip.String(), nil
 		}
 	}
