@@ -217,9 +217,11 @@ func topologyDiscover() error {
 			logprintf("DEBUG: Privilege check on %s", sv.URL)
 		}
 		if sv.State != stateFailed {
-
-			myip, err := misc.GetIPSafe(dbhelper.GetHostFromProcessList(sv.Conn, dbUser))
-
+			myhost := dbhelper.GetHostFromProcessList(sv.Conn, dbUser)
+			myip, err := misc.GetIPSafe(myhost)
+			if conf.LogLevel > 2 {
+				logprintf("DEBUG: Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
+			}
 			if err != nil {
 				sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", dbUser, sv.URL, err), ErrFrom: "CONF"})
 			} else {

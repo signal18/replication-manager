@@ -70,13 +70,16 @@ func GetLocalIP() string {
 }
 
 func GetIPSafe(h string) (string, error) {
-	myip, err := net.LookupIP(h)
+	ips, err := net.LookupIP(h)
 	if err != nil {
 		return "", err
 	}
-	if len(myip) > 0 {
-		return myip[0].String(), nil
-		// that should be improved to return an array of strings, not necessarily the first occurrence
+	for _, ip := range ips {
+		if len(ip) == net.IPv6len {
+			continue
+		} else {
+			return ip.String(), nil
+		}
 	}
 	return "", fmt.Errorf("Could not resolve host name %s to IP", h)
 }
