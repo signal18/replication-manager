@@ -22,7 +22,7 @@ RUN \
     rm -rf /var/cache/apk/*
 
 COPY etc/config.toml.sample /etc/replication-manager/
-COPY dashboard/* /usr/share/replication-manager/dashboard/
+COPY dashboard /usr/share/replication-manager/dashboard/
 
 WORKDIR /go/bin
 ENTRYPOINT ["replication-manager"]
