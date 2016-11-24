@@ -173,6 +173,19 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	return "N/A"
 }
 
+func GetHostFromConnection(db *sqlx.DB, user string) string {
+
+	var value string
+	value = ""
+	err := db.QueryRowx("select user()").Scan(&value)
+	if err != nil {
+		log.Println("ERROR: Could not get spider shards", err)
+		return "N/A"
+	}
+	return strings.Split(value, "@")[1]
+
+}
+
 func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges, error) {
 	db.MapperFunc(strings.Title)
 
