@@ -15,7 +15,7 @@ RUN mkdir -p \
         /usr/share/replication-manager/dashboard
 
 RUN \
-    apk --no-cache --update add git go && \
+    apk --no-cache --update add git go haproxy && \
     go install github.com/tanji/replication-manager && \
     apk --no-cache del git go && \
     rm -rf /go/src /go/pkg && \

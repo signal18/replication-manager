@@ -1533,3 +1533,389 @@
 2016/11/24 21:05:54 INFO : Starting http monitor on port 10001
 2016/11/24 21:05:54 INFO : Monitor started in manual mode
 2016/11/24 21:05:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/02 11:33:16 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/02 11:33:16 INFO : Starting http monitor on port 10001
+2016/12/02 11:33:16 INFO : Monitor started in manual mode
+2016/12/02 11:36:04 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/02 11:36:04 INFO : Starting http monitor on port 10001
+2016/12/02 11:36:04 INFO : Monitor started in manual mode
+2016/12/02 11:36:07 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/02 11:48:28 INFO : INF00001 Server 127.0.0.1:5154 is down
+2016/12/02 11:48:28 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2016/12/02 11:48:30 WARN : Master Failure detected! Retry 1/5
+2016/12/02 11:48:32 WARN : Master Failure detected! Retry 2/5
+2016/12/02 11:48:34 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5154 is down
+2016/12/02 11:48:34 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2016/12/02 15:02:57 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/02 15:02:57 INFO : Starting http monitor on port 10001
+2016/12/02 15:02:57 INFO : Monitor started in manual mode
+2016/12/02 15:23:54 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/02 15:23:54 INFO : Starting http monitor on port 10001
+2016/12/02 15:23:54 INFO : Monitor started in manual mode
+2016/12/02 15:23:56 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/02 15:24:46 INFO : Starting master switch
+2016/12/02 15:24:46 INFO : Checking long running updates on master
+2016/12/02 15:24:46 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/02 15:24:46 INFO : Electing a new master
+2016/12/02 15:24:46 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/02 15:24:46 INFO : Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/02 15:24:46 ERROR: Could not Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/02 15:24:46 INFO : Disable Event Scheduler on old master
+2016/12/02 15:24:46 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/02 15:24:46 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/02 15:24:46 INFO : Waiting for candidate Master to synchronize
+2016/12/02 15:24:46 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1242]
+2016/12/02 15:24:46 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1242 Slave GTID:0-5012-2 Binlog Pos:0-5054-1242
+2016/12/02 15:24:46 DEBUG: MASTER_POS_WAIT executed.
+2016/12/02 15:24:46 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1242 Slave GTID:0-5054-1242 Binlog Pos:0-5054-1242
+2016/12/02 15:24:46 INFO : Stopping slave thread on new master
+2016/12/02 15:24:47 INFO : Resetting slave on new master and set read/write mode on
+2016/12/02 15:24:47 INFO : Set DISABLE ON SLAVE for event testev_test on new master
+2016/12/02 15:24:47 ERROR: Could not  Set ENABLE for event testev_test on new master
+2016/12/02 15:24:48 INFO : Switching old master as a slave
+2016/12/02 15:24:51 INFO : Switching other slaves to the new master
+2016/12/02 15:24:51 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 11:28:45 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 11:28:45 INFO : Starting http monitor on port 10001
+2016/12/03 11:28:45 INFO : Monitor started in manual mode
+2016/12/03 11:28:48 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 11:29:07 INFO : Starting master switch
+2016/12/03 11:29:07 INFO : Checking long running updates on master
+2016/12/03 11:29:07 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 11:29:07 INFO : Electing a new master
+2016/12/03 11:29:07 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 11:29:07 INFO : Disable Event Scheduler on old master
+2016/12/03 11:29:07 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 11:29:08 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 11:29:08 INFO : Waiting for candidate Master to synchronize
+2016/12/03 11:29:08 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1243]
+2016/12/03 11:29:08 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1243 Slave GTID:0-5054-1242 Binlog Pos:0-5012-1243
+2016/12/03 11:29:08 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 11:29:08 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1243 Slave GTID:0-5012-1243 Binlog Pos:0-5012-1243
+2016/12/03 11:29:08 INFO : Stopping slave thread on new master
+2016/12/03 11:29:09 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 11:29:10 INFO : Switching old master as a slave
+2016/12/03 11:29:14 INFO : Switching other slaves to the new master
+2016/12/03 11:29:14 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 11:31:23 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 11:31:23 INFO : Starting http monitor on port 10001
+2016/12/03 11:31:23 INFO : Monitor started in manual mode
+2016/12/03 11:31:26 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 11:32:08 INFO : Starting master switch
+2016/12/03 11:32:08 INFO : Checking long running updates on master
+2016/12/03 11:32:08 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 11:32:08 INFO : Electing a new master
+2016/12/03 11:32:08 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 11:32:08 INFO : Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 11:32:08 ERROR: Could not Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 11:32:08 INFO : Disable Event Scheduler on old master
+2016/12/03 11:32:08 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 11:32:08 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 11:32:08 INFO : Waiting for candidate Master to synchronize
+2016/12/03 11:32:08 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1250]
+2016/12/03 11:32:08 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1250 Slave GTID:0-5012-1243 Binlog Pos:0-5054-1250
+2016/12/03 11:32:08 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 11:32:08 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1250 Slave GTID:0-5054-1250 Binlog Pos:0-5054-1250
+2016/12/03 11:32:08 INFO : Stopping slave thread on new master
+2016/12/03 11:32:10 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 11:32:10 INFO : Set DISABLE ON SLAVE for event testev_test on new master
+2016/12/03 11:32:10 ERROR: Could not  Set ENABLE for event testev_test on new master
+2016/12/03 11:32:10 INFO : Switching old master as a slave
+2016/12/03 11:32:14 INFO : Switching other slaves to the new master
+2016/12/03 11:32:14 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 11:34:17 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 11:34:17 INFO : Starting http monitor on port 10001
+2016/12/03 11:34:17 INFO : Monitor started in manual mode
+2016/12/03 11:34:23 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 11:34:37 INFO : Starting master switch
+2016/12/03 11:34:37 INFO : Checking long running updates on master
+2016/12/03 11:34:37 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 11:34:37 INFO : Electing a new master
+2016/12/03 11:34:38 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 11:34:38 INFO : Disable Event Scheduler on old master
+2016/12/03 11:34:38 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 11:34:38 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 11:34:38 INFO : Waiting for candidate Master to synchronize
+2016/12/03 11:34:38 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1251]
+2016/12/03 11:34:38 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1251 Slave GTID:0-5054-1250 Binlog Pos:0-5012-1251
+2016/12/03 11:34:38 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 11:34:38 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1251 Slave GTID:0-5012-1251 Binlog Pos:0-5012-1251
+2016/12/03 11:34:38 INFO : Stopping slave thread on new master
+2016/12/03 11:34:39 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 11:34:39 INFO : Switching old master as a slave
+2016/12/03 11:34:43 INFO : Switching other slaves to the new master
+2016/12/03 11:34:43 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 11:35:11 INFO : Starting master switch
+2016/12/03 11:35:11 INFO : Checking long running updates on master
+2016/12/03 11:35:11 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 11:35:11 INFO : Electing a new master
+2016/12/03 11:35:12 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 11:35:12 INFO : Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 11:35:12 ERROR: Could not Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 11:35:12 INFO : Disable Event Scheduler on old master
+2016/12/03 11:35:12 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 11:35:12 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 11:35:12 INFO : Waiting for candidate Master to synchronize
+2016/12/03 11:35:12 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1252]
+2016/12/03 11:35:12 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1252 Slave GTID:0-5012-1251 Binlog Pos:0-5054-1252
+2016/12/03 11:35:12 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 11:35:12 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1252 Slave GTID:0-5054-1252 Binlog Pos:0-5054-1252
+2016/12/03 11:35:12 INFO : Stopping slave thread on new master
+2016/12/03 11:35:12 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 11:35:12 INFO : Set DISABLE ON SLAVE for event testev_test on new master
+2016/12/03 11:35:12 ERROR: Could not  Set ENABLE for event testev_test on new master
+2016/12/03 11:35:13 INFO : Switching old master as a slave
+2016/12/03 11:35:16 INFO : Switching other slaves to the new master
+2016/12/03 11:35:16 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:02:55 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:02:55 INFO : Starting http monitor on port 10001
+2016/12/03 12:02:55 INFO : Monitor started in manual mode
+2016/12/03 12:02:58 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:03:05 INFO : Starting master switch
+2016/12/03 12:03:05 INFO : Checking long running updates on master
+2016/12/03 12:03:05 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:03:06 INFO : Electing a new master
+2016/12/03 12:03:06 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:03:06 INFO : Disable Event Scheduler on old master
+2016/12/03 12:03:06 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:03:06 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:03:06 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:03:06 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1253]
+2016/12/03 12:03:06 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1253 Slave GTID:0-5054-1252 Binlog Pos:0-5012-1253
+2016/12/03 12:03:06 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:03:06 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1253 Slave GTID:0-5012-1253 Binlog Pos:0-5012-1253
+2016/12/03 12:03:06 INFO : Stopping slave thread on new master
+2016/12/03 12:03:07 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:03:08 INFO : Switching old master as a slave
+2016/12/03 12:03:13 INFO : Switching other slaves to the new master
+2016/12/03 12:03:13 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 12:03:43 INFO : Starting master switch
+2016/12/03 12:03:43 INFO : Checking long running updates on master
+2016/12/03 12:03:43 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:03:43 INFO : Electing a new master
+2016/12/03 12:03:44 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:03:44 INFO : Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 12:03:44 ERROR: Could not Set DISABLE ON SLAVE for event testev_test on old master
+2016/12/03 12:03:44 INFO : Disable Event Scheduler on old master
+2016/12/03 12:03:44 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:03:44 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:03:44 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:03:44 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1255]
+2016/12/03 12:03:44 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1255 Slave GTID:0-5012-1253 Binlog Pos:0-5054-1255
+2016/12/03 12:03:44 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:03:44 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1255 Slave GTID:0-5054-1255 Binlog Pos:0-5054-1255
+2016/12/03 12:03:44 INFO : Stopping slave thread on new master
+2016/12/03 12:03:44 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:03:45 INFO : Set DISABLE ON SLAVE for event testev_test on new master
+2016/12/03 12:03:45 ERROR: Could not  Set ENABLE for event testev_test on new master
+2016/12/03 12:03:45 INFO : Switching old master as a slave
+2016/12/03 12:03:49 INFO : Switching other slaves to the new master
+2016/12/03 12:03:49 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:34:38 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:34:38 INFO : Monitor started in manual mode
+2016/12/03 12:34:38 INFO : Starting http monitor on port 10001
+2016/12/03 12:34:41 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:34:54 INFO : Starting master switch
+2016/12/03 12:34:54 INFO : Checking long running updates on master
+2016/12/03 12:34:54 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:34:55 INFO : Electing a new master
+2016/12/03 12:34:55 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:34:55 INFO : Disable Event Scheduler on old master
+2016/12/03 12:34:55 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:34:55 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:34:55 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:34:55 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1256]
+2016/12/03 12:34:55 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1256 Slave GTID:0-5054-1255 Binlog Pos:0-5012-1256
+2016/12/03 12:34:55 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:34:55 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1256 Slave GTID:0-5012-1256 Binlog Pos:0-5012-1256
+2016/12/03 12:34:55 INFO : Stopping slave thread on new master
+2016/12/03 12:34:56 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:34:56 INFO : Switching old master as a slave
+2016/12/03 12:35:00 INFO : Switching other slaves to the new master
+2016/12/03 12:35:00 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 12:35:18 INFO : Starting master switch
+2016/12/03 12:35:18 INFO : Checking long running updates on master
+2016/12/03 12:35:18 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:35:18 INFO : Electing a new master
+2016/12/03 12:35:19 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:35:19 INFO : Disable Event Scheduler on old master
+2016/12/03 12:35:19 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:35:19 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:35:19 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:35:19 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1258]
+2016/12/03 12:35:19 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1258 Slave GTID:0-5012-1256 Binlog Pos:0-5054-1258
+2016/12/03 12:35:19 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:35:19 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1258 Slave GTID:0-5054-1258 Binlog Pos:0-5054-1258
+2016/12/03 12:35:19 INFO : Stopping slave thread on new master
+2016/12/03 12:35:19 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:35:19 INFO : Switching old master as a slave
+2016/12/03 12:35:23 INFO : Switching other slaves to the new master
+2016/12/03 12:35:23 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:36:42 INFO : Starting master switch
+2016/12/03 12:36:42 INFO : Checking long running updates on master
+2016/12/03 12:36:42 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:36:42 INFO : Electing a new master
+2016/12/03 12:36:43 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:36:43 INFO : Disable Event Scheduler on old master
+2016/12/03 12:36:43 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:36:43 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:36:43 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:36:43 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1259]
+2016/12/03 12:36:43 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1259 Slave GTID:0-5054-1258 Binlog Pos:0-5012-1259
+2016/12/03 12:36:43 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:36:43 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1259 Slave GTID:0-5012-1259 Binlog Pos:0-5012-1259
+2016/12/03 12:36:43 INFO : Stopping slave thread on new master
+2016/12/03 12:36:43 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:36:43 INFO : Switching old master as a slave
+2016/12/03 12:36:47 INFO : Switching other slaves to the new master
+2016/12/03 12:36:47 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 12:39:14 INFO : Starting master switch
+2016/12/03 12:39:14 INFO : Checking long running updates on master
+2016/12/03 12:39:14 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:39:14 INFO : Electing a new master
+2016/12/03 12:39:15 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:39:15 INFO : Disable Event Scheduler on old master
+2016/12/03 12:39:15 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:39:15 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:39:15 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:39:15 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1264]
+2016/12/03 12:39:15 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1264 Slave GTID:0-5012-1259 Binlog Pos:0-5054-1264
+2016/12/03 12:39:15 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:39:15 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1264 Slave GTID:0-5054-1264 Binlog Pos:0-5054-1264
+2016/12/03 12:39:15 INFO : Stopping slave thread on new master
+2016/12/03 12:39:15 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:39:16 INFO : Switching old master as a slave
+2016/12/03 12:39:20 INFO : Switching other slaves to the new master
+2016/12/03 12:39:20 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:43:04 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:43:04 INFO : Monitor started in manual mode
+2016/12/03 12:43:04 INFO : Starting http monitor on port 10001
+2016/12/03 12:43:40 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:43:40 INFO : Monitor started in manual mode
+2016/12/03 12:43:40 INFO : Starting http monitor on port 10001
+2016/12/03 12:43:42 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:43:58 INFO : Starting master switch
+2016/12/03 12:43:58 INFO : Checking long running updates on master
+2016/12/03 12:43:58 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:43:58 INFO : Electing a new master
+2016/12/03 12:43:58 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:43:58 INFO : Disable Event Scheduler on old master
+2016/12/03 12:43:58 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:43:58 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:43:58 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:43:58 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1265]
+2016/12/03 12:43:58 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1265 Slave GTID:0-5054-1264 Binlog Pos:0-5012-1265
+2016/12/03 12:43:58 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:43:58 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1265 Slave GTID:0-5012-1265 Binlog Pos:0-5012-1265
+2016/12/03 12:43:58 INFO : Stopping slave thread on new master
+2016/12/03 12:43:59 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:43:59 INFO : Switching old master as a slave
+2016/12/03 12:44:03 INFO : Switching other slaves to the new master
+2016/12/03 12:44:03 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 12:44:20 INFO : Starting master switch
+2016/12/03 12:44:20 INFO : Checking long running updates on master
+2016/12/03 12:44:20 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:44:20 INFO : Electing a new master
+2016/12/03 12:44:20 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:44:20 INFO : Disable Event Scheduler on old master
+2016/12/03 12:44:20 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:44:20 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:44:20 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:44:20 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1268]
+2016/12/03 12:44:20 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1268 Slave GTID:0-5012-1265 Binlog Pos:0-5054-1268
+2016/12/03 12:44:20 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:44:20 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1268 Slave GTID:0-5054-1268 Binlog Pos:0-5054-1268
+2016/12/03 12:44:20 INFO : Stopping slave thread on new master
+2016/12/03 12:44:21 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:44:21 INFO : Switching old master as a slave
+2016/12/03 12:44:24 INFO : Switching other slaves to the new master
+2016/12/03 12:44:24 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:45:04 INFO : Starting master switch
+2016/12/03 12:45:04 INFO : Checking long running updates on master
+2016/12/03 12:45:04 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:45:04 INFO : Electing a new master
+2016/12/03 12:45:04 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:45:04 INFO : Disable Event Scheduler on old master
+2016/12/03 12:45:04 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:45:04 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:45:04 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:45:04 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1269]
+2016/12/03 12:45:04 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1269 Slave GTID:0-5054-1268 Binlog Pos:0-5012-1269
+2016/12/03 12:45:04 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:45:04 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1269 Slave GTID:0-5012-1269 Binlog Pos:0-5012-1269
+2016/12/03 12:45:04 INFO : Stopping slave thread on new master
+2016/12/03 12:45:04 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:45:05 INFO : Switching old master as a slave
+2016/12/03 12:45:08 INFO : Switching other slaves to the new master
+2016/12/03 12:45:08 INFO : Master switch on 127.0.0.1:5154 complete
+2016/12/03 12:51:22 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:51:22 INFO : Monitor started in manual mode
+2016/12/03 12:51:22 INFO : Starting http monitor on port 10001
+2016/12/03 12:51:25 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:51:54 INFO : Starting master switch
+2016/12/03 12:51:54 INFO : Checking long running updates on master
+2016/12/03 12:51:54 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:51:54 INFO : Electing a new master
+2016/12/03 12:51:54 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:51:54 INFO : Set DISABLE ON SLAVE for event test ev_test on old master
+2016/12/03 12:51:54 INFO : Disable Event Scheduler on old master
+2016/12/03 12:51:55 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:51:55 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:51:55 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:51:55 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1273]
+2016/12/03 12:51:55 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1273 Slave GTID:0-5012-1269 Binlog Pos:0-5054-1273
+2016/12/03 12:51:55 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:51:55 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1273 Slave GTID:0-5054-1273 Binlog Pos:0-5054-1273
+2016/12/03 12:51:55 INFO : Stopping slave thread on new master
+2016/12/03 12:51:55 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:51:55 INFO : Set DISABLE ON SLAVE for event test ev_test on new master
+2016/12/03 12:51:56 INFO : Switching old master as a slave
+2016/12/03 12:51:59 INFO : Switching other slaves to the new master
+2016/12/03 12:51:59 INFO : Master switch on 127.0.0.1:5112 complete
+2016/12/03 12:57:50 INFO : Starting master switch
+2016/12/03 12:57:50 INFO : Checking long running updates on master
+2016/12/03 12:57:50 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2016/12/03 12:57:50 INFO : Electing a new master
+2016/12/03 12:57:50 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2016/12/03 12:57:50 INFO : Set DISABLE ON SLAVE for event test ev_test on old master
+2016/12/03 12:57:50 INFO : Disable Event Scheduler on old master
+2016/12/03 12:57:51 INFO : Terminating all threads on 127.0.0.1:5112
+2016/12/03 12:57:51 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2016/12/03 12:57:51 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:57:51 DEBUG: Syncing on master GTID Binlog Pos [0-5012-1276]
+2016/12/03 12:57:51 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-1276 Slave GTID:0-5054-1273 Binlog Pos:0-5012-1276
+2016/12/03 12:57:51 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:57:51 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-1276 Slave GTID:0-5012-1276 Binlog Pos:0-5012-1276
+2016/12/03 12:57:51 INFO : Stopping slave thread on new master
+2016/12/03 12:57:52 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:57:52 INFO : Set DISABLE ON SLAVE for event test ev_test on new master
+2016/12/03 12:57:53 INFO : Switching old master as a slave
+2016/12/03 12:58:17 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:58:17 INFO : Monitor started in manual mode
+2016/12/03 12:58:17 INFO : Starting http monitor on port 10001
+2016/12/03 12:58:19 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:58:46 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/03 12:58:46 INFO : Monitor started in manual mode
+2016/12/03 12:58:46 INFO : Starting http monitor on port 10001
+2016/12/03 12:58:49 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/03 12:59:15 INFO : Starting master switch
+2016/12/03 12:59:15 INFO : Checking long running updates on master
+2016/12/03 12:59:15 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2016/12/03 12:59:15 INFO : Electing a new master
+2016/12/03 12:59:15 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2016/12/03 12:59:15 INFO : Set DISABLE ON SLAVE for event test ev_test on old master
+2016/12/03 12:59:15 INFO : Disable Event Scheduler on old master
+2016/12/03 12:59:15 INFO : Terminating all threads on 127.0.0.1:5154
+2016/12/03 12:59:15 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2016/12/03 12:59:15 INFO : Waiting for candidate Master to synchronize
+2016/12/03 12:59:15 DEBUG: Syncing on master GTID Binlog Pos [0-5054-1283]
+2016/12/03 12:59:15 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-1283 Slave GTID:0-5012-1276 Binlog Pos:0-5054-1283
+2016/12/03 12:59:15 DEBUG: MASTER_POS_WAIT executed.
+2016/12/03 12:59:15 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-1283 Slave GTID:0-5054-1283 Binlog Pos:0-5054-1283
+2016/12/03 12:59:15 INFO : Stopping slave thread on new master
+2016/12/03 12:59:16 INFO : Resetting slave on new master and set read/write mode on
+2016/12/03 12:59:16 INFO : Enable Event Scheduler on the new master
+2016/12/03 12:59:16 INFO : Set ENABLE for event test ev_test on new master
+2016/12/03 12:59:16 INFO : Switching old master as a slave
+2016/12/03 12:59:20 INFO : Switching other slaves to the new master
+2016/12/03 12:59:20 INFO : Master switch on 127.0.0.1:5112 complete

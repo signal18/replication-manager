@@ -44,6 +44,8 @@ readonly = true
 wait-kill = 5000
 post-failover-script = ""
 pre-failover-script =""
+failover-event-scheduler = false
+failover-event-status = false
 
 # CHECK
 # -----

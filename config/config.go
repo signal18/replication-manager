@@ -46,6 +46,7 @@ type Config struct {
 	RplChecks          bool
 	FailSync           bool   `mapstructure:"failover-at-sync"`
 	FailEventScheduler bool   `mapstructure:"failover-event-scheduler"`
+	FailEventStatus    bool   `mapstructure:"failover-event-status"`
 	Heartbeat          bool   `mapstructure:"heartbeat-table"`
 	MxsOn              bool   `mapstructure:"maxscale"`
 	MxsHost            string `mapstructure:"maxscale-host"`

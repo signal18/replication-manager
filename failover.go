@@ -91,7 +91,20 @@ func masterFailover(fail bool) bool {
 
 	// Phase 2: Reject updates and sync slaves
 	if fail == false {
+		if conf.FailEventStatus {
+			for _, v := range master.EventsStatus {
+				if v.Status == 3 {
+					logprintf("INFO : Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
+					err = dbhelper.SetEnventsStatus(oldMaster.Conn, v, 3)
+					if err != nil {
+						logprintf("ERROR: Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
+					}
+				}
+			}
+		}
 		if conf.FailEventScheduler {
+
+			logprintf("INFO : Disable Event Scheduler on old master")
 			err = dbhelper.SetEventScheduler(oldMaster.Conn, false)
 			if err != nil {
 				logprint("ERROR: Could not disable event scheduler on old master")
@@ -158,13 +171,25 @@ func masterFailover(fail bool) bool {
 	if err != nil {
 		logprint("ERROR: Could not set new master as read-write")
 	}
-	if conf.FailEventScheduler && oldMaster.EventScheduler {
+	if conf.FailEventScheduler {
+		logprintf("INFO : Enable Event Scheduler on the new master")
 		err = dbhelper.SetEventScheduler(master.Conn, true)
 		if err != nil {
 			logprint("ERROR: Could not enable event scheduler on the new master")
 		}
-	}
 
+	}
+	if conf.FailEventStatus {
+		for _, v := range master.EventsStatus {
+			if v.Status == 3 {
+				logprintf("INFO : Set ENABLE for event %s %s on new master", v.Db, v.Name)
+				err = dbhelper.SetEnventsStatus(master.Conn, v, 1)
+				if err != nil {
+					logprintf("ERROR: Could not  Set ENABLE for event %s %s on new master", v.Db, v.Name)
+				}
+			}
+		}
+	}
 	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", master.IP, master.Port, rplUser, rplPass, conf.MasterConnectRetry)
 	if fail == false {
 		// Get latest GTID pos

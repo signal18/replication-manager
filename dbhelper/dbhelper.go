@@ -25,6 +25,12 @@ import (
 
 const debug = false
 
+type Event struct {
+	Db     string
+	Name   string
+	Status int64
+}
+
 type Processlist struct {
 	Id       uint64
 	User     string
@@ -399,6 +405,32 @@ func GetSlaveHostsDiscovery(db *sqlx.DB) []string {
 		log.Fatalln("ERROR: Could not get slave hosts from the processlist", err)
 	}
 	return slaveList
+}
+
+func GetEnventsStatus(db *sqlx.DB) ([]Event, error) {
+	db.MapperFunc(strings.Title)
+	udb := db.Unsafe()
+
+	ss := []Event{}
+	err := udb.Select(&ss, "SELECT db as Db, name as Name, status+0  AS Status FROM mysql.event")
+	if err != nil {
+		log.Fatal("ERROR: Could not get events 	tatus ", err)
+	}
+	return ss, err
+}
+
+func SetEnventsStatus(db *sqlx.DB, ev Event, status int64) error {
+	stmt := "ALTER EVENT "
+	if status == 3 {
+		stmt = stmt + ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
+	} else {
+		stmt = stmt + ev.Db + "." + ev.Name + " ENABLE"
+	}
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetStatus(db *sqlx.DB) map[string]string {

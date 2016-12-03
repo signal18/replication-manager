@@ -86,6 +86,7 @@ td {
 				<th>Slave SQL Thread</th>
 				<th>Delay</th>
 				<th>Read Only</th>
+				<th>Scheduler</th>
 				<th>Master Sync</th>
 				<th>Slave Sync</th>
 			</tr>
@@ -100,6 +101,7 @@ td {
 				<td>{{server.SQLThread}}</td>
 				<td>{{server.Delay.Int64}}</td>
 				<td>{{server.ReadOnly}}</td>
+				<td>{{server.EventScheduler}}</td>
 				<td>{{server.SemiSyncMasterStatus}}</td>
 				<td>{{server.SemiSyncSlaveStatus}}</td>
 			</tr>

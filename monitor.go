@@ -58,6 +58,7 @@ type ServerMonitor struct {
 	SemiSyncSlaveStatus  bool
 	RplMasterStatus      bool
 	EventScheduler       bool
+	EventsStatus         []dbhelper.Event
 }
 
 type serverList []*ServerMonitor
@@ -254,7 +255,11 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
-
+	server.EventsStatus, err = dbhelper.GetEnventsStatus(server.Conn)
+	if err != nil {
+		logprintf("ERROR: Could not get events")
+		return err
+	}
 	su := dbhelper.GetStatus(server.Conn)
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
