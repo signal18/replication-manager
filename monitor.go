@@ -54,6 +54,7 @@ type ServerMonitor struct {
 	SQLErrno             uint
 	SQLError             string
 	FailCount            int
+	FailSuspectHeartbeat int64
 	SemiSyncMasterStatus bool
 	SemiSyncSlaveStatus  bool
 	RplMasterStatus      bool
@@ -137,6 +138,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		}
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
+			server.FailSuspectHeartbeat = sme.GetHeartbeats()
 			if server.URL == master.URL {
 				if master.FailCount <= conf.MaxFail {
 					logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, conf.MaxFail)
@@ -182,9 +184,17 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				logprint("ERROR: Could not send econf.Mail alert: ", err)
 			}
 		}
+
 		return
 	}
-
+	// Reset FailCount
+	/*	if conf.Verbose>0  {
+		logprintf("DEBUG: State comparison %b %b %b %d %d %d ", server.State==stateMaster , server.State==stateSlave  , server.State==stateUnconn ,(server.FailCount > 0) ,((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker), conf.FailResetTime) {
+	}*/
+	if (server.State == stateMaster || server.State == stateSlave || server.State == stateUnconn) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
+		server.FailCount = 0
+		server.FailSuspectHeartbeat = 0
+	}
 	_, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce

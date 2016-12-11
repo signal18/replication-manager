@@ -64,6 +64,8 @@ func init() {
 	initRepmgrFlags(failoverCmd)
 	initRepmgrFlags(monitorCmd)
 	monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
+	monitorCmd.Flags().Int64Var(&conf.FailResetTime, "failcount-reset-time", 300, "Reset failures counter after N seconds")
+	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in second")
 	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
 	monitorCmd.Flags().StringVar(&conf.CheckType, "check-type", "tcp", "Type of server health check (tcp, agent)")
 	monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", false, "Start the HTTP monitor")
@@ -266,7 +268,7 @@ Interactive console and HTTP dashboards are available for control`,
 
 		termboxChan := newTbChan()
 		interval := time.Second
-		ticker := time.NewTicker(interval * 2)
+		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
 		for exit == false {
 
 			select {

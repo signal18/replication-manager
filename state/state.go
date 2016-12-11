@@ -35,7 +35,7 @@ func (m Map) Add(key string, s State) {
 }
 
 func (m Map) Delete(key string) {
-	 delete(m, key)
+	delete(m, key)
 }
 
 func (m Map) Search(key string) bool {
@@ -58,9 +58,10 @@ type StateMachine struct {
 	uptimeFailable      int64
 	uptimeSemisync      int64
 	lastState           int64
+	heartbeats          int64
 	avgReplicationDelay float32
+	inFailover          bool
 	sync.Mutex
-  inFailover	 				bool
 }
 
 func (SM *StateMachine) Init() {
@@ -74,22 +75,22 @@ func (SM *StateMachine) Init() {
 	SM.uptimeFailable = 0
 	SM.uptimeSemisync = 0
 	SM.lastState = 0
+	SM.heartbeats = 0
 }
 
 func (SM *StateMachine) SetFailoverState() {
 	SM.Lock()
-	SM.inFailover= true
+	SM.inFailover = true
 	SM.Unlock()
 }
-
 
 func (SM *StateMachine) RemoveFailoverState() {
 	SM.Lock()
-	SM.inFailover= false
+	SM.inFailover = false
 	SM.Unlock()
 }
 
-func (SM *StateMachine)  IsInFailover() bool {
+func (SM *StateMachine) IsInFailover() bool {
 	return SM.inFailover
 }
 
@@ -99,24 +100,25 @@ func (SM *StateMachine) AddState(key string, s State) {
 	SM.Unlock()
 }
 
-
-
-
 func (SM *StateMachine) IsInState(key string) bool {
 	SM.Lock()
-   if SM.CurState.Search(key) == false {
+	if SM.CurState.Search(key) == false {
 		SM.Unlock()
 		return false
-   } else {
-	   SM.Unlock()
-	   return false
-	 }
+	} else {
+		SM.Unlock()
+		return false
+	}
 }
 
 func (SM *StateMachine) DeleteState(key string) {
 	SM.Lock()
 	SM.CurState.Delete(key)
 	SM.Unlock()
+}
+
+func (SM *StateMachine) GetHeartbeats() int64 {
+	return SM.heartbeats
 }
 
 func (SM *StateMachine) GetUptime() string {
@@ -136,7 +138,7 @@ func (SM *StateMachine) GetUptimeSemiSync() string {
 	return up
 }
 
-func (SM *StateMachine) ResetUpTime(){
+func (SM *StateMachine) ResetUpTime() {
 	SM.lasttime = time.Now().Unix()
 	SM.firsttime = SM.lasttime
 	SM.uptime = 0
@@ -169,7 +171,7 @@ func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
 		SM.uptime = SM.uptime + (timenow - SM.lasttime)
 	}
 	SM.lasttime = timenow
-
+	SM.heartbeats = SM.heartbeats + 1
 	//fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b uptime %d uptimeFailable %d uptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.uptime, SM.uptimeFailable ,SM.uptimeSemisync)
 }
 
@@ -202,7 +204,7 @@ func (SM *StateMachine) IsDiscovered() bool {
 
 func (SM *StateMachine) GetState() []string {
 	var log []string
-  SM.Lock()
+	SM.Lock()
 	for key2, value2 := range *SM.OldState {
 		if SM.CurState.Search(key2) == false {
 			log = append(log, fmt.Sprintf("%-5s: %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
@@ -215,6 +217,6 @@ func (SM *StateMachine) GetState() []string {
 
 		}
 	}
-  SM.Unlock()
+	SM.Unlock()
 	return log
 }

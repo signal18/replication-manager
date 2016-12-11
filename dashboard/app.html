@@ -63,10 +63,12 @@ td {
 		<p class="sectionheader">SLA</p>
 		<table ng-if="settings" class="table">
 			<tr>
+				<th>Monitor Tickers</th>
 				<th>Master Available</th>
 				<th>Can Failover Acceptable Data Loss</th>
 				<th>Can Failover No Data Loss</th>
 			</tr><tr>
+				<td>{{settings.monheartbeats}}</td>
 				<td>{{settings.uptime}}</td>
 				<td>{{settings.uptimefailable}}</td>
 				<td>{{settings.uptimesemisync}}</td>
@@ -82,10 +84,11 @@ td {
 				<th>Using GTID</th>
 				<th>Current GTID</th>
 				<th>Slave GTID Pos</th>
-				<th>Slave IO Thread</th>
-				<th>Slave SQL Thread</th>
+				<th>IO Thread</th>
+				<th>SQL Thread</th>
 				<th>Delay</th>
 				<th>Read Only</th>
+				<th>Fail Count</th>
 				<th>Scheduler</th>
 				<th>Master Sync</th>
 				<th>Slave Sync</th>
@@ -98,9 +101,10 @@ td {
 				<td>{{gtidstring(server.CurrentGtid)}}</td>
 				<td>{{gtidstring(server.SlaveGtid)}}</td>
 				<td>{{server.IOThread}}</td>
-				<td>{{server.SQLThread}}</td>
+				<td>{{server.SQLThread	}}</td>
 				<td>{{server.Delay.Int64}}</td>
 				<td>{{server.ReadOnly}}</td>
+				<td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
 				<td>{{server.EventScheduler}}</td>
 				<td>{{server.SemiSyncMasterStatus}}</td>
 				<td>{{server.SemiSyncSlaveStatus}}</td>

@@ -41,6 +41,8 @@ mail-to = "mrm@mariadb.com"
 
 autorejoin = true
 readonly = true
+monitoring-ticker = 2
+failcount-reset-time = 300
 wait-kill = 5000
 post-failover-script = ""
 pre-failover-script =""

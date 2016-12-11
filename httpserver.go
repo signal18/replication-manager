@@ -17,20 +17,23 @@ import (
 )
 
 type settings struct {
-	Interactive    string `json:"interactive"`
-	FailoverCtr    string `json:"failoverctr"`
-	MaxDelay       string `json:"maxdelay"`
-	Faillimit      string `json:"faillimit"`
-	LastFailover   string `json:"lastfailover"`
-	Uptime         string `json:"uptime"`
-	UptimeFailable string `json:"uptimefailable"`
-	UptimeSemiSync string `json:"uptimesemisync"`
-	RplChecks      string `json:"rplchecks"`
-	FailSync       string `json:"failsync"`
-	Test           string `json:"test"`
-	Heartbeat      string `json:"heartbeat"`
-	Status         string `json:"runstatus"`
-	ConfGroup      string `json:"confgroup"`
+	Interactive      string `json:"interactive"`
+	FailoverCtr      string `json:"failoverctr"`
+	MaxDelay         string `json:"maxdelay"`
+	Faillimit        string `json:"faillimit"`
+	LastFailover     string `json:"lastfailover"`
+	MonHearbeats     string `json:"monheartbeats"`
+	Uptime           string `json:"uptime"`
+	UptimeFailable   string `json:"uptimefailable"`
+	UptimeSemiSync   string `json:"uptimesemisync"`
+	RplChecks        string `json:"rplchecks"`
+	FailSync         string `json:"failsync"`
+	Test             string `json:"test"`
+	Heartbeat        string `json:"heartbeat"`
+	Status           string `json:"runstatus"`
+	ConfGroup        string `json:"confgroup"`
+	MonitoringTicker string `json:"monitoringticker"`
+	FailResetTime    string `json:"failresettime"`
 }
 
 func httpserver() {
@@ -94,6 +97,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.MaxDelay = fmt.Sprintf("%v", conf.MaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
 	s.Faillimit = fmt.Sprintf("%d", conf.FailLimit)
+	s.MonHearbeats = fmt.Sprintf("%d", sme.GetHeartbeats())
 	s.Uptime = sme.GetUptime()
 	s.UptimeFailable = sme.GetUptimeFailable()
 	s.UptimeSemiSync = sme.GetUptimeSemiSync()
@@ -101,6 +105,9 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Heartbeat = fmt.Sprintf("%v", conf.Heartbeat)
 	s.Status = fmt.Sprintf("%v", runStatus)
 	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
+	s.MonitoringTicker = fmt.Sprintf("%d", conf.MonitoringTicker)
+	s.FailResetTime = fmt.Sprintf("%d", conf.FailResetTime)
+
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()
