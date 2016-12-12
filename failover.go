@@ -26,7 +26,7 @@ func masterFailover(fail bool) bool {
 	var err error
 	if fail == false {
 		logprint("INFO : Checking long running updates on master")
-		if dbhelper.CheckLongRunningWrites(master.Conn, 10) > 0 {
+		if dbhelper.CheckLongRunningWrites(master.Conn, conf.WaitWrite) > 0 {
 			logprint("ERROR: Long updates running on master. Cannot switchover")
 			sme.RemoveFailoverState()
 			return false
@@ -336,7 +336,7 @@ func electCandidate(l []*ServerMonitor) int {
 				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}
-			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false {
+			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false && conf.CheckReplFilter == true {
 				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}

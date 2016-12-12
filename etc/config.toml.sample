@@ -1,6 +1,6 @@
 # config.toml
 # Example replication-manager configuration file
-# replication-manager  --config=./etc/config.toml.sample monitor --config-group=Cluster01 monitor --daemon 
+# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
 
 [Cluster01]
 
@@ -52,6 +52,8 @@ pre-failover-script =""
 # Timeout in seconds between consecutive monitoring
 monitoring-ticker = 2
 check-type = "tcp"
+check-replication-filters = true
+check-replication-state = true
 
 # Failover after N failures detection
 # Reset number of failure if server auto recover after N seconds
@@ -83,7 +85,8 @@ gtidcheck = true
 # --------------------
 haproxy = false
 haproxy-binary-path = "/usr/sbin/haproxy"
+
 # Read write traffic
-haproxy-write-port=3306
 # Read only load balance least connection traffic
+haproxy-write-port=3306
 haproxy-read-port=3307
