@@ -1,5 +1,8 @@
 # config.toml
 # Example replication-manager configuration file
+# replication-manager  --config=./etc/config.toml.sample monitor --config-group=Cluster01 monitor --daemon 
+
+[Cluster01]
 
 # LOG
 # ---
@@ -13,9 +16,17 @@ verbose = true
 hosts = "127.0.0.1:5054,127.0.0.1:5012"
 user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
-title = "cluster1"
+title = "Cluster01"
 connect-timeout = 1
 prefmaster = "127.0.0.1:5012"
+
+# Automatically rejoin a failed server to the current master
+# Slaves will re enter with read-only
+
+autorejoin = true
+readonly = true
+failover-event-scheduler = false
+failover-event-status = false
 
 # HTTP
 # ----
@@ -35,39 +46,41 @@ mail-to = "mrm@mariadb.com"
 # FAILOVER
 # --------
 
-# Automatically rejoin a failed server to the current master
-# Slaves will re enter with read-only
-# Wait 5 seconds before killing long running transactions
-
-autorejoin = true
-readonly = true
-monitoring-ticker = 2
-failcount-reset-time = 300
-wait-kill = 5000
 post-failover-script = ""
 pre-failover-script =""
-failover-event-scheduler = false
-failover-event-status = false
 
-# CHECK
-# -----
-
+# Timeout in seconds between consecutive monitoring
+monitoring-ticker = 2
 check-type = "tcp"
 
 # Failover after N failures detection
-# Monitoring is stopped after N failovers
-# Wait N seconds for next failover
-# Switchover only if one of the slaves is fully synced with the master (based on GTID equality)
-# Don't failover when replication pass delay
-
+# Reset number of failure if server auto recover after N seconds
 failcount = 5
+failcount-reset-time = 300
+
+# Cancel failover if already N failover
+# Cancel failover if last failover was N seconds before
+# Cancel failover in semi-sync when one slave is not in sync
+# Cancel failover when replication delay is more than N seconds
 failover-limit = 3
 failover-time-limit = 10
-gtidcheck = true
+failover-at-sync = false
 maxdelay = 30
 
-# HA PROXY WRAPPER MODE
-# ---------------------
+# SWITCHOVER
+# ----------
+
+# In switchover Wait N milliseconds before killing long running transactions
+# Cancel switchover if transaction running more than N seconds
+# Cancel switchover if write query running more than N seconds
+# Cancel switchover if one of the slaves is not synced based on GTID equality
+wait-kill = 5000
+wait-trx = 10
+wait-write-query = 10
+gtidcheck = true
+
+# HAPROXY WRAPPER MODE
+# --------------------
 haproxy = false
 haproxy-binary-path = "/usr/sbin/haproxy"
 # Read write traffic

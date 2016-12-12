@@ -23,6 +23,7 @@ type Config struct {
 	IgnoreSrv          string `mapstructure:"ignore-servers"`
 	WaitKill           int64  `mapstructure:"wait-kill"`
 	WaitTrx            int64  `mapstructure:"wait-trx"`
+	WaitWrite          int64  `mapstructure:"wait-write-query"`
 	ReadOnly           bool
 	MaxFail            int   `mapstructure:"failcount"`
 	FailResetTime      int64 `mapstructure:"failcount-reset-time"`
