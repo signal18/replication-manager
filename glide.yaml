@@ -8,3 +8,6 @@ import:
 - package: github.com/spf13/viper
 - package: github.com/jordan-wright/email
   version: ^2.2.0
+- package: github.com/gorilla/mux
+- package: github.com/iu0v1/gelada
+- package: github.com/iu0v1/gelada/authguard
