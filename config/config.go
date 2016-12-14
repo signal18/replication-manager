@@ -34,7 +34,9 @@ type Config struct {
 	FailLimit          int   `mapstructure:"failover-limit"`
 	FailTime           int64 `mapstructure:"failover-time-limit"`
 	CheckType          string
-	CheckReplFilter    bool   `mapstructure:"check-replication-filters"`
+	CheckReplFilter    bool
+	CheckBinFilter     bool
+	RplChecks          bool
 	MasterConn         string `mapstructure:"master-connection"`
 	MultiMaster        bool
 	Spider             bool
@@ -42,12 +44,13 @@ type Config struct {
 	HttpPort           string `mapstructure:"http-port"`
 	HttpServ           bool   `mapstructure:"http-server"`
 	HttpRoot           string `mapstructure:"http-root"`
+	HttpAuth           bool   `mapstructure:"http-auth"`
+	SessionLifeTime    int    `mapstructure:"http-session-lifetime"`
 	Daemon             bool
 	MailFrom           string `mapstructure:"mail-from"`
 	MailTo             string `mapstructure:"mail-to"`
 	MailSMTPAddr       string `mapstructure:"mail-smtp-addr"`
 	MasterConnectRetry int    `mapstructure:"master-connect-retry"`
-	RplChecks          bool
 	FailSync           bool   `mapstructure:"failover-at-sync"`
 	FailEventScheduler bool   `mapstructure:"failover-event-scheduler"`
 	FailEventStatus    bool   `mapstructure:"failover-event-status"`

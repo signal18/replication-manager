@@ -332,7 +332,7 @@ func electCandidate(l []*ServerMonitor) int {
 		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
 		// The tests below should run only in case of a switchover as they require the master to be up.
 		if master.State != stateFailed {
-			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false {
+			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false && conf.CheckBinFilter == true {
 				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 				continue
 			}

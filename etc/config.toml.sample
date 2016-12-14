@@ -35,6 +35,8 @@ http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
+http-auth = true
+http-session-lifetime = 3600
 
 # ALERTS
 # ------
@@ -53,6 +55,7 @@ pre-failover-script =""
 monitoring-ticker = 2
 check-type = "tcp"
 check-replication-filters = true
+check-binlog-filters = true
 check-replication-state = true
 
 # Failover after N failures detection
