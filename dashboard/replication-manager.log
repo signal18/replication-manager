@@ -10157,3 +10157,7 @@
 2016/12/15 17:23:56 INFO : Starting http monitor on port 10001
 2016/12/15 17:23:56 INFO : Monitor started in manual mode
 2016/12/15 17:23:58 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/15 18:30:10 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/15 18:30:10 INFO : Monitor started in manual mode
+2016/12/15 18:30:10 INFO : Starting http monitor on port 10001
+2016/12/15 18:30:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

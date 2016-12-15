@@ -1,5 +1,5 @@
 hash: e79cb0fdb47d9fe7db588bf0345370d16dafa4739e8d22474b9e25c2f5a66abe
-updated: 2016-12-15T13:48:42.601043799+01:00
+updated: 2016-12-15T18:20:08.951112849+01:00
 imports:
 - name: github.com/asaskevich/govalidator
   version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
@@ -16,7 +16,7 @@ imports:
 - name: github.com/gorilla/sessions
   version: 52389059572b4736b2b7d899b0242ecc449c8779
 - name: github.com/hashicorp/hcl
-  version: f74cf8281543a0797d7b4ab7d88e76e7ba125308
+  version: 37ab263305aaeb501a60eb16863e808d426e37f2
   subpackages:
   - hcl/ast
   - hcl/parser
@@ -33,59 +33,45 @@ imports:
   subpackages:
   - authguard
 - name: github.com/jmoiron/sqlx
-  version: 5f97679e23f75f42b265fec8d3bdb1c8de90b79d
+  version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
   subpackages:
   - reflectx
 - name: github.com/jordan-wright/email
   version: a62870b0c368c3c29de27027be67d855e308cc37
-- name: github.com/kr/fs
-  version: 2788f0dbd16903de03cb8186e5c7d97b69ad387b
 - name: github.com/magiconair/properties
-  version: 0723e352fa358f9322c938cc2dadda874e9151a9
+  version: 9c47895dc1ce54302908ab8a43385d1f5df2c11c
 - name: github.com/mattn/go-runewidth
   version: 737072b4e32b7a5018b4a7125da8d12de90e8045
 - name: github.com/mitchellh/mapstructure
-  version: f3009df150dadf309fdee4a54ed65c124afad715
+  version: bfdb1a85537d60bc7e954e600c250219ea497417
 - name: github.com/nsf/termbox-go
-  version: b6acae516ace002cb8105a89024544a1480655a5
+  version: abe82ce5fb7a42fbd6784a5ceb71aff977e09ed8
 - name: github.com/pelletier/go-buffruneio
   version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
 - name: github.com/pelletier/go-toml
-  version: 45932ad32dfdd20826f5671da37a5f3ce9f26a8d
-- name: github.com/pkg/errors
-  version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
-- name: github.com/pkg/sftp
-  version: 4d0e916071f68db74f8a73926335f809396d6b42
+  version: 017119f7a78a0b5fc0ea39ef6be09f03acf3345d
 - name: github.com/satori/go.uuid
-  version: 879c5887cd475cd7864858769793b2ceb0d44feb
+  version: b061729afc07e77a8aa4fad0a2fd840958f1942a
 - name: github.com/spf13/afero
-  version: 52e4a6cfac46163658bd4f123c49b6ee7dc75f78
+  version: 2f30b2a92c0e5700bcfe4715891adb1f2a7a406d
   subpackages:
   - mem
-  - sftp
 - name: github.com/spf13/cast
-  version: 2580bc98dc0e62908119e4737030cc2fdfc45e4c
+  version: 24b6558033ffe202bf42f0f3b870dcc798dd2ba8
 - name: github.com/spf13/cobra
-  version: 6e91dded25d73176bf7f60b40dd7aa1f0bf9be8d
+  version: b62566898a99f2db9c68ed0026aa0a052e59678d
 - name: github.com/spf13/jwalterweatherman
   version: 33c24e77fb80341fe7130ee7c594256ff08ccc46
 - name: github.com/spf13/pflag
-  version: 5ccb023bc27df288a957c5e994cd44fd19619465
+  version: 25f8b5b07aece3207895bf19f7ab517eb3b22a40
 - name: github.com/spf13/viper
-  version: 651d9d916abc3c3d6a91a12549495caba5edffd2
-- name: golang.org/x/crypto
-  version: 9477e0b78b9ac3d0b03822fd95422e2fe07627cd
-  subpackages:
-  - curve25519
-  - ed25519
-  - ed25519/internal/edwards25519
-  - ssh
+  version: 5ed0fc31f7f453625df314d8e66b9791e8d13003
 - name: golang.org/x/sys
-  version: 9a2e24c3733eddc63871eda99f253e2db29bd3b9
+  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
   subpackages:
   - unix
 - name: golang.org/x/text
-  version: a8b38433e35b65ba247bb267317037dee1b70cea
+  version: 47a200a05c8b3fd1b698571caecbb68beb2611ec
   subpackages:
   - transform
   - unicode/norm

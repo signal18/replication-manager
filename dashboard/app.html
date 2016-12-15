@@ -36,7 +36,7 @@ td {
 	<button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
 	<button type="button" class="btn btn-primary" ng-click="failsync()">Failover Sync</button>
 	<button type="button" class="btn btn-primary" ng-click="rplchecks()">Replication Checks Change</button>
-	<button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+	<button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
 	<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
 
 	</td><td>

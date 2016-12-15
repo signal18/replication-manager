@@ -1,8 +1,10 @@
 # config.toml
 # Example replication-manager configuration file
-# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
 
-[Cluster01]
+#[Cluster01]
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
+  
 
 # LOG
 # ---
@@ -19,6 +21,7 @@ rpluser = "skysql:skyvodka"
 title = "Cluster01"
 connect-timeout = 1
 prefmaster = "127.0.0.1:5012"
+#ignore-servers = "127.0.0.1:5012"
 
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
@@ -35,8 +38,9 @@ http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
-http-auth =false
+http-auth = true
 http-session-lifetime = 3600
+http-bootstrap-button = false
 
 # ALERTS
 # ------
@@ -49,10 +53,10 @@ mail-to = "mrm@mariadb.com"
 # --------
 
 post-failover-script = ""
-pre-failover-script =""
+pre-failover-script = ""
 
 # Timeout in seconds between consecutive monitoring
-# check type can be tcp or agent   
+# check type can be tcp or agent
 monitoring-ticker = 2
 check-type = "tcp"
 check-replication-filters = true
@@ -92,5 +96,5 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 
 # Read write traffic
 # Read only load balance least connection traffic
-haproxy-write-port=3306
-haproxy-read-port=3307
+haproxy-write-port = 3306
+haproxy-read-port = 3307
