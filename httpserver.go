@@ -45,6 +45,7 @@ type settings struct {
 	MonitoringTicker string `json:"monitoringticker"`
 	FailResetTime    string `json:"failresettime"`
 	ToSessionEnd     string `json:"tosessionend"`
+	HttpAuth         string `json:"httpauth"`
 }
 
 func httpserver() {
@@ -226,6 +227,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.MonitoringTicker = fmt.Sprintf("%d", conf.MonitoringTicker)
 	s.FailResetTime = fmt.Sprintf("%d", conf.FailResetTime)
 	s.ToSessionEnd = fmt.Sprintf("%d", conf.SessionLifeTime)
+	s.HttpAuth = fmt.Sprintf("%v", conf.HttpAuth)
 	if failoverTs != 0 {
 		t := time.Unix(failoverTs, 0)
 		s.LastFailover = t.String()

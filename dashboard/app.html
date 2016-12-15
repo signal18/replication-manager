@@ -41,7 +41,7 @@ td {
 
 	</td><td>
 	<form action="/logout" method="post">
-		<button  class="btn btn-primary" type="submit">Logout</button>
+		<button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
 	</form>
 	</td></tr></table>
 

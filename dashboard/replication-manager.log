@@ -10153,3 +10153,7 @@
 2016/12/11 19:31:20 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5112 is down
 2016/12/11 19:31:20 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
 2016/12/11 19:31:20 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2016/12/15 17:23:56 INFO : replication-manager version 0.7 started in daemon mode
+2016/12/15 17:23:56 INFO : Starting http monitor on port 10001
+2016/12/15 17:23:56 INFO : Monitor started in manual mode
+2016/12/15 17:23:58 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
