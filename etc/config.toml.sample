@@ -35,7 +35,7 @@ http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
-http-auth = true
+http-auth =false
 http-session-lifetime = 3600
 
 # ALERTS

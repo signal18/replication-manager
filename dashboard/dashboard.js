@@ -50,25 +50,25 @@ app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers'
     $scope.reserror = false;
   }, function(error) {
     $scope.reserror = true;
-    var response = $http.get('/logout');
+
   });
   Log.query({}, function(data) {
     $scope.log = data;
   }, function(error) {
     $scope.reserror = true;
-      var response = $http.get('/logout');
+
   });
   Settings.query({}, function(data) {
     $scope.settings = data;
   }, function(error) {
     $scope.reserror = true;
-      var response = $http.get('/logout');
+
   });
   Master.query({}, function(data) {
     $scope.master = data;
   }, function(error) {
     $scope.reserror = true;
-    var response = $http.get('/logout');
+
   });
 }, 1000);
 $scope.switch = function(fail) {

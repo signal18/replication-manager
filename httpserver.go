@@ -152,8 +152,6 @@ func httpserver() {
 		router.HandleFunc("/setactive", handlerSetActive)
 		router.HandleFunc("/dashboard.js", handlerJS)
 
-		http.Handle("/static/", http.FileServer(http.Dir(conf.HttpRoot)))
-
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
@@ -173,6 +171,7 @@ func httpserver() {
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
 	}
+	http.Handle("/static/", http.FileServer(http.Dir(conf.HttpRoot)))
 	if conf.Verbose {
 		logprint("INFO : Starting http monitor on port " + conf.HttpPort)
 	}
