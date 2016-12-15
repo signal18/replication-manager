@@ -33,7 +33,8 @@ global
    timeout client 50000s
    timeout server 50000s
 
-listen stats :1988
+listen stats
+   bind :1988
    mode http
    stats enable
    stats uri /

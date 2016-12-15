@@ -52,6 +52,7 @@ post-failover-script = ""
 pre-failover-script =""
 
 # Timeout in seconds between consecutive monitoring
+# check type can be tcp or agent   
 monitoring-ticker = 2
 check-type = "tcp"
 check-replication-filters = true
