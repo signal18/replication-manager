@@ -63,7 +63,7 @@ func initHaproxy() {
 	}
 
 	p, _ := strconv.Atoi(master.Port)
-	s := haproxy.ServerDetail{Name: "leader", Host: master.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1}
+	s := haproxy.ServerDetail{Name: "leader", Host: master.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 	if err = haConfig.AddServer("service_write", &s); err != nil {
 		//	log.Printf("Failed to add server to service_write ")
 	}
@@ -92,7 +92,7 @@ func initHaproxy() {
 
 		p, _ := strconv.Atoi(server.Port)
 		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-		s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1}
+		s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 		if err := haConfig.AddServer("service_read", &s); err != nil {
 			log.Printf("Failed to add server")
 		}

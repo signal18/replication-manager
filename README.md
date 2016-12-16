@@ -292,6 +292,7 @@ Global Flags:
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
+It is strongly advice to create a dedicated user for the management user !  
 Management user (given by the --user option) and Replication user (given by the --repluser option) need to be given privileges to the host from which `replication-manager` runs. Users with wildcards are accepted as well.
 
 The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT` and `RELOAD`
@@ -317,6 +318,10 @@ Per default Semi-Sync replication status is not checked during failover, but thi
 
 A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console use "Failover Sync" button
 
+
+## Calling external scripts
+
+Replication-Manager call external scripts and provide following parameters in this order: Old leader host and elected leader
 
 ## Multi-master
 
