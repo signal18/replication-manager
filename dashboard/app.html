@@ -111,7 +111,7 @@ td {
 				<th>Master Sync</th>
 				<th>Slave Sync</th>
 			</tr>
-			<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': (server.IOThread=='No' && server.State=='Slave')}">
+			<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
 				<td>{{server.Host}}</td>
 				<td>{{server.Port}}</td>
 				<td>{{server.State}}</td>

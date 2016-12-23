@@ -12,18 +12,17 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"net/http"
-	"os"
-	"strconv"
-	"sync"
-	"time"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/alert"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/gtid"
 	"github.com/tanji/replication-manager/misc"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -67,12 +66,14 @@ type serverList []*ServerMonitor
 var maxConn string
 
 const (
-	stateFailed  string = "Failed"
-	stateMaster  string = "Master"
-	stateSlave   string = "Slave"
-	stateUnconn  string = "Unconnected"
-	stateSuspect string = "Suspect"
-	stateShard   string = "Shard"
+	stateFailed    string = "Failed"
+	stateMaster    string = "Master"
+	stateSlave     string = "Slave"
+	stateSlaveErr  string = "SlaveErr"
+	stateSlaveLate string = "SlaveLate"
+	stateUnconn    string = "Unconnected"
+	stateSuspect   string = "Suspect"
+	stateShard     string = "Shard"
 )
 
 /* Initializes a server object */
@@ -168,30 +169,31 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			}
 		}
 		// Send alert if state has changed
-		if server.PrevState != server.State && conf.MailTo != "" {
-			if conf.Verbose {
-				logprintf("INFO : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			}
-			a := alert.Alert{
-				From:        conf.MailFrom,
-				To:          conf.MailTo,
-				Type:        server.State,
-				Origin:      server.URL,
-				Destination: conf.MailSMTPAddr,
-			}
-			err = a.Email()
-			if err != nil {
-				logprint("ERROR: Could not send econf.Mail alert: ", err)
+		if server.PrevState != server.State {
+			//if conf.Verbose {
+			logprintf("ALERT : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+			//}
+			if conf.MailTo != "" {
+				a := alert.Alert{
+					From:        conf.MailFrom,
+					To:          conf.MailTo,
+					Type:        server.State,
+					Origin:      server.URL,
+					Destination: conf.MailSMTPAddr,
+				}
+				err = a.Email()
+				if err != nil {
+					logprint("ERROR: Could not send econf.Mail alert: ", err)
+				}
 			}
 		}
-
 		return
 	}
 	// Reset FailCount
 	/*	if conf.Verbose>0  {
 		logprintf("DEBUG: State comparison %b %b %b %d %d %d ", server.State==stateMaster , server.State==stateSlave  , server.State==stateUnconn ,(server.FailCount > 0) ,((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker), conf.FailResetTime) {
 	}*/
-	if (server.State == stateMaster || server.State == stateSlave || server.State == stateUnconn) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
+	if (server.State != stateUnconn || server.State != stateSuspect) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -310,25 +312,37 @@ func (server *ServerMonitor) refresh() error {
 }
 
 /* Check replication health and return status string */
-func (server *ServerMonitor) healthCheck() string {
-	if server.State == stateMaster {
+func (server *ServerMonitor) replicationCheck() string {
+
+	if sme.IsInFailover() || server.State == stateMaster || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
 		return "Master OK"
 	}
-	if server.Delay.Valid == false {
+	if server.Delay.Valid == false && sme.CanMonitor() {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
+			server.State = stateSlaveErr
 			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "Yes" {
+			server.State = stateSlaveErr
 			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
 		} else if server.SQLThread == "No" && server.IOThread == "No" {
+			server.State = stateSlaveErr
 			return "NOT OK, ALL Stopped"
 		} else if server.IOThread == "Connecting" {
+			server.State = stateSlave
 			return "NOT OK, IO Connecting"
 		}
+		server.State = stateSlave
 		return "Running OK"
 	}
 	if server.Delay.Int64 > 0 {
+		if server.Delay.Int64 > conf.MaxDelay && conf.RplChecks == true {
+			server.State = stateSlaveLate
+		} else {
+			server.State = stateSlave
+		}
 		return "Behind master"
 	}
+	server.State = stateSlave
 	return "Running OK"
 }
 

@@ -46,7 +46,7 @@ func display() {
 		} else {
 			gtidSlave = ""
 		}
-		repHeal := server.healthCheck()
+		repHeal := server.replicationCheck()
 		var fgCol termbox.Attribute
 		switch server.State {
 		case "Master":
@@ -57,6 +57,10 @@ func display() {
 			fgCol = termbox.ColorBlue
 		case "Suspect":
 			fgCol = termbox.ColorMagenta
+		case "SlaveErr":
+			fgCol = termbox.ColorMagenta
+		case "SlaveLate":
+			fgCol = termbox.ColorYellow
 		default:
 			fgCol = termbox.ColorWhite
 		}

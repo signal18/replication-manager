@@ -321,7 +321,7 @@ A user can change this check based on what is reported by SLA in sync, and decid
 
 ## Calling external scripts
 
-Replication-Manager call external scripts and provide following parameters in this order: Old leader host and elected leader
+Replication-Manager call external scripts and provide following parameters in this order: Old leader host and new elected leader
 
 ## Multi-master
 

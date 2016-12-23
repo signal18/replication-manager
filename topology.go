@@ -188,7 +188,8 @@ func topologyDiscover() error {
 			if conf.LogLevel > 2 {
 				logprintf("DEBUG: Server %s is configured as a slave", sv.URL)
 			}
-			sv.State = stateSlave
+			sv.replicationCheck()
+			//		sv.State = stateSlave
 			slaves = append(slaves, sv)
 		} else {
 			var n int
