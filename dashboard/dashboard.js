@@ -1,4 +1,5 @@
-var app = angular.module('dashboard', ['ngResource']);
+var app = angular.module('dashboard', ['ngResource','ngMaterial']);
+
 
 app.factory('Servers', function($resource) {
   return $resource('/servers');

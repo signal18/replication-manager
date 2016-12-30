@@ -4,9 +4,15 @@
 <head>
 	<script src="/static/angular.min.js"></script>
 	<script src="/static/angular-resource.min.js"></script>
-	<script src="dashboard.js"></script>
+	<script src="/static/angular-animate.min.js"></script>
+  <script src="/static/angular-aria.min.js"></script>
+  <script src="/static/angular-messages.min.js"></script>
+  <script src="/static/angular-material.min.js"></script>
+  <script src="dashboard.js"></script>
+
 	<link rel="stylesheet" href="/static/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" >
-	<style>
+	<link rel="stylesheet" href="/static/angular-material.min.css">
+ 	<style>
 td {
     white-space: nowrap;
 }
@@ -20,120 +26,183 @@ td {
   letter-spacing: 0.02em;
 	text-transform: uppercase;
 }
+.tabsdemoDynamicHeight md-content {
+  background-color: transparent !important; }
+  .tabsdemoDynamicHeight md-content md-tabs {
+    background: #ffffff;
+    border: 1px solid #e1e1e1; }
+    .tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
+      background: white; }
+  .tabsdemoDynamicHeight md-content h1:first-child {
+    margin-top: 0; }
+
 </style>
 </head>
+
 <body ng-app="dashboard" ng-cloak>
+	<div ng-controller="DashboardController" class="col-lg-12">
+
+ <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
+	 <table width="100%"><tr><td>	<h2>Replication Manager</h2></td>
+		<td>
+
+	 <form align=right action="/logout" method="post">
+	 	<button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
+	 </form>
+ </td></tr></table>
+  <md-content>
+    <md-tabs md-dynamic-height="" md-border-bottom="">
+      <md-tab label="DASHBOARD">
+        <md-content class="md-padding">
+
+					<div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
+					<div class="col-lg-3">
+						<p class="sectionheader">MONITOR GROUP</p>
+			<table class="table">
+				<tr><th>Group Name</th></tr>
+				<tr><td>{{settings.confgroup}}</td></tr>
+			</table>
+			</div>
+
+					 <div class="col-lg-9">
+					<p class="sectionheader">Arbitrator Status</p>
+					<table ng-if="settings" class="table">
+						<tr>
+							<th>Manager Status</th>
+							<th>Failover Count</th>
+							<th>Last Failover Time</th>
+						</tr>
+						<tr>
+							<td><span ng-if="settings.runstatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runstatus=='P'" class="label label-warning">PASSIVE</span></td>
+
+							<td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
+							<td>{{settings.lastfailover}}</td>
+						</tr>
+					</table>
+				</div>
+
+
+					<table ng-if="servers" class="table">
+						<tr>
+							<th>Host</th>
+							<th>Port</th>
+							<th>Status</th>
+							<th>Using GTID</th>
+							<th>Current GTID</th>
+							<th>Slave GTID Pos</th>
+							<th>IO Thread</th>
+							<th>SQL Thread</th>
+							<th>Delay</th>
+							<th>Read Only</th>
+							<th>Fail Count</th>
+							<th>Scheduler</th>
+							<th>Master Sync</th>
+							<th>Slave Sync</th>
+						</tr>
+						<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+							<td>{{server.Host}}</td>
+							<td>{{server.Port}}</td>
+							<td>{{server.State}}</td>
+							<td>{{server.UsingGtid}}</td>
+							<td>{{gtidstring(server.CurrentGtid)}}</td>
+							<td>{{gtidstring(server.SlaveGtid)}}</td>
+							<td>{{server.IOThread}}</td>
+							<td>{{server.SQLThread	}}</td>
+							<td>{{server.Delay.Int64}}</td>
+							<td>{{server.ReadOnly}}</td>
+							<td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
+							<td>{{server.EventScheduler}}</td>
+							<td>{{server.SemiSyncMasterStatus}}</td>
+							<td>{{server.SemiSyncSlaveStatus}}</td>
+						</tr>
+					</table>
+					<table class="table">
+					<tr><td>
+					<button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
+					<button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
+					<button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
+					<button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
+					<button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+					<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
+
+					</td><td>
+
+					</td></tr></table>
+
+			 	<pre>
+			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
+				 </pre>
+
+
+</md-content>
+		 </md-tab>
+		 <md-tab label="SLA">
+			 <md-content class="md-padding">
+
+
+				 <p class="sectionheader">SLA</p>
+				 <table ng-if="settings" class="table">
+					 <tr>
+						 <th>Monitor Tickers</th>
+						 <th>Master Available</th>
+						 <th>Can Failover Acceptable Data Loss</th>
+						 <th>Can Failover No Data Loss</th>
+					 </tr><tr>
+						 <td>{{settings.monheartbeats}}</td>
+						 <td>{{settings.uptime}}</td>
+						 <td>{{settings.uptimefailable}}</td>
+						 <td>{{settings.uptimesemisync}}</td>
+					 </tr>
+				 </table>
+
+			 </md-content>
+	 </md-tab>
+		 <md-tab label="Settings">
+			 <md-content class="md-padding">
+
+			 	<table ng-if="settings" class="table">
+			 		<tr>
+
+			 			<th>Failover Mode</th>
+			 			<th>Failover At Status Sync</th>
+			 			<th>Replication Status Checks</th>
+			 			<th>Replication Max Delay</th>
+
+			 		</tr>
+			 		<tr>
+			 			<td>
+							<md-switch ng-model="settings.interactive=='true'" ng-click="inttoggle()"  aria-label="Mode Change">
+								<span ng-if="settings.interactive=='true'" class="label label-primary">On-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">On-leave (auto)</span></td>
+				 			</md-switch>
+						<td>
+							<md-switch ng-model="settings.failsync=='true'" ng-click="failsync()"  aria-label="Failover in Sync">
+							  	<span ng-if="settings.failsync=='true'" ng-click="failsync()" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" ng-click="failsync()" class="label label-warning">Off</span>
+							  </md-switch>
+						</td>
+			 			<td>
+							<md-switch ng-model="settings.rplchecks=='true'" ng-click="rplchecks()"  aria-label="Failover in Sync">
+									<span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">Off</span>
+								</md-switch>
+							</td>
+			 			<td>
+
+						 <md-slider  class="md-primary" flex  ng-model="settings.maxdelay"  min="10" max="1000" aria-label="delay"></md-slider></td><td>
+						 	<span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">{{settings.maxdelay}}</span>
+
+								</td>
+			 		</tr>
+			 	</table>
+			 </md-content>
+			 </md-tab>
+
+ </md-tabs>
+
+</md-content>
 
 
 
-<div ng-controller="DashboardController" class="col-lg-12">
-	<table class="table">
-		<tr><td>
-	<button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
-	<button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
-	<button type="button" class="btn btn-primary" ng-click="inttoggle()">Mode Change</button>
-	<button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
-	<button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-	<button type="button" class="btn btn-primary" ng-click="failsync()">Failover Sync</button>
-	<button type="button" class="btn btn-primary" ng-click="rplchecks()">Replication Checks Change</button>
-	<button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-	<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-
-	</td><td>
-	<form action="/logout" method="post">
-		<button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
-	</form>
-	</td></tr></table>
-
-<header>
-	<h2>Replication Manager Dashboard</h2>
-</header>
-		<div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
-		<p class="sectionheader">Arbitrator Status</p>
-		<table ng-if="settings" class="table">
-			<tr>
-				<th>Manager Status</th>
-				<th>Failover Mode</th>
-				<th>Failover At Status Sync</th>
-				<th>Replication Status Checks</th>
-				<th>Replication Max Delay</th>
-				<th>Failover Count</th>
-				<th>Last Failover Time</th>
-			</tr>
-			<tr>
-				<td><span ng-if="settings.runstatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runstatus=='P'" class="label label-warning">PASSIVE</span></td>
-				<td><span ng-if="settings.interactive=='true'" class="label label-primary">On-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">On-leave (auto)</span></td>
-				<td><span ng-if="settings.failsync=='true'" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" class="label label-warning">Off</span></td>
-				<td><span ng-if="settings.rplchecks=='true'" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" class="label label-warning">Off</span></td>
-				<td>{{settings.maxdelay}} </td>
-				<td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
-				<td>{{settings.lastfailover}}</td>
-			</tr>
-		</table>
-		<div class="col-lg-3">
-			<p class="sectionheader">MONITOR GROUP</p>
-<table class="table">
-	<tr><th>Group Name</th></tr>
-	<tr><td>{{settings.confgroup}}</td></tr>
-</table>
 </div>
-	  <div class="col-lg-9">
-		<p class="sectionheader">SLA</p>
-		<table ng-if="settings" class="table">
-			<tr>
-				<th>Monitor Tickers</th>
-				<th>Master Available</th>
-				<th>Can Failover Acceptable Data Loss</th>
-				<th>Can Failover No Data Loss</th>
-			</tr><tr>
-				<td>{{settings.monheartbeats}}</td>
-				<td>{{settings.uptime}}</td>
-				<td>{{settings.uptimefailable}}</td>
-				<td>{{settings.uptimesemisync}}</td>
-			</tr>
-		</table>
-	</div>
-		<p class="sectionheader">Server Status</p>
-		<table ng-if="servers" class="table">
-			<tr>
-				<th>Host</th>
-				<th>Port</th>
-				<th>Status</th>
-				<th>Using GTID</th>
-				<th>Current GTID</th>
-				<th>Slave GTID Pos</th>
-				<th>IO Thread</th>
-				<th>SQL Thread</th>
-				<th>Delay</th>
-				<th>Read Only</th>
-				<th>Fail Count</th>
-				<th>Scheduler</th>
-				<th>Master Sync</th>
-				<th>Slave Sync</th>
-			</tr>
-			<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-				<td>{{server.Host}}</td>
-				<td>{{server.Port}}</td>
-				<td>{{server.State}}</td>
-				<td>{{server.UsingGtid}}</td>
-				<td>{{gtidstring(server.CurrentGtid)}}</td>
-				<td>{{gtidstring(server.SlaveGtid)}}</td>
-				<td>{{server.IOThread}}</td>
-				<td>{{server.SQLThread	}}</td>
-				<td>{{server.Delay.Int64}}</td>
-				<td>{{server.ReadOnly}}</td>
-				<td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
-				<td>{{server.EventScheduler}}</td>
-				<td>{{server.SemiSyncMasterStatus}}</td>
-				<td>{{server.SemiSyncSlaveStatus}}</td>
-			</tr>
-		</table>
-
-	<pre>
-<span ng-repeat="logline in log track by $index">{{ logline }}
-</span>
-	</pre>
-	</div>
+</div>
 </body>
 
 </html>
