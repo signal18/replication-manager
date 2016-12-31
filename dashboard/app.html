@@ -60,7 +60,7 @@ td {
 						<p class="sectionheader">MONITOR GROUP</p>
 			<table class="table">
 				<tr><th>Group Name</th></tr>
-				<tr><td>{{settings.confgroup}}</td></tr>
+				<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="{{settings.confgroup}}!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
 			</table>
 			</div>
 
