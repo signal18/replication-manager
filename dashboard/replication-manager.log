@@ -10161,3 +10161,717 @@
 2016/12/15 18:30:10 INFO : Monitor started in manual mode
 2016/12/15 18:30:10 INFO : Starting http monitor on port 10001
 2016/12/15 18:30:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 12:56:50 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 12:56:50 INFO : Starting http monitor on port 10001
+2017/01/17 12:56:50 INFO : Monitor started in manual mode
+2017/01/17 12:56:52 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 13:47:28 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 13:47:28 INFO : Starting http monitor on port 10001
+2017/01/17 13:47:28 INFO : Monitor started in manual mode
+2017/01/17 13:47:30 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 15:11:41 BENCHMARK : /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test--mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-read-only=on --max-requests=0 --num-threads=4 run
+2017/01/17 15:28:41 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 15:28:41 INFO : Starting http monitor on port 10001
+2017/01/17 15:28:41 INFO : Monitor started in manual mode
+2017/01/17 15:28:45 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 15:28:56 BENCHMARK : /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --test=rw --max-requests=0 --num-threads=4 cleanup
+2017/01/17 15:28:56 ERRROR : fork/exec /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --test=rw --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 15:42:40 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 15:42:40 INFO : Starting http monitor on port 10001
+2017/01/17 15:42:40 INFO : Monitor started in manual mode
+2017/01/17 15:42:43 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 15:43:23 BENCHMARK : /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 15:43:23 ERRROR : fork/exec /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 15:44:03 BENCHMARK : /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 15:44:03 ERRROR : fork/exec /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 15:46:41 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 15:46:41 INFO : Starting http monitor on port 10001
+2017/01/17 15:46:41 INFO : Monitor started in manual mode
+2017/01/17 15:46:43 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 15:46:43 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 15:47:08 BENCHMARK : /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 15:47:08 ERRROR : fork/exec /usr/local/skysql/sysbench/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 16:12:57 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 16:12:57 INFO : Starting http monitor on port 10001
+2017/01/17 16:12:57 INFO : Monitor started in manual mode
+2017/01/17 16:12:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:12:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:13:02 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 16:13:02 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 16:13:47 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 16:13:47 INFO : Monitor started in manual mode
+2017/01/17 16:13:47 INFO : Starting http monitor on port 10001
+2017/01/17 16:13:49 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:13:58 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 16:13:58 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 16:16:59 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 16:16:59 INFO : Starting http monitor on port 10001
+2017/01/17 16:16:59 INFO : Monitor started in manual mode
+2017/01/17 16:17:01 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:17:02 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:17:42 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 16:17:42 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup: no such file or directory
+2017/01/17 16:17:42 BENCHMARK : 
+2017/01/17 16:17:42 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/17 16:17:42 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare: no such file or directory
+2017/01/17 16:20:52 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 16:20:52 INFO : Starting http monitor on port 10001
+2017/01/17 16:20:52 INFO : Monitor started in manual mode
+2017/01/17 16:20:55 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:20:55 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:21:01 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 16:21:01 BENCHMARK : 
+2017/01/17 16:21:01 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/17 16:21:01 BENCHMARK : 
+2017/01/17 16:21:01 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/17 16:21:01 BENCHMARK : 
+2017/01/17 16:35:28 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 16:35:28 INFO : Monitor started in manual mode
+2017/01/17 16:35:28 INFO : Starting http monitor on port 10001
+2017/01/17 16:35:31 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:40:55 DEBUG: In Failover skip topology detection
+2017/01/17 16:40:55 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:40:55 DEBUG: In Failover skip checking failed master
+2017/01/17 16:40:57 DEBUG: In Failover skip topology detection
+2017/01/17 16:40:57 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 16:40:57 DEBUG: In Failover skip checking failed master
+2017/01/17 16:40:59 ERROR: ERR00010 No slaves were detected
+2017/01/17 16:41:12 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2017/01/17 16:41:12 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/17 16:41:47 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 16:41:47 BENCHMARK : 
+2017/01/17 16:41:47 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/17 16:41:47 BENCHMARK : 
+2017/01/17 16:41:47 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/17 16:41:47 BENCHMARK : 
+2017/01/17 17:31:32 DEBUG: In Failover skip topology detection
+2017/01/17 17:31:32 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 17:31:32 DEBUG: In Failover skip checking failed master
+2017/01/17 17:31:35 ERROR: ERR00010 No slaves were detected
+2017/01/17 17:31:50 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2017/01/17 17:31:51 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/17 17:34:19 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2017/01/17 17:34:20 WARN : Master Failure detected! Retry 1/5
+2017/01/17 17:34:20 ALERT : Server 127.0.0.1:5154 state changed from Master to Suspect
+2017/01/17 17:34:20 INFO : INF00001 Server 127.0.0.1:5154 is down
+2017/01/17 17:34:22 WARN : Master Failure detected! Retry 2/5
+2017/01/17 17:34:24 WARN : Master Failure detected! Retry 3/5
+2017/01/17 17:34:26 WARN : Master Failure detected! Retry 4/5
+2017/01/17 17:34:28 WARN : Master Failure detected! Retry 5/5
+2017/01/17 17:34:28 WARN : Declaring master as failed
+2017/01/17 17:34:28 ALERT : Server 127.0.0.1:5154 state changed from Suspect to Failed
+2017/01/17 17:36:21 INFO : Starting master switch
+2017/01/17 17:36:21 INFO : Electing a new master
+2017/01/17 17:36:21 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2017/01/17 17:36:21 INFO : Reading all relay logs on 127.0.0.1:5112
+2017/01/17 17:36:21 INFO : Stopping slave thread on new master
+2017/01/17 17:36:22 INFO : Resetting slave on new master and set read/write mode on
+2017/01/17 17:36:22 INFO : Enable Event Scheduler on the new master
+2017/01/17 17:36:22 INFO : Switching other slaves to the new master
+2017/01/17 17:36:22 INFO : Master switch on 127.0.0.1:5112 complete
+2017/01/17 17:36:22 ERROR: ERR00010 No slaves were detected
+2017/01/17 17:38:31 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2017/01/17 17:38:32 INFO : Rejoining previously failed server 127.0.0.1:5154
+2017/01/17 17:38:37 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5154 is down
+2017/01/17 17:38:37 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/17 17:43:31 INFO : Failover monitor switched to automatic mode
+2017/01/17 17:43:36 INFO : Failover monitor switched to manual mode
+2017/01/17 17:48:25 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 17:48:25 INFO : Monitor started in manual mode
+2017/01/17 17:48:25 INFO : Starting http monitor on port 10001
+2017/01/17 17:48:27 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 18:07:49 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/17 18:07:49 BENCHMARK : 
+2017/01/17 18:07:49 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/17 18:07:49 BENCHMARK : 
+2017/01/17 18:07:49 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/17 18:07:49 BENCHMARK : 
+2017/01/17 18:09:40 INFO : Starting http monitor on port 10001
+2017/01/17 18:09:41 INFO : Monitor started in manual mode
+2017/01/17 18:09:43 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 18:10:30 INFO : Quitting monitor
+2017/01/17 18:10:39 INFO : Starting http monitor on port 10001
+2017/01/17 18:10:39 INFO : Monitor started in manual mode
+2017/01/17 18:10:41 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/17 18:11:48 INFO : Starting master switch
+2017/01/17 18:11:48 INFO : Checking long running updates on master
+2017/01/17 18:11:48 INFO : Flushing tables on 127.0.0.1:5112 (master)
+2017/01/17 18:11:48 INFO : Electing a new master
+2017/01/17 18:11:48 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2017/01/17 18:11:48 INFO : Set DISABLE ON SLAVE for event test ev_test on old master
+2017/01/17 18:11:49 INFO : Disable Event Scheduler on old master
+2017/01/17 18:11:50 INFO : Terminating all threads on 127.0.0.1:5112
+2017/01/17 18:11:50 INFO : Rejecting updates on 127.0.0.1:5112 (old master)
+2017/01/17 18:11:50 INFO : Waiting for candidate Master to synchronize
+2017/01/17 18:11:50 DEBUG: Syncing on master GTID Binlog Pos [0-5012-214]
+2017/01/17 18:11:50 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5012-214 Slave GTID:0-5054-1 Binlog Pos:0-5012-214
+2017/01/17 18:11:50 DEBUG: MASTER_POS_WAIT executed.
+2017/01/17 18:11:50 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5012-214 Slave GTID:0-5012-214 Binlog Pos:0-5012-214
+2017/01/17 18:11:50 INFO : Stopping slave thread on new master
+2017/01/17 18:11:53 INFO : Resetting slave on new master and set read/write mode on
+2017/01/17 18:11:53 INFO : Enable Event Scheduler on the new master
+2017/01/17 18:11:53 INFO : Set ENABLE for event test ev_test on new master
+2017/01/17 18:11:54 INFO : Switching old master as a slave
+2017/01/17 18:11:58 INFO : Switching other slaves to the new master
+2017/01/17 18:11:58 INFO : Master switch on 127.0.0.1:5154 complete
+2017/01/17 18:13:43 INFO : Quitting monitor
+2017/01/17 18:14:23 INFO : Starting master switch
+2017/01/17 18:14:23 INFO : Checking long running updates on master
+2017/01/17 18:14:23 INFO : Flushing tables on 127.0.0.1:5154 (master)
+2017/01/17 18:14:23 INFO : Electing a new master
+2017/01/17 18:14:23 INFO : Slave 127.0.0.1:5112 [0] has been elected as a new master
+2017/01/17 18:14:23 INFO : Set DISABLE ON SLAVE for event test ev_test on old master
+2017/01/17 18:14:23 INFO : Disable Event Scheduler on old master
+2017/01/17 18:14:24 INFO : Terminating all threads on 127.0.0.1:5154
+2017/01/17 18:14:24 INFO : Rejecting updates on 127.0.0.1:5154 (old master)
+2017/01/17 18:14:24 INFO : Waiting for candidate Master to synchronize
+2017/01/17 18:14:24 DEBUG: Syncing on master GTID Binlog Pos [0-5054-232]
+2017/01/17 18:14:24 DEBUG: Server:127.0.0.1:5154 Current GTID:0-5054-232 Slave GTID:0-5012-214 Binlog Pos:0-5054-232
+2017/01/17 18:14:24 DEBUG: MASTER_POS_WAIT executed.
+2017/01/17 18:14:24 DEBUG: Server:127.0.0.1:5112 Current GTID:0-5054-232 Slave GTID:0-5054-232 Binlog Pos:0-5054-232
+2017/01/17 18:14:24 INFO : Stopping slave thread on new master
+2017/01/17 18:14:24 INFO : Resetting slave on new master and set read/write mode on
+2017/01/17 18:14:25 INFO : Enable Event Scheduler on the new master
+2017/01/17 18:14:25 INFO : Set ENABLE for event test ev_test on new master
+2017/01/17 18:14:25 INFO : Switching old master as a slave
+2017/01/17 18:14:29 INFO : Switching other slaves to the new master
+2017/01/17 18:14:29 INFO : Master switch on 127.0.0.1:5112 complete
+2017/01/17 18:30:21 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/17 18:30:21 INFO : Monitor started in manual mode
+2017/01/17 18:30:21 INFO : Starting http monitor on port 10001
+2017/01/17 18:30:23 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 08:32:25 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 08:32:25 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
+2017/01/18 08:32:27 WARN : Master Failure detected! Retry 1/5
+2017/01/18 08:32:27 ALERT : Server 127.0.0.1:5112 state changed from Master to Suspect
+2017/01/18 08:32:27 INFO : INF00001 Server 127.0.0.1:5112 is down
+2017/01/18 08:32:29 WARN : Master Failure detected! Retry 2/5
+2017/01/18 08:32:31 WARN : Master Failure detected! Retry 3/5
+2017/01/18 08:32:33 WARN : Master Failure detected! Retry 4/5
+2017/01/18 08:32:35 WARN : Master Failure detected! Retry 5/5
+2017/01/18 08:32:35 WARN : Declaring master as failed
+2017/01/18 08:32:35 ALERT : Server 127.0.0.1:5112 state changed from Suspect to Failed
+2017/01/18 08:33:15 INFO : Starting master switch
+2017/01/18 08:33:15 INFO : Electing a new master
+2017/01/18 08:33:15 INFO : Slave 127.0.0.1:5154 [0] has been elected as a new master
+2017/01/18 08:33:15 INFO : Reading all relay logs on 127.0.0.1:5154
+2017/01/18 08:33:15 INFO : Stopping slave thread on new master
+2017/01/18 08:33:16 INFO : Resetting slave on new master and set read/write mode on
+2017/01/18 08:33:17 INFO : Enable Event Scheduler on the new master
+2017/01/18 08:33:17 INFO : Set ENABLE for event test ev_test on new master
+2017/01/18 08:33:17 DEBUG: In Failover skip topology detection
+2017/01/18 08:33:17 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
+2017/01/18 08:33:17 DEBUG: In Failover skip checking failed master
+2017/01/18 08:33:18 INFO : Switching other slaves to the new master
+2017/01/18 08:33:18 INFO : Master switch on 127.0.0.1:5154 complete
+2017/01/18 08:33:19 ERROR: ERR00010 No slaves were detected
+2017/01/18 09:13:21 INFO : Rejoining previously failed server 127.0.0.1:5112
+2017/01/18 09:13:29 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5112 is down
+2017/01/18 09:13:29 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5112: dial tcp 127.0.0.1:5112: getsockopt: connection refused
+2017/01/18 09:13:29 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/18 09:13:29 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 16:21:44 INFO : Starting http monitor on port 10001
+2017/01/18 16:21:44 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/18 16:21:44 INFO : Monitor started in manual mode
+2017/01/18 16:21:47 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 16:50:37 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/18 16:50:37 BENCHMARK : 
+2017/01/18 16:50:37 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/18 16:50:37 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare: no such file or directory
+2017/01/18 16:50:37 BENCHMARK : 
+2017/01/18 16:50:37 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/18 16:50:37 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run: no such file or directory
+2017/01/18 16:50:37 BENCHMARK : 
+2017/01/18 17:26:13 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/18 17:26:13 INFO : Monitor started in manual mode
+2017/01/18 17:26:13 INFO : Starting http monitor on port 10001
+2017/01/18 17:26:49 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/18 17:26:49 INFO : Starting http monitor on port 10001
+2017/01/18 17:26:49 INFO : Monitor started in manual mode
+2017/01/18 17:26:52 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 17:26:57 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/18 17:26:57 BENCHMARK : 
+2017/01/18 17:26:57 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/18 17:26:57 ERRROR : fork/exec /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare: no such file or directory
+2017/01/18 17:26:57 BENCHMARK : 
+2017/01/18 17:26:57 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/18 17:27:59 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Running the test with following options:
+Number of threads: 4
+
+Doing OLTP test.
+Running mixed OLTP test
+Using Special distribution (12 iterations,  1 pct of values are returned in 75 pct cases)
+Using "BEGIN" for starting transactions
+Using auto_inc on the id column
+Threads started!
+Time limit exceeded, exiting...
+(last message repeated 3 times)
+Done.
+
+OLTP test statistics:
+    queries performed:
+        read:                            4788
+        write:                           1710
+        other:                           684
+        total:                           7182
+    transactions:                        342    (5.67 per sec.)
+    deadlocks:                           0      (0.00 per sec.)
+    read/write requests:                 6498   (107.65 per sec.)
+    other operations:                    684    (11.33 per sec.)
+
+Test execution summary:
+    total time:                          60.3621s
+    total number of events:              342
+    total time taken by event execution: 240.8371
+    per-request statistics:
+         min:                                315.17ms
+         avg:                                704.20ms
+         max:                               2979.56ms
+         approx.  95 percentile:            1528.28ms
+
+Threads fairness:
+    events (avg/stddev):           85.5000/2.29
+    execution time (avg/stddev):   60.2093/0.09
+
+
+2017/01/18 17:30:59 DEBUG: In Failover skip topology detection
+2017/01/18 17:30:59 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 17:30:59 DEBUG: In Failover skip checking failed master
+2017/01/18 17:31:03 ERROR: ERR00010 No slaves were detected
+2017/01/18 17:31:13 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2017/01/18 17:31:15 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/18 17:37:34 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/18 17:37:34 INFO : Starting http monitor on port 10001
+2017/01/18 17:37:34 INFO : Monitor started in manual mode
+2017/01/18 17:37:39 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 17:37:50 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/18 17:38:00 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Dropping table 'sbtest'...
+Done.
+
+2017/01/18 17:38:00 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/18 17:38:30 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Creating table 'sbtest'...
+Creating 10000 records in table 'sbtest'...
+
+2017/01/18 17:38:30 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/18 17:39:30 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Running the test with following options:
+Number of threads: 4
+
+Doing OLTP test.
+Running mixed OLTP test
+Using Special distribution (12 iterations,  1 pct of values are returned in 75 pct cases)
+Using "BEGIN" for starting transactions
+Using auto_inc on the id column
+Threads started!
+Time limit exceeded, exiting...
+(last message repeated 3 times)
+Done.
+
+OLTP test statistics:
+    queries performed:
+        read:                            5306
+        write:                           1895
+        other:                           758
+        total:                           7959
+    transactions:                        379    (6.27 per sec.)
+    deadlocks:                           0      (0.00 per sec.)
+    read/write requests:                 7201   (119.22 per sec.)
+    other operations:                    758    (12.55 per sec.)
+
+Test execution summary:
+    total time:                          60.4024s
+    total number of events:              379
+    total time taken by event execution: 240.8276
+    per-request statistics:
+         min:                                199.29ms
+         avg:                                635.43ms
+         max:                               2014.96ms
+         approx.  95 percentile:            1247.19ms
+
+Threads fairness:
+    events (avg/stddev):           94.7500/1.30
+    execution time (avg/stddev):   60.2069/0.11
+
+
+2017/01/18 17:50:02 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/18 17:50:03 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Dropping table 'sbtest'...
+Done.
+
+2017/01/18 17:50:03 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/18 17:50:22 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Creating table 'sbtest'...
+Creating 10000 records in table 'sbtest'...
+
+2017/01/18 17:50:22 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/18 17:51:32 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Running the test with following options:
+Number of threads: 4
+
+Doing OLTP test.
+Running mixed OLTP test
+Using Special distribution (12 iterations,  1 pct of values are returned in 75 pct cases)
+Using "BEGIN" for starting transactions
+Using auto_inc on the id column
+Threads started!
+Time limit exceeded, exiting...
+(last message repeated 3 times)
+Done.
+
+OLTP test statistics:
+    queries performed:
+        read:                            4970
+        write:                           1775
+        other:                           710
+        total:                           7455
+    transactions:                        355    (5.08 per sec.)
+    deadlocks:                           0      (0.00 per sec.)
+    read/write requests:                 6745   (96.46 per sec.)
+    other operations:                    710    (10.15 per sec.)
+
+Test execution summary:
+    total time:                          69.9233s
+    total number of events:              355
+    total time taken by event execution: 250.6312
+    per-request statistics:
+         min:                                230.77ms
+         avg:                                706.00ms
+         max:                              10171.85ms
+         approx.  95 percentile:            1389.51ms
+
+Threads fairness:
+    events (avg/stddev):           88.7500/2.17
+    execution time (avg/stddev):   62.6578/4.19
+
+
+2017/01/18 17:52:39 DEBUG: In Failover skip topology detection
+2017/01/18 17:52:39 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 17:52:39 DEBUG: In Failover skip checking failed master
+2017/01/18 17:52:40 DEBUG: In Failover skip topology detection
+2017/01/18 17:52:40 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/18 17:52:40 DEBUG: In Failover skip checking failed master
+2017/01/18 17:52:42 ERROR: ERR00010 No slaves were detected
+2017/01/18 17:52:53 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2017/01/18 17:52:55 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/18 18:55:44 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/01/18 18:55:50 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Dropping table 'sbtest'...
+Done.
+
+2017/01/18 18:55:50 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/01/18 18:56:20 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Creating table 'sbtest'...
+Creating 10000 records in table 'sbtest'...
+
+2017/01/18 18:56:20 BENCHMARK : /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=skysql --mysql-password=skyvodka --mysql-host=127.0.0.1 --mysql-port=3301 --max-time=60 --oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/01/18 18:57:31 BENCHMARK : sysbench 0.4.12:  multi-threaded system evaluation benchmark
+
+No DB drivers specified, using mysql
+Running the test with following options:
+Number of threads: 4
+
+Doing OLTP test.
+Running mixed OLTP test
+Using Special distribution (12 iterations,  1 pct of values are returned in 75 pct cases)
+Using "BEGIN" for starting transactions
+Using auto_inc on the id column
+Threads started!
+Time limit exceeded, exiting...
+(last message repeated 3 times)
+Done.
+
+OLTP test statistics:
+    queries performed:
+        read:                            4802
+        write:                           1715
+        other:                           686
+        total:                           7203
+    transactions:                        343    (4.83 per sec.)
+    deadlocks:                           0      (0.00 per sec.)
+    read/write requests:                 6517   (91.83 per sec.)
+    other operations:                    686    (9.67 per sec.)
+
+Test execution summary:
+    total time:                          70.9666s
+    total number of events:              343
+    total time taken by event execution: 251.6460
+    per-request statistics:
+         min:                                210.77ms
+         avg:                                733.66ms
+         max:                              11470.72ms
+         approx.  95 percentile:            1446.81ms
+
+Threads fairness:
+    events (avg/stddev):           85.7500/2.59
+    execution time (avg/stddev):   62.9115/4.65
+
+
+2017/01/18 21:04:48 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/18 21:04:48 INFO : Monitor started in manual mode
+2017/01/18 21:04:48 INFO : Starting http monitor on port 10001
+2017/01/18 21:04:50 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 14:31:46 INFO : Starting http monitor on port 10001
+2017/01/19 14:35:46 INFO : Starting http monitor on port 10001
+2017/01/19 14:39:10 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 14:39:10 INFO : Starting http monitor on port 10001
+2017/01/19 14:39:10 INFO : Monitor started in manual mode
+2017/01/19 14:39:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 14:52:08 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 14:52:08 INFO : Starting http monitor on port 10001
+2017/01/19 14:52:08 INFO : Monitor started in manual mode
+2017/01/19 14:52:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 14:52:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 14:55:13 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 14:55:13 INFO : Starting http monitor on port 10001
+2017/01/19 14:55:13 INFO : Monitor started in manual mode
+2017/01/19 14:57:34 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 14:57:34 INFO : Starting http monitor on port 10001
+2017/01/19 14:57:34 INFO : Monitor started in manual mode
+2017/01/19 15:44:01 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 15:44:01 INFO : Starting http monitor on port 10001
+2017/01/19 15:44:01 INFO : Monitor started in manual mode
+2017/01/19 15:44:03 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 16:21:21 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 16:21:21 INFO : Starting http monitor on port 10001
+2017/01/19 16:21:21 INFO : Monitor started in manual mode
+2017/01/19 16:21:23 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 16:21:24 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 17:32:04 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 17:32:04 INFO : Starting http monitor on port 10001
+2017/01/19 17:32:04 INFO : Monitor started in manual mode
+2017/01/19 17:32:11 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 18:06:40 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 18:06:40 INFO : Starting http monitor on port 10001
+2017/01/19 18:06:40 INFO : Monitor started in manual mode
+2017/01/19 18:10:05 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 18:10:05 INFO : Starting http monitor on port 10001
+2017/01/19 18:10:05 INFO : Monitor started in manual mode
+2017/01/19 18:19:24 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 18:19:24 INFO : Starting http monitor on port 10001
+2017/01/19 18:19:24 INFO : Monitor started in manual mode
+2017/01/19 18:59:13 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 18:59:13 INFO : Starting http monitor on port 10001
+2017/01/19 18:59:13 INFO : Monitor started in manual mode
+2017/01/19 19:04:17 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:04:17 INFO : Starting http monitor on port 10001
+2017/01/19 19:04:17 INFO : Monitor started in manual mode
+2017/01/19 19:04:19 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:04:19 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:09:07 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:09:07 INFO : Starting http monitor on port 10001
+2017/01/19 19:09:07 INFO : Monitor started in manual mode
+2017/01/19 19:09:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:09:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:18:31 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:18:31 INFO : Monitor started in manual mode
+2017/01/19 19:18:31 INFO : Starting http monitor on port 10001
+2017/01/19 19:18:34 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:20:15 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:20:15 INFO : Starting http monitor on port 10001
+2017/01/19 19:20:15 INFO : Monitor started in manual mode
+2017/01/19 19:20:17 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:20:17 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:23:57 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:23:57 INFO : Starting http monitor on port 10001
+2017/01/19 19:23:57 INFO : Monitor started in manual mode
+2017/01/19 19:23:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:23:59 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:28:10 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:28:10 INFO : Monitor started in manual mode
+2017/01/19 19:28:10 INFO : Starting http monitor on port 10001
+2017/01/19 19:28:19 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:28:19 INFO : Starting http monitor on port 10001
+2017/01/19 19:28:19 INFO : Monitor started in manual mode
+2017/01/19 19:29:29 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:29:29 INFO : Starting http monitor on port 10001
+2017/01/19 19:29:29 INFO : Monitor started in manual mode
+2017/01/19 19:30:00 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:30:00 INFO : Starting http monitor on port 10001
+2017/01/19 19:30:00 INFO : Monitor started in manual mode
+2017/01/19 19:30:02 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:30:03 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 19:31:05 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 19:31:05 INFO : Monitor started in manual mode
+2017/01/19 19:31:05 INFO : Starting http monitor on port 10001
+2017/01/19 19:31:07 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:07:51 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 22:07:51 INFO : Starting http monitor on port 10001
+2017/01/19 22:07:51 INFO : Monitor started in manual mode
+2017/01/19 22:07:53 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:07:54 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:19:13 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 22:19:13 INFO : Monitor started in manual mode
+2017/01/19 22:19:13 INFO : Starting http monitor on port 10001
+2017/01/19 22:19:15 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:22:04 DEBUG: In Failover skip topology detection
+2017/01/19 22:22:04 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:22:04 DEBUG: In Failover skip checking failed master
+2017/01/19 22:22:04 DEBUG: In Failover skip topology detection
+2017/01/19 22:22:04 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:22:04 DEBUG: In Failover skip checking failed master
+2017/01/19 22:22:07 DEBUG: In Failover skip topology detection
+2017/01/19 22:22:07 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:22:07 DEBUG: In Failover skip checking failed master
+2017/01/19 22:22:07 DEBUG: In Failover skip topology detection
+2017/01/19 22:22:07 WARN : WARN00007 HAS BEEN FIXED, At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:22:07 DEBUG: In Failover skip checking failed master
+2017/01/19 22:22:12 ERROR: ERR00010 No slaves were detected
+2017/01/19 22:22:28 INFO : Environment bootstrapped with 127.0.0.1:5154 as master
+2017/01/19 22:22:31 ERROR: ERR00010 HAS BEEN FIXED, No slaves were detected
+2017/01/19 22:37:12 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 22:37:12 INFO : Starting http monitor on port 10001
+2017/01/19 22:37:12 INFO : Monitor started in manual mode
+2017/01/19 22:37:15 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:49:42 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 22:49:42 INFO : Monitor started in manual mode
+2017/01/19 22:49:42 INFO : Starting http monitor on port 10001
+2017/01/19 22:49:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/19 22:59:42 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/19 22:59:42 INFO : Starting http monitor on port 10001
+2017/01/19 22:59:42 INFO : Monitor started in manual mode
+2017/01/19 22:59:44 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:00:00 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:00:00 INFO : Starting http monitor on port 10001
+2017/01/20 17:00:00 INFO : Monitor started in manual mode
+2017/01/20 17:00:03 INFO : INF00001 Server 127.0.0.1:5154 is down
+2017/01/20 17:00:03 ERROR: ERR00015 Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2017/01/20 17:00:03 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:00:04 WARN : Waiting more prove of master death
+2017/01/20 17:00:06 WARN : Waiting more prove of master death
+2017/01/20 17:00:08 WARN : Waiting more prove of master death
+2017/01/20 17:00:10 WARN : Waiting more prove of master death
+2017/01/20 17:00:12 WARN : Waiting more prove of master death
+2017/01/20 17:00:14 WARN : Waiting more prove of master death
+2017/01/20 17:00:16 WARN : Waiting more prove of master death
+2017/01/20 17:00:18 WARN : Waiting more prove of master death
+2017/01/20 17:00:20 WARN : Waiting more prove of master death
+2017/01/20 17:00:22 WARN : Waiting more prove of master death
+2017/01/20 17:00:24 WARN : Waiting more prove of master death
+2017/01/20 17:00:26 WARN : Waiting more prove of master death
+2017/01/20 17:00:28 WARN : Waiting more prove of master death
+2017/01/20 17:00:30 WARN : Waiting more prove of master death
+2017/01/20 17:00:32 WARN : Waiting more prove of master death
+2017/01/20 17:00:34 WARN : Waiting more prove of master death
+2017/01/20 17:00:36 WARN : Waiting more prove of master death
+2017/01/20 17:00:38 WARN : Waiting more prove of master death
+2017/01/20 17:00:41 WARN : Waiting more prove of master death
+2017/01/20 17:00:42 WARN : Waiting more prove of master death
+2017/01/20 17:00:44 WARN : Waiting more prove of master death
+2017/01/20 17:00:46 WARN : Waiting more prove of master death
+2017/01/20 17:00:48 WARN : Waiting more prove of master death
+2017/01/20 17:00:50 WARN : Waiting more prove of master death
+2017/01/20 17:00:52 WARN : Waiting more prove of master death
+2017/01/20 17:00:54 WARN : Waiting more prove of master death
+2017/01/20 17:00:56 WARN : Waiting more prove of master death
+2017/01/20 17:00:58 WARN : Waiting more prove of master death
+2017/01/20 17:01:00 WARN : Waiting more prove of master death
+2017/01/20 17:01:02 WARN : Waiting more prove of master death
+2017/01/20 17:01:04 WARN : Waiting more prove of master death
+2017/01/20 17:01:06 WARN : Waiting more prove of master death
+2017/01/20 17:01:08 WARN : Waiting more prove of master death
+2017/01/20 17:01:10 WARN : Waiting more prove of master death
+2017/01/20 17:01:12 WARN : Waiting more prove of master death
+2017/01/20 17:01:14 WARN : Waiting more prove of master death
+2017/01/20 17:01:16 WARN : Waiting more prove of master death
+2017/01/20 17:01:18 WARN : Waiting more prove of master death
+2017/01/20 17:01:20 WARN : Waiting more prove of master death
+2017/01/20 17:01:22 WARN : Waiting more prove of master death
+2017/01/20 17:01:24 WARN : Waiting more prove of master death
+2017/01/20 17:01:26 WARN : Waiting more prove of master death
+2017/01/20 17:01:28 WARN : Waiting more prove of master death
+2017/01/20 17:01:30 WARN : Waiting more prove of master death
+2017/01/20 17:01:32 WARN : Waiting more prove of master death
+2017/01/20 17:01:34 WARN : Waiting more prove of master death
+2017/01/20 17:01:36 WARN : Waiting more prove of master death
+2017/01/20 17:01:38 WARN : Waiting more prove of master death
+2017/01/20 17:01:40 WARN : Waiting more prove of master death
+2017/01/20 17:01:42 WARN : Waiting more prove of master death
+2017/01/20 17:01:44 WARN : Waiting more prove of master death
+2017/01/20 17:01:46 WARN : Waiting more prove of master death
+2017/01/20 17:01:48 WARN : Waiting more prove of master death
+2017/01/20 17:01:50 WARN : Waiting more prove of master death
+2017/01/20 17:01:52 WARN : Waiting more prove of master death
+2017/01/20 17:01:54 WARN : Waiting more prove of master death
+2017/01/20 17:01:56 WARN : Waiting more prove of master death
+2017/01/20 17:01:58 WARN : Waiting more prove of master death
+2017/01/20 17:02:00 WARN : Waiting more prove of master death
+2017/01/20 17:02:02 WARN : Waiting more prove of master death
+2017/01/20 17:02:04 WARN : Waiting more prove of master death
+2017/01/20 17:02:06 WARN : Waiting more prove of master death
+2017/01/20 17:02:08 WARN : Waiting more prove of master death
+2017/01/20 17:02:10 WARN : Waiting more prove of master death
+2017/01/20 17:02:12 WARN : Waiting more prove of master death
+2017/01/20 17:02:14 WARN : Waiting more prove of master death
+2017/01/20 17:02:16 WARN : Waiting more prove of master death
+2017/01/20 17:02:18 WARN : Waiting more prove of master death
+2017/01/20 17:02:20 WARN : Waiting more prove of master death
+2017/01/20 17:02:23 ERROR: ERR00015 HAS BEEN FIXED, Error getting privileges for user skysql on server 127.0.0.1:5154: dial tcp 127.0.0.1:5154: getsockopt: connection refused
+2017/01/20 17:02:23 WARN : Waiting more prove of master death
+2017/01/20 17:02:24 INFO : INF00001 HAS BEEN FIXED, Server 127.0.0.1:5154 is down
+2017/01/20 17:06:08 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:06:08 INFO : Starting http monitor on port 10001
+2017/01/20 17:06:08 INFO : Monitor started in manual mode
+2017/01/20 17:06:11 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:15:39 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:15:39 INFO : Monitor started in manual mode
+2017/01/20 17:15:39 INFO : Starting http monitor on port 10001
+2017/01/20 17:15:41 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:32:49 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:32:49 INFO : Starting http monitor on port 10001
+2017/01/20 17:32:49 INFO : Monitor started in manual mode
+2017/01/20 17:32:52 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:45:08 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:45:08 INFO : Starting http monitor on port 10001
+2017/01/20 17:45:08 INFO : Monitor started in manual mode
+2017/01/20 17:45:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 17:46:05 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:46:05 INFO : Starting http monitor on port 10001
+2017/01/20 17:46:05 INFO : Monitor started in manual mode
+2017/01/20 17:46:07 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 17:46:07 INFO : Monitor started in manual mode
+2017/01/20 17:46:07 INFO : Starting http monitor on port 10001
+2017/01/20 17:46:09 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 18:00:20 INFO : Carbon server started on default metric port 2003 and http port 8080
+2017/01/20 18:00:20 INFO : Starting http monitor on port 10001
+2017/01/20 18:00:30 INFO : CarbonAPI server started default port 2002
+2017/01/20 18:00:30 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 18:00:30 INFO : Monitor started in manual mode
+2017/01/20 18:00:32 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 18:05:59 INFO : Carbon server started on default metric port 2003 and http port 8080
+2017/01/20 18:05:59 INFO : Starting http monitor on port 10001
+2017/01/20 18:06:01 INFO : CarbonAPI server started default port 10002
+2017/01/20 18:06:01 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 18:06:01 INFO : Monitor started in manual mode
+2017/01/20 18:06:04 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 19:45:15 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 19:45:15 INFO : Starting http monitor on port 10001
+2017/01/20 19:45:15 INFO : Monitor started in manual mode
+2017/01/20 19:45:18 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/20 19:48:05 INFO : carbon server started on metric port 2003
+2017/01/20 19:48:05 INFO : carbon server started on http port 10003
+2017/01/20 19:48:05 INFO : Starting http monitor on port 10001
+2017/01/20 19:48:07 INFO : carbon server API started on http port 10002
+2017/01/20 19:48:07 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/20 19:48:07 INFO : Monitor started in manual mode
+2017/01/20 19:48:09 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

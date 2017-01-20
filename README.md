@@ -62,7 +62,7 @@ Leader Election Cluster is best to use in such scenarios:
 
 This is achieved via following drawbacks:
 
-   * Overloading the leader can lead to data loss during failover  
+   * Overloading the leader can lead to data loss during failover or no failover depending of setup   
    * READ on replica is eventually consistent  
    * ACID can be preserved via route to leader always
 

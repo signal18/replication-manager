@@ -16,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/alert"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/gtid"
 	"github.com/tanji/replication-manager/misc"
 	"net/http"
@@ -283,6 +284,7 @@ func (server *ServerMonitor) refresh() error {
 	} else {
 		server.SemiSyncSlaveStatus = false
 	}
+
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""
@@ -307,6 +309,21 @@ func (server *ServerMonitor) refresh() error {
 	server.IOError = slaveStatus.Last_IO_Error
 	server.SQLError = slaveStatus.Last_SQL_Error
 	server.SQLErrno = slaveStatus.Last_SQL_Errno
+
+	// Initialize graphite monitoring
+
+	if conf.GraphiteMetrics {
+		graph, err := graphite.NewGraphite(conf.GraphiteCarbonHost, conf.GraphiteCarbonPort)
+		if err == nil {
+			graph.SimpleSend(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", server.Delay.Int64))
+			graph.SimpleSend(fmt.Sprintf("server%d.status.ComSelect", server.ServerID), su["COM_SELECT"])
+			graph.SimpleSend(fmt.Sprintf("server%d.status.Queries", server.ServerID), su["QUERIES"])
+			graph.SimpleSend(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), su["THREADS_RUNNING"])
+			graph.SimpleSend(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), su["BYTES_SENT"])
+			graph.SimpleSend(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), su["BYTES_RECEIVED"])
+			graph.Disconnect()
+		}
+	}
 
 	return nil
 }

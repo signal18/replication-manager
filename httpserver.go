@@ -136,7 +136,7 @@ func httpserver() {
 		// function for processing a request for authorization (via POST method)
 		router.HandleFunc("/login", g.AuthHandler).Methods("POST")
 		// function for processing a request for logout (via POST method)
-
+		router.HandleFunc("/stats", handlerStats)
 		//http.HandleFunc("/", handlerApp)
 		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
 		router.HandleFunc("/servers", handlerServers)
@@ -151,6 +151,7 @@ func httpserver() {
 		router.HandleFunc("/bootstrap", handlerBootstrap)
 		router.HandleFunc("/failsync", handlerFailSync)
 		router.HandleFunc("/tests", handlerTests)
+		router.HandleFunc("/sysbench", handlerSysbench)
 		router.HandleFunc("/setactive", handlerSetActive)
 		router.HandleFunc("/dashboard.js", handlerJS)
 
@@ -158,6 +159,7 @@ func httpserver() {
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
 		http.HandleFunc("/", handlerApp)
+		http.HandleFunc("/stats", handlerStats)
 		http.HandleFunc("/servers", handlerServers)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/log", handlerLog)
@@ -170,6 +172,7 @@ func httpserver() {
 		http.HandleFunc("/bootstrap", handlerBootstrap)
 		http.HandleFunc("/failsync", handlerFailSync)
 		http.HandleFunc("/tests", handlerTests)
+		http.HandleFunc("/sysbench", handlerSysbench)
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
 	}
@@ -322,6 +325,203 @@ func handlerTests(w http.ResponseWriter, r *http.Request) {
 		logprint("ERROR: Some tests failed")
 	}
 	return
+}
+
+func handlerSysbench(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	go runSysbench()
+	return
+}
+
+func handlerStats(res http.ResponseWriter, req *http.Request) {
+
+	var statsPage = template.Must(template.New("").Parse(`
+	<html><head><title>REPLICATION-MANAGER</title>
+	<meta charset="utf-8">
+	<style>
+
+	body {
+	  font-family: "Helvetica Neue", Helvetica, sans-serif;
+	  margin: 30px auto;
+	  width: 1280px;
+	  position: relative;
+	}
+
+	header {
+	  padding: 6px 0;
+	}
+
+	.group {
+	  margin-bottom: 1em;
+	}
+
+	.axis {
+	  font: 10px sans-serif;
+	  position: fixed;
+	  pointer-events: none;
+	  z-index: 2;
+	}
+
+	.axis text {
+	  -webkit-transition: fill-opacity 250ms linear;
+	}
+
+	.axis path {
+	  display: none;
+	}
+
+	.axis line {
+	  stroke: #000;
+	  shape-rendering: crispEdges;
+	}
+
+	.axis.top {
+	  background-image: linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -o-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -moz-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -webkit-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -ms-linear-gradient(top, #fff 0%, rgba(255,255,255,0) 100%);
+	  top: 0px;
+	  padding: 0 0 24px 0;
+	}
+
+	.axis.bottom {
+	  background-image: linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -o-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -moz-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -webkit-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+	  background-image: -ms-linear-gradient(bottom, #fff 0%, rgba(255,255,255,0) 100%);
+	  bottom: 0px;
+	  padding: 24px 0 0 0;
+	}
+
+	.horizon {
+	  border-bottom: solid 1px #000;
+	  overflow: hidden;
+	  position: relative;
+	}
+
+	.horizon {
+	  border-top: solid 1px #000;
+	  border-bottom: solid 1px #000;
+	}
+
+	.horizon + .horizon {
+	  border-top: none;
+	}
+
+	.horizon canvas {
+	  display: block;
+	}
+
+	.horizon .title,
+	.horizon .value {
+	  bottom: 0;
+	  line-height: 30px;
+	  margin: 0 6px;
+	  position: absolute;
+	  text-shadow: 0 1px 0 rgba(255,255,255,.5);
+	  white-space: nowrap;
+	}
+
+	.horizon .title {
+	  left: 0;
+	}
+
+	.horizon .value {
+	  right: 0;
+	}
+
+	.line {
+	  background: #000;
+	  z-index: 2;
+	}
+
+	</style>
+
+<script src="/static/d3.v2.js" charset="utf-8"></script>
+<script src="/static/cubism.v1.min.js"></script>
+</head>
+<body>
+<center id="body">
+<div id="graph1"></div>
+</center>
+<script>
+var context = cubism.context(), // a default context
+    graphite = context.graphite("http://127.0.0.1:10002");
+		context.serverDelay(10*1000) // allow 30 seconds of collection lag
+		context.step(5*1000) // five sec per value
+	  context.size(1000);
+		var delay = graphite.metric("server5012.replication.delay");
+		var select = graphite.metric("server5012.status.select");
+		var selectlast =  select.shift(5*1000);
+		var selectdiff = selectlast.subtract(select);
+		//var horizon =context.horizon().title("server5012").metric([delay,selectdiff]);
+		d3.select("#graph1").call(function(div) {
+
+  div.append("div")
+      .attr("class", "axis")
+      .call(context.axis().orient("top"));
+
+  div.selectAll(".horizon")
+      .data([delay,selectdiff])
+    .enter().append("div")
+      .attr("class", "horizon")
+      .call(context.horizon().extent([-20, 20]));
+
+  div.append("div")
+      .attr("class", "rule")
+      .call(context.rule());
+
+});
+
+</script>
+</body>
+</html>`))
+	statsPage.Execute(res, nil)
+}
+func handlerStatsGraphite(res http.ResponseWriter, req *http.Request) {
+
+	var statsPage = template.Must(template.New("").Parse(`
+	<html><head><title>REPLICATION-MANAGER</title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+	<script src="/static/jquery.graphite.js"></script>
+  <link rel="stylesheet" href="/static/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" >
+	<style>
+	td {
+			white-space: nowrap;
+	}
+	.sectionheader {
+		font-size: 12px;
+		font-weight: 700;
+		margin-bottom: 0;
+		padding-left: 0;
+		border: none;
+		background-color: transparent;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+	}
+	</style>
+	</head>
+		<body ng-app="dashboard" ng-controller="DashboardController">
+	<center>
+
+<img id="graph">
+<script>
+$("#graph").graphite({
+	from: "-24hours",
+	target: [
+			"server5012.replication.delay",
+	],
+	url:  "http://127.0.0.1:10002/render/",
+	width: "450",
+	height: "300",
+	format: "json",
+});
+</script>
+</center></body>
+</html>`))
+	statsPage.Execute(res, nil)
 }
 
 // HandleMainPage - main page.

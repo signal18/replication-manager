@@ -33,6 +33,14 @@ app.factory('Test', function($resource) {
   );
 });
 
+app.factory('Sysbench', function($resource) {
+  return $resource(
+    '/sysbench',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 app.factory('Bootstrap', function($resource) {
   return $resource(
     '/bootstrap',
@@ -211,5 +219,20 @@ $scope.test = function() {
       });
     }
   };
+
+
+  $scope.sysbench = function() {
+    var r = confirm("Confirm sysbench run !");
+    if (r == true) {
+      var response = $http.get('/sysbench');
+         response.success(function(data, status, headers, config) {
+          console.log("Ok.");
+        });
+
+        response.error(function(data, status, headers, config) {
+          console.log("Error.");
+        });
+      }
+    };
 
 }]);

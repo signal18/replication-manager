@@ -52,8 +52,9 @@ mail-to = "mrm@mariadb.com"
 # FAILOVER
 # --------
 
-post-failover-script = ""
 pre-failover-script = ""
+post-failover-script = ""
+
 
 # Timeout in seconds between consecutive monitoring
 # check type can be tcp or agent
@@ -98,3 +99,25 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 # Read only load balance least connection traffic
 haproxy-write-port = 3306
 haproxy-read-port = 3307
+
+# STATS
+# -----
+
+graphite-metrics = true
+graphite-carbon-host = "127.0.0.1"
+graphite-carbon-port = 2003
+
+graphite-embedded = true
+graphite-carbon-api-port = 10002
+graphite-carbon-server-port = 10003
+graphite-carbon-link-port = 7002
+graphite-carbon-pickle-port = 2004
+graphite-carbon-pprof-port = 7007
+
+
+# SYSBENCH
+# --------
+
+sysbench-binary-path = "/usr/sbin/sysbench"
+sysbench-threads = 4
+sysbench-time = 60
