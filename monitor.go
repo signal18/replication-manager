@@ -42,6 +42,7 @@ type ServerMonitor struct {
 	UsingGtid            string
 	CurrentGtid          *gtid.List
 	SlaveGtid            *gtid.List
+	IOGtid               *gtid.List
 	IOThread             string
 	SQLThread            string
 	ReadOnly             string
@@ -295,18 +296,19 @@ func (server *ServerMonitor) refresh() error {
 		server.IOError = ""
 		server.SQLError = ""
 		server.SQLErrno = 0
-		return nil
+	} else {
+		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
+		server.UsingGtid = slaveStatus.Using_Gtid
+		server.IOThread = slaveStatus.Slave_IO_Running
+		server.SQLThread = slaveStatus.Slave_SQL_Running
+		server.Delay = slaveStatus.Seconds_Behind_Master
+		server.MasterServerID = slaveStatus.Master_Server_Id
+		server.MasterHost = slaveStatus.Master_Host
+		server.IOErrno = slaveStatus.Last_IO_Errno
+		server.IOError = slaveStatus.Last_IO_Error
+		server.SQLError = slaveStatus.Last_SQL_Error
+		server.SQLErrno = slaveStatus.Last_SQL_Errno
 	}
-	server.UsingGtid = slaveStatus.Using_Gtid
-	server.IOThread = slaveStatus.Slave_IO_Running
-	server.SQLThread = slaveStatus.Slave_SQL_Running
-	server.Delay = slaveStatus.Seconds_Behind_Master
-	server.MasterServerID = slaveStatus.Master_Server_Id
-	server.MasterHost = slaveStatus.Master_Host
-	server.IOErrno = slaveStatus.Last_IO_Errno
-	server.IOError = slaveStatus.Last_IO_Error
-	server.SQLError = slaveStatus.Last_SQL_Error
-	server.SQLErrno = slaveStatus.Last_SQL_Errno
 
 	return nil
 }
