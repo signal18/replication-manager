@@ -280,7 +280,6 @@ func masterFailover(fail bool) bool {
 				logprintf("ERROR: Could not remove slave %s as read-only, %s", sl.URL, err)
 			}
 		}
-
 	}
 
 	// Signal MaxScale that we have a new topology
@@ -293,6 +292,13 @@ func masterFailover(fail bool) bool {
 			err = m.Command("set server " + master.Host + " master")
 			if err != nil {
 				logprint("ERROR: MaxScale client could not send command:", err)
+			}
+		}
+		if fail == true && conf.PrefMaster != oldMaster.URL && master.URL != conf.PrefMaster && conf.PrefMaster != "" {
+			prm := foundPreferedMaster(slaves)
+			if prm != nil {
+				logprint("INFO: Not on Prefered Master after Failover")
+				masterFailover(false)
 			}
 		}
 	}
@@ -313,6 +319,7 @@ func electCandidate(l []*ServerMonitor) int {
 	seqList := make([]uint64, ll)
 	hiseq := 0
 	var max uint64
+	var seqnos []uint64
 	for i, sl := range l {
 		/* If server is in the ignore list, do not elect it */
 		if misc.Contains(ignoreList, sl.URL) {
@@ -329,51 +336,30 @@ func electCandidate(l []*ServerMonitor) int {
 			logprintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
 		}
-		ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+
 		// The tests below should run only in case of a switchover as they require the master to be up.
-		if master.State != stateFailed {
-			if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false && conf.CheckBinFilter == true {
-				logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
-				continue
-			}
-			if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false && conf.CheckReplFilter == true {
-				logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
-				continue
-			}
-			if conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && conf.RplChecks == true {
-				logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
-				continue
-			}
-			if sl.SemiSyncSlaveStatus == false && conf.FailSync == true && conf.RplChecks == true {
-				logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
-				continue
-			}
-			if ss.Seconds_Behind_Master.Valid == false && conf.RplChecks == true {
-				logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
-				continue
-			}
-		}
-		/* binlog + ping  */
-		if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
-			logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
+		if master.State != stateFailed && isSlaveElectableForSwitchover(sl) == false {
 			continue
-		}
-		if ss.Seconds_Behind_Master.Int64 > conf.MaxDelay && conf.RplChecks == true {
-			logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, conf.MaxDelay, ss.Seconds_Behind_Master.Int64)
-			continue
-		}
-		if ss.Slave_SQL_Running == "No" && conf.RplChecks {
-			logprintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 
-		/* Rig the election if the examined slave is preferred candidate master */
-		if sl.URL == conf.PrefMaster {
+		/* binlog + ping  */
+		if isSlaveElectable(sl) == false {
+			continue
+		}
+
+		/* Rig the election if the examined slave is preferred candidate master in switchover */
+		if sl.URL == conf.PrefMaster && master.State != stateFailed {
 			if conf.LogLevel > 2 {
 				logprintf("DEBUG: Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
-		seqnos := sl.SlaveGtid.GetSeqNos()
+
+		if master.State != stateFailed {
+			seqnos = sl.SlaveGtid.GetSeqNos()
+		} else {
+			seqnos = sl.IOGtid.GetSeqNos()
+		}
 		if conf.LogLevel > 2 {
 			logprintf("DEBUG: Got sequence(s) %v for server [%d]", seqnos, i)
 		}
@@ -384,11 +370,64 @@ func electCandidate(l []*ServerMonitor) int {
 			max = seqList[i]
 			hiseq = i
 		}
-	}
+	} //end loop all slaves
 	if max > 0 {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
 	}
 	// logprint("ERROR: No suitable candidates found.") TODO: move this outside func
 	return -1
+}
+
+func isSlaveElectable(sl *ServerMonitor) bool {
+	ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+
+	/* binlog + ping  */
+	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+		logprintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
+		return false
+	}
+	if ss.Seconds_Behind_Master.Int64 > conf.MaxDelay && conf.RplChecks == true {
+		logprintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, conf.MaxDelay, ss.Seconds_Behind_Master.Int64)
+		return false
+	}
+	if ss.Slave_SQL_Running == "No" && conf.RplChecks {
+		logprintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		return false
+	}
+	return true
+}
+
+func isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
+	ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+	if dbhelper.CheckBinlogFilters(master.Conn, sl.Conn) == false && conf.CheckBinFilter == true {
+		logprintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
+		return false
+	}
+	if dbhelper.CheckReplicationFilters(master.Conn, sl.Conn) == false && conf.CheckReplFilter == true {
+		logprintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+		return false
+	}
+	if conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, master.Conn) == false && conf.RplChecks == true {
+		logprintf("WARN : Slave %s not in sync. Skipping", sl.URL)
+		return false
+	}
+	if sl.SemiSyncSlaveStatus == false && conf.FailSync == true && conf.RplChecks == true {
+		logprintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
+		return false
+	}
+	if ss.Seconds_Behind_Master.Valid == false && conf.RplChecks == true {
+		logprintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+		return false
+	}
+	return true
+}
+
+func foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
+	for _, sl := range l {
+		if sl.URL == conf.PrefMaster && master.State != stateFailed {
+			return sl
+		}
+	}
+	return nil
 }
