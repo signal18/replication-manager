@@ -1,4 +1,13 @@
-var app = angular.module('dashboard', ['ngResource','ngMaterial']);
+var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute']).config(function($routeProvider){
+
+        routeProvider = $routeProvider;
+        $routeProvider
+            .when('/:timeFrame', {templateUrl: '/', controller: 'DashboardController'})
+
+        .otherwise({redirectTo: '/login'});
+
+});
+
 
 
 app.factory('Servers', function($resource) {
@@ -50,9 +59,12 @@ app.factory('Bootstrap', function($resource) {
 });
 
 
-app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope, $interval, $http, Servers, Log, Settings, Master) {
+app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings, Master) {
 
-
+   var timeFrame = $routeParams.timeFrame;
+   if (timeFrame=="") {
+     timeFrame="10m"
+    }
   $interval(function(){
   Servers.query({}, function(data) {
     $scope.servers = data;

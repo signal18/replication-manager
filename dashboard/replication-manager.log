@@ -10882,3 +10882,45 @@ Threads fairness:
 2017/01/20 22:49:07 INFO : replication-manager version 0.7 started in daemon mode
 2017/01/20 22:49:07 INFO : Monitor started in manual mode
 2017/01/20 22:49:10 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 12:13:23 INFO : carbon server started on metric port 2003
+2017/01/21 12:13:23 INFO : carbon server started on http port 10003
+2017/01/21 12:13:23 INFO : Starting http monitor on port 10001
+2017/01/21 12:13:25 INFO : carbon server API started on http port 10002
+2017/01/21 12:13:25 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 12:13:25 INFO : Monitor started in manual mode
+2017/01/21 12:13:28 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 15:36:18 INFO : carbon server started on metric port 2003
+2017/01/21 15:36:18 INFO : Starting http monitor on port 10001
+2017/01/21 15:36:18 INFO : carbon server started on http port 10003
+2017/01/21 15:36:20 INFO : carbon server API started on http port 10002
+2017/01/21 15:36:20 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 15:36:20 INFO : Monitor started in manual mode
+2017/01/21 15:36:22 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 17:22:06 INFO : carbon server started on metric port 2003
+2017/01/21 17:22:06 INFO : Starting http monitor on port 10001
+2017/01/21 17:22:06 INFO : carbon server started on http port 10003
+2017/01/21 17:22:08 INFO : carbon server API started on http port 10002
+2017/01/21 17:22:08 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 17:22:08 INFO : Monitor started in manual mode
+2017/01/21 17:22:12 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 17:24:07 INFO : carbon server started on metric port 2003
+2017/01/21 17:24:07 INFO : Starting http monitor on port 10001
+2017/01/21 17:24:07 INFO : carbon server started on http port 10003
+2017/01/21 17:24:09 INFO : carbon server API started on http port 10002
+2017/01/21 17:24:09 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 17:24:09 INFO : Monitor started in manual mode
+2017/01/21 17:24:13 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 17:39:14 INFO : carbon server started on metric port 2003
+2017/01/21 17:39:14 INFO : Starting http monitor on port 10001
+2017/01/21 17:39:14 INFO : carbon server started on http port 10003
+2017/01/21 17:39:16 INFO : carbon server API started on http port 10002
+2017/01/21 17:39:16 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 17:39:16 INFO : Monitor started in manual mode
+2017/01/21 17:39:18 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1
+2017/01/21 18:12:57 INFO : carbon server started on metric port 2003
+2017/01/21 18:12:57 INFO : carbon server started on http port 10003
+2017/01/21 18:12:57 INFO : Starting http monitor on port 10001
+2017/01/21 18:12:59 INFO : carbon server API started on http port 10002
+2017/01/21 18:12:59 INFO : replication-manager version 0.7 started in daemon mode
+2017/01/21 18:12:59 INFO : Monitor started in manual mode
+2017/01/21 18:13:02 WARN : WARN00007 At least one server is not ACID-compliant. Please check that the values of sync_binlog and innodb_flush_log_at_trx_commit are set to 1

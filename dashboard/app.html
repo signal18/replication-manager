@@ -39,6 +39,7 @@
   <script src="/static/angular-aria.min.js"></script>
   <script src="/static/angular-messages.min.js"></script>
   <script src="/static/angular-material.min.js"></script>
+	<script src="/static/angular-route.js"></script>
   <script src="dashboard.js"></script>
 
 
@@ -82,20 +83,22 @@ td {
 	 </form>
  </td></tr></table>
   <md-content>
-    <md-tabs md-dynamic-height="" md-border-bottom="">
+    <md-tabs class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
       <md-tab label="DASHBOARD">
         <md-content class="md-padding">
 
-					<div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
-					<div class="col-lg-3">
+					<div  ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
+
+					<div layout="column" layout-gt-xs="row">
+					<div flex-gt-xs="30" class="col-lg-33">
 					  <p class="sectionheader">MONITOR GROUP</p>
 			      <table class="table">
 			     	<tr><th>Group Name</th></tr>
 			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="{{settings.confgroup}}!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
 		     	</table>
 			    </div>
-
-					 <div class="col-lg-9">
+					<div  flex-gt-xs="10" ></div>
+					 <div  flex-gt-xs="60" class="col-lg-66">
 					<p class="sectionheader">Arbitrator Status</p>
 					<table ng-if="settings" class="table">
 						<tr>
@@ -111,7 +114,7 @@ td {
 						</tr>
 					</table>
 				</div>
-
+				</div>
 
 					<table ng-if="servers" class="table">
 						<tr>
