@@ -5,6 +5,20 @@
 
 
 #giraffe-navbar-inner {
+    background-color: #ffffff;
+    background-image: -moz-linear-gradient(top, #ffffff, #ffffff);
+    background-image: -ms-linear-gradient(top, #ffffff, #ffffff);
+    background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#ffffff), to(#ffffff));
+    background-image: -webkit-linear-gradient(top, #ffffff, #ffffff);
+    background-image: -o-linear-gradient(top, #ffffff, #ffffff);
+    background-image: linear-gradient(top, #ffffff, #ffffff); */
+
+    filter: progid:DXImageTransform.Microsoft.gradient(startColorstr='#'ffffff, endColorstr='#'ffffff, GradientType=0);
+    -webkit-box-shadow: 0 0px 0px rgba(0, 0, 0, 0.065);
+       -moz-box-shadow: 0 0px 0px rgba(0, 0, 0, 0.065);
+            box-shadow: 0 0px 0px rgba(0, 0, 0, 0.065);
+
+/*
   background-color: #fafafa;
   background-image: -moz-linear-gradient(top, #ffb100, #d65100);
   background-image: -ms-linear-gradient(top, #ffb100, #d65100);
@@ -16,11 +30,12 @@
   -webkit-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.065);
      -moz-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.065);
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.065);
+          */
 }
 
 .navbar .brand {
-  /* color: #d65100; */
-  color: white;
+   color: #ffffff;
+
   text-shadow: none;
 }
 
@@ -31,7 +46,7 @@
 
 .navbar .nav > li > a {
   /* color: #d65100; */
-  color: white;
+  color: black;
   text-shadow: none;
   text-decoration: none;
 }
@@ -48,20 +63,20 @@
 }
 
 .navbar-inverse .navbar-inner {
-    border-color: #d65100;
+    border-color: white;
 }
 
 .navbar-inverse .nav li.dropdown.open > .dropdown-toggle, .navbar-inverse .nav li.dropdown.active > .dropdown-toggle, .navbar-inverse .nav li.dropdown.open.active > .dropdown-toggle {
-    color: #d65100;
+    color: black;
     background-color: white;
 }
 
 .btn-small, .btn-small.active {
-    color: #d65100;
+    color: grey;
 }
 
 .page-header h1 {
-    color: #d65100;
+    color:grey;
 }
 p{
 	margin-top: 12px;
@@ -93,7 +108,10 @@ h2, h3 {
 .legend {
     margin-top: 17px;
     display: none;
-}
+    background-color: white;
+    padding-top: 15px;
+    color:black;
+  }
 
 .nav-collapse .btn-toolbar {
     margin-top: 0px;

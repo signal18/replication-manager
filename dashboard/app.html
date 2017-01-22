@@ -18,8 +18,9 @@
 	<link rel="stylesheet" href="/static/css/detail.css">
 	<link rel="stylesheet" href="/static/css/legend.css">
 	<link rel="stylesheet" href="/static/css/main.css">
-	<script src="/static/vendor/jquery-1.8.3.min.js"></script>
-	<script src="/static/vendor/bootstrap.min.js"></script>
+<script src="/static/vendor/jquery-2.1.1.min.js"></script>
+	<!-- <script src="/static/vendor/jquery-1.8.3.min.js"></script>
+	<script src="/static/vendor/bootstrap.min.js"></script> -->
 	<script src="/static/vendor/jquery-ui.min.js"></script>
 	<script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
 	<script src="/static/vendor/underscore-min.js"></script>
@@ -67,7 +68,14 @@ td {
       background: white; }
   .tabsdemoDynamicHeight md-content h1:first-child {
     margin-top: 0; }
+.title {
+  font-size: 24px;
+  text-transform: uppercase;
+	padding-left: 20px;
+	padding-top: 20px;
+	padding-bottom: 20px;
 
+}
 </style>
 </head>
 
@@ -75,7 +83,7 @@ td {
 	<div ng-controller="DashboardController" class="col-lg-12">
 
  <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
-	 <table width="100%"><tr><td>	<h2>Replication Manager</h2></td>
+	 <table width="100%"><tr><td><div class="title">Replication Manager</div></td>
 		<td>
 
 	 <form align=right action="/logout" method="post">
