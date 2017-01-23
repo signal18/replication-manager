@@ -14,7 +14,7 @@ import (
 	pb "github.com/tanji/replication-manager/graphite/carbonzipperpb"
 	"github.com/tanji/replication-manager/graphite/points"
 	whisper "github.com/tanji/replication-manager/graphite/whisper"
-	trigram "github.com/tanji/replication-manager/graphitegithub.com/dgryski/go-trigram"
+	trigram "github.com/dgryski/go-trigram"
 )
 
 type point struct {
