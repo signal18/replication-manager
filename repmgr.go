@@ -104,6 +104,10 @@ func init() {
 	}
 }
 
+// initRepmgrFlags function is used to initialize flags that are common to several subcommands
+// e.g. monitor, failover, switchover.
+// If you add a subcommand that shares flags with other subcommand scenarios please call this function.
+// If you add flags that impact all the possible scenarios please do it here.
 func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
 	cmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
