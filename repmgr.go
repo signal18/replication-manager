@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/nsf/termbox-go"
-	"github.com/satori/go.uuid"
+	termbox "github.com/nsf/termbox-go"
+	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/crypto"
@@ -311,7 +311,9 @@ Interactive console and HTTP dashboards are available for control`,
 						for k, v := range servers {
 							logprintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
-						logprintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", master.URL, master.State, master.PrevState)
+						if master != nil {
+							logprintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", master.URL, master.State, master.PrevState)
+						}
 						for k, v := range slaves {
 							logprintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
