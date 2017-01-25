@@ -12,17 +12,18 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/alert"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/gtid"
 	"github.com/tanji/replication-manager/misc"
-	"net/http"
-	"os"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -194,7 +195,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	/*	if conf.Verbose>0  {
 		logprintf("DEBUG: State comparison %b %b %b %d %d %d ", server.State==stateMaster , server.State==stateSlave  , server.State==stateUnconn ,(server.FailCount > 0) ,((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker), conf.FailResetTime) {
 	}*/
-	if (server.State != stateUnconn || server.State != stateSuspect) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
+	if (server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
