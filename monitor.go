@@ -385,6 +385,9 @@ func (server *ServerMonitor) freeze() bool {
 	}
 	maxConn = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
+	if err != nil {
+		logprint("ERROR: Could not set max_connections to 0 on demoted leader")
+	}
 	logprintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
 	return true
