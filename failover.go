@@ -230,6 +230,9 @@ func masterFailover(fail bool) bool {
 			}
 		}
 		_, err = oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
+		if err != nil {
+			logprint("ERROR: Could not set max_connections on demoted leader")
+		}
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
 		if conf.MultiMaster == false {
