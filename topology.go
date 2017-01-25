@@ -53,21 +53,21 @@ func newServerList() {
 	}
 	// Spider shard discover
 	if conf.Spider == true {
-		SpiderShardsDiscovery()
+		spiderShardsDiscovery()
 	}
 }
 
-func SpiderShardsDiscovery() {
+func spiderShardsDiscovery() {
 	for _, s := range servers {
 		tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
 		mon, err := dbhelper.GetSpiderMonitor(s.Conn)
 		if err == nil {
 			if mon != "" {
 				tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-				extraUrl, err := dbhelper.GetSpiderShardUrl(s.Conn)
+				extraURL, err := dbhelper.GetSpiderShardUrl(s.Conn)
 				if err == nil {
-					if extraUrl != "" {
-						for j, url := range strings.Split(extraUrl, ",") {
+					if extraURL != "" {
+						for j, url := range strings.Split(extraURL, ",") {
 							var err error
 							srv, err := newServerMonitor(url)
 							srv.State = stateShard
@@ -86,7 +86,7 @@ func SpiderShardsDiscovery() {
 	}
 }
 
-func SpiderSetShardsRepl() {
+func spiderSetShardsRepl() {
 	for k, s := range servers {
 		url := s.URL
 
