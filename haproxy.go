@@ -106,7 +106,7 @@ func initHaproxy() {
 	}
 
 	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		log.Println("Haproxy pidfile exists at %s, proceeding...", haConfig.PidFile)
+		log.Printf("Haproxy pidfile exists at %s, proceeding...", haConfig.PidFile)
 	} else {
 		log.Println("Created new pidfile...")
 	}
