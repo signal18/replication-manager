@@ -22,8 +22,8 @@ cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp service/replication-manager.service build/etc/systemd/system
 cp service/replication-manager.init.el6 build/etc/init.d/replication-manager
 echo "# Building packages"
-fpm --epoch $epoch --iteration $head -v 0.7.0 -C build -s dir -t rpm -n replication-manager .
-fpm --package replication-manager-0.7.0-$head.tar -C build -s dir -t tar -n replication-manager .
-gzip replication-manager-0.7.0-$head.tar
+fpm --epoch $epoch --iteration $head -v 1.0.0 -C build -s dir -t rpm -n replication-manager .
+fpm --package replication-manager-1.0.0-$head.tar -C build -s dir -t tar -n replication-manager .
+gzip replication-manager-1.0.0-$head.tar
 cp service/replication-manager.init.deb7 build/etc/init.d/replication-manager
-fpm --epoch $epoch --iteration $head -v 0.7.0 -C build -s dir -t deb -n replication-manager .
+fpm --epoch $epoch --iteration $head -v 1.0.0 -C build -s dir -t deb -n replication-manager .
