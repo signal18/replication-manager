@@ -11,14 +11,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/iu0v1/gelada"
-	"github.com/iu0v1/gelada/authguard"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/iu0v1/gelada"
+	"github.com/iu0v1/gelada/authguard"
 )
 
 type HandlerManager struct {
@@ -50,6 +51,16 @@ type settings struct {
 }
 
 func httpserver() {
+
+	// before starting the http server, check that the dashboard is present
+	if err := testFile("app.html"); err != nil {
+		logprint("ERROR: Dashboard app.html file missing - will not start http server", err)
+		return
+	}
+	if err := testFile("dashboard.js"); err != nil {
+		logprint("ERROR: dashboard.js file missing - will not start http server")
+		return
+	}
 
 	if conf.HttpAuth {
 		// set authguard options
@@ -486,4 +497,14 @@ func checkAuth(u, p string) bool {
 		return true
 	}
 	return false
+}
+
+// test if file exists
+func testFile(fn string) error {
+	f, err := os.Open(conf.HttpRoot + "/" + fn)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return nil
 }
