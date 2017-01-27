@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -402,6 +403,14 @@ Interactive console and HTTP dashboards are available for control`,
 		termbox.Close()
 		for _, server := range servers {
 			defer server.Conn.Close()
+		}
+		if memprofile != "" {
+			f, err := os.Create(memprofile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			pprof.WriteHeapProfile(f)
+			f.Close()
 		}
 	},
 }
