@@ -2,15 +2,48 @@
 <html>
 
 <head>
+
+
+
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+	<title></title>
+	<meta name="description" content="">
+	<meta name="viewport" content="width=device-width">
+
+	<link href="favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
+
+	<link rel="stylesheet" href="/static/css/bootstrap.min.css">
+	<link rel="stylesheet" href="/static/css/graph.css">
+	<link rel="stylesheet" href="/static/css/detail.css">
+	<link rel="stylesheet" href="/static/css/legend.css">
+	<link rel="stylesheet" href="/static/css/main.css">
+<script src="/static/vendor/jquery-2.1.1.min.js"></script>
+	<!-- <script src="/static/vendor/jquery-1.8.3.min.js"></script>
+	<script src="/static/vendor/bootstrap.min.js"></script> -->
+	<script src="/static/vendor/jquery-ui.min.js"></script>
+	<script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
+	<script src="/static/vendor/underscore-min.js"></script>
+	<script src="/static/vendor/mustache.js"></script>
+	<script src="/static/vendor/jquery.ba-bbq.min.js"></script>
+	<script src="/static/vendor/d3.v3.min.js"></script>
+	<script src="/static/vendor/rickshaw.min.js"></script>
+	<script src="/static/vendor/Markdown.Converter.js"></script>
+	<script src="/static/giraffe-annotator.js"></script>
+	<script src="/static/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
+
+
+
 	<script src="/static/angular.min.js"></script>
 	<script src="/static/angular-resource.min.js"></script>
 	<script src="/static/angular-animate.min.js"></script>
   <script src="/static/angular-aria.min.js"></script>
   <script src="/static/angular-messages.min.js"></script>
   <script src="/static/angular-material.min.js"></script>
+	<script src="/static/angular-route.js"></script>
   <script src="dashboard.js"></script>
 
-	<link rel="stylesheet" href="/static/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" >
+
 	<link rel="stylesheet" href="/static/angular-material.min.css">
  	<style>
 td {
@@ -35,7 +68,14 @@ td {
       background: white; }
   .tabsdemoDynamicHeight md-content h1:first-child {
     margin-top: 0; }
+.title {
+  font-size: 24px;
+  text-transform: uppercase;
+	padding-left: 20px;
+	padding-top: 20px;
+	padding-bottom: 20px;
 
+}
 </style>
 </head>
 
@@ -43,7 +83,7 @@ td {
 	<div ng-controller="DashboardController" class="col-lg-12">
 
  <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
-	 <table width="100%"><tr><td>	<h2>Replication Manager</h2></td>
+	 <table width="100%"><tr><td><div class="title">Replication Manager</div></td>
 		<td>
 
 	 <form align=right action="/logout" method="post">
@@ -51,20 +91,22 @@ td {
 	 </form>
  </td></tr></table>
   <md-content>
-    <md-tabs md-dynamic-height="" md-border-bottom="">
+    <md-tabs class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
       <md-tab label="DASHBOARD">
         <md-content class="md-padding">
 
-					<div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
-					<div class="col-lg-3">
-						<p class="sectionheader">MONITOR GROUP</p>
-			<table class="table">
-				<tr><th>Group Name</th></tr>
-				<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="{{settings.confgroup}}!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
-			</table>
-			</div>
+					<div  ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
 
-					 <div class="col-lg-9">
+					<div layout="column" layout-gt-xs="row">
+					<div flex-gt-xs="30" class="col-lg-33">
+					  <p class="sectionheader">MONITOR GROUP</p>
+			      <table class="table">
+			     	<tr><th>Group Name</th></tr>
+			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="{{settings.confgroup}}!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
+		     	</table>
+			    </div>
+					<div  flex-gt-xs="10" ></div>
+					 <div  flex-gt-xs="60" class="col-lg-66">
 					<p class="sectionheader">Arbitrator Status</p>
 					<table ng-if="settings" class="table">
 						<tr>
@@ -80,7 +122,7 @@ td {
 						</tr>
 					</table>
 				</div>
-
+				</div>
 
 					<table ng-if="servers" class="table">
 						<tr>
@@ -124,6 +166,8 @@ td {
 					<button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
 					<button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
 					<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
+					<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
+
 
 					</td><td>
 
@@ -195,6 +239,55 @@ td {
 			 </md-content>
 			 </md-tab>
 
+			 <md-tab  label="Graphs">
+				 <md-content  class="md-padding">
+
+
+
+					 <div class="navbar navbar-inverse navbar-fixed-top">
+							 <div id="giraffe-navbar-inner" class="navbar-inner">
+									 <div class="container">
+
+											 <div class="nav-collapse collapse">
+
+													 <div class="btn-toolbar pull-right">
+															 <div class="btn-group timepanel">
+																	 <a class="btn btn-small range" data-timeframe="10" href="#10m">10m</a>
+																	 <a class="btn btn-small range" data-timeframe="60" href="#1h">1h</a>
+																	 <a class="btn btn-small range" data-timeframe="180" href="#3h">3h</a>
+																	 <a class="btn btn-small range" data-timeframe="1440" href="#1d">1d</a>
+																	 <a class="btn btn-small range" data-timeframe="10080" href="#1w">1w</a>
+																	 <a class="btn btn-small range" data-timeframe="20160" href="#2w">2w</a>
+																	 <a class="btn btn-small range" data-timeframe="70560" href="#7w">7w</a>
+															 </div>
+															 <a id="legend-toggle" class="btn btn-small toggle" title="legend" href="#"><i class="icon-list-alt"></i></a>
+															 <a id="axis-toggle" class="btn btn-small toggle active" title="grid" href="#"><i class="icon-th"></i></a>
+															 <a id="x-label-toggle" class="btn btn-small toggle active" title="x labels" href="#"><i class="icon-comment"></i></a>
+															 <a id="x-item-toggle" class="btn btn-small toggle active" title="x tooltip" href="#"><i class="icon-remove-circle"></i></a>
+													 </div>
+											 </div><!--/.nav-collapse -->
+									 </div>
+							 </div>
+					 </div>
+
+					 <div class="container" style="padding-top: 60px;padding-bottom: 40px;">
+							 <div class="dashboard-content">
+
+									 <div id="graphs"></div>
+							 </div>
+
+					 </div> <!-- /container -->
+
+
+					 <script src="/static/graph.js"></script>
+					 <script src="/static/giraffe.js"></script>
+
+
+		 </md-content>
+
+
+		 </md-tab>
+
  </md-tabs>
 
 </md-content>
@@ -203,6 +296,8 @@ td {
 
 </div>
 </div>
+
+
 </body>
 
 </html>

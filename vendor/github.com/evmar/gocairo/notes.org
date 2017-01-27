@@ -1,0 +1,9 @@
+** todo list from bradfitz review
+*** func (cr *Context) ClipExtents() (float64, float64, float64, float64)
+named return params
+*** func (matrix *Matrix) InitIdentity()
+should be (m *Matrix)
+*** func (scaledFont *ScaledFont) GetFontOptions(options *FontOptions)
+options -> opts
+*** GetFoo() -> Foo()
+e.g. func (fontFace *ToyFontFace) GetWeight() FontWeight

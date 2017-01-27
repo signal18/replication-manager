@@ -9,9 +9,13 @@
 package main
 
 import "github.com/tanji/replication-manager/dbhelper"
+import "strconv"
 
+//import "github.com/tanji/replication-manager/misc"
 import "time"
 import "sort"
+import "bytes"
+import "os/exec"
 
 //import "encoding/json"
 //import "net/http"
@@ -957,4 +961,54 @@ func wait_failover_end() {
 		time.Sleep(time.Second)
 	}
 	time.Sleep(recover_time * time.Second)
+}
+
+func runSysbench() error {
+
+	var cleanup = conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + rplUser + " --mysql-password=" + rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
+	logprintf("BENCHMARK : %s", cleanup)
+	var cmdcls *exec.Cmd
+
+	cmdcls = exec.Command(conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+rplUser, "--mysql-password="+rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
+	var outcls bytes.Buffer
+	cmdcls.Stdout = &outcls
+
+	cmdclsErr := cmdcls.Run()
+	if cmdclsErr != nil {
+		logprintf("ERRROR : %s", cmdclsErr)
+		// return cmdclsErr
+	}
+	logprintf("BENCHMARK : %s", outcls.String())
+
+	var prepare = conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + rplUser + " --mysql-password=" + rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
+	logprintf("BENCHMARK : %s", prepare)
+	var cmdprep *exec.Cmd
+
+	cmdprep = exec.Command(conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+rplUser, "--mysql-password="+rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
+	var outprep bytes.Buffer
+	cmdprep.Stdout = &outprep
+
+	cmdprepErr := cmdprep.Run()
+	if cmdprepErr != nil {
+		logprintf("ERRROR : %s", cmdprepErr)
+		//		return cmdprepErr
+	}
+	logprintf("BENCHMARK : %s", outprep.String())
+
+	var run = conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + rplUser + " --mysql-password=" + rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(conf.SysbenchThreads) + " run"
+	logprintf("BENCHMARK : %s", run)
+	var cmdrun *exec.Cmd
+
+	cmdrun = exec.Command(conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+rplUser, "--mysql-password="+rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(conf.HaproxyWritePort), "--max-time="+strconv.Itoa(conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(conf.SysbenchThreads), "run")
+	var outrun bytes.Buffer
+	cmdrun.Stdout = &outrun
+
+	cmdrunErr := cmdrun.Run()
+	if cmdrunErr != nil {
+		logprintf("ERRROR : %s", cmdrunErr)
+		//		return cmdrunErr
+	}
+	logprintf("BENCHMARK : %s", outrun.String())
+
+	return nil
 }

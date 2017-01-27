@@ -1,4 +1,13 @@
-var app = angular.module('dashboard', ['ngResource','ngMaterial']);
+var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute']).config(function($routeProvider){
+
+        routeProvider = $routeProvider;
+        $routeProvider
+            .when('/:timeFrame', {templateUrl: '/', controller: 'DashboardController'})
+
+        .otherwise({redirectTo: '/login'});
+
+});
+
 
 
 app.factory('Servers', function($resource) {
@@ -33,6 +42,14 @@ app.factory('Test', function($resource) {
   );
 });
 
+app.factory('Sysbench', function($resource) {
+  return $resource(
+    '/sysbench',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 app.factory('Bootstrap', function($resource) {
   return $resource(
     '/bootstrap',
@@ -42,9 +59,12 @@ app.factory('Bootstrap', function($resource) {
 });
 
 
-app.controller('DashboardController', ['$scope', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope, $interval, $http, Servers, Log, Settings, Master) {
+app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings, Master) {
 
-
+   var timeFrame = $routeParams.timeFrame;
+   if (timeFrame=="") {
+     timeFrame="10m"
+    }
   $interval(function(){
   Servers.query({}, function(data) {
     $scope.servers = data;
@@ -211,5 +231,20 @@ $scope.test = function() {
       });
     }
   };
+
+
+  $scope.sysbench = function() {
+    var r = confirm("Confirm sysbench run !");
+    if (r == true) {
+      var response = $http.get('/sysbench');
+         response.success(function(data, status, headers, config) {
+          console.log("Ok.");
+        });
+
+        response.error(function(data, status, headers, config) {
+          console.log("Error.");
+        });
+      }
+    };
 
 }]);

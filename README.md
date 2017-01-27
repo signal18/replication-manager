@@ -62,7 +62,7 @@ Leader Election Cluster is best to use in such scenarios:
 
 This is achieved via following drawbacks:
 
-   * Overloading the leader can lead to data loss during failover  
+   * Overloading the leader can lead to data loss during failover or no failover depending of setup   
    * READ on replica is eventually consistent  
    * ACID can be preserved via route to leader always
 
@@ -121,6 +121,9 @@ rpl_semi_sync_master_timeout = 10
 ```
 
 Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF.
+
+__Important Note__: semisync SYNC status does not guaranty that the old leader is replication consistent with the cluster in case of crash [![MDEV-11855](https://jira.mariadb.org/browse/MDEV-11855)]  or shutdown [![MDEV-11853](https://jira.mariadb.org/browse/MDEV-11853)] of the master,the failure can leave more data in the binary log but it guaranty that no client applications have seen those pending transactions if they have not touch a replica. This lead to a situation that semisync is used to slowdown the workload to the speed of the network until it rich a timeout where it no more possible to catchup. A crash or shutdown will lead to the requirement of re provisioning the old leader from an other node in most heavy write scenarios.  
+Setting rpl_semi_sync_master_wait_point to AFTER_SYNC may limit the number of extra transactions inside the binlog after a crash but those transactions would  have been made visible to the clients and may have been lost during failover to an other node. This is highly recommended to keep AFTER_COMMIT to make sure the workload is safe more than the sate of the old master    
 
 ## State: Not in-sync & failable
 

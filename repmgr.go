@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
@@ -89,12 +91,24 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
 	monitorCmd.Flags().StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
 	monitorCmd.Flags().StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
-	monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper running haproxy on same host")
+	monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use haproxy on same host")
 	monitorCmd.Flags().IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "haproxy read-write port to leader")
 	monitorCmd.Flags().IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "haproxy load balance read port to all nodes")
 	monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "MaxScale admin user")
 	monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "haproxy input bind address for read")
 	monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "haproxy input bind address for write")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonServerPort, "graphite-carbon-server-port", 10003, "Graphite Carbon HTTP port")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonLinkPort, "graphite-carbon-link-port", 7002, "Graphite Carbon Link port")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPicklePort, "graphite-carbon-pickle-port", 2004, "Graphite Carbon Pickle port")
+	monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPprofPort, "graphite-carbon-pprof-port", 7007, "Graphite Carbon Pickle port")
+	monitorCmd.Flags().StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
+	monitorCmd.Flags().BoolVar(&conf.GraphiteMetrics, "graphite-metrics", false, "Enable Graphite monitoring")
+	monitorCmd.Flags().BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", false, "Enable Internal Graphite Carbon Server")
+	monitorCmd.Flags().IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
+	monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "number of threads to run benchmark")
+	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 
 	viper.BindPFlags(monitorCmd.Flags())
 
@@ -258,6 +272,28 @@ Interactive console and HTTP dashboards are available for control`,
 		sme = new(state.StateMachine)
 		sme.Init()
 
+		// Initialize go-carbon
+		if conf.GraphiteEmbedded {
+
+			go graphite.RunCarbon(conf.HttpRoot, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
+			logprintf("INFO : carbon server started on metric port %d", conf.GraphiteCarbonPort)
+			logprintf("INFO : carbon server started on http port %d", conf.GraphiteCarbonServerPort)
+
+			/*
+				carbonServer string host:port
+				carbonApiPort int
+				cacheType  default "mem"  "cache type to use"
+				mc default "" "comma separated memcached server list"
+				memsize int default 0 "in-memory cache size in MB (0 is unlimited)"
+				cpus int default 0 "number of CPUs to use"
+				tz string default "" "timezone,offset to use for dates with no timezone"
+				logdir string "logging directory"
+			*/
+
+			time.Sleep(2 * time.Second)
+			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.HttpRoot)
+			logprintf("INFO : carbon server API started on http port %d", conf.GraphiteCarbonApiPort)
+		}
 		if conf.Daemon {
 			termlength = 40
 			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
@@ -269,12 +305,12 @@ Interactive console and HTTP dashboards are available for control`,
 		}
 		loglen := termlength - 9 - (len(hostList) * 3)
 		tlog = termlog.NewTermLog(loglen)
+
 		if conf.Interactive {
 			logprint("INFO : Monitor started in manual mode")
 		} else {
 			logprint("INFO : Monitor started in automatic mode")
 		}
-
 		newServerList()
 
 		termboxChan := newTbChan()
