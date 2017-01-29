@@ -73,7 +73,7 @@ func httpserver() {
 		// get authguard
 		ag, err := authguard.New(agOptions)
 		if err != nil {
-			logprint("auth guard init error: %v\n", err)
+			log.Printf("auth guard init error: %v\n", err)
 			return
 		}
 
@@ -114,7 +114,7 @@ func httpserver() {
 		// get Gelada
 		g, err := gelada.New(options)
 		if err != nil {
-			logprint("gelada init error: %v\n", err)
+			log.Printf("gelada init error: %v\n", err)
 			return
 		}
 
@@ -178,7 +178,7 @@ func httpserver() {
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(conf.HttpRoot)))
 	if conf.Verbose {
-		logprint("INFO : Starting http monitor on port " + conf.HttpPort)
+		log.Printf("INFO : Starting http monitor on port " + conf.HttpPort)
 	}
 
 	log.Fatal(http.ListenAndServe(conf.BindAddr+":"+conf.HttpPort, nil))
@@ -193,8 +193,9 @@ func handlerJS(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
+
 	e := json.NewEncoder(w)
-	err := e.Encode(servers)
+	err := e.Encode(currentCluster.GetServers())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -204,7 +205,7 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 
 func handlerMaster(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-	err := e.Encode(master)
+	err := e.Encode(currentCluster.GetMaster())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -214,27 +215,27 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(settings)
-	s.Interactive = fmt.Sprintf("%v", conf.Interactive)
-	s.RplChecks = fmt.Sprintf("%v", conf.RplChecks)
-	s.FailSync = fmt.Sprintf("%v", conf.FailSync)
-	s.MaxDelay = fmt.Sprintf("%v", conf.MaxDelay)
-	s.FailoverCtr = fmt.Sprintf("%d", failoverCtr)
-	s.Faillimit = fmt.Sprintf("%d", conf.FailLimit)
-	s.MonHearbeats = fmt.Sprintf("%d", sme.GetHeartbeats())
-	s.Uptime = sme.GetUptime()
-	s.UptimeFailable = sme.GetUptimeFailable()
-	s.UptimeSemiSync = sme.GetUptimeSemiSync()
-	s.Test = fmt.Sprintf("%v", conf.Test)
-	s.Heartbeat = fmt.Sprintf("%v", conf.Heartbeat)
-	s.Status = fmt.Sprintf("%v", runStatus)
+	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
+	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
+	s.FailSync = fmt.Sprintf("%v", currentCluster.GetConf().FailSync)
+	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().MaxDelay)
+	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
+	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
+	s.MonHearbeats = fmt.Sprintf("%d", currentCluster.GetStateMachine().GetHeartbeats())
+	s.Uptime = currentCluster.GetStateMachine().GetUptime()
+	s.UptimeFailable = currentCluster.GetStateMachine().GetUptimeFailable()
+	s.UptimeSemiSync = currentCluster.GetStateMachine().GetUptimeSemiSync()
+	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
+	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
+	s.Status = fmt.Sprintf("%v", currentCluster.GetRunStatus())
 	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
-	s.MonitoringTicker = fmt.Sprintf("%d", conf.MonitoringTicker)
-	s.FailResetTime = fmt.Sprintf("%d", conf.FailResetTime)
-	s.ToSessionEnd = fmt.Sprintf("%d", conf.SessionLifeTime)
-	s.HttpAuth = fmt.Sprintf("%v", conf.HttpAuth)
-	s.HttpBootstrapButton = fmt.Sprintf("%v", conf.HttpBootstrapButton)
-	if failoverTs != 0 {
-		t := time.Unix(failoverTs, 0)
+	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
+	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
+	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
+	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
+	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
+	if currentCluster.GetFailoverTs() != 0 {
+		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()
 	} else {
 		s.LastFailover = "N/A"
@@ -260,76 +261,77 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if master.State == stateFailed {
-		logprint("ERROR: Master failed, cannot initiate switchover")
+	if currentCluster.IsMasterFailed() {
+		currentCluster.LogPrint("ERROR: Master failed, cannot initiate switchover")
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
-	swChan <- true
+	currentCluster.SwitchOver()
 	return
 }
 
 func handlerSetActive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	getActiveStatus()
+	currentCluster.GetActiveStatus()
 	return
 }
 
 func handlerFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	masterFailover(true)
+	currentCluster.MasterFailover(true)
 	return
 }
 
 func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	toggleInteractive()
+	currentCluster.ToggleInteractive()
 	return
 }
 
 func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprint("INFO: Force to ignore conditions %v", conf.RplChecks)
-	conf.RplChecks = !conf.RplChecks
+	currentCluster.LogPrint("INFO: Force to ignore conditions %v", currentCluster.GetRplChecks)
+	currentCluster.SetRplChecks(!currentCluster.GetRplChecks())
 	return
 }
 
 func handlerFailSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	logprintf("INFO: Force failover on status sync %v", conf.FailSync)
-	conf.FailSync = !conf.FailSync
+	currentCluster.LogPrintf("INFO: Force failover on status sync %v", currentCluster.GetFailSync())
+
+	currentCluster.SetFailSync(!currentCluster.GetFailSync())
 	return
 }
 
 func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	failoverCtr = 0
-	failoverTs = 0
+	currentCluster.ResetFailoverCtr()
+
 	return
 }
 
 func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	cleanall = true
-	if err := bootstrap(); err != nil {
-		logprint("ERROR: Could not bootstrap replication")
-		logprint(err)
+	currentCluster.SetCleanAll(true)
+	if err := currentCluster.Bootstrap(); err != nil {
+		currentCluster.LogPrint("ERROR: Could not bootstrap replication")
+		currentCluster.LogPrint(err)
 	}
 	return
 }
 
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	err := runAllTests()
+	err := currentCluster.RunAllTests()
 	if err == false {
-		logprint("ERROR: Some tests failed")
+		currentCluster.LogPrint("ERROR: Some tests failed")
 	}
 	return
 }
 
 func handlerSysbench(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	go runSysbench()
+	go currentCluster.RunSysbench()
 	return
 }
 
@@ -682,7 +684,7 @@ func (hm *HandlerManager) HandleLoginFreePage(res http.ResponseWriter, req *http
 
 // auth provider function
 func checkAuth(u, p string) bool {
-	if u == dbUser && p == dbPass {
+	if u == currentCluster.GetDbUser() && p == currentCluster.GetDbPass() {
 		return true
 	}
 	return false

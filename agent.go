@@ -9,14 +9,14 @@
 package main
 
 import (
-	"encoding/json"
+	//	"encoding/json"
 	"log"
 	"net/http"
-	"os"
-	"strings"
+	//	"os"
+	//	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/misc"
+	//	"github.com/tanji/replication-manager/misc"
 )
 
 func init() {
@@ -37,43 +37,43 @@ take consensus decisions`,
 }
 
 func handlerAgent(w http.ResponseWriter, r *http.Request) {
-	db, err := newServerMonitor(conf.Hosts)
-	if err != nil {
-		log.Println("Error opening database connection: ", err)
-		http.Error(w, "Service is down", 503)
-		return
-	}
-	db.refresh()
-	e := json.NewEncoder(w)
-	err = e.Encode(db)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
+	/*	db, err := newServerMonitor(conf.Hosts)
+		if err != nil {
+			log.Println("Error opening database connection: ", err)
+			http.Error(w, "Service is down", 503)
+			return
+		}
+		db.refresh()
+		e := json.NewEncoder(w)
+		err = e.Encode(db)
+		if err != nil {
+			log.Println("Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}*/
 }
 
 func agentFlagCheck() {
-	if conf.LogFile != "" {
-		var err error
-		logPtr, err = os.Create(conf.LogFile)
-		if err != nil {
-			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
-			conf.LogFile = ""
+	/*	if conf.LogFile != "" {
+			var err error
+			logPtr, err = os.Create(conf.LogFile)
+			if err != nil {
+				log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
+				conf.LogFile = ""
+			}
 		}
-	}
-	// if slaves option has been supplied, split into a slice.
-	if conf.Hosts != "" {
-		hostList = strings.Split(conf.Hosts, ",")
-	} else {
-		log.Fatal("ERROR: No hosts list specified.")
-	}
-	if len(hostList) > 1 {
-		log.Fatal("ERROR: Agent can only monitor a single host")
-	}
-	// validate users.
-	if conf.User == "" {
-		log.Fatal("ERROR: No master user/pair specified.")
-	}
-	dbUser, dbPass = misc.SplitPair(conf.User)
+		// if slaves option has been supplied, split into a slice.
+		if conf.Hosts != "" {
+			hostList = strings.Split(conf.Hosts, ",")
+		} else {
+			log.Fatal("ERROR: No hosts list specified.")
+		}
+		if len(hostList) > 1 {
+			log.Fatal("ERROR: Agent can only monitor a single host")
+		}
+		// validate users.
+		if conf.User == "" {
+			log.Fatal("ERROR: No master user/pair specified.")
+		}
+		dbUser, dbPass = misc.SplitPair(conf.User)*/
 }

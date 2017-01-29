@@ -64,6 +64,7 @@ type Config struct {
 	HaproxyOn                bool   `mapstructure:"haproxy"`
 	HaproxyWritePort         int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort          int    `mapstructure:"haproxy-read-port"`
+	HaproxyStatPort          int    `mapstructure:"haproxy-stat-port"`
 	HaproxyWriteBindIp       string `mapstructure:"haproxy-ip-write-bind"`
 	HaproxyReadBindIp        string `mapstructure:"haproxy-ip-read-bind"`
 	HaproxyBinaryPath        string `mapstructure:"haproxy-binary-path"`
@@ -79,8 +80,7 @@ type Config struct {
 	GraphiteCarbonLinkPort   int    `mapstructure:"graphite-carbon-link-port"`
 	GraphiteCarbonPicklePort int    `mapstructure:"graphite-carbon-pickle-port"`
 	GraphiteCarbonPprofPort  int    `mapstructure:"graphite-carbon-pprof-port"`
-
-	SysbenchBinaryPath string `mapstructure:"sysbench-binary-path"`
-	SysbenchTime       int    `mapstructure:"sysbench-time"`
-	SysbenchThreads    int    `mapstructure:"sysbench-threads"`
+	SysbenchBinaryPath       string `mapstructure:"sysbench-binary-path"`
+	SysbenchTime             int    `mapstructure:"sysbench-time"`
+	SysbenchThreads          int    `mapstructure:"sysbench-threads"`
 }
