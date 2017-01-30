@@ -165,62 +165,8 @@ var failoverCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalln(err)
 		}
-		/*	repmgrFlagCheck()
-			sme = new(state.StateMachine)
-			sme.Init()
-			// Recover state from file before doing anything else
-			sf := stateFile{Name: "/tmp/mrm.state"}
-			err := sf.access()
-			if err != nil {
-				logprint("WARN : Could not create state file")
-			}
-			err = sf.read()
-			if err != nil {
-				logprint("WARN : Could not read values from state file:", err)
-			} else {
-				failoverCtr = int(sf.Count)
-				failoverTs = sf.Timestamp
-			}
-			newServerList()
-			err = topologyDiscover()
-			if err != nil {
-				for _, s := range sme.GetState() {
-					log.Println(s)
-				}
-				// Test for ERR00012 - No master detected
-				if sme.CurState.Search("ERR00012") {
-					for _, s := range servers {
-						if s.State == "" {
-							s.State = stateFailed
-							if conf.LogLevel > 2 {
-								logprint("DEBUG: State failed set by state detection ERR00012")
-							}
-							master = s
-						}
-					}
-				} else {
-					log.Fatalln(err)
-				}
-			}
-			if master == nil {
-				log.Fatalln("ERROR: Could not find a failed server in the hosts list")
-			}
-			if conf.FailLimit > 0 && failoverCtr >= conf.FailLimit {
-				log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", conf.FailLimit)
-			}
-			rem := (failoverTs + conf.FailTime) - time.Now().Unix()
-			if conf.FailTime > 0 && rem > 0 {
-				log.Fatalf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
-			}
-			if masterFailover(true) {
-				sf.Count++
-				sf.Timestamp = failoverTs
-				err := sf.write()
-				if err != nil {
-					logprint("WARN : Could not write values to state file:", err)
-				}
-			}
-		*/
+		currentCluster.FailoverForce()
+
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.

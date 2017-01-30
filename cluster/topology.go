@@ -161,7 +161,7 @@ func (cluster *Cluster) pingServerList() {
 
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
-func (cluster *Cluster) topologyDiscover() error {
+func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.sme.IsInFailover() {
 		cluster.LogPrintf("DEBUG: In Failover skip topology detection")
 		return nil
