@@ -143,7 +143,7 @@ var failoverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -163,7 +163,7 @@ var switchoverCmd = &cobra.Command{
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -181,7 +181,7 @@ var topologyCmd = &cobra.Command{
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		err := currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -240,7 +240,7 @@ Interactive console and HTTP dashboards are available for control`,
 		}
 		if conf.Daemon {
 			termlength = 40
-			log.Printf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
+			log.Printf("INFO : replication-manager version %s started in daemon mode", Version)
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {
