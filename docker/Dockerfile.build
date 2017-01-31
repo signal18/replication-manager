@@ -1,6 +1,0 @@
-FROM golang:1.6-alpine
-
-VOLUME /go/src/replication-manager
-WORKDIR /go/src/replication-manager
-
-CMD go build
