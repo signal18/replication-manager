@@ -23,7 +23,7 @@ func (cluster *Cluster) display() {
 		return
 	}
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", cluster.repmgrVersion)
+	headstr := fmt.Sprintf(" Replication Monitor and Health Checker for MariaDB version %s ", cluster.repmgrVersion)
 	if cluster.cfgGroup != "" {
 		headstr += fmt.Sprintf("| Group: %s", cluster.cfgGroup)
 	}
