@@ -263,7 +263,7 @@ Interactive console and HTTP dashboards are available for control`,
 		}
 		for _, gl := range cfgGroupList {
 			currentCluster = new(cluster.Cluster)
-			currentCluster.Init(confs[gl], gl, &tlog, termlength, runUUID, repmgrVersion, repmgrHostname, k)
+			currentCluster.Init(confs[gl], gl, &tlog, termlength, runUUID, Version, repmgrHostname, k)
 			clusters[gl] = currentCluster
 			go currentCluster.Run()
 
