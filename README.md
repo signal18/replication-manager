@@ -419,4 +419,4 @@ You should have received a copy of the GNU General Public License along with thi
 
 ## Version
 
-__replication-manager__ 1.0.0
+__replication-manager__ 1.0.1
