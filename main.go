@@ -25,7 +25,7 @@ var (
 	cfgFile       string
 	cfgGroup      string = "Default"
 	cfgGroupList  []string
-	cfgGroupIndex int = 1
+	cfgGroupIndex int = 0
 	conf          config.Config
 	memprofile    string
 )
@@ -79,7 +79,7 @@ func initConfig() {
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
-	cfgGroupIndex = 1
+	cfgGroupIndex = 0
 
 	cf1 := viper.Sub("Default")
 	cf1.Unmarshal(&conf)
@@ -88,7 +88,9 @@ func initConfig() {
 		cfgGroupList = strings.Split(cfgGroup, ",")
 
 		for _, gl := range cfgGroupList {
+
 			if gl != "" {
+				cfgGroup = gl
 				log.Println("INFO : Reading configuration group", gl)
 				cf2 := viper.Sub(gl)
 				if cf2 == nil {
@@ -99,9 +101,9 @@ func initConfig() {
 				cfgGroupIndex++
 			}
 		}
-		//cfgGroupIndex = 1
-		//log.Println("INFO : Default Cluster ", cfgGroupList[1])
-		//cfgGroup = cfgGroupList[1]
+		cfgGroupIndex--
+		log.Printf("INFO : Default Cluster %s", cfgGroupList[cfgGroupIndex])
+		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	}
 }

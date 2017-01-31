@@ -37,6 +37,7 @@ type Cluster struct {
 	termlength           int
 	runUUID              string
 	cfgGroup             string
+	cfgGroupDisplay      string
 	repmgrVersion        string
 	repmgrHostname       string
 	key                  []byte
@@ -67,6 +68,10 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 
 	cluster.newServerList()
 	return nil
+}
+
+func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
+	cluster.cfgGroupDisplay = cfgGroup
 }
 
 func (cluster *Cluster) FailoverForce() error {

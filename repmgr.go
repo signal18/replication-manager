@@ -41,7 +41,7 @@ var (
 func init() {
 	runUUID = uuid.NewV4().String()
 	//	runStatus = "A"
-
+	//	conf := confs[cfgGroup]
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
@@ -181,7 +181,7 @@ var topologyCmd = &cobra.Command{
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		err := currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -261,11 +261,14 @@ Interactive console and HTTP dashboards are available for control`,
 			log.Println("INFO : No existing password encryption scheme:", err)
 			k = nil
 		}
+		for _, gl := range cfgGroupList {
+			currentCluster = new(cluster.Cluster)
+			currentCluster.Init(confs[gl], gl, &tlog, termlength, runUUID, repmgrVersion, repmgrHostname, k)
+			clusters[gl] = currentCluster
+			go currentCluster.Run()
 
-		currentCluster = new(cluster.Cluster)
-		currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, repmgrVersion, repmgrHostname, k)
-		clusters[cfgGroup] = currentCluster
-		go currentCluster.Run()
+		}
+		currentCluster.SetCfgGroupDisplay(cfgGroup)
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
@@ -294,6 +297,28 @@ Interactive console and HTTP dashboards are available for control`,
 					if event.Key == termbox.KeyCtrlD {
 						currentCluster.PrintTopology()
 					}
+					if event.Key == termbox.KeyCtrlN {
+						cfgGroupIndex++
+						if cfgGroupIndex >= len(cfgGroupList) {
+							cfgGroupIndex = 0
+						}
+						cfgGroup = cfgGroupList[cfgGroupIndex]
+						currentCluster = clusters[cfgGroup]
+						for _, gl := range cfgGroupList {
+							clusters[gl].SetCfgGroupDisplay(cfgGroup)
+						}
+					}
+					if event.Key == termbox.KeyCtrlP {
+						cfgGroupIndex--
+						if cfgGroupIndex < 0 {
+							cfgGroupIndex = len(cfgGroupList) - 1
+						}
+						cfgGroup = cfgGroupList[cfgGroupIndex]
+						currentCluster = clusters[cfgGroup]
+						for _, gl := range cfgGroupList {
+							clusters[gl].SetCfgGroupDisplay(cfgGroup)
+						}
+					}
 					if event.Key == termbox.KeyCtrlR {
 						currentCluster.LogPrint("INFO: Setting slaves read-only")
 						currentCluster.SetSlavesReadOnly(true)
@@ -309,6 +334,11 @@ Interactive console and HTTP dashboards are available for control`,
 						currentCluster.DisplayHelp()
 					}
 					if event.Key == termbox.KeyCtrlQ {
+						currentCluster.LogPrint("INFO : Quitting monitor")
+						exit = true
+						currentCluster.Stop()
+					}
+					if event.Key == termbox.KeyCtrlC {
 						currentCluster.LogPrint("INFO : Quitting monitor")
 						exit = true
 						currentCluster.Stop()

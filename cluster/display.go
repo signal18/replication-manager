@@ -19,6 +19,9 @@ import (
 )
 
 func (cluster *Cluster) display() {
+	if cluster.cfgGroup != cluster.cfgGroupDisplay {
+		return
+	}
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
 	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", cluster.repmgrVersion)
 	if cluster.cfgGroup != "" {
@@ -72,7 +75,7 @@ func (cluster *Cluster) display() {
 		if cluster.master.State != stateFailed {
 			cluster.printTb(0, cluster.tlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-S to switchover")
 		} else {
-			cluster.printTb(0, cluster.tlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover")
+			cluster.printTb(0, cluster.tlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover, Ctrl-(N|P) to change Cluster,Ctrl-H to help")
 		}
 	}
 	cluster.tlog.Line = cluster.tlog.Line + 3
@@ -100,7 +103,10 @@ func (cluster *Cluster) DisplayHelp() {
 	cluster.LogPrint("HELP : Ctrl-I  Toggle automatic/manual failover mode")
 	cluster.LogPrint("HELP : Ctrl-R  Set slaves read-only")
 	cluster.LogPrint("HELP : Ctrl-S  Switchover")
+	cluster.LogPrint("HELP : Ctrl-N  Next Cluster")
+	cluster.LogPrint("HELP : Ctrl-P  Previous Cluster")
 	cluster.LogPrint("HELP : Ctrl-Q  Quit")
+	cluster.LogPrint("HELP : Ctrl-C  Quit")
 	cluster.LogPrint("HELP : Ctrl-W  Set slaves read-write")
 }
 
