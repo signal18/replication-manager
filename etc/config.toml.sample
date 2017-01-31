@@ -38,7 +38,8 @@ http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
-http-auth = true
+# http-auth is experimental and leaks memory in this version
+http-auth = false
 http-session-lifetime = 3600
 http-bootstrap-button = false
 
