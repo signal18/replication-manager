@@ -54,11 +54,11 @@ func httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := testFile("app.html"); err != nil {
-		logprint("ERROR: Dashboard app.html file missing - will not start http server", err)
+		currentCluster.LogPrint("ERROR: Dashboard app.html file missing - will not start http server", err)
 		return
 	}
 	if err := testFile("dashboard.js"); err != nil {
-		logprint("ERROR: dashboard.js file missing - will not start http server")
+		currentCluster.LogPrint("ERROR: dashboard.js file missing - will not start http server")
 		return
 	}
 
@@ -244,7 +244,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
 	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
 	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
-	s.HttpBootstrapButton = fmt.Sprintf("%v", currenMtCluster.GetConf().HttpBootstrapButton)
+	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()

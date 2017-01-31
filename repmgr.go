@@ -14,13 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"io/ioutil"
-	"log"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
 	uuid "github.com/satori/go.uuid"
