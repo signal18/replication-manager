@@ -20,7 +20,7 @@ import (
 
 func display() {
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", repmgrVersion)
+	headstr := fmt.Sprintf(" MariaDB Replication Monitor and Health Checker version %s ", Version)
 	if cfgGroup != "" {
 		headstr += fmt.Sprintf("| Group: %s", cfgGroup)
 	}

@@ -260,7 +260,7 @@ Interactive console and HTTP dashboards are available for control`,
 
 		if conf.Daemon {
 			termlength = 40
-			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
+			log.Printf("INFO : replication-manager version %s started in daemon mode", Version)
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {

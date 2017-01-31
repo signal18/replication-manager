@@ -18,8 +18,6 @@ import (
 	"github.com/tanji/replication-manager/config"
 )
 
-const repmgrVersion string = "0.7"
-
 var (
 	conf       config.Config
 	cfgFile    string
@@ -29,6 +27,7 @@ var (
 
 var (
 	Version string
+	FullVersion string
 	Build   string
 )
 
@@ -107,8 +106,8 @@ var versionCmd = &cobra.Command{
 	Short: "Print the replication manager version number",
 	Long:  `All software has versions. This is ours`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("MariaDB Replication Manager version", repmgrVersion)
-		fmt.Println("Full Version: ", Version)
+		fmt.Println("Replication Manager " + Version + " for MariaDB 10.x Series")
+		fmt.Println("Full Version: ", FullVersion)
 		fmt.Println("Build Time: ", Build)
 	},
 }
