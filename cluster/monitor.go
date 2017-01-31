@@ -7,7 +7,7 @@
 // See LICENSE in this directory for the integral text.
 
 // monitor.go
-package main
+package cluster
 
 import (
 	"database/sql"
@@ -24,6 +24,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/gtid"
+
 	"github.com/tanji/replication-manager/misc"
 )
 
@@ -62,6 +63,7 @@ type ServerMonitor struct {
 	RplMasterStatus      bool
 	EventScheduler       bool
 	EventsStatus         []dbhelper.Event
+	ClusterGroup         *Cluster
 }
 
 type serverList []*ServerMonitor
@@ -80,8 +82,10 @@ const (
 )
 
 /* Initializes a server object */
-func newServerMonitor(url string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
+
 	server := new(ServerMonitor)
+	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
 	var err error
@@ -90,13 +94,13 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds", conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 	mydsn := func() string {
-		dsn := dbUser + ":" + dbPass + "@"
+		dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
 		if server.Host != "" {
 			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 		} else {
-			dsn += "unix(" + conf.Socket + ")/" + params
+			dsn += "unix(" + cluster.conf.Socket + ")/" + params
 		}
 		return dsn
 	}
@@ -108,9 +112,9 @@ func newServerMonitor(url string) (*ServerMonitor, error) {
 func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-	if sme.IsInFailover() {
-		if conf.LogLevel > 2 {
-			logprintf("DEBUG: Inside failover, skip server check")
+	if server.ClusterGroup.sme.IsInFailover() {
+		if server.ClusterGroup.conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf("DEBUG: Inside failover, skip server check")
 		}
 		return
 	}
@@ -118,12 +122,12 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.PrevState = server.State
 	}
 
-	if conf.LogLevel > 2 {
-		// logprint("DEBUG: Checking server", server.Host)
+	if server.ClusterGroup.conf.LogLevel > 2 {
+		// LogPrint("DEBUG: Checking server", server.Host)
 	}
 
 	var err error
-	switch conf.CheckType {
+	switch server.ClusterGroup.conf.CheckType {
 	case "tcp":
 		err = server.Conn.Ping()
 	case "agent":
@@ -137,56 +141,56 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
-		if conf.LogLevel > 2 {
-			logprintf("DEBUG: Failure detection handling for server %s", server.URL)
+		if server.ClusterGroup.conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf("DEBUG: Failure detection handling for server %s", server.URL)
 		}
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
-			server.FailSuspectHeartbeat = sme.GetHeartbeats()
-			if server.URL == master.URL {
-				if master.FailCount <= conf.MaxFail {
-					logprintf("WARN : Master Failure detected! Retry %d/%d", master.FailCount, conf.MaxFail)
+			server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
+			if server.URL == server.ClusterGroup.master.URL {
+				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
+					server.ClusterGroup.LogPrintf("WARN : Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
 				}
-				if server.FailCount >= conf.MaxFail {
-					if server.FailCount == conf.MaxFail {
-						logprint("WARN : Declaring master as failed")
+				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
+					if server.FailCount == server.ClusterGroup.conf.MaxFail {
+						server.ClusterGroup.LogPrint("WARN : Declaring master as failed")
 					}
-					master.State = stateFailed
+					server.ClusterGroup.master.State = stateFailed
 				} else {
-					master.State = stateSuspect
+					server.ClusterGroup.master.State = stateSuspect
 				}
 			}
 		} else {
 			if server.State != stateMaster && server.State != stateFailed {
 				server.FailCount++
-				if server.FailCount >= conf.MaxFail {
-					if server.FailCount == conf.MaxFail {
-						logprintf("WARN : Declaring server %s as failed", server.URL)
+				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
+					if server.FailCount == server.ClusterGroup.conf.MaxFail {
+						server.ClusterGroup.LogPrintf("WARN : Deserver.ClusterGrouparing server %s as failed", server.URL)
 						server.State = stateFailed
 					} else {
 						server.State = stateSuspect
 					}
 					// remove from slave list
-					server.delete(&slaves)
+					server.delete(&server.ClusterGroup.slaves)
 				}
 			}
 		}
 		// Send alert if state has changed
 		if server.PrevState != server.State {
-			//if conf.Verbose {
-			logprintf("ALERT : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+			//if cluster.conf.Verbose {
+			server.ClusterGroup.LogPrintf("ALERT : Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			//}
-			if conf.MailTo != "" {
+			if server.ClusterGroup.conf.MailTo != "" {
 				a := alert.Alert{
-					From:        conf.MailFrom,
-					To:          conf.MailTo,
+					From:        server.ClusterGroup.conf.MailFrom,
+					To:          server.ClusterGroup.conf.MailTo,
 					Type:        server.State,
 					Origin:      server.URL,
-					Destination: conf.MailSMTPAddr,
+					Destination: server.ClusterGroup.conf.MailSMTPAddr,
 				}
 				err = a.Email()
 				if err != nil {
-					logprint("ERROR: Could not send econf.Mail alert: ", err)
+					server.ClusterGroup.LogPrint("ERROR: Could not send econf.Mail alert: ", err)
 				}
 			}
 		}
@@ -194,9 +198,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 	// Reset FailCount
 	/*	if conf.Verbose>0  {
-		logprintf("DEBUG: State comparison %b %b %b %d %d %d ", server.State==stateMaster , server.State==stateSlave  , server.State==stateUnconn ,(server.FailCount > 0) ,((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker), conf.FailResetTime) {
+		server.ClusterGroup.LogPrintf("DEBUG: State comparison %b %b %b %d %d %d ", server.State==stateMaster , server.State==stateSlave  , server.State==stateUnconn ,(server.FailCount > 0) ,((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker), conf.FailResetTime) {
 	}*/
-	if (server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) && (((sme.GetHeartbeats() - server.FailSuspectHeartbeat) * conf.MonitoringTicker) > conf.FailResetTime) {
+	if (server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) && (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -205,24 +209,24 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
-			if conf.LogLevel > 1 {
-				logprintf("DEBUG: State comparison reinitialized failed server %s as unconnected", server.URL)
+			if server.ClusterGroup.conf.LogLevel > 1 {
+				server.ClusterGroup.LogPrintf("DEBUG: State comparison reinitialized failed server %s as unconnected", server.URL)
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
-			if conf.Autorejoin {
+			if server.ClusterGroup.conf.Autorejoin {
 				// Check if master exists in topology before rejoining.
-				if server.URL != master.URL {
-					logprintf("INFO : Rejoining previously failed server %s", server.URL)
+				if server.URL != server.ClusterGroup.master.URL {
+					server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
 					err = server.rejoin()
 					if err != nil {
-						logprintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
+						server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
 					}
 				}
 			}
 		} else if server.State != stateMaster {
-			if conf.LogLevel > 1 {
-				logprintf("DEBUG: State unconnected set by non-master rule on server %s", server.URL)
+			if server.ClusterGroup.conf.LogLevel > 1 {
+				server.ClusterGroup.LogPrintf("DEBUG: State unconnected set by non-master rule on server %s", server.URL)
 			}
 			server.State = stateUnconn
 		}
@@ -233,11 +237,11 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
 		server.State = stateSlave
 		server.FailCount = 0
-		slaves = append(slaves, server)
-		if conf.ReadOnly {
+		server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
+		if server.ClusterGroup.conf.ReadOnly {
 			err = dbhelper.SetReadOnly(server.Conn, true)
 			if err != nil {
-				logprintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
+				server.ClusterGroup.LogPrintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
 			}
 		}
 	}
@@ -266,13 +270,13 @@ func (server *ServerMonitor) refresh() error {
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
 	server.ServerID = uint(sid)
-	err = dbhelper.SetDefaultMasterConn(server.Conn, conf.MasterConn)
+	err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
 	if err != nil {
 		return err
 	}
 	server.EventsStatus, err = dbhelper.GetEnventsStatus(server.Conn)
 	if err != nil {
-		logprintf("ERROR: Could not get events")
+		server.ClusterGroup.LogPrintf("ERROR: Could not get events")
 		return err
 	}
 	su := dbhelper.GetStatus(server.Conn)
@@ -313,10 +317,14 @@ func (server *ServerMonitor) refresh() error {
 		server.SQLErrno = slaveStatus.Last_SQL_Errno
 	}
 
+	//monitor haproxy
+	if server.ClusterGroup.conf.HaproxyOn {
+		// status, err := haproxy.parse(page)
+	}
 	// Initialize graphite monitoring
 
-	if conf.GraphiteMetrics {
-		graph, err := graphite.NewGraphite(conf.GraphiteCarbonHost, conf.GraphiteCarbonPort)
+	if server.ClusterGroup.conf.GraphiteMetrics {
+		graph, err := graphite.NewGraphite(server.ClusterGroup.conf.GraphiteCarbonHost, server.ClusterGroup.conf.GraphiteCarbonPort)
 		if err == nil {
 			graph.SimpleSend(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", server.Delay.Int64))
 			graph.SimpleSend(fmt.Sprintf("server%d.status.ComSelect", server.ServerID), su["COM_SELECT"])
@@ -334,10 +342,10 @@ func (server *ServerMonitor) refresh() error {
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
 
-	if sme.IsInFailover() || server.State == stateMaster || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
+	if server.ClusterGroup.sme.IsInFailover() || server.State == stateMaster || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
 		return "Master OK"
 	}
-	if server.Delay.Valid == false && sme.CanMonitor() {
+	if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
 			server.State = stateSlaveErr
 			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
@@ -355,7 +363,7 @@ func (server *ServerMonitor) replicationCheck() string {
 		return "Running OK"
 	}
 	if server.Delay.Int64 > 0 {
-		if server.Delay.Int64 > conf.MaxDelay && conf.RplChecks == true {
+		if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
 			server.State = stateSlaveLate
 		} else {
 			server.State = stateSlave
@@ -389,23 +397,23 @@ func (server *ServerMonitor) acidTest() bool {
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
 	if err != nil {
-		logprintf("WARN : Could not set %s as read-only: %s", server.URL, err)
+		server.ClusterGroup.LogPrintf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := conf.WaitKill; i > 0; i -= 500 {
+	for i := server.ClusterGroup.conf.WaitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break
 		}
-		logprintf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
+		server.ClusterGroup.LogPrintf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
 	maxConn = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
 	if err != nil {
-		logprint("ERROR: Could not set max_connections to 0 on demoted leader")
+		server.ClusterGroup.LogPrint("ERROR: Could not set max_connections to 0 on demoted leader")
 	}
-	logprintf("INFO : Terminating all threads on %s", server.URL)
+	server.ClusterGroup.LogPrintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
 	return true
 }
@@ -415,7 +423,7 @@ func (server *ServerMonitor) readAllRelayLogs() error {
 	if err != nil {
 		return err
 	}
-	logprintf("INFO : Reading all relay logs on %s", server.URL)
+	server.ClusterGroup.LogPrintf("INFO : Reading all relay logs on %s", server.URL)
 	for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
 		ss, err = dbhelper.GetSlaveStatus(server.Conn)
 		if err != nil {
@@ -428,11 +436,11 @@ func (server *ServerMonitor) readAllRelayLogs() error {
 
 func (server *ServerMonitor) log() {
 	server.refresh()
-	logprintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
+	server.ClusterGroup.LogPrintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
 	return
 }
 
-func (server *ServerMonitor) close() {
+func (server *ServerMonitor) Close() {
 	server.Conn.Close()
 	return
 }
@@ -473,10 +481,10 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) rejoin() error {
-	if conf.ReadOnly {
+	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
 	}
-	cm := "CHANGE MASTER TO master_host='" + master.IP + "', master_port=" + master.Port + ", master_user='" + rplUser + "', master_password='" + rplPass + "', MASTER_USE_GTID=CURRENT_POS"
+	cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=CURRENT_POS"
 	_, err := server.Conn.Exec(cm)
 	dbhelper.StartSlave(server.Conn)
 	return err

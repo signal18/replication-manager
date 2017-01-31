@@ -12,7 +12,13 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
+
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -20,44 +26,29 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/replication-manager/crypto"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/graphite"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
 )
 
 // Global variables
 var (
-	hostList             []string
-	servers              serverList
-	slaves               serverList
-	master               *ServerMonitor
-	exit                 bool
-	dbUser               string
-	dbPass               string
-	rplUser              string
-	rplPass              string
-	failoverCtr          int
-	failoverTs           int64
-	tlog                 termlog.TermLog
-	ignoreList           []string
-	logPtr               *os.File
-	exitMsg              string
-	termlength           int
-	sme                  *state.StateMachine
-	swChan               = make(chan bool)
-	repmgrHostname       string
-	runUUID              string
-	runStatus            string
-	runOnceAfterTopology bool
+	tlog           termlog.TermLog
+	termlength     int
+	runUUID        string
+	repmgrHostname string
+
+	swChan         = make(chan bool)
+	exitMsg        string
+	exit           bool
+	currentCluster *cluster.Cluster
+	clusters       = map[string]*cluster.Cluster{}
 )
 
 func init() {
 	runUUID = uuid.NewV4().String()
-	runStatus = "A"
-	runOnceAfterTopology = true
+	//	runStatus = "A"
+
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
@@ -94,6 +85,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use haproxy on same host")
 	monitorCmd.Flags().IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "haproxy read-write port to leader")
 	monitorCmd.Flags().IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "haproxy load balance read port to all nodes")
+	monitorCmd.Flags().IntVar(&conf.HaproxyStatPort, "haproxy-stat-port", 1988, "haproxy statistics port")
 	monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "MaxScale admin user")
 	monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "haproxy input bind address for read")
 	monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "haproxy input bind address for write")
@@ -156,67 +148,18 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		repmgrFlagCheck()
-		sme = new(state.StateMachine)
-		sme.Init()
-		// Recover state from file before doing anything else
-		sf := stateFile{Name: "/tmp/mrm.state"}
-		err := sf.access()
+
+		currentCluster = new(cluster.Cluster)
+		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
 		if err != nil {
-			logprint("WARN : Could not create state file")
+			log.Fatalln(err)
 		}
-		err = sf.read()
-		if err != nil {
-			logprint("WARN : Could not read values from state file:", err)
-		} else {
-			failoverCtr = int(sf.Count)
-			failoverTs = sf.Timestamp
-		}
-		newServerList()
-		err = topologyDiscover()
-		if err != nil {
-			for _, s := range sme.GetState() {
-				log.Println(s)
-			}
-			// Test for ERR00012 - No master detected
-			if sme.CurState.Search("ERR00012") {
-				for _, s := range servers {
-					if s.State == "" {
-						s.State = stateFailed
-						if conf.LogLevel > 2 {
-							logprint("DEBUG: State failed set by state detection ERR00012")
-						}
-						master = s
-					}
-				}
-			} else {
-				log.Fatalln(err)
-			}
-		}
-		if master == nil {
-			log.Fatalln("ERROR: Could not find a failed server in the hosts list")
-		}
-		if conf.FailLimit > 0 && failoverCtr >= conf.FailLimit {
-			log.Fatalf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", conf.FailLimit)
-		}
-		rem := (failoverTs + conf.FailTime) - time.Now().Unix()
-		if conf.FailTime > 0 && rem > 0 {
-			log.Fatalf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
-		}
-		if masterFailover(true) {
-			sf.Count++
-			sf.Timestamp = failoverTs
-			err := sf.write()
-			if err != nil {
-				logprint("WARN : Could not write values to state file:", err)
-			}
-		}
+		currentCluster.FailoverForce()
+
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
-		for _, server := range servers {
-			defer server.Conn.Close()
-		}
+		currentCluster.Close()
 	},
 }
 
@@ -226,21 +169,35 @@ var switchoverCmd = &cobra.Command{
 	Long: `Performs an online master switch by promoting a slave to master
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
-		repmgrFlagCheck()
-		sme = new(state.StateMachine)
-		sme.Init()
-		newServerList()
-		err := topologyDiscover()
+		currentCluster = new(cluster.Cluster)
+		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		masterFailover(false)
+		currentCluster.MasterFailover(false)
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
-		for _, server := range servers {
-			defer server.Conn.Close()
+		currentCluster.Close()
+	},
+}
+
+var topologyCmd = &cobra.Command{
+	Use:   "topology",
+	Short: "Print replication topology",
+	Long:  `Print the replication topology by detecting master and slaves`,
+	Run: func(cmd *cobra.Command, args []string) {
+		currentCluster = new(cluster.Cluster)
+		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		if err != nil {
+			log.Fatalln(err)
 		}
+		currentCluster.PrintTopology()
+
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
+		currentCluster.Close()
 	},
 }
 
@@ -255,8 +212,6 @@ Interactive console and HTTP dashboards are available for control`,
 			log.Printf("%+v", conf)
 		}
 
-		repmgrFlagCheck()
-
 		if conf.HttpServ {
 			go httpserver()
 		}
@@ -268,16 +223,12 @@ Interactive console and HTTP dashboards are available for control`,
 			}
 		}
 
-		// Initialize the state machine at this stage where everything is fine.
-		sme = new(state.StateMachine)
-		sme.Init()
-
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
 
 			go graphite.RunCarbon(conf.HttpRoot, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
-			logprintf("INFO : carbon server started on metric port %d", conf.GraphiteCarbonPort)
-			logprintf("INFO : carbon server started on http port %d", conf.GraphiteCarbonServerPort)
+			log.Printf("INFO : carbon server started on metric port %d", conf.GraphiteCarbonPort)
+			log.Printf("INFO : carbon server started on http port %d", conf.GraphiteCarbonServerPort)
 
 			/*
 				carbonServer string host:port
@@ -292,27 +243,36 @@ Interactive console and HTTP dashboards are available for control`,
 
 			time.Sleep(2 * time.Second)
 			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.HttpRoot)
-			logprintf("INFO : carbon server API started on http port %d", conf.GraphiteCarbonApiPort)
+			log.Printf("INFO : carbon server API started on http port %d", conf.GraphiteCarbonApiPort)
 		}
 		if conf.Daemon {
 			termlength = 40
-			logprintf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
+			log.Printf("INFO : replication-manager version %s started in daemon mode", repmgrVersion)
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {
 				termlength = 120
 			}
 		}
-		loglen := termlength - 9 - (len(hostList) * 3)
+		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 		tlog = termlog.NewTermLog(loglen)
 
 		if conf.Interactive {
-			logprint("INFO : Monitor started in manual mode")
+			log.Printf("INFO : Monitor started in manual mode")
 		} else {
-			logprint("INFO : Monitor started in automatic mode")
+			log.Printf("INFO : Monitor started in automatic mode")
 		}
-		newServerList()
+		// If there's an existing encryption key, decrypt the passwords
+		k, err := readKey()
+		if err != nil {
+			log.Println("INFO : No existing password encryption scheme:", err)
+			k = nil
+		}
 
+		currentCluster = new(cluster.Cluster)
+		currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, repmgrVersion, repmgrHostname, k)
+		clusters[cfgGroup] = currentCluster
+		go currentCluster.Run()
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
@@ -320,107 +280,45 @@ Interactive console and HTTP dashboards are available for control`,
 
 			select {
 			case <-ticker.C:
-				if sme.IsDiscovered() == false {
-					if conf.LogLevel > 2 {
-						logprint("DEBUG: Discovering topology loop")
-					}
-					pingServerList()
-					topologyDiscover()
-					states := sme.GetState()
-					for i := range states {
-						logprint(states[i])
-					}
-				}
-				display()
-				if sme.CanMonitor() {
-					/* run once */
-					if runOnceAfterTopology {
-						if master != nil {
-							if conf.HaproxyOn {
-								initHaproxy()
-							}
-							runOnceAfterTopology = false
-						}
-					}
 
-					if conf.LogLevel > 2 {
-						logprint("DEBUG: Monitoring server loop")
-						for k, v := range servers {
-							logprintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-						}
-						if master != nil {
-							logprintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", master.URL, master.State, master.PrevState)
-						}
-						for k, v := range slaves {
-							logprintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-						}
-					}
-					wg := new(sync.WaitGroup)
-					for _, server := range servers {
-						wg.Add(1)
-						go server.check(wg)
-					}
-					wg.Wait()
-					pingServerList()
-					topologyDiscover()
-					states := sme.GetState()
-					for i := range states {
-						logprint(states[i])
-					}
-					checkfailed()
-					select {
-					case sig := <-swChan:
-						if sig {
-							masterFailover(false)
-						}
-					default:
-						//do nothing
-					}
-				}
-				if !sme.IsInFailover() {
-					sme.ClearState()
-				}
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						if master.State != stateFailed || master.FailCount > 0 {
-							masterFailover(false)
+						if currentCluster.IsMasterFailed() == false || currentCluster.GetMasterFailCount() > 0 {
+							currentCluster.MasterFailover(false)
 						} else {
-							logprint("ERROR: Master failed, cannot initiate switchover")
+							currentCluster.LogPrint("ERROR: Master failed, cannot initiate switchover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlF {
-						if master.State == stateFailed {
-							masterFailover(true)
+						if currentCluster.IsMasterFailed() {
+							currentCluster.MasterFailover(true)
 						} else {
-							logprint("ERROR: Master not failed, cannot initiate failover")
+							currentCluster.LogPrint("ERROR: Master not failed, cannot initiate failover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
-						printTopology()
+						currentCluster.PrintTopology()
 					}
 					if event.Key == termbox.KeyCtrlR {
-						logprint("INFO: Setting slaves read-only")
-						for _, sl := range slaves {
-							dbhelper.SetReadOnly(sl.Conn, true)
-						}
+						currentCluster.LogPrint("INFO: Setting slaves read-only")
+						currentCluster.SetSlavesReadOnly(true)
 					}
 					if event.Key == termbox.KeyCtrlW {
-						logprint("INFO: Setting slaves read-write")
-						for _, sl := range slaves {
-							dbhelper.SetReadOnly(sl.Conn, false)
-						}
+						currentCluster.LogPrint("INFO: Setting slaves read-write")
+						currentCluster.SetSlavesReadOnly(false)
 					}
 					if event.Key == termbox.KeyCtrlI {
-						toggleInteractive()
+						currentCluster.ToggleInteractive()
 					}
 					if event.Key == termbox.KeyCtrlH {
-						displayHelp()
+						currentCluster.DisplayHelp()
 					}
 					if event.Key == termbox.KeyCtrlQ {
-						logprint("INFO : Quitting monitor")
+						currentCluster.LogPrint("INFO : Quitting monitor")
 						exit = true
+						currentCluster.Stop()
 					}
 				}
 				switch event.Ch {
@@ -436,10 +334,8 @@ Interactive console and HTTP dashboards are available for control`,
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
+		currentCluster.Close()
 		termbox.Close()
-		for _, server := range servers {
-			defer server.Conn.Close()
-		}
 		if memprofile != "" {
 			f, err := os.Create(memprofile)
 			if err != nil {
@@ -451,37 +347,6 @@ Interactive console and HTTP dashboards are available for control`,
 	},
 }
 
-func checkfailed() {
-	// Don't trigger a failover if a switchover is happening
-	if sme.IsInFailover() {
-		logprintf("DEBUG: In Failover skip checking failed master")
-		return
-	}
-	//  logprintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b master.FailCount %d >= maxfail %d" ,master.State,stateFailed,interactive, master.FailCount , maxfail )
-	if master != nil {
-		if master.State == stateFailed && conf.Interactive == false && master.FailCount >= conf.MaxFail {
-			rem := (failoverTs + conf.FailTime) - time.Now().Unix()
-			if (conf.FailTime == 0) || (conf.FailTime > 0 && (rem <= 0 || failoverCtr == 0)) {
-				if failoverCtr == conf.FailLimit {
-					sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
-					conf.Interactive = true
-				}
-				masterFailover(true)
-			} else if conf.FailTime > 0 && rem%10 == 0 {
-				logprintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
-			} else {
-				logprintf("WARN : Constraint is blocking for failover")
-			}
-
-		} else if master.State == stateFailed && master.FailCount < conf.MaxFail {
-			logprintf("WARN : Waiting more prove of master death")
-
-		}
-	} else {
-		logprintf("WARN : Unknown master when checking failover")
-	}
-}
-
 func newTbChan() chan termbox.Event {
 	termboxChan := make(chan termbox.Event)
 	go func() {
@@ -490,88 +355,4 @@ func newTbChan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
-}
-
-// Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
-// must lead to Fatal errors if initialized with wrong values.
-
-func repmgrFlagCheck() {
-	if conf.LogFile != "" {
-		var err error
-		logPtr, err = os.OpenFile(conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		if err != nil {
-			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
-			conf.LogFile = ""
-		}
-	}
-	// if slaves option has been supplied, split into a slice.
-	if conf.Hosts != "" {
-		hostList = strings.Split(conf.Hosts, ",")
-	} else {
-		log.Fatal("ERROR: No hosts list specified.")
-	}
-	// validate users
-	if conf.User == "" {
-		log.Fatal("ERROR: No master user/pair specified.")
-	}
-	dbUser, dbPass = misc.SplitPair(conf.User)
-
-	if conf.RplUser == "" {
-		log.Fatal("ERROR: No replication user/pair specified.")
-	}
-	rplUser, rplPass = misc.SplitPair(conf.RplUser)
-
-	// If there's an existing encryption key, decrypt the passwords
-	k, err := readKey()
-	if err != nil {
-		log.Println("INFO : No existing password encryption scheme:", err)
-	} else {
-		p := crypto.Password{Key: k}
-		p.CipherText = dbPass
-		p.Decrypt()
-		dbPass = p.PlainText
-		p.CipherText = rplPass
-		p.Decrypt()
-		rplPass = p.PlainText
-	}
-
-	if conf.IgnoreSrv != "" {
-		ignoreList = strings.Split(conf.IgnoreSrv, ",")
-	}
-
-	// Check if preferred master is included in Host List
-	pfa := strings.Split(conf.PrefMaster, ",")
-	if len(pfa) > 1 {
-		log.Fatal("ERROR: prefmaster option takes exactly one argument")
-	}
-	ret := func() bool {
-		for _, v := range hostList {
-			if v == conf.PrefMaster {
-				return true
-			}
-		}
-		return false
-	}
-	if ret() == false && conf.PrefMaster != "" {
-		log.Fatal("ERROR: Preferred master is not included in the hosts option")
-	}
-}
-
-func toggleInteractive() {
-	if conf.Interactive == true {
-		conf.Interactive = false
-		logprintf("INFO : Failover monitor switched to automatic mode")
-	} else {
-		conf.Interactive = true
-		logprintf("INFO : Failover monitor switched to manual mode")
-	}
-}
-
-func getActiveStatus() {
-	for _, sv := range servers {
-		err := dbhelper.SetStatusActiveHeartbeat(sv.Conn, runUUID, "A")
-		if err == nil {
-			runStatus = "A"
-		}
-	}
 }

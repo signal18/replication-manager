@@ -1,4 +1,4 @@
-package main
+package cluster
 
 import (
 	"fmt"
@@ -11,8 +11,8 @@ import (
 	"github.com/tanji/replication-manager/haproxy"
 )
 
-func initHaproxy() {
-	haproxyconfigPath := conf.HttpRoot
+func (cluster *Cluster) initHaproxy() {
+	haproxyconfigPath := cluster.conf.HttpRoot
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := "haproxy_new.cfg"
 	haproxyjsonFile := "vamp_router.json"
@@ -22,17 +22,17 @@ func initHaproxy() {
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
 	haRuntime := haproxy.Runtime{
-		Binary:   conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(conf.HttpRoot, "/", haproxysockFile),
+		Binary:   cluster.conf.HaproxyBinaryPath,
+		SockFile: filepath.Join(cluster.conf.HttpRoot, "/", haproxysockFile),
 	}
 	haConfig := haproxy.Config{
 		TemplateFile:  filepath.Join(haproxyconfigPath, haproxytemplateFile),
 		ConfigFile:    filepath.Join(haproxyconfigPath, haproxyconfigFile),
 		JsonFile:      filepath.Join(haproxyconfigPath, haproxyjsonFile),
 		ErrorPagesDir: filepath.Join(haproxyconfigPath, haproxyerrorPagesDir, "/"),
-		PidFile:       filepath.Join(conf.HttpRoot, "/", haproxypidFile),
-		SockFile:      filepath.Join(conf.HttpRoot, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(conf.HttpRoot + "/"),
+		PidFile:       filepath.Join(cluster.conf.HttpRoot, "/", haproxypidFile),
+		SockFile:      filepath.Join(cluster.conf.HttpRoot, "/", haproxysockFile),
+		WorkingDir:    filepath.Join(cluster.conf.HttpRoot + "/"),
 	}
 
 	log.Printf("Haproxy loading haproxy config at %s", haproxyconfigPath)
@@ -41,7 +41,7 @@ func initHaproxy() {
 		log.Printf("Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
-	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: conf.HaproxyWritePort, BindIp: conf.HaproxyWriteBindIp}
+	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: cluster.conf.HaproxyWritePort, BindIp: cluster.conf.HaproxyWriteBindIp}
 	if err := haConfig.AddFrontend(&few); err != nil {
 		log.Printf("Failed to add frontend write ")
 	} else {
@@ -62,13 +62,13 @@ func initHaproxy() {
 		// log.Printf("Found exiting leader removing")
 	}
 
-	p, _ := strconv.Atoi(master.Port)
-	s := haproxy.ServerDetail{Name: "leader", Host: master.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+	p, _ := strconv.Atoi(cluster.master.Port)
+	s := haproxy.ServerDetail{Name: "leader", Host: cluster.master.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 	if err = haConfig.AddServer("service_write", &s); err != nil {
 		//	log.Printf("Failed to add server to service_write ")
 	}
 
-	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: conf.HaproxyReadPort, BindIp: conf.HaproxyReadBindIp}
+	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: cluster.conf.HaproxyReadPort, BindIp: cluster.conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		log.Printf("Failed to add frontend read")
 	} else {
@@ -88,7 +88,7 @@ func initHaproxy() {
 
 	//var checksum64 string
 	crcHost := crc64.MakeTable(crc64.ECMA)
-	for _, server := range servers {
+	for _, server := range cluster.servers {
 
 		p, _ := strconv.Atoi(server.Port)
 		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
