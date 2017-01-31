@@ -24,6 +24,8 @@ var (
 )
 
 func init() {
+
+	log.Printf("%s", cfgGroup)
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(provisionCmd)
 	provisionCmd.Flags().StringVar(&source, "source", "", "Source server")
@@ -40,7 +42,7 @@ var bootstrapCmd = &cobra.Command{
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
+		currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, repmgrVersion, repmgrHostname, nil)
 
 		err := currentCluster.Bootstrap()
 		if err != nil {
@@ -57,7 +59,7 @@ using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
 		/*	dbHost, dbPort := misc.SplitHostPort(source)
 			destHost, destPort := misc.SplitHostPort(destination)
-			dbUser, dbPass = misc.SplitPair(conf.User)
+			dbUser, dbPass = misc.SplitPair(confs[cfgGroupIndex].User)
 			hostArg := fmt.Sprintf("--host=%s", dbHost)
 			portArg := fmt.Sprintf("--port=%s", dbPort)
 			userArg := fmt.Sprintf("--user=%s", dbUser)

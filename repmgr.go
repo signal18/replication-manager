@@ -32,33 +32,9 @@ var (
 	swChan         = make(chan bool)
 	exitMsg        string
 	exit           bool
-	clusters       *ClusterList
 	currentCluster *cluster.Cluster
+	clusters       = map[string]*cluster.Cluster{}
 )
-
-type ClusterList map[string]*cluster.Cluster
-
-func NewClusterList() *ClusterList {
-	m := make(ClusterList)
-	return &m
-}
-
-func (m ClusterList) Add(key string, s *cluster.Cluster) {
-	_, ok := m[key]
-	if !ok {
-		m[key] = s
-	}
-}
-
-func (m ClusterList) Search(key string) *cluster.Cluster {
-	cl, ok := m[key]
-	if ok {
-		return cl
-	} else {
-		return m[""]
-	}
-
-}
 
 func init() {
 	runUUID = uuid.NewV4().String()
@@ -282,7 +258,7 @@ Interactive console and HTTP dashboards are available for control`,
 
 		currentCluster = new(cluster.Cluster)
 		currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, repmgrVersion, repmgrHostname, k)
-		//clusters.Add(cfgGroup, currentCluster)
+		clusters[cfgGroup] = currentCluster
 		go currentCluster.Run()
 		termboxChan := newTbChan()
 		interval := time.Second

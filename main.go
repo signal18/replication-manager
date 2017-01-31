@@ -10,21 +10,24 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"os"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/config"
+	"log"
+	"os"
+	"strings"
 )
 
 const repmgrVersion string = "0.7"
 
 var (
-	conf     config.Config
-	cfgFile  string
-	cfgGroup string
+	cfgFile       string
+	cfgGroup      string = "Default"
+	cfgGroupList  []string
+	cfgGroupIndex int = 1
+	conf          config.Config
 )
+var confs = make(map[string]config.Config)
 
 var (
 	Version string
@@ -32,6 +35,7 @@ var (
 )
 
 func init() {
+
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(versionCmd)
@@ -43,18 +47,18 @@ func init() {
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
-
 	viper.BindPFlags(rootCmd.PersistentFlags())
-
 	if conf.Verbose == true && conf.LogLevel == 0 {
 		conf.LogLevel = 1
 	}
 	if conf.Verbose == false && conf.LogLevel > 0 {
 		conf.Verbose = true
 	}
+
 }
 
 func initConfig() {
+	// call after init if configuration file is provide
 	viper.SetConfigType("toml")
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -71,15 +75,30 @@ func initConfig() {
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
+	cfgGroupIndex = 1
+
+	cf1 := viper.Sub("Default")
+	cf1.Unmarshal(&conf)
+	confs["Default"] = conf
 	if cfgGroup != "" {
-		log.Println("INFO : Using configuration group", cfgGroup)
-		cf2 := viper.Sub(cfgGroup)
-		if cf2 == nil {
-			log.Fatalln("ERROR: Could not parse configuration group", cfgGroup)
+		cfgGroupList = strings.Split(cfgGroup, ",")
+
+		for _, gl := range cfgGroupList {
+			if gl != "" {
+				log.Println("INFO : Reading configuration group", gl)
+				cf2 := viper.Sub(gl)
+				if cf2 == nil {
+					log.Fatalln("ERROR: Could not parse configuration group", gl)
+				}
+				cf2.Unmarshal(&conf)
+				confs[cfgGroup] = conf
+				cfgGroupIndex++
+			}
 		}
-		cf2.Unmarshal(&conf)
-	} else {
-		viper.Unmarshal(&conf)
+		//cfgGroupIndex = 1
+		//log.Println("INFO : Default Cluster ", cfgGroupList[1])
+		//cfgGroup = cfgGroupList[1]
+
 	}
 }
 

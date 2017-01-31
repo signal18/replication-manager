@@ -51,7 +51,7 @@ type settings struct {
 
 func httpserver() {
 
-	if conf.HttpAuth {
+	if confs[cfgGroup].HttpAuth {
 		// set authguard options
 		agOptions := authguard.Options{
 			Attempts:              3,
@@ -89,11 +89,11 @@ func httpserver() {
 		// set options
 		options := gelada.Options{
 			Path:     "/",
-			MaxAge:   conf.SessionLifeTime, // 60 seconds
+			MaxAge:   confs[cfgGroup].SessionLifeTime, // 60 seconds
 			HTTPOnly: true,
 
 			SessionName:     "test-session",
-			SessionLifeTime: conf.SessionLifeTime, // 60 seconds
+			SessionLifeTime: confs[cfgGroup].SessionLifeTime, // 60 seconds
 			SessionKeys:     sessionKeys,
 
 			BindUserAgent: true,
@@ -176,20 +176,20 @@ func httpserver() {
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
 	}
-	http.Handle("/static/", http.FileServer(http.Dir(conf.HttpRoot)))
-	if conf.Verbose {
-		log.Printf("INFO : Starting http monitor on port " + conf.HttpPort)
+	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
+	if confs[cfgGroup].Verbose {
+		log.Printf("INFO : Starting http monitor on port " + confs[cfgGroup].HttpPort)
 	}
 
-	log.Fatal(http.ListenAndServe(conf.BindAddr+":"+conf.HttpPort, nil))
+	log.Fatal(http.ListenAndServe(confs[cfgGroup].BindAddr+":"+confs[cfgGroup].HttpPort, nil))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, conf.HttpRoot+"/app.html")
+	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/app.html")
 }
 
 func handlerJS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, conf.HttpRoot+"/dashboard.js")
+	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/dashboard.js")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
@@ -546,7 +546,7 @@ func (hm *HandlerManager) HandleMainPage(w http.ResponseWriter, r *http.Request)
 		LogoutRoute:  "/logout",
 	}
 	indexTmpl := template.New("app.html").Delims("{{%", "%}}")
-	indexTmpl, _ = indexTmpl.ParseFiles(conf.HttpRoot + "/app.html")
+	indexTmpl, _ = indexTmpl.ParseFiles(confs[cfgGroup].HttpRoot + "/app.html")
 
 	indexTmpl.Execute(w, pageData)
 
