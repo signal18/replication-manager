@@ -11,12 +11,10 @@ package cluster
 import (
 	"errors"
 	"fmt"
-
 	"github.com/go-sql-driver/mysql"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
-
 	"log"
 	"strings"
 	"sync"
@@ -27,21 +25,24 @@ type topologyError struct {
 	Msg  string
 }
 
-func (cluster *Cluster) newServerList() {
+func (cluster *Cluster) newServerList() error {
+	//sva issue to monitor server should not be fatal
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
 		var err error
 		cluster.servers[k], err = cluster.newServerMonitor(url)
 		if err != nil {
-			log.Fatalf("ERROR: Could not open connection to server %s : %s", cluster.servers[k].URL, err)
+			cluster.LogPrintf("ERROR: Could not open connection to server %s : %s", cluster.servers[k].URL, err)
+			//return err
 		}
 		if cluster.conf.Verbose {
-			cluster.tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", cluster.servers[k].URL))
+			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[k].URL))
 		}
 		if cluster.conf.Heartbeat {
 			err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
 			if err != nil {
-				log.Fatalf("ERROR: Can not set heartbeat table to  %s  ", url)
+				cluster.LogPrintf("ERROR: Can not set heartbeat table to  %s  ", url)
+				//return err
 			}
 		}
 	}
@@ -49,6 +50,7 @@ func (cluster *Cluster) newServerList() {
 	if cluster.conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
 	}
+	return nil
 }
 
 func (cluster *Cluster) SpiderShardsDiscovery() {
@@ -70,7 +72,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.servers[j].URL, err)
 							}
 							if cluster.conf.Verbose {
-								cluster.tlog.Add(fmt.Sprintf("DEBUG: New server created: %v", cluster.servers[j].URL))
+								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[j].URL))
 							}
 						}
 					}
@@ -91,7 +93,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
 					if err != nil {
-						log.Println("WARN : Can not set heartbeat table to %s", url)
+						cluster.LogPrintf("WARN : Can not set heartbeat table to %s", url)
 						return
 					}
 					err = dbhelper.SetMultiSourceRepl(cluster.servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")

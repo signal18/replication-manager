@@ -211,13 +211,23 @@ Interactive console and HTTP dashboards are available for control`,
 				log.Fatalln("Termbox initialization error", err)
 			}
 		}
-
+		if conf.Daemon {
+			termlength = 40
+			log.Printf("INFO : replication-manager version %s started in daemon mode", Version)
+		} else {
+			_, termlength = termbox.Size()
+			if termlength == 0 {
+				termlength = 120
+			}
+		}
+		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
+		tlog = termlog.NewTermLog(loglen)
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
 
 			go graphite.RunCarbon(conf.HttpRoot, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
-			log.Printf("INFO : carbon server started on metric port %d", conf.GraphiteCarbonPort)
-			log.Printf("INFO : carbon server started on http port %d", conf.GraphiteCarbonServerPort)
+			log.Printf("INFO : carbon server started on metric port %d\n", conf.GraphiteCarbonPort)
+			log.Printf("INFO : carbon server started on http port %d\n", conf.GraphiteCarbonServerPort)
 
 			/*
 				carbonServer string host:port
@@ -234,23 +244,7 @@ Interactive console and HTTP dashboards are available for control`,
 			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.HttpRoot)
 			log.Printf("INFO : carbon server API started on http port %d", conf.GraphiteCarbonApiPort)
 		}
-		if conf.Daemon {
-			termlength = 40
-			log.Printf("INFO : replication-manager version %s started in daemon mode", Version)
-		} else {
-			_, termlength = termbox.Size()
-			if termlength == 0 {
-				termlength = 120
-			}
-		}
-		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
-		tlog = termlog.NewTermLog(loglen)
 
-		if conf.Interactive {
-			log.Printf("INFO : Monitor started in manual mode")
-		} else {
-			log.Printf("INFO : Monitor started in automatic mode")
-		}
 		// If there's an existing encryption key, decrypt the passwords
 		k, err := readKey()
 		if err != nil {

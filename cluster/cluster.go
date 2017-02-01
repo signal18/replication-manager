@@ -9,7 +9,6 @@ import (
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -66,7 +65,12 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		return err
 	}
 
-	cluster.newServerList()
+	err = cluster.newServerList()
+	if cluster.conf.Interactive {
+		cluster.LogPrintf("INFO : Monitor started in manual mode")
+	} else {
+		cluster.LogPrintf("INFO : Monitor started in automatic mode")
+	}
 	return nil
 }
 
@@ -87,7 +91,10 @@ func (cluster *Cluster) FailoverForce() error {
 		cluster.failoverCtr = int(sf.Count)
 		cluster.failoverTs = sf.Timestamp
 	}
-	cluster.newServerList()
+	err = cluster.newServerList()
+	//if err != nil {
+	//	return err
+	//}
 	err = cluster.TopologyDiscover()
 	if err != nil {
 		for _, s := range cluster.sme.GetState() {
@@ -247,7 +254,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		var err error
 		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			log.Println("ERROR: Error opening logfile, disabling for the rest of the session.")
+			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
 			cluster.conf.LogFile = ""
 		}
 	}
@@ -255,18 +262,18 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	if cluster.conf.Hosts != "" {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
-		log.Println("ERROR: No hosts list specified.")
+		cluster.LogPrint("ERROR: No hosts list specified.")
 		return errors.New("ERROR: No hosts list specified.")
 	}
 	// validate users
 	if cluster.conf.User == "" {
-		log.Println("ERROR: No master user/pair specified.")
+		cluster.LogPrint("ERROR: No master user/pair specified.")
 		return errors.New("ERROR: No master user/pair specified.")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 
 	if cluster.conf.RplUser == "" {
-		log.Println("ERROR: No replication user/pair specified.")
+		cluster.LogPrint("ERROR: No replication user/pair specified.")
 		return errors.New("ERROR: No replication user/pair specified.")
 	}
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
@@ -288,7 +295,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	// Check if preferred master is included in Host List
 	pfa := strings.Split(cluster.conf.PrefMaster, ",")
 	if len(pfa) > 1 {
-		log.Println("ERROR: prefmaster option takes exactly one argument")
+		cluster.LogPrint("ERROR: prefmaster option takes exactly one argument")
 		return errors.New("ERROR: prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
@@ -300,7 +307,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		return false
 	}
 	if ret() == false && cluster.conf.PrefMaster != "" {
-		log.Println("ERROR: Preferred master is not included in the hosts option")
+		cluster.LogPrint("ERROR: Preferred master is not included in the hosts option")
 		return errors.New("ERROR: prefmaster option takes exactly one argument")
 	}
 	return nil
@@ -410,21 +417,21 @@ func (cluster *Cluster) Close() {
 func (cluster *Cluster) Bootstrap() error {
 	cluster.sme.SetFailoverState()
 	if cluster.cleanall {
-		log.Println("INFO : Cleaning up replication on existing servers")
+		cluster.LogPrint("INFO : Cleaning up replication on existing servers")
 		for _, server := range cluster.servers {
 			if cluster.conf.Verbose {
-				log.Printf("INFO : SetDefaultMasterConn on server %s ", server.URL)
+				cluster.LogPrintf("INFO : SetDefaultMasterConn on server %s ", server.URL)
 			}
 			err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
 			if err != nil {
 				if cluster.conf.Verbose {
-					log.Printf("INFO : RemoveFailoverState on server %s ", server.URL)
+					cluster.LogPrintf("INFO : RemoveFailoverState on server %s ", server.URL)
 				}
 				cluster.sme.RemoveFailoverState()
 				return err
 			}
 			if cluster.conf.Verbose {
-				log.Printf("INFO : ResetMaster on server %s ", server.URL)
+				cluster.LogPrintf("INFO : ResetMaster on server %s ", server.URL)
 			}
 			err = dbhelper.ResetMaster(server.Conn)
 			if err != nil {

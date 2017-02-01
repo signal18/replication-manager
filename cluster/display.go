@@ -124,22 +124,27 @@ func (cluster *Cluster) printfTb(x, y int, fg, bg termbox.Attribute, format stri
 
 func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+
 	if cluster.conf.LogFile != "" {
-		s := fmt.Sprint(stamp, " ", fmt.Sprint(msg...))
+		s := fmt.Sprint(stamp, "[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
 		io.WriteString(cluster.logPtr, fmt.Sprintln(s))
 	}
 	if cluster.tlog.Len > 0 {
-		cluster.tlog.Add(fmt.Sprint(msg...))
+		s := fmt.Sprint("[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		cluster.tlog.Add(s)
 		cluster.display()
 	}
 	if cluster.conf.Daemon {
-		log.Println(msg...)
+		s := fmt.Sprint("[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		log.Println(s)
 	}
 }
 
 func (cluster *Cluster) LogPrintf(format string, args ...interface{}) {
+	format = "[" + cluster.cfgGroup + "] " + format
 	if cluster.conf.LogFile != "" {
 		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
+
 		io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
 	}
 	if cluster.tlog.Len > 0 {
