@@ -50,6 +50,14 @@ app.factory('Sysbench', function($resource) {
   );
 });
 
+app.factory('SetCluster', function($resource) {
+  return $resource(
+    '/setcluster',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 app.factory('Bootstrap', function($resource) {
   return $resource(
     '/bootstrap',
@@ -247,4 +255,17 @@ $scope.test = function() {
       }
     };
 
-}]);
+
+    $scope.setcluster = function() {
+
+      var response = $http.get('/setcluster?cluster='+$scope.clusters );
+           response.success(function(data, status, headers, config) {
+            console.log("Ok.");
+          });
+          response.error(function(data, status, headers, config) {
+            console.log("Error.");
+          });
+
+
+      };
+  }]);

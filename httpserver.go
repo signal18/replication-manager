@@ -28,26 +28,27 @@ type HandlerManager struct {
 }
 
 type settings struct {
-	Interactive         string `json:"interactive"`
-	FailoverCtr         string `json:"failoverctr"`
-	MaxDelay            string `json:"maxdelay"`
-	Faillimit           string `json:"faillimit"`
-	LastFailover        string `json:"lastfailover"`
-	MonHearbeats        string `json:"monheartbeats"`
-	Uptime              string `json:"uptime"`
-	UptimeFailable      string `json:"uptimefailable"`
-	UptimeSemiSync      string `json:"uptimesemisync"`
-	RplChecks           string `json:"rplchecks"`
-	FailSync            string `json:"failsync"`
-	Test                string `json:"test"`
-	Heartbeat           string `json:"heartbeat"`
-	Status              string `json:"runstatus"`
-	ConfGroup           string `json:"confgroup"`
-	MonitoringTicker    string `json:"monitoringticker"`
-	FailResetTime       string `json:"failresettime"`
-	ToSessionEnd        string `json:"tosessionend"`
-	HttpAuth            string `json:"httpauth"`
-	HttpBootstrapButton string `json:"httpbootstrapbutton"`
+	Interactive         string   `json:"interactive"`
+	FailoverCtr         string   `json:"failoverctr"`
+	MaxDelay            string   `json:"maxdelay"`
+	Faillimit           string   `json:"faillimit"`
+	LastFailover        string   `json:"lastfailover"`
+	MonHearbeats        string   `json:"monheartbeats"`
+	Uptime              string   `json:"uptime"`
+	UptimeFailable      string   `json:"uptimefailable"`
+	UptimeSemiSync      string   `json:"uptimesemisync"`
+	RplChecks           string   `json:"rplchecks"`
+	FailSync            string   `json:"failsync"`
+	Test                string   `json:"test"`
+	Heartbeat           string   `json:"heartbeat"`
+	Status              string   `json:"runstatus"`
+	ConfGroup           string   `json:"confgroup"`
+	MonitoringTicker    string   `json:"monitoringticker"`
+	FailResetTime       string   `json:"failresettime"`
+	ToSessionEnd        string   `json:"tosessionend"`
+	HttpAuth            string   `json:"httpauth"`
+	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
+	Clusters            []string `json:"clusters"`
 }
 
 func httpserver() {
@@ -129,7 +130,7 @@ func httpserver() {
 			return
 		}
 
-		// create handler manager
+		// create hand ler manager
 		hm := &HandlerManager{
 			Gelada:    g,
 			AuthGuard: ag,
@@ -151,6 +152,7 @@ func httpserver() {
 		//http.HandleFunc("/", handlerApp)
 		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
 		router.HandleFunc("/servers", handlerServers)
+		router.HandleFunc("/setcluster", handlerSetCluster)
 		router.HandleFunc("/master", handlerMaster)
 		router.HandleFunc("/log", handlerLog)
 		router.HandleFunc("/switchover", handlerSwitchover)
@@ -172,6 +174,7 @@ func httpserver() {
 		http.HandleFunc("/", handlerApp)
 		http.HandleFunc("/stats", handlerStats)
 		http.HandleFunc("/servers", handlerServers)
+		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/log", handlerLog)
 		http.HandleFunc("/switchover", handlerSwitchover)
@@ -193,6 +196,14 @@ func httpserver() {
 	}
 
 	log.Fatal(http.ListenAndServe(confs[cfgGroup].BindAddr+":"+confs[cfgGroup].HttpPort, nil))
+}
+
+func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
+	cfgGroup = r.URL.Query().Get("cluster")
+	currentCluster = clusters[cfgGroup]
+	for _, gl := range cfgGroupList {
+		clusters[gl].SetCfgGroupDisplay(cfgGroup)
+	}
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +256,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
 	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
+	s.Clusters = cfgGroupList
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()

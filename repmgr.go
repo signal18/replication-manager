@@ -205,10 +205,6 @@ Interactive console and HTTP dashboards are available for control`,
 			log.Printf("%+v", conf)
 		}
 
-		if conf.HttpServ {
-			go httpserver()
-		}
-
 		if !conf.Daemon {
 			err := termbox.Init()
 			if err != nil {
@@ -269,6 +265,12 @@ Interactive console and HTTP dashboards are available for control`,
 
 		}
 		currentCluster.SetCfgGroupDisplay(cfgGroup)
+
+		// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
+		if conf.HttpServ {
+			go httpserver()
+		}
+
 		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))

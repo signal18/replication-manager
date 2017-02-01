@@ -89,6 +89,13 @@ td {
 	 <form align=right action="/logout" method="post">
 	 	<button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
 	 </form>
+	 <form name="myForm">
+     <label for="cluster" action="/setcluster" ><p class="sectionheader">Clusters: </p></label>
+     <select name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()" >
+       <option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters"  value="{{element}}">{{element}}</option>
+
+		 </select>
+   </form>
  </td></tr></table>
   <md-content>
     <md-tabs class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
@@ -102,7 +109,7 @@ td {
 					  <p class="sectionheader">MONITOR GROUP</p>
 			      <table class="table">
 			     	<tr><th>Group Name</th></tr>
-			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="{{settings.confgroup}}!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
+			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
 		     	</table>
 			    </div>
 					<div  flex-gt-xs="10" ></div>
