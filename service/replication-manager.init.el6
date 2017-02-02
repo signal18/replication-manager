@@ -17,9 +17,9 @@ PROCNAME=replication-manager
 case "$1" in
   start)
         echo -n "Starting replication-manager: "
-        /usr/bin/replication-manager monitor --daemon &
+        /usr/bin/replication-manager monitor --daemon > /dev/null 2>&1 &
         sleep 1
-        pkill -0 $PROCNAME
+	kill -0 $(pidof $PROCNAME)
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
@@ -32,7 +32,7 @@ case "$1" in
         ;;
   stop)
         echo -n "Stopping replication-manager: "
-        kill $(pidof replication-manager)
+        kill $(pidof $PROCNAME)
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
