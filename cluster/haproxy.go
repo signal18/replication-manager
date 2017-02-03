@@ -14,10 +14,10 @@ import (
 func (cluster *Cluster) initHaproxy() {
 	haproxyconfigPath := cluster.conf.HttpRoot
 	haproxytemplateFile := "haproxy_config.template"
-	haproxyconfigFile := "haproxy_new.cfg"
+	haproxyconfigFile := cluster.cfgGroup + "-haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
-	haproxypidFile := "haproxy-private.pid"
-	haproxysockFile := "haproxy.stats.sock"
+	haproxypidFile := cluster.cfgGroup + "-haproxy-private.pid"
+	haproxysockFile := cluster.cfgGroup + "-haproxy.stats.sock"
 	haproxyerrorPagesDir := "error_pages"
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 

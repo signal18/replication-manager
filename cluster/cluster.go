@@ -3,16 +3,17 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/tanji/replication-manager/config"
 	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
-	"os"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Cluster struct {
