@@ -10,10 +10,12 @@
 package cluster
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"time"
@@ -224,6 +226,17 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				// Check if master exists in topology before rejoining.
 				if server.URL != server.ClusterGroup.master.URL {
 					server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
+					var cmdrun *exec.Cmd
+					server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
+					cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
+					var outrun bytes.Buffer
+					cmdrun.Stdout = &outrun
+
+					cmdrunErr := cmdrun.Run()
+					if cmdrunErr != nil {
+						server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
+					}
+
 					err = server.rejoin()
 					if err != nil {
 						server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
@@ -494,9 +507,31 @@ func (server *ServerMonitor) delete(sl *serverList) {
 func (server *ServerMonitor) rejoin() error {
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
+		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on  rejoined %s", server.URL)
 	}
-	cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=CURRENT_POS"
-	_, err := server.Conn.Exec(cm)
-	dbhelper.StartSlave(server.Conn)
-	return err
+
+	if server.CurrentGtid == server.ClusterGroup.master.FailoverIOGtid {
+		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.URL)
+		cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=CURRENT_POS"
+		_, err := server.Conn.Exec(cm)
+		dbhelper.StartSlave(server.Conn)
+		return err
+	} else {
+		server.ClusterGroup.LogPrintf("INFO : Found different current GTID %s from GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+		server.ClusterGroup.LogPrintf("INFO : Found different current GTID %s from GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+		if server.ClusterGroup.master.FailoverSemiSyncSlaveStatus == true {
+			server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover ", server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO : SET GLOBAL gtid_slave_pos = \"%s\"", server.ClusterGroup.master.FailoverIOGtid.Sprint())
+			_, err := server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + server.ClusterGroup.master.FailoverIOGtid.Sprint() + "\"")
+			if err != nil {
+				return err
+			}
+			cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=SLAVE_POS"
+			_, err2 := server.Conn.Exec(cm)
+			dbhelper.StartSlave(server.Conn)
+			return err2
+		}
+	}
+
+	return nil
 }
