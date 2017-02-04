@@ -94,6 +94,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "number of threads to run benchmark")
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
+	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
 
 	viper.BindPFlags(monitorCmd.Flags())
 

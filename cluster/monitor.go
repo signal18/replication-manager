@@ -30,40 +30,46 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Conn                 *sqlx.DB
-	URL                  string
-	DSN                  string
-	Host                 string
-	Port                 string
-	IP                   string
-	BinlogPos            *gtid.List
-	Strict               string
-	ServerID             uint
-	MasterServerID       uint
-	MasterHost           string
-	LogBin               string
-	UsingGtid            string
-	CurrentGtid          *gtid.List
-	SlaveGtid            *gtid.List
-	IOGtid               *gtid.List
-	IOThread             string
-	SQLThread            string
-	ReadOnly             string
-	Delay                sql.NullInt64
-	State                string
-	PrevState            string
-	IOErrno              uint
-	IOError              string
-	SQLErrno             uint
-	SQLError             string
-	FailCount            int
-	FailSuspectHeartbeat int64
-	SemiSyncMasterStatus bool
-	SemiSyncSlaveStatus  bool
-	RplMasterStatus      bool
-	EventScheduler       bool
-	EventsStatus         []dbhelper.Event
-	ClusterGroup         *Cluster
+	Conn                        *sqlx.DB
+	URL                         string
+	DSN                         string
+	Host                        string
+	Port                        string
+	IP                          string
+	BinlogPos                   *gtid.List
+	Strict                      string
+	ServerID                    uint
+	MasterServerID              uint
+	MasterHost                  string
+	LogBin                      string
+	UsingGtid                   string
+	CurrentGtid                 *gtid.List
+	SlaveGtid                   *gtid.List
+	IOGtid                      *gtid.List
+	IOThread                    string
+	SQLThread                   string
+	ReadOnly                    string
+	Delay                       sql.NullInt64
+	State                       string
+	PrevState                   string
+	IOErrno                     uint
+	IOError                     string
+	SQLErrno                    uint
+	SQLError                    string
+	FailCount                   int
+	FailSuspectHeartbeat        int64
+	SemiSyncMasterStatus        bool
+	SemiSyncSlaveStatus         bool
+	RplMasterStatus             bool
+	EventScheduler              bool
+	EventsStatus                []dbhelper.Event
+	ClusterGroup                *Cluster
+	MasterLogFile               string
+	MasterLogPos                string
+	FailoverMasterLogFile       string
+	FailoverMasterLogPos        string
+	FailoverSemiSyncSlaveStatus bool
+	FailoverIOGtid              *gtid.List
 }
 
 type serverList []*ServerMonitor
@@ -303,6 +309,9 @@ func (server *ServerMonitor) refresh() error {
 		server.IOError = ""
 		server.SQLError = ""
 		server.SQLErrno = 0
+		server.MasterLogFile = ""
+		server.MasterLogPos = "0"
+
 	} else {
 		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
 		server.UsingGtid = slaveStatus.Using_Gtid
@@ -315,6 +324,8 @@ func (server *ServerMonitor) refresh() error {
 		server.IOError = slaveStatus.Last_IO_Error
 		server.SQLError = slaveStatus.Last_SQL_Error
 		server.SQLErrno = slaveStatus.Last_SQL_Errno
+		server.MasterLogFile = slaveStatus.Master_Log_File
+		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
 
 	//monitor haproxy

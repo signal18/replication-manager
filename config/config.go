@@ -83,4 +83,5 @@ type Config struct {
 	SysbenchBinaryPath       string `mapstructure:"sysbench-binary-path"`
 	SysbenchTime             int    `mapstructure:"sysbench-time"`
 	SysbenchThreads          int    `mapstructure:"sysbench-threads"`
+	MariaDBBinaryPath        string `mapstructure:"mariadb-binary-path"`
 }

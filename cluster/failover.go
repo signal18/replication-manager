@@ -134,10 +134,20 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 	} else {
+		cluster.LogPrint("INFO : Waiting for candidate Master to apply relay log")
 		err = cluster.master.readAllRelayLogs()
 		if err != nil {
 			cluster.LogPrintf("ERROR: Error while reading relay logs on candidate: %s", err)
 		}
+		cluster.LogPrint("INFO : Save replication status before electing")
+		cluster.LogPrintf("INFO : master_log_file=%s", cluster.master.MasterLogFile)
+		cluster.LogPrintf("INFO : master_log_pos=%s", cluster.master.MasterLogPos)
+		cluster.LogPrintf("INFO : Candidate Was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
+		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+		cluster.master.FailoverIOGtid = cluster.master.IOGtid
+		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+
 	}
 	// Phase 3: Prepare new master
 	if cluster.conf.MultiMaster == false {

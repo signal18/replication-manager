@@ -96,6 +96,7 @@ gtidcheck = true
 
 # HAPROXY WRAPPER MODE
 # --------------------
+
 haproxy = false
 haproxy-binary-path = "/usr/sbin/haproxy"
 
@@ -125,3 +126,23 @@ graphite-carbon-pprof-port = 7007
 sysbench-binary-path = "/usr/sbin/sysbench"
 sysbench-threads = 4
 sysbench-time = 60
+
+# MARIADB >= 10.2
+# ---------------
+
+mariadb-binary-path = /usr/sbin
+
+
+# ETCD CLUSTER
+# ------------
+
+#agent-hosts = "127.0.0.1:4001,127.0.0.1:4002,127.0.0.1:4003"
+
+[Agent1]
+#agent-watch = "127.0.0.1:5012"
+
+[Agent2]
+#agent-watch = "127.0.0.1:5054"
+
+[Agent3]
+#agent-watch = ""
