@@ -350,7 +350,7 @@ func randStringOneofembed(r randyOneofembed) string {
 	}
 	return string(tmps)
 }
-func randUnrecognizedOneofembed(r randyOneofembed, maxFieldNumber int) (dAtA []byte) {
+func randUnrecognizedOneofembed(r randyOneofembed, maxFieldNumber int) (data []byte) {
 	l := r.Intn(5)
 	for i := 0; i < l; i++ {
 		wire := r.Intn(4)
@@ -358,43 +358,43 @@ func randUnrecognizedOneofembed(r randyOneofembed, maxFieldNumber int) (dAtA []b
 			wire = 5
 		}
 		fieldNumber := maxFieldNumber + r.Intn(100)
-		dAtA = randFieldOneofembed(dAtA, r, fieldNumber, wire)
+		data = randFieldOneofembed(data, r, fieldNumber, wire)
 	}
-	return dAtA
+	return data
 }
-func randFieldOneofembed(dAtA []byte, r randyOneofembed, fieldNumber int, wire int) []byte {
+func randFieldOneofembed(data []byte, r randyOneofembed, fieldNumber int, wire int) []byte {
 	key := uint32(fieldNumber)<<3 | uint32(wire)
 	switch wire {
 	case 0:
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(key))
+		data = encodeVarintPopulateOneofembed(data, uint64(key))
 		v2 := r.Int63()
 		if r.Intn(2) == 0 {
 			v2 *= -1
 		}
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(v2))
+		data = encodeVarintPopulateOneofembed(data, uint64(v2))
 	case 1:
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
+		data = encodeVarintPopulateOneofembed(data, uint64(key))
+		data = append(data, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
 	case 2:
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(key))
+		data = encodeVarintPopulateOneofembed(data, uint64(key))
 		ll := r.Intn(100)
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(ll))
+		data = encodeVarintPopulateOneofembed(data, uint64(ll))
 		for j := 0; j < ll; j++ {
-			dAtA = append(dAtA, byte(r.Intn(256)))
+			data = append(data, byte(r.Intn(256)))
 		}
 	default:
-		dAtA = encodeVarintPopulateOneofembed(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
+		data = encodeVarintPopulateOneofembed(data, uint64(key))
+		data = append(data, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
 	}
-	return dAtA
+	return data
 }
-func encodeVarintPopulateOneofembed(dAtA []byte, v uint64) []byte {
+func encodeVarintPopulateOneofembed(data []byte, v uint64) []byte {
 	for v >= 1<<7 {
-		dAtA = append(dAtA, uint8(uint64(v)&0x7f|0x80))
+		data = append(data, uint8(uint64(v)&0x7f|0x80))
 		v >>= 7
 	}
-	dAtA = append(dAtA, uint8(v))
-	return dAtA
+	data = append(data, uint8(v))
+	return data
 }
 
 func init() { proto1.RegisterFile("oneofembed.proto", fileDescriptorOneofembed) }

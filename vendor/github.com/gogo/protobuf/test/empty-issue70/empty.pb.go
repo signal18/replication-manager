@@ -43,8 +43,8 @@ func (*TestRequest) Descriptor() ([]byte, []int) { return fileDescriptorEmpty, [
 func init() {
 	proto.RegisterType((*TestRequest)(nil), "empty.TestRequest")
 }
-func (m *TestRequest) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
+func (m *TestRequest) Unmarshal(data []byte) error {
+	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -56,7 +56,7 @@ func (m *TestRequest) Unmarshal(dAtA []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := dAtA[iNdEx]
+			b := data[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -74,7 +74,7 @@ func (m *TestRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		default:
 			iNdEx = preIndex
-			skippy, err := skipEmpty(dAtA[iNdEx:])
+			skippy, err := skipEmpty(data[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -84,7 +84,7 @@ func (m *TestRequest) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -94,8 +94,8 @@ func (m *TestRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func skipEmpty(dAtA []byte) (n int, err error) {
-	l := len(dAtA)
+func skipEmpty(data []byte) (n int, err error) {
+	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
 		var wire uint64
@@ -106,7 +106,7 @@ func skipEmpty(dAtA []byte) (n int, err error) {
 			if iNdEx >= l {
 				return 0, io.ErrUnexpectedEOF
 			}
-			b := dAtA[iNdEx]
+			b := data[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -124,7 +124,7 @@ func skipEmpty(dAtA []byte) (n int, err error) {
 					return 0, io.ErrUnexpectedEOF
 				}
 				iNdEx++
-				if dAtA[iNdEx-1] < 0x80 {
+				if data[iNdEx-1] < 0x80 {
 					break
 				}
 			}
@@ -141,7 +141,7 @@ func skipEmpty(dAtA []byte) (n int, err error) {
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
-				b := dAtA[iNdEx]
+				b := data[iNdEx]
 				iNdEx++
 				length |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -164,7 +164,7 @@ func skipEmpty(dAtA []byte) (n int, err error) {
 					if iNdEx >= l {
 						return 0, io.ErrUnexpectedEOF
 					}
-					b := dAtA[iNdEx]
+					b := data[iNdEx]
 					iNdEx++
 					innerWire |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -175,7 +175,7 @@ func skipEmpty(dAtA []byte) (n int, err error) {
 				if innerWireType == 4 {
 					break
 				}
-				next, err := skipEmpty(dAtA[start:])
+				next, err := skipEmpty(data[start:])
 				if err != nil {
 					return 0, err
 				}

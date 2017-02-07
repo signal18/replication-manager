@@ -42,7 +42,6 @@ import (
 	pb "github.com/gogo/protobuf/jsonpb/jsonpb_test_proto"
 	"github.com/gogo/protobuf/proto"
 	proto3pb "github.com/gogo/protobuf/proto/proto3_proto"
-	"github.com/gogo/protobuf/types"
 )
 
 var (
@@ -106,7 +105,7 @@ var (
 		RSint32: []int32{-1, -2, -3},
 		RSint64: []int64{-6789012345, -3456789012},
 		RFloat:  []float32{3.14, 6.28},
-		RDouble: []float64{299792458 * 1e20, 6.62606957e-34},
+		RDouble: []float64{299792458, 6.62606957e-34},
 		RString: []string{"happy", "days"},
 		RBytes:  [][]byte{[]byte("skittles"), []byte("m&m's")},
 	}
@@ -120,7 +119,7 @@ var (
 		`"rSint32":[-1,-2,-3],` +
 		`"rSint64":["-6789012345","-3456789012"],` +
 		`"rFloat":[3.14,6.28],` +
-		`"rDouble":[2.99792458e+28,6.62606957e-34],` +
+		`"rDouble":[2.99792458e+08,6.62606957e-34],` +
 		`"rString":["happy","days"],` +
 		`"rBytes":["c2tpdHRsZXM=","bSZtJ3M="]` +
 		`}`
@@ -163,7 +162,7 @@ var (
     6.28
   ],
   "rDouble": [
-    2.99792458e+28,
+    2.99792458e+08,
     6.62606957e-34
   ],
   "rString": [
@@ -270,41 +269,6 @@ var (
 		`"[jsonpb.Complex.real_extension]":{"imaginary":0.5772156649},` +
 		`"[jsonpb.name]":"Pi"` +
 		`}`
-
-	anySimple = &pb.KnownTypes{
-		An: &types.Any{
-			TypeUrl: "something.example.com/jsonpb.Simple",
-			Value: []byte{
-				// &pb.Simple{OBool:true}
-				1 << 3, 1,
-			},
-		},
-	}
-	anySimpleJSON       = `{"an":{"@type":"something.example.com/jsonpb.Simple","oBool":true}}`
-	anySimplePrettyJSON = `{
-  "an": {
-    "@type": "something.example.com/jsonpb.Simple",
-    "oBool": true
-  }
-}`
-
-	anyWellKnown = &pb.KnownTypes{
-		An: &types.Any{
-			TypeUrl: "type.googleapis.com/google.protobuf.Duration",
-			Value: []byte{
-				// &durpb.Duration{Seconds: 1, Nanos: 212000000 }
-				1 << 3, 1, // seconds
-				2 << 3, 0x80, 0xba, 0x8b, 0x65, // nanos
-			},
-		},
-	}
-	anyWellKnownJSON       = `{"an":{"@type":"type.googleapis.com/google.protobuf.Duration","value":"1.212s"}}`
-	anyWellKnownPrettyJSON = `{
-  "an": {
-    "@type": "type.googleapis.com/google.protobuf.Duration",
-    "value": "1.212s"
-  }
-}`
 )
 
 func init() {
@@ -377,27 +341,6 @@ var marshalingTests = []struct {
 	{"force orig_name", Marshaler{OrigName: true}, &pb.Simple{OInt32: proto.Int32(4)},
 		`{"o_int32":4}`},
 	{"proto2 extension", marshaler, realNumber, realNumberJSON},
-	{"Any with message", marshaler, anySimple, anySimpleJSON},
-	{"Any with message and indent", marshalerAllOptions, anySimple, anySimplePrettyJSON},
-	{"Any with WKT", marshaler, anyWellKnown, anyWellKnownJSON},
-	{"Any with WKT and indent", marshalerAllOptions, anyWellKnown, anyWellKnownPrettyJSON},
-	{"Duration", marshaler, &pb.KnownTypes{Dur: &types.Duration{Seconds: 3}}, `{"dur":"3.000s"}`},
-	{"Struct", marshaler, &pb.KnownTypes{St: &types.Struct{
-		Fields: map[string]*types.Value{
-			"one": {Kind: &types.Value_StringValue{StringValue: "loneliest number"}},
-			"two": {Kind: &types.Value_NullValue{NullValue: types.NULL_VALUE}},
-		},
-	}}, `{"st":{"one":"loneliest number","two":null}}`},
-	{"Timestamp", marshaler, &pb.KnownTypes{Ts: &types.Timestamp{Seconds: 14e8, Nanos: 21e6}}, `{"ts":"2014-05-13T16:53:20.021Z"}`},
-	{"DoubleValue", marshaler, &pb.KnownTypes{Dbl: &types.DoubleValue{Value: 1.2}}, `{"dbl":1.2}`},
-	{"FloatValue", marshaler, &pb.KnownTypes{Flt: &types.FloatValue{Value: 1.2}}, `{"flt":1.2}`},
-	{"Int64Value", marshaler, &pb.KnownTypes{I64: &types.Int64Value{Value: -3}}, `{"i64":"-3"}`},
-	{"UInt64Value", marshaler, &pb.KnownTypes{U64: &types.UInt64Value{Value: 3}}, `{"u64":"3"}`},
-	{"Int32Value", marshaler, &pb.KnownTypes{I32: &types.Int32Value{Value: -4}}, `{"i32":-4}`},
-	{"UInt32Value", marshaler, &pb.KnownTypes{U32: &types.UInt32Value{Value: 4}}, `{"u32":4}`},
-	{"BoolValue", marshaler, &pb.KnownTypes{Bool: &types.BoolValue{Value: true}}, `{"bool":true}`},
-	{"StringValue", marshaler, &pb.KnownTypes{Str: &types.StringValue{Value: "plush"}}, `{"str":"plush"}`},
-	{"BytesValue", marshaler, &pb.KnownTypes{Bytes: &types.BytesValue{Value: []byte("wow")}}, `{"bytes":"d293"}`},
 }
 
 func TestMarshaling(t *testing.T) {
@@ -456,29 +399,10 @@ var unmarshalingTests = []struct {
 	//{"map<string, enum>", Unmarshaler{}, `{"enumy":{"XIV":"ROMAN"}`, &pb.Mappy{Enumy: map[string]pb.Numeral{"XIV": pb.Numeral_ROMAN}}},
 	{"map<string, enum as int>", Unmarshaler{}, `{"enumy":{"XIV":2}}`, &pb.Mappy{Enumy: map[string]pb.Numeral{"XIV": pb.Numeral_ROMAN}}},
 	{"oneof", Unmarshaler{}, `{"salary":31000}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_Salary{Salary: 31000}}},
-	{"oneof spec name", Unmarshaler{}, `{"Country":"Australia"}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_Country{Country: "Australia"}}},
+	{"oneof spec name", Unmarshaler{}, `{"country":"Australia"}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_Country{Country: "Australia"}}},
 	{"oneof orig_name", Unmarshaler{}, `{"Country":"Australia"}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_Country{Country: "Australia"}}},
-	{"oneof spec name2", Unmarshaler{}, `{"homeAddress":"Australia"}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_HomeAddress{HomeAddress: "Australia"}}},
-	{"oneof orig_name2", Unmarshaler{}, `{"home_address":"Australia"}`, &pb.MsgWithOneof{Union: &pb.MsgWithOneof_HomeAddress{HomeAddress: "Australia"}}},
 	{"orig_name input", Unmarshaler{}, `{"o_bool":true}`, &pb.Simple{OBool: proto.Bool(true)}},
 	{"camelName input", Unmarshaler{}, `{"oBool":true}`, &pb.Simple{OBool: proto.Bool(true)}},
-	{"Duration", Unmarshaler{}, `{"dur":"3.000s"}`, &pb.KnownTypes{Dur: &types.Duration{Seconds: 3}}},
-	{"null Duration", Unmarshaler{}, `{"dur":null}`, &pb.KnownTypes{Dur: &types.Duration{Seconds: 0}}},
-	{"Timestamp", Unmarshaler{}, `{"ts":"2014-05-13T16:53:20.021Z"}`, &pb.KnownTypes{Ts: &types.Timestamp{Seconds: 14e8, Nanos: 21e6}}},
-	{"PreEpochTimestamp", Unmarshaler{}, `{"ts":"1969-12-31T23:59:58.999999995Z"}`, &pb.KnownTypes{Ts: &types.Timestamp{Seconds: -2, Nanos: 999999995}}},
-	{"ZeroTimeTimestamp", Unmarshaler{}, `{"ts":"0001-01-01T00:00:00Z"}`, &pb.KnownTypes{Ts: &types.Timestamp{Seconds: -62135596800, Nanos: 0}}},
-	{"null Timestamp", Unmarshaler{}, `{"ts":null}`, &pb.KnownTypes{Ts: &types.Timestamp{Seconds: 0, Nanos: 0}}},
-	{"DoubleValue", Unmarshaler{}, `{"dbl":1.2}`, &pb.KnownTypes{Dbl: &types.DoubleValue{Value: 1.2}}},
-	{"FloatValue", Unmarshaler{}, `{"flt":1.2}`, &pb.KnownTypes{Flt: &types.FloatValue{Value: 1.2}}},
-	{"Int64Value", Unmarshaler{}, `{"i64":"-3"}`, &pb.KnownTypes{I64: &types.Int64Value{Value: -3}}},
-	{"UInt64Value", Unmarshaler{}, `{"u64":"3"}`, &pb.KnownTypes{U64: &types.UInt64Value{Value: 3}}},
-	{"Int32Value", Unmarshaler{}, `{"i32":-4}`, &pb.KnownTypes{I32: &types.Int32Value{Value: -4}}},
-	{"UInt32Value", Unmarshaler{}, `{"u32":4}`, &pb.KnownTypes{U32: &types.UInt32Value{Value: 4}}},
-	{"BoolValue", Unmarshaler{}, `{"bool":true}`, &pb.KnownTypes{Bool: &types.BoolValue{Value: true}}},
-	{"StringValue", Unmarshaler{}, `{"str":"plush"}`, &pb.KnownTypes{Str: &types.StringValue{Value: "plush"}}},
-	{"BytesValue", Unmarshaler{}, `{"bytes":"d293"}`, &pb.KnownTypes{Bytes: &types.BytesValue{Value: []byte("wow")}}},
-	// `null` is also a permissible value. Let's just test one.
-	{"null DoubleValue", Unmarshaler{}, `{"dbl":null}`, &pb.KnownTypes{Dbl: &types.DoubleValue{}}},
 }
 
 func TestUnmarshaling(t *testing.T) {

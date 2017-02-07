@@ -19,7 +19,6 @@ It has these top-level messages:
 	MsgWithOneof
 	Real
 	Complex
-	KnownTypes
 */
 package jsonpb
 
@@ -70,13 +69,6 @@ func (m *Simple3) Reset()                    { *m = Simple3{} }
 func (m *Simple3) String() string            { return proto.CompactTextString(m) }
 func (*Simple3) ProtoMessage()               {}
 func (*Simple3) Descriptor() ([]byte, []int) { return fileDescriptorMoreTestObjects, []int{0} }
-
-func (m *Simple3) GetDub() float64 {
-	if m != nil {
-		return m.Dub
-	}
-	return 0
-}
 
 type Mappy struct {
 	Nummy    map[int64]int32    `protobuf:"bytes,1,rep,name=nummy" json:"nummy,omitempty" protobuf_key:"varint,1,opt,name=key,proto3" protobuf_val:"varint,2,opt,name=value,proto3"`

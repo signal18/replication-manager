@@ -129,7 +129,7 @@ func randStringProto(r randyProto) string {
 	}
 	return string(tmps)
 }
-func randUnrecognizedProto(r randyProto, maxFieldNumber int) (dAtA []byte) {
+func randUnrecognizedProto(r randyProto, maxFieldNumber int) (data []byte) {
 	l := r.Intn(5)
 	for i := 0; i < l; i++ {
 		wire := r.Intn(4)
@@ -137,47 +137,47 @@ func randUnrecognizedProto(r randyProto, maxFieldNumber int) (dAtA []byte) {
 			wire = 5
 		}
 		fieldNumber := maxFieldNumber + r.Intn(100)
-		dAtA = randFieldProto(dAtA, r, fieldNumber, wire)
+		data = randFieldProto(data, r, fieldNumber, wire)
 	}
-	return dAtA
+	return data
 }
-func randFieldProto(dAtA []byte, r randyProto, fieldNumber int, wire int) []byte {
+func randFieldProto(data []byte, r randyProto, fieldNumber int, wire int) []byte {
 	key := uint32(fieldNumber)<<3 | uint32(wire)
 	switch wire {
 	case 0:
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(key))
+		data = encodeVarintPopulateProto(data, uint64(key))
 		v3 := r.Int63()
 		if r.Intn(2) == 0 {
 			v3 *= -1
 		}
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(v3))
+		data = encodeVarintPopulateProto(data, uint64(v3))
 	case 1:
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
+		data = encodeVarintPopulateProto(data, uint64(key))
+		data = append(data, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
 	case 2:
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(key))
+		data = encodeVarintPopulateProto(data, uint64(key))
 		ll := r.Intn(100)
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(ll))
+		data = encodeVarintPopulateProto(data, uint64(ll))
 		for j := 0; j < ll; j++ {
-			dAtA = append(dAtA, byte(r.Intn(256)))
+			data = append(data, byte(r.Intn(256)))
 		}
 	default:
-		dAtA = encodeVarintPopulateProto(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
+		data = encodeVarintPopulateProto(data, uint64(key))
+		data = append(data, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
 	}
-	return dAtA
+	return data
 }
-func encodeVarintPopulateProto(dAtA []byte, v uint64) []byte {
+func encodeVarintPopulateProto(data []byte, v uint64) []byte {
 	for v >= 1<<7 {
-		dAtA = append(dAtA, uint8(uint64(v)&0x7f|0x80))
+		data = append(data, uint8(uint64(v)&0x7f|0x80))
 		v >>= 7
 	}
-	dAtA = append(dAtA, uint8(v))
-	return dAtA
+	data = append(data, uint8(v))
+	return data
 }
-func (m *Foo) Unmarshal(dAtA []byte) error {
+func (m *Foo) Unmarshal(data []byte) error {
 	var hasFields [1]uint64
-	l := len(dAtA)
+	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -189,7 +189,7 @@ func (m *Foo) Unmarshal(dAtA []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := dAtA[iNdEx]
+			b := data[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -217,7 +217,7 @@ func (m *Foo) Unmarshal(dAtA []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := dAtA[iNdEx]
+				b := data[iNdEx]
 				iNdEx++
 				v |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -228,7 +228,7 @@ func (m *Foo) Unmarshal(dAtA []byte) error {
 			hasFields[0] |= uint64(0x00000001)
 		default:
 			iNdEx = preIndex
-			skippy, err := skipProto(dAtA[iNdEx:])
+			skippy, err := skipProto(data[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -238,7 +238,7 @@ func (m *Foo) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -251,8 +251,8 @@ func (m *Foo) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func skipProto(dAtA []byte) (n int, err error) {
-	l := len(dAtA)
+func skipProto(data []byte) (n int, err error) {
+	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
 		var wire uint64
@@ -263,7 +263,7 @@ func skipProto(dAtA []byte) (n int, err error) {
 			if iNdEx >= l {
 				return 0, io.ErrUnexpectedEOF
 			}
-			b := dAtA[iNdEx]
+			b := data[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -281,7 +281,7 @@ func skipProto(dAtA []byte) (n int, err error) {
 					return 0, io.ErrUnexpectedEOF
 				}
 				iNdEx++
-				if dAtA[iNdEx-1] < 0x80 {
+				if data[iNdEx-1] < 0x80 {
 					break
 				}
 			}
@@ -298,7 +298,7 @@ func skipProto(dAtA []byte) (n int, err error) {
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
-				b := dAtA[iNdEx]
+				b := data[iNdEx]
 				iNdEx++
 				length |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -321,7 +321,7 @@ func skipProto(dAtA []byte) (n int, err error) {
 					if iNdEx >= l {
 						return 0, io.ErrUnexpectedEOF
 					}
-					b := dAtA[iNdEx]
+					b := data[iNdEx]
 					iNdEx++
 					innerWire |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -332,7 +332,7 @@ func skipProto(dAtA []byte) (n int, err error) {
 				if innerWireType == 4 {
 					break
 				}
-				next, err := skipProto(dAtA[start:])
+				next, err := skipProto(data[start:])
 				if err != nil {
 					return 0, err
 				}
