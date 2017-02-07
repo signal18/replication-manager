@@ -3,6 +3,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -73,6 +74,25 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		cluster.LogPrintf("INFO : Monitor started in automatic mode")
 	}
 	return nil
+}
+
+func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
+	cluster.agentFlagCheck()
+	if conf.LogFile != "" {
+		var err error
+		cluster.logPtr, err = os.Create(conf.LogFile)
+		if err != nil {
+			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
+			conf.LogFile = ""
+		}
+	}
+	db, err := cluster.newServerMonitor(conf.Hosts)
+	if err != nil {
+		log.Println("Error opening database connection: ", err)
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
@@ -245,6 +265,24 @@ func (cluster *Cluster) checkfailed() {
 	} else {
 		cluster.LogPrintf("WARN : Unknown master when checking failover")
 	}
+}
+
+func (cluster *Cluster) agentFlagCheck() {
+
+	// if slaves option has been supplied, split into a slice.
+	if cluster.conf.Hosts != "" {
+		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
+	} else {
+		log.Fatal("ERROR: No hosts list specified.")
+	}
+	if len(cluster.hostList) > 1 {
+		log.Fatal("ERROR: Agent can only monitor a single host")
+	}
+	// validate users.
+	if cluster.conf.User == "" {
+		log.Fatal("ERROR: No master user/pair specified.")
+	}
+	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 }
 
 // Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags

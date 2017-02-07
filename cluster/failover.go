@@ -142,7 +142,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrint("INFO : Save replication status before electing")
 		cluster.LogPrintf("INFO : master_log_file=%s", cluster.master.MasterLogFile)
 		cluster.LogPrintf("INFO : master_log_pos=%s", cluster.master.MasterLogPos)
-		cluster.LogPrintf("INFO : Candidate Was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+		cluster.LogPrintf("INFO : Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 		cluster.master.FailoverIOGtid = cluster.master.IOGtid

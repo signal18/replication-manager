@@ -127,10 +127,17 @@ sysbench-binary-path = "/usr/sbin/sysbench"
 sysbench-threads = 4
 sysbench-time = 60
 
+
 # MARIADB >= 10.2
 # ---------------
 
-mariadb-binary-path = /usr/sbin
+mariadb-binary-path = "/usr/sbin"
+
+# REJOIN
+--------
+autorejoin = true
+autorejoin-flashback = true
+autorejoin-mysqldump = false 
 
 
 # ETCD CLUSTER

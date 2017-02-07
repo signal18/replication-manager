@@ -28,6 +28,9 @@ type Config struct {
 	MaxFail                  int   `mapstructure:"failcount"`
 	FailResetTime            int64 `mapstructure:"failcount-reset-time"`
 	Autorejoin               bool
+	AutorejoinFlashback      bool
+	AutorejoinMysqldump      bool
+	AutorejoinBackupBinlog   bool
 	LogFile                  string
 	MonitoringTicker         int64 `mapstructure:"monitoring-ticker"`
 	Timeout                  int   `mapstructure:"connect-timeout"`

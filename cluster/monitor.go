@@ -517,8 +517,7 @@ func (server *ServerMonitor) rejoin() error {
 		dbhelper.StartSlave(server.Conn)
 		return err
 	} else {
-		server.ClusterGroup.LogPrintf("INFO : Found different current GTID %s from GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
-		server.ClusterGroup.LogPrintf("INFO : Found different current GTID %s from GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+		server.ClusterGroup.LogPrintf("INFO : Found different old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		if server.ClusterGroup.master.FailoverSemiSyncSlaveStatus == true {
 			server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover ", server.ClusterGroup.master.URL)
 			server.ClusterGroup.LogPrintf("INFO : SET GLOBAL gtid_slave_pos = \"%s\"", server.ClusterGroup.master.FailoverIOGtid.Sprint())
