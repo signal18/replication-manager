@@ -21,7 +21,7 @@ import (
 
 var (
 	cfgFile       string
-	cfgGroup      string = "Default"
+	cfgGroup      string = ""
 	cfgGroupList  []string
 	cfgGroupIndex int = 0
 	conf          config.Config
@@ -82,7 +82,7 @@ func initConfig() {
 
 	cf1 := viper.Sub("Default")
 	cf1.Unmarshal(&conf)
-	confs["Default"] = conf
+
 	if cfgGroup != "" {
 		cfgGroupList = strings.Split(cfgGroup, ",")
 
@@ -106,6 +106,9 @@ func initConfig() {
 		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	} else {
+		cfgGroupList = append(cfgGroupList, "Default")
+		log.Printf("INFO : Default Cluster %s", cfgGroupList[cfgGroupIndex])
+		confs["Default"] = conf
 		cfgGroup = "Default"
 	}
 
