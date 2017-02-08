@@ -30,9 +30,9 @@ var (
 var confs = make(map[string]config.Config)
 
 var (
-	Version string
+	Version     string
 	FullVersion string
-	Build   string
+	Build       string
 )
 
 func init() {
@@ -83,6 +83,7 @@ func initConfig() {
 	cf1 := viper.Sub("Default")
 	cf1.Unmarshal(&conf)
 	confs["Default"] = conf
+	cfgGroup = "Default"
 	if cfgGroup != "" {
 		cfgGroupList = strings.Split(cfgGroup, ",")
 
@@ -100,11 +101,13 @@ func initConfig() {
 				cfgGroupIndex++
 			}
 		}
+
 		cfgGroupIndex--
 		log.Printf("INFO : Default Cluster %s", cfgGroupList[cfgGroupIndex])
 		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	}
+
 }
 
 func main() {
