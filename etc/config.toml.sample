@@ -79,7 +79,8 @@ failcount-reset-time = 300
 # Cancel failover when replication delay is more than N seconds
 failover-limit = 3
 failover-time-limit = 10
-failover-at-sync = false
+failover-at-sync = true
+switchover-at-sync = true
 maxdelay = 30
 
 # SWITCHOVER
@@ -137,7 +138,7 @@ mariadb-binary-path = "/usr/sbin"
 --------
 autorejoin = true
 autorejoin-flashback = true
-autorejoin-mysqldump = false 
+autorejoin-mysqldump = false
 
 
 # ETCD CLUSTER

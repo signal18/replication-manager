@@ -56,6 +56,7 @@ type Config struct {
 	MailSMTPAddr             string `mapstructure:"mail-smtp-addr"`
 	MasterConnectRetry       int    `mapstructure:"master-connect-retry"`
 	FailSync                 bool   `mapstructure:"failover-at-sync"`
+	SwitchSync               bool   `mapstructure:"switchover-at-sync"`
 	FailEventScheduler       bool   `mapstructure:"failover-event-scheduler"`
 	FailEventStatus          bool   `mapstructure:"failover-event-status"`
 	Heartbeat                bool   `mapstructure:"heartbeat-table"`
