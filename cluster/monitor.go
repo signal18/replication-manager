@@ -72,6 +72,7 @@ type ServerMonitor struct {
 	FailoverMasterLogPos        string
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
+	Process                     *os.Process
 }
 
 type serverList []*ServerMonitor
@@ -79,14 +80,16 @@ type serverList []*ServerMonitor
 var maxConn string
 
 const (
-	stateFailed    string = "Failed"
-	stateMaster    string = "Master"
-	stateSlave     string = "Slave"
-	stateSlaveErr  string = "SlaveErr"
-	stateSlaveLate string = "SlaveLate"
-	stateUnconn    string = "Unconnected"
-	stateSuspect   string = "Suspect"
-	stateShard     string = "Shard"
+	stateFailed      string = "Failed"
+	stateMaster      string = "Master"
+	stateSlave       string = "Slave"
+	stateSlaveErr    string = "SlaveErr"
+	stateSlaveLate   string = "SlaveLate"
+	stateUnconn      string = "StandAlone"
+	stateSuspect     string = "Suspect"
+	stateShard       string = "Shard"
+	stateProv        string = "Provision"
+	stateMasterAlone string = "MasterAlone"
 )
 
 /* Initializes a server object */
@@ -235,6 +238,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 					cmdrunErr := cmdrun.Run()
 					if cmdrunErr != nil {
 						server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
+						server.ClusterGroup.canFlashBack = false
 					}
 
 					err = server.rejoin()
@@ -517,6 +521,7 @@ func (server *ServerMonitor) rejoin() error {
 		dbhelper.StartSlave(server.Conn)
 		return err
 	} else {
+
 		server.ClusterGroup.LogPrintf("INFO : Found different old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		if server.ClusterGroup.master.FailoverSemiSyncSlaveStatus == true {
 			server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover ", server.ClusterGroup.master.URL)
@@ -529,6 +534,22 @@ func (server *ServerMonitor) rejoin() error {
 			_, err2 := server.Conn.Exec(cm)
 			dbhelper.StartSlave(server.Conn)
 			return err2
+		} else {
+			server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNCusing semisync, searching for a rejoin method")
+			if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true {
+				// Flashback here
+				return nil
+			} else {
+				server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
+				if server.ClusterGroup.conf.AutorejoinMysqldump == true {
+					// dump here
+					server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+					return nil
+				}
+				server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
+				server.ClusterGroup.LogPrintf("INFO : No rejoin method found let me alone")
+			}
+
 		}
 	}
 

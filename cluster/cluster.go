@@ -45,12 +45,14 @@ type Cluster struct {
 	exitMsg              string
 	exit                 bool
 	cleanall             bool
+	canFlashBack         bool
 }
 
 var swChan = make(chan bool)
 
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
+	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
 	cluster.conf = conf
 	cluster.tlog = tlog
@@ -431,11 +433,27 @@ func (cluster *Cluster) GetRplChecks() bool {
 }
 
 func (cluster *Cluster) SetFailSync(check bool) {
-	cluster.conf.RplChecks = check
+	cluster.conf.FailSync = check
 }
 
 func (cluster *Cluster) GetFailSync() bool {
-	return cluster.conf.RplChecks
+	return cluster.conf.FailSync
+}
+
+func (cluster *Cluster) SetSwitchSync(check bool) {
+	cluster.conf.SwitchSync = check
+}
+
+func (cluster *Cluster) GetSwitchSync() bool {
+	return cluster.conf.SwitchSync
+}
+
+func (cluster *Cluster) SetTestMode(check bool) {
+	cluster.conf.Test = check
+}
+
+func (cluster *Cluster) GetTestMode() bool {
+	return cluster.conf.Test
 }
 
 func (cluster *Cluster) GetDbUser() string {

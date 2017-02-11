@@ -39,6 +39,7 @@ type settings struct {
 	UptimeSemiSync      string   `json:"uptimesemisync"`
 	RplChecks           string   `json:"rplchecks"`
 	FailSync            string   `json:"failsync"`
+	SwitchSync          string   `json:"switchsync"`
 	Test                string   `json:"test"`
 	Heartbeat           string   `json:"heartbeat"`
 	Status              string   `json:"runstatus"`
@@ -49,6 +50,7 @@ type settings struct {
 	HttpAuth            string   `json:"httpauth"`
 	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
 	Clusters            []string `json:"clusters"`
+	RegTests            []string `json:"regtests"`
 }
 
 func httpserver() {
@@ -163,6 +165,8 @@ func httpserver() {
 		router.HandleFunc("/rplchecks", handlerRplChecks)
 		router.HandleFunc("/bootstrap", handlerBootstrap)
 		router.HandleFunc("/failsync", handlerFailSync)
+		router.HandleFunc("/switchsync", handlerSwitchSync)
+		router.HandleFunc("/settest", handlerSetTest)
 		router.HandleFunc("/tests", handlerTests)
 		router.HandleFunc("/sysbench", handlerSysbench)
 		router.HandleFunc("/setactive", handlerSetActive)
@@ -185,6 +189,8 @@ func httpserver() {
 		http.HandleFunc("/rplchecks", handlerRplChecks)
 		http.HandleFunc("/bootstrap", handlerBootstrap)
 		http.HandleFunc("/failsync", handlerFailSync)
+		http.HandleFunc("/switchsync", handlerSwitchSync)
+		http.HandleFunc("/settest", handlerSetTest)
 		http.HandleFunc("/tests", handlerTests)
 		http.HandleFunc("/sysbench", handlerSysbench)
 		http.HandleFunc("/setactive", handlerSetActive)
@@ -240,6 +246,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
 	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
 	s.FailSync = fmt.Sprintf("%v", currentCluster.GetConf().FailSync)
+	s.SwitchSync = fmt.Sprintf("%v", currentCluster.GetConf().SwitchSync)
 	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().MaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
@@ -257,6 +264,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
 	s.Clusters = cfgGroupList
+	s.RegTests = currentCluster.GetTests()
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()
@@ -315,6 +323,20 @@ func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.LogPrint("INFO: Force to ignore conditions %v", currentCluster.GetRplChecks)
 	currentCluster.SetRplChecks(!currentCluster.GetRplChecks())
+	return
+}
+
+func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Force swithover on status sync %v", currentCluster.GetFailSync())
+
+	currentCluster.SetSwitchSync(!currentCluster.GetSwitchSync())
+	return
+}
+func handlerSetTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: test/prod mode %v", currentCluster.GetFailSync())
+	currentCluster.SetTestMode(!currentCluster.GetTestMode())
 	return
 }
 

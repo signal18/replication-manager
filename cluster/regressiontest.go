@@ -1053,3 +1053,8 @@ func (cluster *Cluster) RunSysbench() error {
 	cluster.RunBench()
 	return nil
 }
+
+func (cluster *Cluster) StartAllNodes() error {
+
+	return nil
+}

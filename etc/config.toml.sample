@@ -30,7 +30,6 @@ prefmaster = "127.0.0.1:5012"
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
 
-autorejoin = true
 readonly = true
 failover-event-scheduler = false
 failover-event-status = false
@@ -135,7 +134,7 @@ sysbench-time = 60
 mariadb-binary-path = "/usr/sbin"
 
 # REJOIN
---------
+# --------
 autorejoin = true
 autorejoin-flashback = true
 autorejoin-mysqldump = false
