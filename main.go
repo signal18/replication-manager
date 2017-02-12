@@ -78,6 +78,29 @@ func initConfig() {
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.Fatalln("ERROR: Could not parse config file:", err)
 	}
+	m := viper.AllKeys()
+	if cfgGroup == "" {
+		var clusterDicovery = map[string]string{}
+		var discoveries []string
+		for _, k := range m {
+
+			if strings.Contains(k, ".") {
+				mycluster := strings.Split(k, ".")[0]
+				if mycluster != "default" {
+					_, ok := clusterDicovery[mycluster]
+					if !ok {
+						clusterDicovery[mycluster] = mycluster
+						discoveries = append(discoveries, mycluster)
+						//	log.Println(strings.Split(k, ".")[0])
+					}
+				}
+
+			}
+		}
+		cfgGroup = strings.Join(discoveries, ",")
+		log.Printf("INFO : Discovered clusters %s", cfgGroup)
+
+	}
 	cfgGroupIndex = 0
 
 	cf1 := viper.Sub("Default")
