@@ -4,9 +4,37 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
 
-[Cluster01]
+[Cluster_Test_Semisync_2_Nodes]
+hosts = "127.0.0.1:3310,127.0.0.1:3311"
+user = "root:"
+rpluser = "root:"
+title = "cluster1"
+connect-timeout = 1
+prefmaster = "127.0.0.1:3310"
+haproxy-write-port=3303
+haproxy-read-port=3304
+test = true
 
-[Cluster02]
+[Cluster_Test_Assync_2_Nodes]
+hosts = "127.0.0.1:3310,127.0.0.1:3311"
+user = "root:"
+rpluser = "root:"
+title = "ClusterTestSemisync"
+connect-timeout = 1
+prefmaster = "127.0.0.1:3310"
+haproxy-write-port=3305
+haproxy-read-port=3306
+test = true
+
+[Cluster01]
+hosts = "127.0.0.1:5054,127.0.0.1:5012"
+user = "skysql:skyvodka"
+rpluser = "skysql:skyvodka"
+title = "Cluster01"
+connect-timeout = 1
+prefmaster = "127.0.0.1:5012"
+#ignore-servers = "127.0.0.1:5012"
+test = false
 
 [Default]
 
@@ -19,13 +47,6 @@ verbose = true
 # TOPOLOGY
 # --------
 
-hosts = "127.0.0.1:5054,127.0.0.1:5012"
-user = "skysql:skyvodka"
-rpluser = "skysql:skyvodka"
-title = "Cluster01"
-connect-timeout = 1
-prefmaster = "127.0.0.1:5012"
-#ignore-servers = "127.0.0.1:5012"
 
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
@@ -41,7 +62,7 @@ http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-root = "./dashboard"
-http-auth = true
+http-auth = false
 http-session-lifetime = 3600
 http-bootstrap-button = false
 
