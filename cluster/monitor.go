@@ -229,18 +229,19 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				// Check if master exists in topology before rejoining.
 				if server.URL != server.ClusterGroup.master.URL {
 					server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
-					var cmdrun *exec.Cmd
-					server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
-					cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
-					var outrun bytes.Buffer
-					cmdrun.Stdout = &outrun
+					if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+						var cmdrun *exec.Cmd
+						server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
+						cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
+						var outrun bytes.Buffer
+						cmdrun.Stdout = &outrun
 
-					cmdrunErr := cmdrun.Run()
-					if cmdrunErr != nil {
-						server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
-						server.ClusterGroup.canFlashBack = false
+						cmdrunErr := cmdrun.Run()
+						if cmdrunErr != nil {
+							server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
+							server.ClusterGroup.canFlashBack = false
+						}
 					}
-
 					err = server.rejoin()
 					if err != nil {
 						server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
@@ -536,7 +537,7 @@ func (server *ServerMonitor) rejoin() error {
 			return err2
 		} else {
 			server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNC using semisync, searching for a rejoin method")
-			if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true {
+			if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
 				// Flashback here
 				binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", "/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
 				clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)

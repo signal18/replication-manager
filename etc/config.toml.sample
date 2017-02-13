@@ -157,6 +157,7 @@ mariadb-binary-path = "/usr/sbin"
 # REJOIN
 # --------
 autorejoin = true
+autorejoin-semisync = true
 autorejoin-flashback = true
 autorejoin-mysqldump = false
 

@@ -37,6 +37,15 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 
 	return nil
 }
+
+func (cluster *Cluster) ShutdownClusterSemiSync() error {
+	for _, server := range cluster.servers {
+		cluster.killMariaDB(server)
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf string) error {
 	path := cluster.conf.HttpRoot + "/tests/" + name
 	os.RemoveAll(path)

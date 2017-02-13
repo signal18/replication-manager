@@ -448,6 +448,46 @@ func (cluster *Cluster) GetSwitchSync() bool {
 	return cluster.conf.SwitchSync
 }
 
+func (cluster *Cluster) SetRejoin(check bool) {
+	cluster.conf.Autorejoin = check
+}
+
+func (cluster *Cluster) GetRejoin() bool {
+	return cluster.conf.Autorejoin
+}
+
+func (cluster *Cluster) SetRejoinDump(check bool) {
+	cluster.conf.AutorejoinMysqldump = check
+}
+
+func (cluster *Cluster) GetRejoinDump() bool {
+	return cluster.conf.AutorejoinMysqldump
+}
+
+func (cluster *Cluster) SetRejoinBackupBinlog(check bool) {
+	cluster.conf.AutorejoinBackupBinlog = check
+}
+
+func (cluster *Cluster) GetRejoinBackupBinlog() bool {
+	return cluster.conf.AutorejoinBackupBinlog
+}
+
+func (cluster *Cluster) SetRejoinSemisync(check bool) {
+	cluster.conf.AutorejoinSemisync = check
+}
+
+func (cluster *Cluster) GetRejoinSemisync() bool {
+	return cluster.conf.AutorejoinSemisync
+}
+
+func (cluster *Cluster) SetRejoinFlashback(check bool) {
+	cluster.conf.AutorejoinFlashback = check
+}
+
+func (cluster *Cluster) GetRejoinFlashback() bool {
+	return cluster.conf.AutorejoinFlashback
+}
+
 func (cluster *Cluster) SetTestMode(check bool) {
 	cluster.conf.Test = check
 }

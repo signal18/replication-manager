@@ -40,6 +40,11 @@ type settings struct {
 	RplChecks           string   `json:"rplchecks"`
 	FailSync            string   `json:"failsync"`
 	SwitchSync          string   `json:"switchsync"`
+	Rejoin              string   `json:"rejoin"`
+	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
+	RejoinSemiSync      string   `json:"rejoinsemisync"`
+	RejoinFlashback     string   `json:"rejoinflashback"`
+	RejoinDump          string   `json:"rejoindump"`
 	Test                string   `json:"test"`
 	Heartbeat           string   `json:"heartbeat"`
 	Status              string   `json:"runstatus"`
@@ -166,6 +171,11 @@ func httpserver() {
 		router.HandleFunc("/bootstrap", handlerBootstrap)
 		router.HandleFunc("/failsync", handlerFailSync)
 		router.HandleFunc("/switchsync", handlerSwitchSync)
+		router.HandleFunc("/setrejoin", handlerRejoin)
+		router.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
+		router.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
+		router.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
+		router.HandleFunc("/setrejoindump", handlerRejoinDump)
 		router.HandleFunc("/settest", handlerSetTest)
 		router.HandleFunc("/tests", handlerTests)
 		router.HandleFunc("/sysbench", handlerSysbench)
@@ -190,6 +200,11 @@ func httpserver() {
 		http.HandleFunc("/bootstrap", handlerBootstrap)
 		http.HandleFunc("/failsync", handlerFailSync)
 		http.HandleFunc("/switchsync", handlerSwitchSync)
+		http.HandleFunc("/setrejoin", handlerRejoin)
+		http.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
+		http.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
+		http.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
+		http.HandleFunc("/setrejoindump", handlerRejoinDump)
 		http.HandleFunc("/settest", handlerSetTest)
 		http.HandleFunc("/tests", handlerTests)
 		http.HandleFunc("/sysbench", handlerSysbench)
@@ -247,6 +262,11 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
 	s.FailSync = fmt.Sprintf("%v", currentCluster.GetConf().FailSync)
 	s.SwitchSync = fmt.Sprintf("%v", currentCluster.GetConf().SwitchSync)
+	s.Rejoin = fmt.Sprintf("%v", currentCluster.GetConf().Autorejoin)
+	s.RejoinBackupBinlog = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinBackupBinlog)
+	s.RejoinSemiSync = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSemisync)
+	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
+	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
 	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().MaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
@@ -265,6 +285,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
 	s.Clusters = cfgGroupList
 	s.RegTests = currentCluster.GetTests()
+
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()
@@ -333,6 +354,41 @@ func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
 	currentCluster.SetSwitchSync(!currentCluster.GetSwitchSync())
 	return
 }
+
+func handlerRejoin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Auto Rejoin %v", currentCluster.GetRejoin())
+	currentCluster.SetRejoin(!currentCluster.GetRejoin())
+	return
+}
+
+func handlerRejoinBackupBinlog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Auto Rejoin Backup Binlog %v", currentCluster.GetRejoinBackupBinlog())
+	currentCluster.SetRejoinBackupBinlog(!currentCluster.GetRejoinBackupBinlog())
+	return
+}
+
+func handlerRejoinFlashback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Auto Rejoin Flashback %v", currentCluster.GetRejoinFlashback())
+	currentCluster.SetRejoinFlashback(!currentCluster.GetRejoinFlashback())
+	return
+}
+func handlerRejoinDump(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Auto Rejoin Dump %v", currentCluster.GetRejoinDump())
+	currentCluster.SetRejoinDump(!currentCluster.GetRejoinDump())
+	return
+}
+
+func handlerRejoinSemisync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Auto Rejoin Semisync SYNC %v", currentCluster.GetRejoinSemisync())
+	currentCluster.SetRejoinSemisync(!currentCluster.GetRejoinSemisync())
+	return
+}
+
 func handlerSetTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.LogPrintf("INFO: test/prod mode %v", currentCluster.GetFailSync())

@@ -31,6 +31,7 @@ type Config struct {
 	AutorejoinFlashback      bool
 	AutorejoinMysqldump      bool
 	AutorejoinBackupBinlog   bool
+	AutorejoinSemisync       bool
 	LogFile                  string
 	MonitoringTicker         int64 `mapstructure:"monitoring-ticker"`
 	Timeout                  int   `mapstructure:"connect-timeout"`
