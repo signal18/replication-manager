@@ -321,6 +321,21 @@ Per default Semi-Sync replication status is not checked during failover, but thi
 
 A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console use "Failover Sync" button
 
+## Rejoining Old Leader
+
+Since replication-manager 1.1 Rejoin of dead leader as been improved to cover more cases
+
+MariaDB 10.2 binary package can collocated with replication-manager via teh config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
+
+replication-manager get 4 cases for rejoin:
+
+1 - GTID of the new leader at time of election is equal to GTID of the joiner we proceed with rejoin.
+
+2 - GTID is ahead on joiner, we backup extra events , if semisync was in sync at election we force the GTID saved at election on joiner
+
+3 - GTID is ahead but semisync status at election was unsync we flashback if replication-manager settings use the rejoin-flashback flag
+
+4 - GTID is ahead but semisync status at election was unsync we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag
 
 ## Calling external scripts
 

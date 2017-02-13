@@ -62,7 +62,7 @@ func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf str
 	}
 	cluster.LogPrintf("PROVISIONING : %s", outrun.String())
 
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"../"+conf, "--port="+server.Port, "--datadir="+path, "--port="+server.Port, "--user="+cluster.dbUser, "--user="+usr.Username)
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"../"+conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--port="+server.Port, "--user="+cluster.dbUser, "--user="+usr.Username)
 	mariadbdCmd.Process.Kill()
 	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	go mariadbdCmd.Run()
