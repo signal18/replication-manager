@@ -30,7 +30,7 @@ var (
 	termlength     int
 	runUUID        string
 	repmgrHostname string
-
+	runStatus      string
 	swChan         = make(chan bool)
 	exitMsg        string
 	exit           bool
@@ -40,7 +40,7 @@ var (
 
 func init() {
 	runUUID = uuid.NewV4().String()
-	//	runStatus = "A"
+	runStatus = "A"
 	//	conf := confs[cfgGroup]
 	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)

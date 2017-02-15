@@ -160,6 +160,7 @@ func httpserver() {
 		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
 		router.HandleFunc("/servers", handlerServers)
 		router.HandleFunc("/setcluster", handlerSetCluster)
+		router.HandleFunc("/runonetest", handlerSetOneTest)
 		router.HandleFunc("/master", handlerMaster)
 		router.HandleFunc("/log", handlerLog)
 		router.HandleFunc("/switchover", handlerSwitchover)
@@ -189,6 +190,7 @@ func httpserver() {
 		http.HandleFunc("/stats", handlerStats)
 		http.HandleFunc("/servers", handlerServers)
 		http.HandleFunc("/setcluster", handlerSetCluster)
+		http.HandleFunc("/runonetest", handlerSetOneTest)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/log", handlerLog)
 		http.HandleFunc("/switchover", handlerSwitchover)
@@ -225,6 +227,10 @@ func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	for _, gl := range cfgGroupList {
 		clusters[gl].SetCfgGroupDisplay(cfgGroup)
 	}
+}
+
+func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
+	currentCluster.RunAllTests(r.URL.Query().Get("test"))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +282,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.UptimeSemiSync = currentCluster.GetStateMachine().GetUptimeSemiSync()
 	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
 	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
-	s.Status = fmt.Sprintf("%v", currentCluster.GetRunStatus())
+	s.Status = fmt.Sprintf("%v", runStatus)
 	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
 	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
 	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
@@ -423,7 +429,7 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	err := currentCluster.RunAllTests()
+	err := currentCluster.RunAllTests("ALL")
 	if err == false {
 		currentCluster.LogPrint("ERROR: Some tests failed")
 	}
