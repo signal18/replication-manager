@@ -261,7 +261,7 @@ func (cluster *Cluster) checkfailed() {
 			}
 
 		} else if cluster.master.State == stateFailed && cluster.master.FailCount < cluster.conf.MaxFail {
-			cluster.LogPrintf("WARN : Waiting more prove of master death")
+			cluster.LogPrintf("WARN : Waiting for more proof of master death")
 
 		}
 	} else {
