@@ -147,7 +147,7 @@ func (cluster *Cluster) LogPrintf(format string, args ...interface{}) {
 
 		io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
 	}
-	if cluster.tlog.Len > 0 {
+	if cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(fmt.Sprintf(format, args...))
 		cluster.display()
 	}
