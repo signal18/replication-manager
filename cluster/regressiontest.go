@@ -871,7 +871,7 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 		}
 	}
 
-	cluster.cleanall = true
+	cluster.CleanAll = true
 	cluster.Bootstrap()
 	cluster.waitFailoverEnd()
 	if test == "testSwitchOverLongTransactionNoRplCheckNoSemiSync" || test == "ALL" {
@@ -1005,7 +1005,7 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 		cluster.LogPrintf("TESTS : Result  %s -> %s", v, allTests[v])
 	}
 
-	cluster.cleanall = false
+	cluster.CleanAll = false
 	return ret
 }
 
@@ -1100,7 +1100,7 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 	cluster.SetRejoin(true)
 	cluster.SetRejoinFlashback(true)
 	cluster.SetRejoinDump(false)
-	cluster.cleanall = true
+	cluster.CleanAll = true
 	cluster.InitClusterSemiSync()
 
 	err := cluster.Bootstrap()

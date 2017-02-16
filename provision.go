@@ -45,7 +45,7 @@ var bootstrapCmd = &cobra.Command{
 		currentCluster = new(cluster.Cluster)
 
 		currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
-
+		currentCluster.CleanAll = cleanall
 		err := currentCluster.Bootstrap()
 		if err != nil {
 			log.Println(err)

@@ -44,7 +44,7 @@ type Cluster struct {
 	key                  []byte
 	exitMsg              string
 	exit                 bool
-	cleanall             bool
+	CleanAll             bool
 	canFlashBack         bool
 }
 
@@ -429,7 +429,7 @@ func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
 }
 func (cluster *Cluster) SetCleanAll(check bool) {
-	cluster.cleanall = check
+	cluster.CleanAll = check
 }
 
 func (cluster *Cluster) GetRplChecks() bool {
@@ -517,7 +517,7 @@ func (cluster *Cluster) Close() {
 
 func (cluster *Cluster) Bootstrap() error {
 	cluster.sme.SetFailoverState()
-	if cluster.cleanall {
+	if cluster.CleanAll {
 		cluster.LogPrint("INFO : Cleaning up replication on existing servers")
 		for _, server := range cluster.servers {
 			if cluster.conf.Verbose {
