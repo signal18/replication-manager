@@ -38,7 +38,6 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 		cluster.LogPrintf("INFO : Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
 		cluster.initMariaDB(server, cluster.cfgGroup+strconv.Itoa(k), "semisync.cnf")
 	}
-
 	return nil
 }
 
@@ -51,63 +50,22 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 }
 
 func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf string) error {
+	server.Name = name
+	server.Conf = conf
 	path := cluster.conf.HttpRoot + "/tests/" + name
 	os.RemoveAll(path)
-	usr, err := user.Current()
+
+	err := misc.CopyDir(cluster.conf.HttpRoot+"/tests/data", path)
 	if err != nil {
 		cluster.LogPrintf("ERRROR : %s", err)
 		return err
 	}
-
-	err = misc.CopyDir(cluster.conf.HttpRoot+"/tests/data", path)
-	if err != nil {
-		cluster.LogPrintf("ERRROR : %s", err)
-		return err
-	}
-	/*
-		  if _, err := os.Stat(path); os.IsNotExist(err) {
-		    os.MkdirAll(path, 0711)
-
-		  } else {
-		    cluster.LogPrintf("ERRROR : %s", err)
-		    return err
-		  }
-			installDB := exec.Command(cluster.conf.MariaDBBinaryPath+"/scripts/mysql_install_db", "--datadir="+path, "--user="+usr.Username)
-			cluster.LogPrintf("INFO : %s", installDB.Path)
-			var outrun bytes.Buffer
-			installDB.Stdout = &outrun
-
-			cmdrunErr := installDB.Run()
-			if cmdrunErr != nil {
-							cluster.LogPrintf("ERRROR : %s", cmdrunErr)
-							return cmdrunErr
-			}
-			cluster.LogPrintf("PROVISIONING : %s", outrun.String())
-	*/
-
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"/../etc/"+conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--port="+server.Port, "--user="+usr.Username, "--pid="+path+"/"+name+".pid")
-
-	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
-	go mariadbdCmd.Run()
-	server.Process = mariadbdCmd.Process
-
-	var err2 error
-	exitloop := 0
-	for exitloop < 30 {
-		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrint("Waiting startup ..")
-		_, err2 = os.Stat(path + "/" + name + ".pid")
-		if err2 == nil {
-			exitloop = 30
+	err = cluster.startMariaDB(server)
+	if err == nil {
+		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
+		if err != nil {
+			cluster.LogPrintf("TESTING : GRANTS %s", err)
 		}
-		exitloop++
-
-	}
-	if exitloop < 30 {
-		cluster.LogPrintf("MariaDB started.", err)
-	} else {
-		cluster.LogPrintf("MariaDB start timeout.", err)
-		return errors.New("Failed to start")
 	}
 
 	return nil
@@ -118,6 +76,41 @@ func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
 	return nil
 }
 
+func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
+	path := cluster.conf.HttpRoot + "/tests/" + server.Name
+	usr, err := user.Current()
+	if err != nil {
+		cluster.LogPrintf("ERRROR : %s", err)
+		return err
+	}
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"/../etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket=/tmp/"+server.Name+".sock", "--user="+usr.Username, "--pid_file=/tmp/"+server.Name+".pid")
+	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	go mariadbdCmd.Run()
+	server.Process = mariadbdCmd.Process
+
+	var err2 error
+	exitloop := 0
+	for exitloop < 30 {
+		time.Sleep(time.Millisecond * 2000)
+		cluster.LogPrint("Waiting startup ..")
+		_, err2 = os.Stat("/tmp/" + server.Name + ".pid")
+		if err2 == nil {
+			exitloop = 100
+		}
+		exitloop++
+
+	}
+	if exitloop == 101 {
+		cluster.LogPrintf("MariaDB started.")
+
+	} else {
+		cluster.LogPrintf("MariaDB timeout.")
+		return errors.New("Failed to start")
+	}
+	return nil
+}
+
 func (cluster *Cluster) StartAllNodes() error {
+
 	return nil
 }

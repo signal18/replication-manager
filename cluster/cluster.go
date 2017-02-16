@@ -364,6 +364,10 @@ func (cluster *Cluster) ToggleInteractive() {
 	}
 }
 
+func (cluster *Cluster) SetInteractive(check bool) {
+	cluster.conf.Interactive = check
+}
+
 func (cluster *Cluster) GetActiveStatus() {
 	for _, sv := range cluster.servers {
 		err := dbhelper.SetStatusActiveHeartbeat(sv.Conn, cluster.runUUID, "A")

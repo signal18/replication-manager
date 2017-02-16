@@ -73,6 +73,8 @@ type ServerMonitor struct {
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
 	Process                     *os.Process
+	Name                        string //Unique name given by reg test initMariaDB
+	Conf                        string //Unique Conf given by reg test initMariaDB
 }
 
 type serverList []*ServerMonitor

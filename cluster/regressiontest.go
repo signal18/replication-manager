@@ -25,7 +25,7 @@ var tests = []string{
 	"testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync",
 	"testSlaReplAllDelay",
 	"testFailoverReplAllDelayInteractive",
-	"testFailoverReplAllDelayAuto",
+	"testFailoverReplAllDelayAutoRejoinFlashback",
 	"testSwitchoverReplAllDelay",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplOneSlavesStop",
@@ -170,15 +170,6 @@ func (cluster *Cluster) testSlaReplAllDelay() bool {
 }
 
 func (cluster *Cluster) testFailoverReplAllDelayInteractive() bool {
-	return false
-}
-
-func (cluster *Cluster) testFailoverReplAllDelayAuto() bool {
-	cluster.LogPrintf("TESTING : InitClusterSemiSync")
-	cluster.InitClusterSemiSync()
-	cluster.Bootstrap()
-	cluster.wait_failover_end()
-	cluster.ShutdownClusterSemiSync()
 	return false
 }
 
@@ -872,9 +863,9 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	ret := true
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
-	if test == "testFailoverReplAllDelayAuto" || test == "ALL" {
-		res = cluster.testFailoverReplAllDelayAuto()
-		allTests["1 Failover all slaves delay <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+	if test == "testFailoverReplAllDelayAutoRejoinFlashback" || test == "ALL" {
+		res = cluster.testFailoverReplAllDelayAutoRejoinFlashback()
+		allTests["1 Failover all slaves delay rejoin flashback<cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -1088,18 +1079,46 @@ func (cluster *Cluster) RunSysbench() error {
 
 func (cluster *Cluster) DelayAllSlaves() error {
 	for _, s := range cluster.slaves {
- 	 dbhelper.StopSlave(s.Conn)
-  }
-  result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
-  if err != nil {
- 	 cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
-  }
-  dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-  time.Sleep(10 * time.Second)
-  for _, s := range cluster.slaves {
- 	 dbhelper.StartSlave(s.Conn)
-  }
+		dbhelper.StopSlave(s.Conn)
+	}
+	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
+	if err != nil {
+		cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
+	}
+	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
+	time.Sleep(10 * time.Second)
+	for _, s := range cluster.slaves {
+		dbhelper.StartSlave(s.Conn)
+	}
 	return nil
 }
 
-func
+func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
+	cluster.SetFailSync(false)
+	cluster.SetInteractive(false)
+	cluster.SetRplChecks(false)
+	cluster.SetRejoin(true)
+	cluster.SetRejoinFlashback(true)
+	cluster.SetRejoinDump(false)
+
+	cluster.InitClusterSemiSync()
+
+	cluster.Bootstrap()
+
+	cluster.wait_failover_end()
+	SaveMasterURL := cluster.master.URL
+	SaveMaster := cluster.master
+	cluster.DelayAllSlaves()
+	cluster.killMariaDB(cluster.master)
+	cluster.wait_failover_end()
+	if cluster.master.URL == SaveMasterURL {
+		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
+		return false
+	}
+
+	cluster.startMariaDB(SaveMaster)
+
+	cluster.ShutdownClusterSemiSync()
+
+	return true
+}
