@@ -69,7 +69,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		return err
 	}
 
-	err = cluster.newServerList()
+	cluster.newServerList()
 	if cluster.conf.Interactive {
 		cluster.LogPrintf("INFO : Monitor started in manual mode")
 	} else {
@@ -114,7 +114,7 @@ func (cluster *Cluster) FailoverForce() error {
 		cluster.failoverCtr = int(sf.Count)
 		cluster.failoverTs = sf.Timestamp
 	}
-	err = cluster.newServerList()
+	cluster.newServerList()
 	//if err != nil {
 	//	return err
 	//}
