@@ -1088,18 +1088,16 @@ func (cluster *Cluster) RunSysbench() error {
 
 func (cluster *Cluster) DelayAllSlaves() error {
 	for _, s := range cluster.slaves {
- 	 dbhelper.StopSlave(s.Conn)
-  }
-  result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
-  if err != nil {
- 	 cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
-  }
-  dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-  time.Sleep(10 * time.Second)
-  for _, s := range cluster.slaves {
- 	 dbhelper.StartSlave(s.Conn)
-  }
+		dbhelper.StopSlave(s.Conn)
+	}
+	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
+	if err != nil {
+		cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
+	}
+	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
+	time.Sleep(10 * time.Second)
+	for _, s := range cluster.slaves {
+		dbhelper.StartSlave(s.Conn)
+	}
 	return nil
 }
-
-func
