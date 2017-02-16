@@ -229,24 +229,26 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.FailCount = 0
 			if server.ClusterGroup.conf.Autorejoin {
 				// Check if master exists in topology before rejoining.
-				if server.URL != server.ClusterGroup.master.URL {
-					server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
-					if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
-						var cmdrun *exec.Cmd
-						server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
-						cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
-						var outrun bytes.Buffer
-						cmdrun.Stdout = &outrun
+				if server.ClusterGroup.master != nil {
+					if server.URL != server.ClusterGroup.master.URL {
+						server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
+						if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+							var cmdrun *exec.Cmd
+							server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
+							cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
+							var outrun bytes.Buffer
+							cmdrun.Stdout = &outrun
 
-						cmdrunErr := cmdrun.Run()
-						if cmdrunErr != nil {
-							server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
-							server.ClusterGroup.canFlashBack = false
+							cmdrunErr := cmdrun.Run()
+							if cmdrunErr != nil {
+								server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
+								server.ClusterGroup.canFlashBack = false
+							}
 						}
-					}
-					err = server.rejoin()
-					if err != nil {
-						server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
+						err = server.rejoin()
+						if err != nil {
+							server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
+						}
 					}
 				}
 			}

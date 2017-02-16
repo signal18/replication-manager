@@ -83,17 +83,16 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 		cluster.LogPrintf("ERRROR : %s", err)
 		return err
 	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"/../etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket=/tmp/"+server.Name+".sock", "--user="+usr.Username, "--pid_file=/tmp/"+server.Name+".pid")
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"/../etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket=/tmp/"+server.Name+".sock", "--user="+usr.Username, "--pid_file=/tmp/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
 	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
-	go mariadbdCmd.Run()
+	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
 
-	var err2 error
 	exitloop := 0
 	for exitloop < 30 {
 		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrint("Waiting startup ..")
-		_, err2 = os.Stat("/tmp/" + server.Name + ".pid")
+		cluster.LogPrint("Waiting MariaDB startup ..")
+		err2 := server.refresh()
 		if err2 == nil {
 			exitloop = 100
 		}

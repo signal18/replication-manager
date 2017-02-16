@@ -173,18 +173,6 @@ func (cluster *Cluster) testFailoverReplAllDelayInteractive() bool {
 	return false
 }
 
-<<<<<<< HEAD
-=======
-func (cluster *Cluster) testFailoverReplAllDelayAuto() bool {
-	cluster.LogPrintf("TESTING : InitClusterSemiSync")
-	cluster.InitClusterSemiSync()
-	cluster.Bootstrap()
-	cluster.waitFailoverEnd()
-	cluster.ShutdownClusterSemiSync()
-	return false
-}
-
->>>>>>> refs/remotes/origin/develop
 func (cluster *Cluster) testSwitchoverReplAllDelay() bool {
 	return false
 }
@@ -1105,7 +1093,6 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	return nil
 }
 
-
 func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
@@ -1118,12 +1105,12 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 
 	cluster.Bootstrap()
 
-	cluster.wait_failover_end()
+	cluster.waitFailoverEnd()
 	SaveMasterURL := cluster.master.URL
 	SaveMaster := cluster.master
 	cluster.DelayAllSlaves()
 	cluster.killMariaDB(cluster.master)
-	cluster.wait_failover_end()
+	cluster.waitFailoverEnd()
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
 		return false
