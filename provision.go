@@ -10,6 +10,7 @@ package main
 
 import (
 	//"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
 	//"github.com/tanji/replication-manager/misc"
@@ -42,7 +43,8 @@ var bootstrapCmd = &cobra.Command{
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
+
+		currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
 
 		err := currentCluster.Bootstrap()
 		if err != nil {
