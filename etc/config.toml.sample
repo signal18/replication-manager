@@ -4,7 +4,7 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
 
-[Cluster_Test_Semisync_2_Nodes]
+[Cluster_Test_2_Nodes]
 hosts = "127.0.0.1:3310,127.0.0.1:3311"
 user = "root:"
 rpluser = "root:"
@@ -15,8 +15,8 @@ haproxy-write-port=3303
 haproxy-read-port=3304
 test = true
 
-[Cluster_Test_Assync_2_Nodes]
-hosts = "127.0.0.1:3310,127.0.0.1:3311"
+[Cluster_Test_3_Nodes]
+hosts = "127.0.0.1:3310,127.0.0.1:3311,,127.0.0.1:3312"
 user = "root:"
 rpluser = "root:"
 title = "ClusterTestSemisync"

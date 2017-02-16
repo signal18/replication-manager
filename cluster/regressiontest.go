@@ -1100,13 +1100,16 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 	cluster.SetRejoin(true)
 	cluster.SetRejoinFlashback(true)
 	cluster.SetRejoinDump(false)
-
+	cluster.cleanall = true
 	cluster.InitClusterSemiSync()
 
-	cluster.Bootstrap()
+	err := cluster.Bootstrap()
+	if err != nil {
+		cluster.LogPrintf("INFO : Abording test, bootstrap failed")
+	}
 	cluster.waitFailoverEnd()
 	if cluster.master == nil {
-		cluster.LogPrintf("INFO : Abording test not bootstrap succeed")
+		cluster.LogPrintf("INFO : Abording test, no master found")
 		return false
 	}
 
