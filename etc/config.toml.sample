@@ -16,7 +16,7 @@ haproxy-read-port=3304
 test = true
 
 [Cluster_Test_3_Nodes]
-hosts = "127.0.0.1:3310,127.0.0.1:3311,,127.0.0.1:3312"
+hosts = "127.0.0.1:3312,127.0.0.1:3313,,127.0.0.1:3314"
 user = "root:"
 rpluser = "root:"
 title = "ClusterTestSemisync"
