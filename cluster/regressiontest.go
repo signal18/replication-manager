@@ -1104,8 +1104,12 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 	cluster.InitClusterSemiSync()
 
 	cluster.Bootstrap()
-
 	cluster.waitFailoverEnd()
+	if cluster.master == nil {
+		cluster.LogPrintf("INFO : Abording test not bootstrap succeed")
+		return false
+	}
+
 	SaveMasterURL := cluster.master.URL
 	SaveMaster := cluster.master
 	cluster.DelayAllSlaves()

@@ -34,10 +34,12 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 }
 
 func (cluster *Cluster) InitClusterSemiSync() error {
+	cluster.sme.SetFailoverState()
 	for k, server := range cluster.servers {
 		cluster.LogPrintf("INFO : Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
 		cluster.initMariaDB(server, cluster.cfgGroup+strconv.Itoa(k), "semisync.cnf")
 	}
+	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
