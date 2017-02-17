@@ -6,7 +6,6 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-// Package dbhelper
 package dbhelper
 
 import (
@@ -125,16 +124,6 @@ type SpiderTableNoSync struct {
 	Tbl_dest     string
 	Srv_dsync    string
 	Srv_sync     string
-}
-
-/* Connect to a MySQL server. Must be deprecated, use MySQLConnect instead */
-func Connect(user string, password string, address string) *sqlx.DB {
-	db, _ := sqlx.Open("mysql", user+":"+password+"@"+address+"/")
-	err := db.Ping()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return db
 }
 
 func MySQLConnect(user string, password string, address string, parameters ...string) (*sqlx.DB, error) {
@@ -372,54 +361,54 @@ func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 	return ms, err
 }
 
-func GetSlaveHosts(db *sqlx.DB) map[string]interface{} {
+func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, error) {
 	rows, err := db.Queryx("SHOW SLAVE HOSTS")
 	if err != nil {
-		log.Fatalln("ERROR: Could not get slave hosts", err)
+		return nil, errors.New("Could not get slave hosts")
 	}
 	defer rows.Close()
 	results := make(map[string]interface{})
 	for rows.Next() {
 		err = rows.MapScan(results)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 	}
-	return results
+	return results, nil
 }
 
-func GetSlaveHostsArray(db *sqlx.DB) []SlaveHosts {
+func GetSlaveHostsArray(db *sqlx.DB) ([]SlaveHosts, error) {
 	sh := []SlaveHosts{}
 	err := db.Select(&sh, "SHOW SLAVE HOSTS")
 	if err != nil {
-		log.Fatalln("ERROR: Could not get slave hosts array", err)
+		return nil, errors.New("Could not get slave hosts array")
 	}
-	return sh
+	return sh, nil
 }
 
-func GetSlaveHostsDiscovery(db *sqlx.DB) []string {
+func GetSlaveHostsDiscovery(db *sqlx.DB) ([]string, error) {
 	slaveList := []string{}
 	/* This method does not return the server ports, so we cannot rely on it for the time being. */
 	err := db.Select(&slaveList, "select host from information_schema.processlist where command ='binlog dump'")
 	if err != nil {
-		log.Fatalln("ERROR: Could not get slave hosts from the processlist", err)
+		return nil, errors.New("Could not get slave hosts from the processlist")
 	}
-	return slaveList
+	return slaveList, nil
 }
 
-func GetEnventsStatus(db *sqlx.DB) ([]Event, error) {
+func GetEventStatus(db *sqlx.DB) ([]Event, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 
 	ss := []Event{}
 	err := udb.Select(&ss, "SELECT db as Db, name as Name, status+0  AS Status FROM mysql.event")
 	if err != nil {
-		log.Fatal("ERROR: Could not get events 	tatus ", err)
+		return nil, errors.New("Could not get event status")
 	}
 	return ss, err
 }
 
-func SetEnventsStatus(db *sqlx.DB, ev Event, status int64) error {
+func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
 	stmt := "ALTER EVENT "
 	if status == 3 {
 		stmt = stmt + ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
@@ -433,7 +422,7 @@ func SetEnventsStatus(db *sqlx.DB, ev Event, status int64) error {
 	return nil
 }
 
-func GetStatus(db *sqlx.DB) map[string]string {
+func GetStatus(db *sqlx.DB) (map[string]string, error) {
 	type Variable struct {
 		Variable_name string
 		Value         string
@@ -441,20 +430,20 @@ func GetStatus(db *sqlx.DB) map[string]string {
 	vars := make(map[string]string)
 	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM information_schema.global_status")
 	if err != nil {
-		log.Fatalln("ERROR: Could not get status variable", err)
+		return nil, errors.New("Could not get status variables")
 	}
 	for rows.Next() {
 		var v Variable
 		err := rows.Scan(&v.Variable_name, &v.Value)
 		if err != nil {
-			log.Fatalln("ERROR: Could not get results from status scan", err)
+			return nil, errors.New("Could not get results from status scan")
 		}
 		vars[v.Variable_name] = v.Value
 	}
-	return vars
+	return vars, nil
 }
 
-func GetStatusAsInt(db *sqlx.DB) map[string]int64 {
+func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 	type Variable struct {
 		Variable_name string
 		Value         int64
@@ -462,14 +451,14 @@ func GetStatusAsInt(db *sqlx.DB) map[string]int64 {
 	vars := make(map[string]int64)
 	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM information_schema.global_status")
 	if err != nil {
-		log.Fatal("ERROR: Could not get status as integer", err)
+		return nil, errors.New("Could not get status variables as integers")
 	}
 	for rows.Next() {
 		var v Variable
 		rows.Scan(&v.Variable_name, &v.Value)
 		vars[v.Variable_name] = v.Value
 	}
-	return vars
+	return vars, nil
 }
 
 func GetVariables(db *sqlx.DB) (map[string]string, error) {
@@ -493,13 +482,13 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 	return vars, err
 }
 
-func GetVariableByName(db *sqlx.DB, name string) string {
+func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 	var value string
 	err := db.QueryRowx("SELECT Variable_Value AS Value FROM information_schema.global_variables WHERE Variable_Name = ?", name).Scan(&value)
 	if err != nil {
-		log.Println("ERROR: Could not get variable by name", err)
+		return "", errors.New("Could not get variable by name")
 	}
-	return value
+	return value, nil
 }
 
 func FlushTables(db *sqlx.DB) error {
@@ -565,7 +554,7 @@ func SetDefaultMasterConn(db *sqlx.DB, dmc string) error {
 */
 func CheckSlavePrerequisites(db *sqlx.DB, s string) bool {
 	if debug {
-		log.Printf("CheckSlavePrerequisites called")
+		log.Printf("CheckSlavePrerequisites called") // remove those warnings !!
 	}
 	err := db.Ping()
 	/* If slave is not online, skip to next iteration */
@@ -581,28 +570,19 @@ func CheckSlavePrerequisites(db *sqlx.DB, s string) bool {
 	return true
 }
 
-func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB) bool {
+func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB) (bool, error) {
 	ms, err := GetMasterStatus(m)
 	if err != nil {
-		log.Println("ERROR: Can't check binlog status on master")
-		return false
+		return false, errors.New("Cannot check binlog status on master")
 	}
 	ss, err := GetMasterStatus(s)
 	if err != nil {
-		log.Println("ERROR: Can't check binlog status on slave")
-		return false
+		return false, errors.New("ERROR: Can't check binlog status on slave")
 	}
 	if ms.Binlog_Do_DB == ss.Binlog_Do_DB && ms.Binlog_Ignore_DB == ss.Binlog_Ignore_DB {
-		if debug {
-			log.Println("INFO: Binlog filters check OK")
-		}
-		return true
-	} else {
-		if debug {
-			log.Println("INFO: Binlog filters differ on both servers")
-		}
-		return false
+		return true, nil
 	}
+	return false, nil
 }
 
 func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
@@ -635,7 +615,7 @@ func IsSlaveof(db *sqlx.DB, s string, m string) bool {
 
 func GetEventScheduler(dbM *sqlx.DB) bool {
 
-	sES := GetVariableByName(dbM, "EVENT_SCHEDULER")
+	sES, _ := GetVariableByName(dbM, "EVENT_SCHEDULER")
 	if sES != "ON" {
 		return false
 	}
@@ -660,8 +640,8 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	if debug {
 		log.Printf("CheckSlaveSync called")
 	}
-	sGtid := GetVariableByName(dbS, "GTID_CURRENT_POS")
-	mGtid := GetVariableByName(dbM, "GTID_CURRENT_POS")
+	sGtid, _ := GetVariableByName(dbS, "GTID_CURRENT_POS")
+	mGtid, _ := GetVariableByName(dbM, "GTID_CURRENT_POS")
 	if sGtid == mGtid {
 		return true
 	} else {
@@ -673,7 +653,7 @@ func CheckSlaveSemiSync(dbS *sqlx.DB) bool {
 	if debug {
 		log.Printf("CheckSlaveSemiSync called")
 	}
-	sync := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS")
+	sync, _ := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS")
 
 	if sync == "ON" {
 		return true

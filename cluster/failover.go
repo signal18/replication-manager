@@ -18,7 +18,7 @@ import (
 	"github.com/tanji/replication-manager/misc"
 )
 
-/* Triggers a master switchover. Returns the new master's URL */
+// MasterFailover triggers a master switchover and returns the new master URL
 func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrint("INFO : Starting master switch")
 	cluster.sme.SetFailoverState()
@@ -92,10 +92,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 2: Reject updates and sync slaves
 	if fail == false {
 		if cluster.conf.FailEventStatus {
-			for _, v := range cluster.master.EventsStatus {
+			for _, v := range cluster.master.EventStatus {
 				if v.Status == 3 {
 					cluster.LogPrintf("INFO : Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-					err = dbhelper.SetEnventsStatus(oldMaster.Conn, v, 3)
+					err = dbhelper.SetEventStatus(oldMaster.Conn, v, 3)
 					if err != nil {
 						cluster.LogPrintf("ERROR: Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
 					}
@@ -190,10 +190,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	}
 	if cluster.conf.FailEventStatus {
-		for _, v := range cluster.master.EventsStatus {
+		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
 				cluster.LogPrintf("INFO : Set ENABLE for event %s %s on new master", v.Db, v.Name)
-				err = dbhelper.SetEnventsStatus(cluster.master.Conn, v, 1)
+				err = dbhelper.SetEventStatus(cluster.master.Conn, v, 1)
 				if err != nil {
 					cluster.LogPrintf("ERROR: Could not  Set ENABLE for event %s %s on new master", v.Db, v.Name)
 				}
@@ -239,7 +239,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogPrintf("ERROR: Could not set old master as read-write, %s", err)
 			}
 		}
-		_, err = oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
+		oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
 		if cluster.conf.MultiMaster == false {
@@ -415,7 +415,12 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor) bool {
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 	ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-	if dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn) == false && cluster.conf.CheckBinFilter == true {
+	hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
+	if err != nil {
+		cluster.LogPrint("ERROR: Could not check binlog filters")
+		return false
+	}
+	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
 		cluster.LogPrintf("WARN : Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		return false
 	}

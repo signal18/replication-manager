@@ -6,7 +6,6 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-// monitor.go
 package cluster
 
 import (
@@ -64,7 +63,7 @@ type ServerMonitor struct {
 	SemiSyncSlaveStatus         bool
 	RplMasterStatus             bool
 	EventScheduler              bool
-	EventsStatus                []dbhelper.Event
+	EventStatus                 []dbhelper.Event
 	ClusterGroup                *Cluster
 	MasterLogFile               string
 	MasterLogPos                string
@@ -303,12 +302,12 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
-	server.EventsStatus, err = dbhelper.GetEnventsStatus(server.Conn)
+	server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR: Could not get events")
 		return err
 	}
-	su := dbhelper.GetStatus(server.Conn)
+	su, _ := dbhelper.GetStatus(server.Conn)
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
 	} else {
@@ -419,8 +418,8 @@ func (sl serverList) checkAllSlavesRunning() bool {
 
 /* Check Consistency parameters on server */
 func (server *ServerMonitor) acidTest() bool {
-	syncBin := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
-	logFlush := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
+	syncBin, _ := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
+	logFlush, _ := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
 	if syncBin == "1" && logFlush == "1" {
 		return true
 	}
@@ -442,10 +441,14 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf("INFO : Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	maxConn = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
-	_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
+	maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	if err != nil {
-		server.ClusterGroup.LogPrint("ERROR: Could not set max_connections to 0 on demoted leader")
+		server.ClusterGroup.LogPrint("ERROR: Could not get max_connections value on demoted leader")
+	} else {
+		_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
+		if err != nil {
+			server.ClusterGroup.LogPrint("ERROR: Could not set max_connections to 0 on demoted leader")
+		}
 	}
 	server.ClusterGroup.LogPrintf("INFO : Terminating all threads on %s", server.URL)
 	dbhelper.KillThreads(server.Conn)
