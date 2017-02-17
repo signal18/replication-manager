@@ -1,0 +1,39 @@
+<html>
+    <head>
+    <title>Simple Angular Auth</title>
+    <script src="/static/angular.min.js"></script>
+    <script src="dashboard.js"></script>
+    <link rel="stylesheet" href="/static/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" >
+    <style>
+  td {
+      white-space: nowrap;
+  }
+  .sectionheader {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 0;
+    padding-left: 0;
+    border: none;
+    background-color: transparent;
+    letter-spacing: 0.02em;
+  	text-transform: uppercase;
+  }
+  </style>
+  </head>
+    <body ng-app="dashboard" ng-controller="DashboardController">
+<div ng-controller="DashboardController" class="col-lg-12">
+    <h1>Replication Manager</h1>
+
+    <input type="text" ng-model="main.username" placeholder="username"><br>
+    <input type="password" ng-model="main.password" placeholder="password"><br>
+    <br>
+
+    <button class="btn btn-primary" ng-click="main.login()">Login</button>
+    <button  class="btn btn-primary" ng-click="main.logout()" ng-show="main.isAuthed()">Logout</button>
+    <br><br>
+    {{main.message}}
+
+    <br><br><br>
+  </div>
+    </body>
+</html>
