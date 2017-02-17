@@ -81,7 +81,7 @@ func initConfig() {
 	if err == nil {
 		log.WithFields(log.Fields{
 			"file": viper.ConfigFileUsed(),
-		}).Info("Using config file")
+		}).Debug("Using config file")
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.WithError(err).Fatal("Could not parse config file")
@@ -106,7 +106,7 @@ func initConfig() {
 			}
 		}
 		cfgGroup = strings.Join(discoveries, ",")
-		log.Printf("INFO : Discovered clusters %s", cfgGroup)
+		log.WithField("clusters", cfgGroup).Debug("New clusters discovered")
 
 	}
 	cfgGroupIndex = 0
@@ -121,7 +121,7 @@ func initConfig() {
 
 			if gl != "" {
 				cfgGroup = gl
-				log.WithField("group", gl).Info("Reading configuration group")
+				log.WithField("group", gl).Debug("Reading configuration group")
 				cf2 := viper.Sub(gl)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
@@ -133,12 +133,12 @@ func initConfig() {
 		}
 
 		cfgGroupIndex--
-		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Info("Default Cluster set")
+		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Debug("Default Cluster set")
 		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	} else {
 		cfgGroupList = append(cfgGroupList, "Default")
-		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Info("Default Cluster set")
+		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Debug("Default Cluster set")
 
 		confs["Default"] = conf
 		cfgGroup = "Default"
