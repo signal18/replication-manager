@@ -10,9 +10,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -73,10 +74,12 @@ func initConfig() {
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
-		log.Println("INFO : Using config file:", viper.ConfigFileUsed())
+		log.WithFields(log.Fields{
+			"file": viper.ConfigFileUsed(),
+		}).Info("Using config file")
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
-		log.Fatalln("ERROR: Could not parse config file:", err)
+		log.WithError(err).Fatal("Could not parse config file")
 	}
 	m := viper.AllKeys()
 	if cfgGroup == "" {
@@ -113,10 +116,10 @@ func initConfig() {
 
 			if gl != "" {
 				cfgGroup = gl
-				log.Println("INFO : Reading configuration group", gl)
+				log.WithField("group", gl).Info("Reading configuration group")
 				cf2 := viper.Sub(gl)
 				if cf2 == nil {
-					log.Fatalln("ERROR: Could not parse configuration group", gl)
+					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
 				cf2.Unmarshal(&conf)
 				confs[cfgGroup] = conf
@@ -125,12 +128,13 @@ func initConfig() {
 		}
 
 		cfgGroupIndex--
-		log.Printf("INFO : Default Cluster %s", cfgGroupList[cfgGroupIndex])
+		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Info("Default Cluster set")
 		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	} else {
 		cfgGroupList = append(cfgGroupList, "Default")
-		log.Printf("INFO : Default Cluster %s", cfgGroupList[cfgGroupIndex])
+		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Info("Default Cluster set")
+
 		confs["Default"] = conf
 		cfgGroup = "Default"
 	}
