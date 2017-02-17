@@ -54,7 +54,7 @@ func init() {
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
-	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "/tmp/repmgr/mprof", "Write a memory profile to a file readable by pprof")
+	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "/tmp/repmgr.mprof", "Write a memory profile to a file readable by pprof")
 
 	viper.BindPFlags(rootCmd.PersistentFlags())
 	if conf.Verbose == true && conf.LogLevel == 0 {
