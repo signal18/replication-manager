@@ -160,3 +160,33 @@ func (cluster *Cluster) waitFailoverStart() error {
 	}
 	return nil
 }
+
+func (cluster *Cluster) waitRejoinEnd() error {
+	exitloop := 0
+
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	for exitloop < 30 {
+
+		select {
+		case <-ticker.C:
+			cluster.LogPrint("TEST: Waiting Rejoin ")
+			exitloop++
+
+		case sig := <-rejoinChan:
+			if sig {
+				exitloop = 100
+			}
+		default:
+
+		}
+
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("TEST: Rejoin Finished")
+
+	} else {
+		cluster.LogPrintf("TEST: Rejoin timeout")
+		return errors.New("Failed to Failover")
+	}
+	return nil
+}

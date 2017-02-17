@@ -51,6 +51,7 @@ type Cluster struct {
 
 var switchoverChan = make(chan bool)
 var failoverChan = make(chan bool)
+var rejoinChan = make(chan bool)
 
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.

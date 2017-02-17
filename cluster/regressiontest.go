@@ -1131,7 +1131,7 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 	}
 
 	cluster.startMariaDB(SaveMaster)
-
+	cluster.waitRejoinEnd()
 	cluster.ShutdownClusterSemiSync()
 
 	return true
