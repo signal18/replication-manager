@@ -88,7 +88,7 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 		cluster.LogPrintf("ERRROR : %s", err)
 		return err
 	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+path+"/../etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket=/tmp/"+server.Name+".sock", "--user="+usr.Username, "--pid_file=/tmp/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
 	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
@@ -129,25 +129,25 @@ func (cluster *Cluster) waitFailoverEnd() {
 
 func (cluster *Cluster) waitFailoverStart() error {
 	exitloop := 0
+
+	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 
-		cluster.LogPrint("TEST: Waiting Failover startup")
-
 		select {
-		case sig := <-switchoverChan:
-			if sig {
-				exitloop = 100
-			}
+		case <-ticker.C:
+			cluster.LogPrint("TEST: Waiting Failover startup")
+			exitloop++
+
 		case sig := <-failoverChan:
 			if sig {
 				exitloop = 100
 			}
 		default:
-			exitloop++
+
 		}
 
 	}
-	if exitloop == 101 {
+	if exitloop == 100 {
 		cluster.LogPrintf("TEST: Failover started")
 
 	} else {
