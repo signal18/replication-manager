@@ -7,12 +7,14 @@ package main
 
 import (
 	"io/ioutil"
-	"log"
+	mysqllog "log"
 	"os"
 	"runtime/pprof"
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
@@ -42,7 +44,7 @@ func init() {
 	runUUID = uuid.NewV4().String()
 	runStatus = "A"
 	//	conf := confs[cfgGroup]
-	var errLog = mysql.Logger(log.New(ioutil.Discard, "", 0))
+	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
@@ -154,7 +156,7 @@ var failoverCmd = &cobra.Command{
 		currentCluster = new(cluster.Cluster)
 		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
-			log.Fatalln(err)
+			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.FailoverForce()
 
@@ -174,7 +176,7 @@ and demoting the old master to slave`,
 		currentCluster = new(cluster.Cluster)
 		err := currentCluster.Init(conf, cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
-			log.Fatalln(err)
+			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.MasterFailover(false)
 	},
@@ -192,7 +194,7 @@ var topologyCmd = &cobra.Command{
 		currentCluster = new(cluster.Cluster)
 		err := currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
-			log.Fatalln(err)
+			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.PrintTopology()
 
@@ -211,18 +213,18 @@ Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if conf.LogLevel >= 2 {
-			log.Printf("%+v", conf)
+			log.Debug("%+v", conf)
 		}
 
 		if !conf.Daemon {
 			err := termbox.Init()
 			if err != nil {
-				log.Fatalln("Termbox initialization error", err)
+				log.WithError(err).Fatal("Termbox initialization error")
 			}
 		}
 		if conf.Daemon {
 			termlength = 40
-			log.Printf("INFO : replication-manager version %s started in daemon mode", Version)
+			log.WithField("version", Version).Info("replication-manager started in daemon mode")
 		} else {
 			_, termlength = termbox.Size()
 			if termlength == 0 {
@@ -234,8 +236,10 @@ Interactive console and HTTP dashboards are available for control`,
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
 			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
-			log.Printf("INFO : carbon server started on metric port %d\n", conf.GraphiteCarbonPort)
-			log.Printf("INFO : carbon server started on http port %d\n", conf.GraphiteCarbonServerPort)
+			log.WithFields(log.Fields{
+				"metricport": conf.GraphiteCarbonPort,
+				"httpport":   conf.GraphiteCarbonServerPort,
+			}).Info("Carbon server started")
 
 			/*
 				carbonServer string host:port
@@ -250,13 +254,13 @@ Interactive console and HTTP dashboards are available for control`,
 
 			time.Sleep(2 * time.Second)
 			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.WorkingDir)
-			log.Printf("INFO : carbon server API started on http port %d", conf.GraphiteCarbonApiPort)
+			log.WithField("apiport", conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 		}
 
 		// If there's an existing encryption key, decrypt the passwords
 		k, err := readKey()
 		if err != nil {
-			log.Println("INFO : No existing password encryption scheme:", err)
+			log.WithError(err).Info("No existing password encryption scheme")
 			k = nil
 		}
 		for _, gl := range cfgGroupList {
