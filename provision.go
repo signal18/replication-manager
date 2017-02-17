@@ -9,13 +9,10 @@
 package main
 
 import (
-	//"fmt"
+	"log"
 
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
-	//"github.com/tanji/replication-manager/misc"
-	"log"
-	//"os/exec"
 )
 
 var (
@@ -25,8 +22,6 @@ var (
 )
 
 func init() {
-
-	log.Printf("%s", cfgGroup)
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(provisionCmd)
 	provisionCmd.Flags().StringVar(&source, "source", "", "Source server")
