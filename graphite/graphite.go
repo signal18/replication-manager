@@ -3,9 +3,6 @@ package graphite
 import (
 	"bytes"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/tanji/replication-manager/graphite/carbon"
-	"github.com/tanji/replication-manager/graphite/logging"
 	"io/ioutil"
 	"log"
 	"net"
@@ -17,6 +14,10 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/tanji/replication-manager/graphite/carbon"
+	"github.com/tanji/replication-manager/graphite/logging"
 )
 
 import _ "net/http/pprof"
@@ -206,16 +207,16 @@ func httpServe(addr string) (func(), error) {
 	return func() { listener.Close() }, nil
 }
 
-func RunCarbon(DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) {
+func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) {
 	var err error
 
-	input, err := ioutil.ReadFile(DataDir + "/carbon.conf.template")
+	input, err := ioutil.ReadFile(ShareDir + "/carbon.conf.template")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	output := bytes.Replace(input, []byte("{{.schemas}}"), []byte(DataDir+"/schemas.conf"), -1)
+	output := bytes.Replace(input, []byte("{{.schemas}}"), []byte(ShareDir+"/schemas.conf"), -1)
 	fullpath, err := filepath.Abs(DataDir + "/graphite")
 
 	output2 := bytes.Replace(output, []byte("{{.datadir}}"), []byte(fullpath), -1)

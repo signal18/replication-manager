@@ -12,7 +12,7 @@ import (
 )
 
 func (cluster *Cluster) initHaproxy() {
-	haproxyconfigPath := cluster.conf.HttpRoot
+	haproxyconfigPath := cluster.conf.WorkingDir
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := cluster.cfgGroup + "-haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
@@ -23,16 +23,16 @@ func (cluster *Cluster) initHaproxy() {
 
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(cluster.conf.HttpRoot, "/", haproxysockFile),
+		SockFile: filepath.Join(cluster.conf.WorkingDir, "/", haproxysockFile),
 	}
 	haConfig := haproxy.Config{
-		TemplateFile:  filepath.Join(haproxyconfigPath, haproxytemplateFile),
+		TemplateFile:  filepath.Join(cluster.conf.ShareDir, haproxytemplateFile),
 		ConfigFile:    filepath.Join(haproxyconfigPath, haproxyconfigFile),
 		JsonFile:      filepath.Join(haproxyconfigPath, haproxyjsonFile),
 		ErrorPagesDir: filepath.Join(haproxyconfigPath, haproxyerrorPagesDir, "/"),
-		PidFile:       filepath.Join(cluster.conf.HttpRoot, "/", haproxypidFile),
-		SockFile:      filepath.Join(cluster.conf.HttpRoot, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(cluster.conf.HttpRoot + "/"),
+		PidFile:       filepath.Join(cluster.conf.WorkingDir, "/", haproxypidFile),
+		SockFile:      filepath.Join(cluster.conf.WorkingDir, "/", haproxysockFile),
+		WorkingDir:    filepath.Join(cluster.conf.WorkingDir + "/"),
 	}
 
 	log.Printf("Haproxy loading haproxy config at %s", haproxyconfigPath)
