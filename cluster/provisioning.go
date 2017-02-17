@@ -53,10 +53,10 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf string) error {
 	server.Name = name
 	server.Conf = conf
-	path := cluster.conf.HttpRoot + "/tests/" + name
+	path := cluster.conf.WorkingDir + "/" + name
 	os.RemoveAll(path)
 
-	err := misc.CopyDir(cluster.conf.HttpRoot+"/tests/data", path)
+	err := misc.CopyDir(cluster.conf.ShareDir+"/tests/data", path)
 	if err != nil {
 		cluster.LogPrintf("ERRROR : %s", err)
 		return err
@@ -82,7 +82,7 @@ func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
 func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
 
-	path := cluster.conf.HttpRoot + "/tests/" + server.Name
+	path := cluster.conf.WorkingDir + "/" + server.Name
 	usr, err := user.Current()
 	if err != nil {
 		cluster.LogPrintf("ERRROR : %s", err)
@@ -143,10 +143,8 @@ func (cluster *Cluster) waitFailoverStart() error {
 				exitloop = 100
 			}
 		default:
-			time.Sleep(time.Millisecond * 2000)
+			exitloop++
 		}
-
-		exitloop++
 
 	}
 	if exitloop == 101 {
