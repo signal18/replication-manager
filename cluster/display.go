@@ -12,8 +12,9 @@ package cluster
 import (
 	"fmt"
 	"io"
-	"log"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/nsf/termbox-go"
 )
