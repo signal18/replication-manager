@@ -22,18 +22,21 @@ import (
 
 var (
 	cfgFile       string
-	cfgGroup      string = ""
+	cfgGroup      string
 	cfgGroupList  []string
-	cfgGroupIndex int = 0
+	cfgGroupIndex int
 	conf          config.Config
 	memprofile    string
 )
 var confs = make(map[string]config.Config)
 
 var (
-	Version     string
+	// Version is the semantic version number, e.g. 1.0.1
+	Version string
+	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
-	Build       string
+	// Build is the build date of replication-manager
+	Build string
 )
 
 func init() {
