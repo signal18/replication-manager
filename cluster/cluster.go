@@ -48,7 +48,8 @@ type Cluster struct {
 	canFlashBack         bool
 }
 
-var swChan = make(chan bool)
+var switchoverChan = make(chan bool)
+var failoverChan = make(chan bool)
 
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
@@ -221,9 +222,13 @@ func (cluster *Cluster) Run() {
 				}
 				cluster.checkfailed()
 				select {
-				case sig := <-swChan:
+				case sig := <-switchoverChan:
 					if sig {
 						cluster.MasterFailover(false)
+					}
+				case sig := <-failoverChan:
+					if sig {
+						cluster.MasterFailover(true)
 					}
 				default:
 					//do nothing
@@ -236,7 +241,7 @@ func (cluster *Cluster) Run() {
 	}
 }
 func (cluster *Cluster) SwitchOver() {
-	swChan <- true
+	switchoverChan <- true
 }
 func (cluster *Cluster) checkfailed() {
 	// Don't trigger a failover if a switchover is happening
@@ -253,7 +258,7 @@ func (cluster *Cluster) checkfailed() {
 					cluster.sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
 					cluster.conf.Interactive = true
 				}
-				cluster.MasterFailover(true)
+				failoverChan <- true
 			} else if cluster.conf.FailTime > 0 && rem%10 == 0 {
 				cluster.LogPrintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
 			} else {
@@ -419,6 +424,7 @@ func (cluster *Cluster) IsMasterFailed() bool {
 		return false
 	}
 }
+
 func (cluster *Cluster) SetSlavesReadOnly(check bool) {
 	for _, sl := range cluster.slaves {
 		dbhelper.SetReadOnly(sl.Conn, check)
@@ -428,6 +434,7 @@ func (cluster *Cluster) SetSlavesReadOnly(check bool) {
 func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
 }
+
 func (cluster *Cluster) SetCleanAll(check bool) {
 	cluster.CleanAll = check
 }

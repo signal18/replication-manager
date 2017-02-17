@@ -76,7 +76,7 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -112,7 +112,7 @@ func (cluster *Cluster) testSwitchOverLongQueryNoRplCheckNoSemiSync() bool {
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -148,7 +148,7 @@ func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSe
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -238,7 +238,7 @@ func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck() bool {
 			cluster.LogPrintf("TESTING : %s", err)
 		}
 	}
-	swChan <- true
+	switchoverChan <- true
 	cluster.waitFailoverEnd()
 	cluster.LogPrintf("INFO : New Master is %s ", cluster.master.URL)
 	for _, s := range cluster.slaves {
@@ -263,7 +263,7 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck() bool {
 		}
 	}
 	SaveMasterURL := cluster.master.URL
-	swChan <- true
+	switchoverChan <- true
 	cluster.waitFailoverEnd()
 	cluster.LogPrintf("INFO : New Master is %s ", cluster.master.URL)
 	if SaveMasterURL == cluster.master.URL {
@@ -302,7 +302,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck() 
 		}
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 		SaveMasterURL := cluster.master.URL
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -349,7 +349,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bo
 		}
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 		SaveMasterURL := cluster.master.URL
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -395,7 +395,7 @@ func (cluster *Cluster) testSwitchOverBackPreferedMasterNoRplCheckSemiSync() boo
 
 		cluster.LogPrintf("INFO : New Master  %s Failover counter %d", cluster.master.URL, i)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -432,7 +432,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesStopRplCheckNoSemiSync() bool {
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 		cluster.waitFailoverEnd()
 
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -473,7 +473,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck() bool {
 
 		cluster.LogPrintf("INFO : Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -514,7 +514,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync() bool {
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -555,7 +555,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync() bool
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -596,7 +596,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayRplChecksNoSemiSync() bool {
 
 		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-		swChan <- true
+		switchoverChan <- true
 
 		time.Sleep(recover_time * time.Second)
 		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
@@ -1009,13 +1009,6 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	return ret
 }
 
-func (cluster *Cluster) waitFailoverEnd() {
-	for cluster.sme.IsInFailover() {
-		time.Sleep(time.Second)
-	}
-	time.Sleep(recover_time * time.Second)
-}
-
 func (cluster *Cluster) PrepareBench() error {
 	var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
 	cluster.LogPrintf("BENCHMARK : %s", prepare)
@@ -1078,6 +1071,7 @@ func (cluster *Cluster) RunSysbench() error {
 }
 
 func (cluster *Cluster) DelayAllSlaves() error {
+	cluster.LogPrintf("BENCH : Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
@@ -1105,21 +1099,34 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback() bool {
 
 	err := cluster.Bootstrap()
 	if err != nil {
-		cluster.LogPrintf("INFO : Abording test, bootstrap failed")
+		cluster.LogPrintf("TEST : Abording test, bootstrap failed")
+		return false
 	}
 	cluster.waitFailoverEnd()
 	if cluster.master == nil {
-		cluster.LogPrintf("INFO : Abording test, no master found")
+		cluster.LogPrintf("TEST : Abording test, no master found")
+		cluster.ShutdownClusterSemiSync()
 		return false
 	}
 
 	SaveMasterURL := cluster.master.URL
 	SaveMaster := cluster.master
-	cluster.DelayAllSlaves()
+	//cluster.DelayAllSlaves()
+	cluster.PrepareBench()
+	//go cluster.RunBench()
 	cluster.killMariaDB(cluster.master)
+	/// give time to start the failover
+	err = cluster.waitFailoverStart()
+	if err != nil {
+		cluster.LogPrintf("TEST : Abording test, Failover Timeout")
+		cluster.ShutdownClusterSemiSync()
+		return false
+	}
 	cluster.waitFailoverEnd()
+
 	if cluster.master.URL == SaveMasterURL {
-		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.ShutdownClusterSemiSync()
 		return false
 	}
 

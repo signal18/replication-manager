@@ -47,7 +47,6 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	for _, server := range cluster.servers {
 		cluster.killMariaDB(server)
 	}
-
 	return nil
 }
 
@@ -63,6 +62,7 @@ func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf str
 		return err
 	}
 	err = cluster.startMariaDB(server)
+
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
 		if err != nil {
@@ -74,11 +74,14 @@ func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf str
 }
 
 func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
+	cluster.LogPrintf("TEST : Killing MariaDB %s %d", server.Name, server.Process.Pid)
 	server.Process.Kill()
 	return nil
 }
 
 func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
+	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
+
 	path := cluster.conf.HttpRoot + "/tests/" + server.Name
 	usr, err := user.Current()
 	if err != nil {
@@ -113,5 +116,45 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartAllNodes() error {
 
+	return nil
+}
+
+func (cluster *Cluster) waitFailoverEnd() {
+	for cluster.sme.IsInFailover() {
+		time.Sleep(time.Second)
+		cluster.LogPrintf("TEST: Waiting for failover stopped.")
+	}
+	time.Sleep(recover_time * time.Second)
+}
+
+func (cluster *Cluster) waitFailoverStart() error {
+	exitloop := 0
+	for exitloop < 30 {
+		time.Sleep(time.Millisecond * 2000)
+		cluster.LogPrint("TEST: Waiting Failover startup")
+
+		select {
+		case sig := <-switchoverChan:
+			if sig {
+				exitloop = 100
+			}
+		case sig := <-failoverChan:
+			if sig {
+				exitloop = 100
+			}
+		default:
+			//do nothing
+		}
+
+		exitloop++
+
+	}
+	if exitloop == 101 {
+		cluster.LogPrintf("TEST: Failover started")
+
+	} else {
+		cluster.LogPrintf("TEST: Failover timeout")
+		return errors.New("Failed to Failover")
+	}
 	return nil
 }
