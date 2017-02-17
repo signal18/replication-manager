@@ -227,10 +227,7 @@ func (cluster *Cluster) Run() {
 					if sig {
 						cluster.MasterFailover(false)
 					}
-				case sig := <-failoverChan:
-					if sig {
-						cluster.MasterFailover(true)
-					}
+
 				default:
 					//do nothing
 				}
@@ -241,9 +238,45 @@ func (cluster *Cluster) Run() {
 		}
 	}
 }
+
 func (cluster *Cluster) SwitchOver() {
 	switchoverChan <- true
 }
+
+func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
+	// illimited failed count
+	if cluster.master.FailCount >= cluster.conf.MaxFail {
+		cluster.LogPrintf("DEBUG: Need failover, maximum number of master failure detection reached")
+		return true
+	}
+	return false
+}
+
+func (cluster *Cluster) isMaxClusterFailoverCountReach() bool {
+	// illimited failed count
+	if cluster.conf.FailLimit == 0 {
+		return false
+	}
+	if cluster.failoverCtr == cluster.conf.FailLimit {
+		cluster.LogPrintf("DEBUG: Can't failover, maximum number of cluster failover reached")
+		return true
+	}
+	return false
+}
+
+func (cluster *Cluster) isBeetwenFailoverTimeTooShort() bool {
+	// illimited failed count
+	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
+	if cluster.conf.FailTime == 0 {
+		return false
+	}
+	if rem > 0 {
+		cluster.LogPrintf("DEBUG: Can failover, time between failover to short ")
+		return true
+	}
+	return false
+}
+
 func (cluster *Cluster) checkfailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
@@ -252,26 +285,17 @@ func (cluster *Cluster) checkfailed() {
 	}
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
-		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.master.FailCount >= cluster.conf.MaxFail {
-			rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
-			if (cluster.conf.FailTime == 0) || (cluster.conf.FailTime > 0 && (rem <= 0 || cluster.failoverCtr == 0)) {
-				if cluster.failoverCtr == cluster.conf.FailLimit {
-					cluster.sme.AddState("INF00002", state.State{ErrType: "INFO", ErrDesc: "Failover limit reached. Switching to manual mode", ErrFrom: "MON"})
-					cluster.conf.Interactive = true
-				}
+		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
+
+			if cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false {
+				cluster.MasterFailover(true)
 				failoverChan <- true
-			} else if cluster.conf.FailTime > 0 && rem%10 == 0 {
-				cluster.LogPrintf("WARN : Failover time limit enforced. Next failover available in %d seconds", rem)
 			} else {
 				cluster.LogPrintf("WARN : Constraint is blocking for failover")
 			}
-
-		} else if cluster.master.State == stateFailed && cluster.master.FailCount < cluster.conf.MaxFail {
-			cluster.LogPrintf("WARN : Waiting for more proof of master death")
-
 		}
 	} else {
-		cluster.LogPrintf("WARN : Unknown master when checking failover")
+		cluster.LogPrintf("WARN : No master skip failover check")
 	}
 }
 

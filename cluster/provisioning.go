@@ -81,8 +81,12 @@ func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
 
 func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
-
 	path := cluster.conf.WorkingDir + "/" + server.Name
+	err := os.RemoveAll(path + "/" + server.Name + ".pid")
+	if err != nil {
+		cluster.LogPrintf("ERRROR : %s", err)
+		return err
+	}
 	usr, err := user.Current()
 	if err != nil {
 		cluster.LogPrintf("ERRROR : %s", err)
