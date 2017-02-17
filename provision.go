@@ -9,7 +9,7 @@
 package main
 
 import (
-	"log"
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
@@ -43,7 +43,7 @@ var bootstrapCmd = &cobra.Command{
 		currentCluster.CleanAll = cleanall
 		err := currentCluster.Bootstrap()
 		if err != nil {
-			log.Println(err)
+			log.WithError(err).Error("Error bootstrapping replication")
 		}
 	},
 }
