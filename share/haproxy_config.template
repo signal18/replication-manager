@@ -1,0 +1,178 @@
+global
+ pidfile {{.PidFile}}
+
+ daemon
+ maxconn 4096
+ stats socket {{.SockFile}} level admin
+
+
+ ###
+ #
+ # Experimental: Logging Setup
+ #
+ # We log to a unix socket and read that socket from the Go program
+ #
+ #
+ log /var/run/vamp.log.sock local0
+
+ defaults
+   log global
+   mode http
+   option dontlognull
+   option redispatch
+   option clitcpka
+   option srvtcpka
+
+   retries 3
+   maxconn 500000
+
+   # slowloris protection: clients should send their full http request in the configured time
+   timeout http-request 5s
+
+   timeout connect 5000ms
+   timeout client 50000s
+   timeout server 50000s
+
+listen stats
+   bind :1988
+   mode http
+   stats enable
+   stats uri /
+   stats refresh 2s
+   stats realm Haproxy\ Stats
+   
+### BEGIN GENERATED SECTION ###
+{{range .Frontends}}
+frontend {{.Name}}
+    {{if .BindIp}}
+    bind {{.BindIp}}:{{.BindPort}}
+    {{end}}
+
+    {{ if eq .Mode "http" }} option httplog {{end}}
+    {{ if eq .Mode "tcp" }} option tcplog {{end}}
+
+
+    ###
+    #
+    # Set logging and set the headers to capture
+
+    # capture request header X-Vamp-Server-CurrentTime len 50
+    # capture response header X-Vamp-Server-ResponseTime len 50
+    # capture response header X-Vamp-Server-Name len 50
+
+
+    #log-format {\ "timestamp"\ :\ %t,\ "frontend"\ :\ "%f",\ "method"\ :\ "%r",\ "captured_request_headers"\ :\ "%hrl",\ "captures_response_headers"\ :\ "%hsl"\ }
+
+    #
+    ###
+
+    {{if .UnixSock}}
+    bind unix@{{.UnixSock}} {{.SockProtocol}}
+    {{end}}
+
+    mode {{.Mode}}
+    {{if .Options.HttpClose}} option http-server-close{{end}}
+
+    ###
+    #
+    # Spike/Rate Limiting & Quota Management
+    #
+    # We use a stick table to keep track of TCP connections rates and bytes send out.
+    # On these metrics we set rules to designate upper limits. When limits are hit
+    # we reroute the traffic to a specific abusers backend
+
+    {{if .HttpQuota.Rate }} # start HTTP spike limit generation
+
+        stick-table type ip size 200k expire {{ .HttpQuota.ExpiryTime}} store http_req_rate({{ .HttpQuota.SampleWindow}})
+
+        # values below are specific to the backend
+        # track the request and set ACL's
+        tcp-request content  track-sc1 src
+        acl marked_as_abuser  sc1_http_req_rate gt {{ .HttpQuota.Rate}}
+
+        use_backend abusers if marked_as_abuser
+
+    {{end}} # end HTTP spike limit generation
+
+    {{if .TcpQuota.Rate }} # start TCP spike limit generation
+
+        stick-table type ip size 200k expire {{ .TcpQuota.ExpiryTime}} store conn_rate({{ .TcpQuota.SampleWindow}})
+
+        # values below are specific to the backend
+        # track the request and set ACL's
+        tcp-request content  track-sc2 src
+        acl marked_as_abuser  sc2_conn_rate gt {{ .TcpQuota.Rate}}
+
+        use_backend abusers if marked_as_abuser
+
+    {{end}} # end spike limit generation
+
+    ###
+    # Filter Management
+    #
+    # set filters with optional negation
+    #
+
+    {{range .Filters}}
+    acl {{.Name}} {{.Condition}}
+    {{if .Negate}}
+    use_backend {{.Destination}} if !{{.Name}}
+    {{else}}
+    use_backend {{.Destination}} if {{.Name}}
+    {{end}}
+    {{end}}
+
+    default_backend {{.DefaultBackend}}
+
+{{end}}
+
+
+{{range .Backends}}
+
+backend {{.Name}}
+    mode {{.Mode}}
+#
+# Regular HTTP/TCP backends
+#
+
+   {{ if eq .Mode "http" }} balance roundrobin {{end}}
+   {{ if eq .Mode "tcp" }} balance leastconn {{end}}
+
+{{ if .ProxyMode}}
+
+    {{range .Servers}}
+        server {{.Name}} unix@{{.UnixSock}} send-proxy weight {{.Weight}}
+    {{end}}
+
+{{else}}
+
+   {{ if eq .Mode "http" }}
+
+   option forwardfor
+   http-response set-header X-Vamp-Server-Name %s
+   http-response set-header X-Vamp-Server-ResponseTime %t
+
+   {{end}}
+
+   {{ if eq .Mode "http" }} cookie vamp_srv insert indirect nocache httponly maxidle 5m maxlife 1h {{end}}
+    {{$mode := .Mode}}{{range .Servers}}
+        server {{.Name}} {{.Host}}:{{.Port}} {{if eq $mode "http" }} cookie {{.Name}} {{end}} weight {{.Weight}} maxconn {{.MaxConn}} {{if .Check}}check inter {{.CheckInterval}}{{end}} {{end}}
+    {{if .Options.AbortOnClose}} option abortonclose{{end}}
+    {{if .Options.AllBackups}} option allbackups{{end}}
+    {{if .Options.CheckCache}} option checkcache{{end}}
+    {{if .Options.ForwardFor}} option forwardfor{{end}}
+    {{if .Options.HttpClose}} option http-server-close{{end}}
+    {{if .Options.HttpCheck}} option httpchk{{end}}
+    {{if .Options.SslHelloCheck}} option ssl-hello-chk{{end}}
+    {{if .Options.TcpKeepAlive}} option tcpka{{end}}
+    {{if .Options.TcpSmartAccept}} option tcp-smart-accept{{end}}
+    {{if .Options.TcpSmartConnect}} option tcp-smart-connect{{end}}
+    {{if .Options.TcpLog}} option tcplog
+    {{end}}
+
+{{end}}
+
+{{end}}
+
+
+### END GENERATED SECTION ###

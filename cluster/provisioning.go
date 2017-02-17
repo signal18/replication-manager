@@ -130,7 +130,7 @@ func (cluster *Cluster) waitFailoverEnd() {
 func (cluster *Cluster) waitFailoverStart() error {
 	exitloop := 0
 	for exitloop < 30 {
-		time.Sleep(time.Millisecond * 2000)
+
 		cluster.LogPrint("TEST: Waiting Failover startup")
 
 		select {
@@ -143,7 +143,7 @@ func (cluster *Cluster) waitFailoverStart() error {
 				exitloop = 100
 			}
 		default:
-			//do nothing
+			time.Sleep(time.Millisecond * 2000)
 		}
 
 		exitloop++

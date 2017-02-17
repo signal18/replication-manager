@@ -9,6 +9,8 @@
 package config
 
 type Config struct {
+	WorkingDir               string `mapstructure:"working-directory"`
+	ShareDir                 string `mapstructure:"share-directory"`
 	User                     string
 	Hosts                    string
 	Socket                   string

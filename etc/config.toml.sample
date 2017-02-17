@@ -41,6 +41,9 @@ test = false
 # LOG
 # ---
 
+working-directory = "/var/lib/replication-manager"
+share-directory = "/usr/share/replication-manager"
+
 logfile = "/var/log/replication-manager.log"
 verbose = true
 
