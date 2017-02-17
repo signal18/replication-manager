@@ -326,7 +326,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		var err error
 		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
+			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session")
 			cluster.conf.LogFile = ""
 		}
 	}
@@ -334,19 +334,19 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	if cluster.conf.Hosts != "" {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
-		cluster.LogPrint("ERROR: No hosts list specified.")
-		return errors.New("ERROR: No hosts list specified.")
+		cluster.LogPrint("ERROR: No hosts list specified")
+		return errors.New("ERROR: No hosts list specified")
 	}
 	// validate users
 	if cluster.conf.User == "" {
-		cluster.LogPrint("ERROR: No master user/pair specified.")
-		return errors.New("ERROR: No master user/pair specified.")
+		cluster.LogPrint("ERROR: No master user/pair specified")
+		return errors.New("ERROR: No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 
 	if cluster.conf.RplUser == "" {
-		cluster.LogPrint("ERROR: No replication user/pair specified.")
-		return errors.New("ERROR: No replication user/pair specified.")
+		cluster.LogPrint("ERROR: No replication user/pair specified")
+		return errors.New("ERROR: No replication user/pair specified")
 	}
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
 
