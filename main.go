@@ -41,6 +41,8 @@ var (
 
 func init() {
 
+	log.SetFormatter(&log.TextFormatter{})
+
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(versionCmd)
