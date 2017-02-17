@@ -3,11 +3,12 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/tanji/replication-manager/config"
 	"github.com/tanji/replication-manager/crypto"
@@ -91,7 +92,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
 	}
 	db, err := cluster.newServerMonitor(conf.Hosts)
 	if err != nil {
-		log.Println("Error opening database connection: ", err)
+		log.WithError(err).Error("Error opening database connection")
 		return nil, err
 	}
 
@@ -280,14 +281,14 @@ func (cluster *Cluster) agentFlagCheck() {
 	if cluster.conf.Hosts != "" {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
-		log.Fatal("ERROR: No hosts list specified.")
+		log.Fatal("No hosts list specified")
 	}
 	if len(cluster.hostList) > 1 {
-		log.Fatal("ERROR: Agent can only monitor a single host")
+		log.Fatal("Agent can only monitor a single host")
 	}
 	// validate users.
 	if cluster.conf.User == "" {
-		log.Fatal("ERROR: No master user/pair specified.")
+		log.Fatal("No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 }
