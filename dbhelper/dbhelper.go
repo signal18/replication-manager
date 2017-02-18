@@ -747,7 +747,7 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 }
 
 func runPreparedExecConcurrent(db *sqlx.DB, n int, co int) error {
-	stmt, err := db.Prepare("UPDATE replication_manager_schema.bench SET val=val+1 ")
+	stmt, err := db.Prepare("UPDATE replication_manager_schema.bench SET val=val+1 WHERE id=1")
 	if err != nil {
 		return err
 	}
@@ -832,7 +832,7 @@ func benchPreparedExecConcurrent16(db *sqlx.DB, n int) error {
 
 func InjectLongTrx(db *sqlx.DB, time int) error {
 	_, err := db.Exec("set binlog_format='STATEMENT'")
-	_, err = db.Exec("INSERT INTO replication_manager_schema.bench  select  sleep(" + fmt.Sprintf("%d", time) + ") from dual")
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val)  select  sleep(" + fmt.Sprintf("%d", time) + ") from dual")
 	if err != nil {
 		return err
 	}
@@ -845,11 +845,11 @@ func benchWarmup(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(val bigint unsigned )")
+	_, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(id bigint unsigned primary key auto_increment, val bigint unsigned  )")
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("INSERT INTO replication_manager_schema.bench VALUES(1)")
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val) VALUES(1)")
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,5 @@
 hash: fb1276f725f7dba031ac0efc83fa19ba12c5afa0ec7d166f80271183939c4338
-updated: 2017-02-07T15:46:13.928935124+01:00
+updated: 2017-02-18T19:36:38.437770078+01:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
@@ -272,9 +272,13 @@ imports:
 - name: github.com/spf13/jwalterweatherman
   version: 33c24e77fb80341fe7130ee7c594256ff08ccc46
 - name: github.com/spf13/pflag
-  version: 25f8b5b07aece3207895bf19f7ab517eb3b22a40 
+  version: 25f8b5b07aece3207895bf19f7ab517eb3b22a40  
 - name: github.com/spf13/viper
   version: 5ed0fc31f7f453625df314d8e66b9791e8d13003
+- name: github.com/tanji/mariadb-tools
+  version: 75a50b2bb0266d464e6d86caee3b0d01c21c5b36
+  subpackages:
+  - dbhelper
 - name: github.com/ugorji/go
   version: ded73eae5db7e7a0ef6f55aace87a2873c5d2b74
   subpackages:
