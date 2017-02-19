@@ -6,8 +6,7 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-// Package termlog
-// termbox logging package
+// Package termlog is a termbox logging package
 package termlog
 
 import (
@@ -29,6 +28,12 @@ func NewTermLog(sz int) TermLog {
 	tl.Len = sz
 	tl.Buffer = make([]string, tl.Len)
 	return tl
+}
+
+func (tl *TermLog) Write(b []byte) (n int, err error) {
+	s := string(b)
+	tl.Add(s)
+	return len(b), nil
 }
 
 func (tl *TermLog) Add(s string) {
