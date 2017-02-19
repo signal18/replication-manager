@@ -83,7 +83,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
 	monitorCmd.Flags().StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
 	monitorCmd.Flags().StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
-	monitorCmd.Flags().IntVar(&conf.MxsyWritePort, "maxscale-write-port", 3306, "maxscale read-write port to leader")
+	monitorCmd.Flags().IntVar(&conf.MxsWritePort, "maxscale-write-port", 3306, "maxscale read-write port to leader")
 	monitorCmd.Flags().IntVar(&conf.MxsReadPort, "maxscale-read-port", 3307, "maxscale load balance read port to all nodes")
 	monitorCmd.Flags().IntVar(&conf.MxsReadWritePort, "maxscale-read-write-port", 3308, "maxscale load balance read port to all nodes")
 	monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use haproxy on same host")
