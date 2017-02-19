@@ -6,7 +6,10 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync() bool {
+func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 8
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverLongTransactionNoRplCheckNoSemiSync")
@@ -22,24 +25,28 @@ func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSe
 	}
 
 	SaveMasterURL := cluster.master.URL
-	go dbhelper.InjectLongTrx(cluster.master.Conn, 20)
-	for i := 0; i < 1; i++ {
-
-		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
-
-		switchoverChan <- true
-
-		cluster.waitFailoverEnd()
-		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
-
+	db, err := cluster.getClusterProxyConn()
+	if err != nil {
+		cluster.LogPrintf("INFO : Can't take proxy conn %s ", err)
+		cluster.closeTestCluster(conf)
+		return false
 	}
-	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
-	}
+	go dbhelper.InjectLongTrx(db, 20)
+	time.Sleep(2 * time.Second)
+	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
+
+	switchoverChan <- true
+
+	cluster.waitFailoverEnd()
+	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
+
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.closeTestCluster(conf)
 		return false
+
 	}
+	cluster.closeTestCluster(conf)
 	return true
 }

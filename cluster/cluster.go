@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/tanji/replication-manager/config"
 	"github.com/tanji/replication-manager/crypto"
@@ -296,7 +298,9 @@ func (cluster *Cluster) checkfailed() {
 			}
 		}
 	} else {
-		cluster.LogPrintf("WARN : No master skip failover check")
+		if cluster.conf.LogLevel > 1 {
+			cluster.LogPrintf("WARN : No master skip failover check")
+		}
 	}
 }
 
@@ -638,4 +642,38 @@ func (cluster *Cluster) Bootstrap() error {
 	cluster.LogPrintf("INFO : Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	cluster.sme.RemoveFailoverState()
 	return nil
+}
+
+func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
+	var proxyHost string
+	var proxyPort string
+	proxyHost = ""
+	if cluster.conf.MxsOn {
+		proxyHost = cluster.conf.MxsHost
+		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
+
+	}
+	if cluster.conf.HaproxyOn {
+		proxyHost = "127.0.0.1"
+		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
+	}
+
+	IP, err := dbhelper.CheckHostAddr(proxyHost)
+	if err != nil {
+		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
+		return nil, errmsg
+	}
+	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	mydsn := func() string {
+		dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+		if proxyHost != "" {
+			dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
+		} else {
+			return ""
+		}
+		return dsn
+	}
+
+	return sqlx.Open("mysql", mydsn())
+
 }

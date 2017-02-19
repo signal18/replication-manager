@@ -128,7 +128,7 @@ func (cluster *Cluster) waitFailoverEnd() {
 		time.Sleep(time.Second)
 		cluster.LogPrintf("TEST: Waiting for failover stopped.")
 	}
-	time.Sleep(recover_time * time.Second)
+	time.Sleep(recoverTime * time.Second)
 }
 
 func (cluster *Cluster) waitFailoverStart() error {

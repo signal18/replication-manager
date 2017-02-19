@@ -68,6 +68,9 @@ type Config struct {
 	MxsPort                  string `mapstructure:"maxscale-port"`
 	MxsUser                  string `mapstructure:"maxscale-user"`
 	MxsPass                  string `mapstructure:"maxscale-pass"`
+	MxsWritePort             int    `mapstructure:"maxscale-write-port"`
+	MxsReadPort              int    `mapstructure:"maxscale-read-port"`
+	MxsReadWritePort         int    `mapstructure:"maxscale-read-write-port"`
 	HaproxyOn                bool   `mapstructure:"haproxy"`
 	HaproxyWritePort         int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort          int    `mapstructure:"haproxy-read-port"`

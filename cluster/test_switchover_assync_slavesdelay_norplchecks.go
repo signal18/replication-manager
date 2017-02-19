@@ -6,7 +6,10 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
+func (cluster *Cluster) testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 8
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync")
@@ -42,7 +45,9 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync() bool
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.closeTestCluster(conf)
 		return false
 	}
+	cluster.closeTestCluster(conf)
 	return true
 }

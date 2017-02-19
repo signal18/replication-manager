@@ -1,6 +1,9 @@
 package cluster
 
-func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck() bool {
+func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverNoReadOnlyNoRplCheck")
@@ -23,8 +26,10 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck() bool {
 	for _, s := range cluster.slaves {
 		cluster.LogPrintf("INFO : Server  %s is %s", s.URL, s.ReadOnly)
 		if s.ReadOnly != "OFF" {
+			cluster.closeTestCluster(conf)
 			return false
 		}
 	}
+	cluster.closeTestCluster(conf)
 	return true
 }

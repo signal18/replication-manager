@@ -22,17 +22,19 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string)
 	err := cluster.waitFailoverStart()
 	if err != nil {
 		cluster.LogPrintf("TEST : Abording test, Failover Timeout")
+		cluster.closeTestCluster(conf)
 		return false
 	}
 	cluster.waitFailoverEnd()
 
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-
+		cluster.closeTestCluster(conf)
 		return false
 	}
 	cluster.startMariaDB(SaveMaster)
 	cluster.waitRejoinEnd()
 	cluster.closeTestCluster(conf)
+
 	return true
 }

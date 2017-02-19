@@ -6,7 +6,10 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync() bool {
+func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSlaReplAllSlavesStopNoSemySync")
 	cluster.conf.MaxDelay = 0
 	for _, s := range cluster.servers {
@@ -26,7 +29,7 @@ func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync() bool {
 	for _, s := range cluster.slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
-	time.Sleep(recover_time * time.Second)
+	time.Sleep(recoverTime * time.Second)
 	sla2 := cluster.sme.GetUptimeFailable()
 	for _, s := range cluster.slaves {
 		dbhelper.StartSlave(s.Conn)
@@ -42,8 +45,10 @@ func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync() bool {
 		}
 	}
 	if sla2 == sla1 {
+		cluster.closeTestCluster(conf)
 		return false
 	} else {
+		cluster.closeTestCluster(conf)
 		return true
 	}
 }

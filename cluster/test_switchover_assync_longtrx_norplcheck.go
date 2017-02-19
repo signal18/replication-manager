@@ -2,7 +2,10 @@ package cluster
 
 import "time"
 
-func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool {
+func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 8
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverLongTransactionNoRplCheckNoSemiSync")
@@ -36,7 +39,9 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync() bool
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.closeTestCluster(conf)
 		return false
 	}
+	cluster.closeTestCluster(conf)
 	return true
 }

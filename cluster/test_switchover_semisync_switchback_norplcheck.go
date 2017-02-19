@@ -6,7 +6,10 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bool {
+func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
 	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOver2TimesReplicationOkSemisync")
@@ -36,6 +39,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bo
 
 		if SaveMasterURL == cluster.master.URL {
 			cluster.LogPrintf("INFO : same server URL after switchover")
+			cluster.closeTestCluster(conf)
 			return false
 		}
 	}
@@ -43,12 +47,15 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck() bo
 	for _, s := range cluster.slaves {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("INFO : Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.closeTestCluster(conf)
 			return false
 		}
 		if s.MasterServerID != cluster.master.ServerID {
 			cluster.LogPrintf("INFO :  Replication is  pointing to wrong master %s ", cluster.master.ServerID)
+			cluster.closeTestCluster(conf)
 			return false
 		}
 	}
+	cluster.closeTestCluster(conf)
 	return true
 }

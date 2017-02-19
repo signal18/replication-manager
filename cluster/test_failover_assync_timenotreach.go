@@ -2,10 +2,11 @@ package cluster
 
 import "time"
 
-func (cluster *Cluster) testFailOverTimeNotReach() bool {
+func (cluster *Cluster) testFailOverTimeNotReach(conf string) bool {
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 	cluster.conf.MaxDelay = 0
-	cluster.Bootstrap()
-	cluster.waitFailoverEnd()
 
 	cluster.LogPrintf("TESTING : Starting Test %s", "testFailOverTimeNotReach")
 	for _, s := range cluster.servers {
@@ -36,10 +37,10 @@ func (cluster *Cluster) testFailOverTimeNotReach() bool {
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-
+		cluster.closeTestCluster(conf)
 		return false
 	}
-
+	cluster.closeTestCluster(conf)
 	return true
 }
 

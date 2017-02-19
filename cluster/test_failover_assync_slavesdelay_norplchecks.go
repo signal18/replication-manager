@@ -6,10 +6,11 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
+func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf string) bool {
 
-	cluster.Bootstrap()
-	time.Sleep(5 * time.Second)
+	if cluster.initTestCluster(conf) == false {
+		return false
+	}
 
 	cluster.LogPrintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayNoRplChecksNoSemiSync")
 	for _, s := range cluster.servers {
@@ -58,9 +59,9 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync() bool {
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, cluster.master.URL)
-
+		cluster.closeTestCluster(conf)
 		return false
 	}
-
+	cluster.closeTestCluster(conf)
 	return true
 }

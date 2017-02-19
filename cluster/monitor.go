@@ -159,17 +159,19 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
 			server.FailCount++
 			server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
-			if server.URL == server.ClusterGroup.master.URL {
-				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
-					server.ClusterGroup.LogPrintf("WARN : Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
-				}
-				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
-					if server.FailCount == server.ClusterGroup.conf.MaxFail {
-						server.ClusterGroup.LogPrint("WARN : Declaring master as failed")
+			if server.ClusterGroup.master != nil {
+				if server.URL == server.ClusterGroup.master.URL {
+					if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
+						server.ClusterGroup.LogPrintf("WARN : Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
 					}
-					server.ClusterGroup.master.State = stateFailed
-				} else {
-					server.ClusterGroup.master.State = stateSuspect
+					if server.FailCount >= server.ClusterGroup.conf.MaxFail {
+						if server.FailCount == server.ClusterGroup.conf.MaxFail {
+							server.ClusterGroup.LogPrint("WARN : Declaring master as failed")
+						}
+						server.ClusterGroup.master.State = stateFailed
+					} else {
+						server.ClusterGroup.master.State = stateSuspect
+					}
 				}
 			}
 		} else {
