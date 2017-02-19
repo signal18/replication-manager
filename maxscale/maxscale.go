@@ -20,10 +20,12 @@ type MaxScale struct {
 	Conn net.Conn
 }
 
-type ServerList struct {
+type Server struct {
 	Server  string
 	Address string
 }
+
+type ServerList []Server
 
 const (
 	maxDefaultPort    = "6603"
@@ -92,7 +94,7 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 	return response, nil
 }
 
-func (m *MaxScale) ListServers() ([]ServerList, error) {
+func (m *MaxScale) ListServers() (ServerList, error) {
 	m.Command("list servers")
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
@@ -109,18 +111,27 @@ func (m *MaxScale) ListServers() ([]ServerList, error) {
 		response = append(response, buf[0:res]...)
 	}
 	list := strings.Split(string(response), "\n")
-	var sl []ServerList
+	var sl ServerList
 	for _, line := range list {
 		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*`)
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 {
 			if match[0] != "" && match[1] != "Server" {
-				item := ServerList{Server: match[1], Address: match[2]}
+				item := Server{Server: match[1], Address: match[2]}
 				sl = append(sl, item)
 			}
 		}
 	}
 	return sl, nil
+}
+
+func (sl ServerList) GetServer(ip string) string {
+	for _, s := range sl {
+		if s.Address == ip {
+			return s.Server
+		}
+	}
+	return ""
 }
 
 func (m *MaxScale) Command(cmd string) error {

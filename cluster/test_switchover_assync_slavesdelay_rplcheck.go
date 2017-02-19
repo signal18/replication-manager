@@ -3,7 +3,7 @@ package cluster
 import (
 	"time"
 
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 )
 
 func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync() bool {
