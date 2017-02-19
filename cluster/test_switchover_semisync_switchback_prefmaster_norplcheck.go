@@ -2,42 +2,37 @@ package cluster
 
 import "time"
 
-func (cluster *Cluster) testSwitchOverBackPreferedMasterNoRplCheckSemiSync(conf string) bool {
-	if cluster.initTestCluster(conf) == false {
+func (cluster *Cluster) testSwitchOverBackPreferedMasterNoRplCheckSemiSync(conf string, test string) bool {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
-	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverBackPreferedMasterNoRplCheckSemiSync")
-	for _, s := range cluster.servers {
-		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='ON'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
-		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='ON'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	cluster.conf.PrefMaster = cluster.master.URL
-	cluster.LogPrintf("TESTING : Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
+	cluster.LogPrintf("TEST : Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
 	time.Sleep(2 * time.Second)
 	SaveMasterURL := cluster.master.URL
 	for i := 0; i < 2; i++ {
 
-		cluster.LogPrintf("INFO : New Master  %s Failover counter %d", cluster.master.URL, i)
+		cluster.LogPrintf("TEST : New Master  %s Failover counter %d", cluster.master.URL, i)
 
 		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
-		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
+		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
 
 	}
 	if cluster.master.URL != SaveMasterURL {
-		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf)
+		cluster.LogPrintf("ERROR : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf)
+	cluster.closeTestCluster(conf, test)
 	return true
 }

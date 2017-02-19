@@ -1,11 +1,11 @@
 package cluster
 
-func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string) bool {
-	if cluster.initTestCluster(conf) == false {
+func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string, test string) bool {
+	if cluster.initTestCluster(conf,test) == false {
 		return false
 	}
-	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverReadOnlyNoRplCheck")
-	cluster.LogPrintf("INFO : Master is %s", cluster.master.URL)
+
+	cluster.LogPrintf("TEST : Master is %s", cluster.master.URL)
 
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
@@ -14,19 +14,20 @@ func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string) bool {
 	for _, s := range cluster.slaves {
 		_, err := s.Conn.Exec("set global read_only=1")
 		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
+			cluster.LogPrintf("ERROR : %s", err)
+			cluster.closeTestCluster(conf, test)
 		}
 	}
 	switchoverChan <- true
 	cluster.waitFailoverEnd()
-	cluster.LogPrintf("INFO : New Master is %s ", cluster.master.URL)
+	cluster.LogPrintf("TEST : New Master is %s ", cluster.master.URL)
 	for _, s := range cluster.slaves {
-		cluster.LogPrintf("INFO : Server  %s is %s", s.URL, s.ReadOnly)
+		cluster.LogPrintf("TEST : Server  %s is %s", s.URL, s.ReadOnly)
 		if s.ReadOnly == "OFF" {
-			cluster.closeTestCluster(conf)
+			cluster.closeTestCluster(conf, test)
 			return false
 		}
 	}
-	cluster.closeTestCluster(conf)
+	cluster.closeTestCluster(conf, test)
 	return true
 }

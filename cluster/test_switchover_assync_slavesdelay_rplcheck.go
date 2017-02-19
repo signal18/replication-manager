@@ -1,53 +1,50 @@
 package cluster
 
-import (
-	"time"
+import "time"
 
-	"github.com/tanji/replication-manager/dbhelper"
-)
-
-func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync(conf string) bool {
-	if cluster.initTestCluster(conf) == false {
+func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync(conf string, test string) bool {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.RplChecks = true
 	cluster.conf.MaxDelay = 8
-	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesDelayRplCheckNoSemySync")
-	for _, s := range cluster.servers {
-		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
-		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
-	for _, s := range cluster.slaves {
-		dbhelper.StopSlave(s.Conn)
+	err = cluster.stopSlaves()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	time.Sleep(15 * time.Second)
 
 	SaveMasterURL := cluster.master.URL
 	for i := 0; i < 1; i++ {
 
-		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
+		cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
 
 		switchoverChan <- true
 
 		cluster.waitFailoverEnd()
-		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
+		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
 
 	}
-	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
+	err = cluster.startSlaves()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
-		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf)
+		cluster.LogPrintf("TEST : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf)
+	cluster.closeTestCluster(conf, test)
 	return true
 }

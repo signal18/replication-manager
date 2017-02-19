@@ -2,22 +2,16 @@ package cluster
 
 import "time"
 
-func (cluster *Cluster) testFailOverTimeNotReach(conf string) bool {
-	if cluster.initTestCluster(conf) == false {
+func (cluster *Cluster) testFailOverTimeNotReach(conf string, test string) bool {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.MaxDelay = 0
-
-	cluster.LogPrintf("TESTING : Starting Test %s", "testFailOverTimeNotReach")
-	for _, s := range cluster.servers {
-		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
-		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	SaveMasterURL := cluster.master.URL
 
@@ -37,17 +31,16 @@ func (cluster *Cluster) testFailOverTimeNotReach(conf string) bool {
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf)
-	return true
-}
-
-func (cluster *Cluster) getTestResultLabel(res bool) string {
-	if res == false {
-		return "FAILED"
-	} else {
-		return "PASS"
+	err = cluster.enableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
+
+	cluster.closeTestCluster(conf, test)
+	return true
 }

@@ -6,41 +6,47 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf string) bool {
+func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
 
-	if cluster.initTestCluster(conf) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 
-	cluster.LogPrintf("TESTING : Starting Test %s", "testFailOverAllSlavesDelayNoRplChecksNoSemiSync")
-	for _, s := range cluster.servers {
-		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
-		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
+	err = cluster.stopSlaves()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err.Error())
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	SaveMasterURL := cluster.master.URL
-	cluster.LogPrintf("BENCH: Stopping replication")
-	for _, s := range cluster.slaves {
-		dbhelper.StopSlave(s.Conn)
-	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
+		cluster.LogPrintf("ERROR : %s %s", err.Error(), result)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	cluster.LogPrintf("BENCH : Write Concurrent Insert")
 
-	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-
+	err = dbhelper.InjectLongTrx(cluster.master.Conn, 10)
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s %s", err.Error(), result)
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
 	cluster.LogPrintf("BENCH : Inject Long Trx")
 	time.Sleep(10 * time.Second)
-	cluster.LogPrintf("BENCH : Sarting replication")
-	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
+
+	err = cluster.startSlaves()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err.Error())
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
@@ -60,9 +66,15 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf)
+	err = cluster.enableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
+	cluster.closeTestCluster(conf, test)
 	return true
 }

@@ -1,8 +1,8 @@
 package cluster
 
-func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string) bool {
+func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string, test string) bool {
 
-	if cluster.initTestCluster(conf) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.SetFailSync(false)
@@ -22,19 +22,19 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string)
 	err := cluster.waitFailoverStart()
 	if err != nil {
 		cluster.LogPrintf("TEST : Abording test, Failover Timeout")
-		cluster.closeTestCluster(conf)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	cluster.waitFailoverEnd()
 
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	cluster.startMariaDB(SaveMaster)
 	cluster.waitRejoinEnd()
-	cluster.closeTestCluster(conf)
+	cluster.closeTestCluster(conf, test)
 
 	return true
 }
