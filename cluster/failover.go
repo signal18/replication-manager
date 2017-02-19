@@ -299,9 +299,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
 		} else {
-			err = m.Command("set server " + cluster.master.Host + " master")
+			maxServerList, err := m.ListServers()
 			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could not send command:", err)
+				cluster.LogPrint("Could not get MaxScale server list")
+			} else {
+				server := maxServerList.GetServer(cluster.master.IP)
+				err = m.Command("set server " + server + " master")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:", err)
+				}
 			}
 		}
 		if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
