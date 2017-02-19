@@ -198,6 +198,12 @@ func (SM *StateMachine) CanMonitor() bool {
 	return true
 }
 
+func (SM *StateMachine) UnDiscovered() {
+	SM.Lock()
+	SM.discovered = false
+	SM.Unlock()
+}
+
 func (SM *StateMachine) IsDiscovered() bool {
 	return SM.discovered
 }

@@ -318,6 +318,8 @@ func (cluster *Cluster) closeTestCluster(conf string) bool {
 	cluster.ShutdownClusterSemiSync()
 	cluster.master = nil
 	cluster.restoreConf()
+	cluster.sme.UnDiscovered()
+
 	return true
 }
 
