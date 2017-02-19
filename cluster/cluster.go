@@ -658,7 +658,7 @@ func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
 		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
 	}
 
-	IP, err := dbhelper.CheckHostAddr(proxyHost)
+	_, err := dbhelper.CheckHostAddr(proxyHost)
 	if err != nil {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
 		return nil, errmsg
