@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -17,6 +18,11 @@ type MaxScale struct {
 	User string
 	Pass string
 	Conn net.Conn
+}
+
+type ServerList struct {
+	Server  string
+	Address string
 }
 
 const (
@@ -84,6 +90,37 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 		response = append(response, buf[0:res]...)
 	}
 	return response, nil
+}
+
+func (m *MaxScale) ListServers() ([]ServerList, error) {
+	m.Command("list servers")
+	reader := bufio.NewReader(m.Conn)
+	var response []byte
+	buf := make([]byte, 80)
+	for {
+		res, err := reader.Read(buf)
+		if err != nil {
+		}
+		str := string(buf[0:res])
+		if res < 80 && strings.HasSuffix(str, "OK") {
+			response = append(response, buf[0:res-2]...)
+			break
+		}
+		response = append(response, buf[0:res]...)
+	}
+	list := strings.Split(string(response), "\n")
+	var sl []ServerList
+	for _, line := range list {
+		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*`)
+		match := re.FindStringSubmatch(line)
+		if len(match) > 0 {
+			if match[0] != "" && match[1] != "Server" {
+				item := ServerList{Server: match[1], Address: match[2]}
+				sl = append(sl, item)
+			}
+		}
+	}
+	return sl, nil
 }
 
 func (m *MaxScale) Command(cmd string) error {

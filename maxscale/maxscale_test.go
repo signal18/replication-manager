@@ -33,3 +33,16 @@ func TestShowServers(t *testing.T) {
 	}
 	t.Log(string(response))
 }
+
+func TestListServers(t *testing.T) {
+	m := MaxScale{MaxScaleTestIP, maxDefaultPort, maxDefaultUser, maxDefaultPass, nil}
+	m.Connect()
+	srvlist, err := m.ListServers()
+	if err != nil {
+		t.Error("Failed to get server list")
+	}
+	if len(srvlist) < 1 {
+		t.Errorf("Server list is empty")
+	}
+	t.Log(srvlist)
+}
