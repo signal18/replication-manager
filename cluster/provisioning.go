@@ -92,7 +92,7 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 		cluster.LogPrintf("ERRROR : %s", err)
 		return err
 	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
 	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
@@ -115,6 +115,9 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 		cluster.LogPrintf("MariaDB timeout.")
 		return errors.New("Failed to start")
 	}
+
+	mariadbdCmdGrant := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "-e \"grant all on *.* to ''"+cluster.dbUser+"''@'%' identified by '"+cluster.dbPass+"'\"")
+	mariadbdCmdGrant.Start()
 	return nil
 }
 

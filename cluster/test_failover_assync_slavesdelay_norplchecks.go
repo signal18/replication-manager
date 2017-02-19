@@ -35,6 +35,7 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 	cluster.LogPrintf("BENCH : Write Concurrent Insert")
 
 	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
+
 	cluster.LogPrintf("BENCH : Inject Long Trx")
 	time.Sleep(10 * time.Second)
 	cluster.LogPrintf("BENCH : Sarting replication")

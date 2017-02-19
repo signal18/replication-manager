@@ -1,6 +1,10 @@
 package cluster
 
-import "time"
+import (
+	"time"
+
+	"github.com/tanji/replication-manager/dbhelper"
+)
 
 func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf string) bool {
 	if cluster.initTestCluster(conf) == false {
@@ -23,18 +27,33 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf s
 	SaveMasterURL := cluster.master.URL
 	masterTest, _ := cluster.newServerMonitor(cluster.master.URL)
 	defer masterTest.Conn.Close()
-	go masterTest.Conn.Exec("start transaction")
-	time.Sleep(12 * time.Second)
-	for i := 0; i < 1; i++ {
-
-		cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
-
-		switchoverChan <- true
-
-		cluster.waitFailoverEnd()
-		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
-
+	db, err := cluster.getClusterProxyConn()
+	if err != nil {
+		cluster.LogPrintf("TESTING : %s", err)
+		cluster.closeTestCluster(conf)
+		return false
 	}
+	_, err2 := db.Exec("start transaction")
+	if err2 != nil {
+		cluster.LogPrintf("TESTING : %s", err2)
+		cluster.closeTestCluster(conf)
+		return false
+	}
+	err = dbhelper.InjectLongTrx(db, 10)
+	if err != nil {
+		cluster.LogPrintf("TESTING : %s", err)
+		cluster.closeTestCluster(conf)
+		return false
+	}
+	cluster.LogPrintf("TESTING : Wainting 12s in some trx")
+	time.Sleep(12 * time.Second)
+
+	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
+
+	switchoverChan <- true
+
+	cluster.waitFailoverEnd()
+	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
