@@ -166,13 +166,13 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 			ret = res
 		}
 	}
-	/* if test == "testFailOverNoRplChecksNoSemiSync" || test == "ALL" {
+	if test == "testFailOverNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailOverNoRplChecksNoSemiSync()
 		allTests["1 Failover <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
-	} */
+	}
 	if test == "testFailOverAllSlavesDelayNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailOverAllSlavesDelayNoRplChecksNoSemiSync()
 		allTests["1 Failover All Slave Delay <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
@@ -180,13 +180,13 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 			ret = res
 		}
 	}
-	/* if test == "testFailOverAllSlavesDelayRplChecksNoSemiSync" || test == "ALL" {
+	if test == "testFailOverAllSlavesDelayRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailOverAllSlavesDelayRplChecksNoSemiSync()
 		allTests["1 Failover All Slave Delay <cluster.conf.RplChecks=true> <Semisync=false> "] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
-	} */
+	}
 	if test == "testNumberFailOverLimitReach" || test == "ALL" {
 		res = cluster.testNumberFailOverLimitReach()
 		allTests["1 Failover Number of Failover Reach <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
