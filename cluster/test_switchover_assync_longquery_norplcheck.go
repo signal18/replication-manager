@@ -23,7 +23,7 @@ func (cluster *Cluster) testSwitchOverLongQueryNoRplCheckNoSemiSync(conf string,
 	go dbhelper.InjectLongTrx(cluster.master.Conn, 20)
 
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
-	switchoverChan <- true
+	cluster.switchoverChan <- true
 	cluster.waitFailoverEnd()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 

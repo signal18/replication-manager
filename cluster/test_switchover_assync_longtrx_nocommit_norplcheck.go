@@ -30,7 +30,7 @@ func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSe
 	time.Sleep(2 * time.Second)
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-	switchoverChan <- true
+	cluster.switchoverChan <- true
 
 	cluster.waitFailoverEnd()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)

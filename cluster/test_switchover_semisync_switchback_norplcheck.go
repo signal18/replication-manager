@@ -27,7 +27,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck(conf
 		}
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
 		SaveMasterURL := cluster.master.URL
-		switchoverChan <- true
+		cluster.switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)

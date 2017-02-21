@@ -22,7 +22,7 @@ func (cluster *Cluster) testSwitchOverBackPreferedMasterNoRplCheckSemiSync(conf 
 
 		cluster.LogPrintf("TEST : New Master  %s Failover counter %d", cluster.master.URL, i)
 
-		switchoverChan <- true
+		cluster.switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)

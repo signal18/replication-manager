@@ -53,12 +53,14 @@ type Cluster struct {
 	failoverCond         *nbc.NonBlockingChan
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
+	switchoverChan       chan bool
 }
 
-var switchoverChan = make(chan bool)
+//var switchoverChan = make(chan bool)
 
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
+	cluster.switchoverChan = make(chan bool)
 	cluster.failoverCond = nbc.New()
 	cluster.rejoinCond = nbc.New()
 	cluster.canFlashBack = true
@@ -211,9 +213,11 @@ func (cluster *Cluster) Run() {
 					for k, v := range cluster.servers {
 						cluster.LogPrintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
-					cluster.LogPrintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
-					for k, v := range cluster.slaves {
-						cluster.LogPrintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					if cluster.master != nil {
+						cluster.LogPrintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+						for k, v := range cluster.slaves {
+							cluster.LogPrintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						}
 					}
 				}
 				wg := new(sync.WaitGroup)
@@ -230,7 +234,7 @@ func (cluster *Cluster) Run() {
 				}
 				cluster.checkfailed()
 				select {
-				case sig := <-switchoverChan:
+				case sig := <-cluster.switchoverChan:
 					if sig {
 						cluster.MasterFailover(false)
 					}
@@ -247,7 +251,7 @@ func (cluster *Cluster) Run() {
 }
 
 func (cluster *Cluster) SwitchOver() {
-	switchoverChan <- true
+	cluster.switchoverChan <- true
 }
 
 func (cluster *Cluster) isMaxMasterFailedCountReach() bool {

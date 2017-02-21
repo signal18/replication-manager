@@ -27,7 +27,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync(conf stri
 
 		cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
 
-		switchoverChan <- true
+		cluster.switchoverChan <- true
 
 		cluster.waitFailoverEnd()
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)

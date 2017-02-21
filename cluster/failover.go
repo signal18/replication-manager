@@ -355,11 +355,17 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
 		if cluster.master.State != stateFailed && cluster.isSlaveElectableForSwitchover(sl) == false {
+			if cluster.conf.LogLevel > 2 {
+				cluster.LogPrintf("WARN : Slave %s has isSlaveElectableForSwitchover false. Skipping", sl.URL)
+			}
 			continue
 		}
 
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl) == false {
+			if cluster.conf.LogLevel > 2 {
+				cluster.LogPrintf("WARN : Slave %s has isSlaveElectable false. Skipping", sl.URL)
+			}
 			continue
 		}
 
