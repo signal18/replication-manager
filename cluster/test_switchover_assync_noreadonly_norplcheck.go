@@ -4,6 +4,13 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test str
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
+
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
 	cluster.LogPrintf("TEST : Master is %s", cluster.master.URL)

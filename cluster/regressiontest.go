@@ -298,9 +298,8 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 	savedFailoverCtr = cluster.failoverCtr
 	savedFailoverTs = cluster.failoverTs
 
-	cluster.CleanAll = true
 	cluster.InitClusterSemiSync()
-
+	cluster.CleanAll = true
 	err := cluster.Bootstrap()
 	if err != nil {
 		cluster.LogPrintf("TEST : Abording test, bootstrap failed, %s", err)
@@ -315,6 +314,13 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 		cluster.ShutdownClusterSemiSync()
 		return false
 	}
+	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
+	if err != nil {
+		cluster.LogPrintf("ERROR : Insert some events %s %s", err.Error(), result)
+		cluster.ShutdownClusterSemiSync()
+	}
+	time.Sleep(2 * time.Second)
+
 	cluster.LogPrintf("TESTING : Starting Test %s", test)
 	return true
 }

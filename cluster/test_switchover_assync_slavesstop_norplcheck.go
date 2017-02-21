@@ -7,7 +7,7 @@ import (
 )
 
 func (cluster *Cluster) testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck(conf string, test string) bool {
-	if cluster.initTestCluster(conf,test) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.RplChecks = false
@@ -29,25 +29,23 @@ func (cluster *Cluster) testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck(conf str
 	time.Sleep(2 * time.Second)
 
 	SaveMasterURL := cluster.master.URL
-	for i := 0; i < 1; i++ {
 
-		cluster.LogPrintf("INFO : Master is %s", cluster.master.URL)
+	cluster.LogPrintf("INFO : Master is %s", cluster.master.URL)
 
-		cluster.switchoverChan <- true
+	cluster.switchoverChan <- true
 
-		cluster.waitFailoverEnd()
-		cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
+	cluster.waitFailoverEnd()
+	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 
-	}
 	for _, s := range cluster.slaves {
 		dbhelper.StartSlave(s.Conn)
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf,test)
+	cluster.closeTestCluster(conf, test)
 	return true
 }
