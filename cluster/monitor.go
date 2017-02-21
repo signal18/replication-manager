@@ -236,7 +236,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
 							var cmdrun *exec.Cmd
 							server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
-							cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file=/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
+							cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+server.ClusterGroup.master.FailoverMasterLogPos, server.ClusterGroup.master.FailoverMasterLogFile)
 							var outrun bytes.Buffer
 							cmdrun.Stdout = &outrun
 
@@ -549,7 +549,7 @@ func (server *ServerMonitor) rejoin() error {
 			server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNC using semisync, searching for a rejoin method")
 			if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
 				// Flashback here
-				binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", "/tmp/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
+				binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
 				clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 				var err error
 				clientCmd.Stdin, err = binlogCmd.StdoutPipe()
