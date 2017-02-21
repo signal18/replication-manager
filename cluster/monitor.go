@@ -250,7 +250,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						if err != nil {
 							server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed server %s", server.URL)
 						}
-						rejoinChan <- true
+						server.ClusterGroup.rejoinCond.Send <- true
 					}
 				}
 			}

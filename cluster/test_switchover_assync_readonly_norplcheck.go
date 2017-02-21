@@ -1,7 +1,7 @@
 package cluster
 
 func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string, test string) bool {
-	if cluster.initTestCluster(conf,test) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 
@@ -16,6 +16,7 @@ func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string, test strin
 		if err != nil {
 			cluster.LogPrintf("ERROR : %s", err)
 			cluster.closeTestCluster(conf, test)
+			return false
 		}
 	}
 	switchoverChan <- true

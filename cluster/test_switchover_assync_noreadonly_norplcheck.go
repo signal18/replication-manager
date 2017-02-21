@@ -21,11 +21,13 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test str
 	cluster.LogPrintf("TEST : New Master is %s ", cluster.master.URL)
 	if SaveMasterURL == cluster.master.URL {
 		cluster.LogPrintf("ERROR : same server URL after switchover")
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	for _, s := range cluster.slaves {
 		cluster.LogPrintf("INFO : Server  %s is %s", s.URL, s.ReadOnly)
 		if s.ReadOnly != "OFF" {
+			cluster.LogPrintf("ERROR : Connot turn off readonly")
 			cluster.closeTestCluster(conf, test)
 			return false
 		}

@@ -12,6 +12,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/tanji/replication-manager/cluster/nbc"
 	"github.com/tanji/replication-manager/config"
 	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
@@ -49,14 +50,17 @@ type Cluster struct {
 	exit                 bool
 	CleanAll             bool
 	canFlashBack         bool
+	failoverCond         *nbc.NonBlockingChan
+	rejoinCond           *nbc.NonBlockingChan
+	bootstrapCond        *nbc.NonBlockingChan
 }
 
 var switchoverChan = make(chan bool)
-var failoverChan = make(chan bool)
-var rejoinChan = make(chan bool)
 
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
+	cluster.failoverCond = nbc.New()
+	cluster.rejoinCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
 	cluster.conf = conf
@@ -289,10 +293,9 @@ func (cluster *Cluster) checkfailed() {
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-
 			if cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false {
 				cluster.MasterFailover(true)
-				failoverChan <- true
+				cluster.failoverCond.Send <- true
 			} else {
 				cluster.LogPrintf("WARN : Constraint is blocking for failover")
 			}
@@ -641,6 +644,7 @@ func (cluster *Cluster) Bootstrap() error {
 	}
 	cluster.LogPrintf("INFO : Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	cluster.sme.RemoveFailoverState()
+	//bootstrapChan <- true
 	return nil
 }
 

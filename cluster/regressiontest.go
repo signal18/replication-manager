@@ -300,13 +300,16 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 
 	cluster.CleanAll = true
 	cluster.InitClusterSemiSync()
+
 	err := cluster.Bootstrap()
 	if err != nil {
 		cluster.LogPrintf("TEST : Abording test, bootstrap failed, %s", err)
 		cluster.ShutdownClusterSemiSync()
 		return false
 	}
-	cluster.waitFailoverEnd()
+	//cluster.waitFailoverEndState()
+	cluster.waitBootstrapDiscovery()
+
 	if cluster.master == nil {
 		cluster.LogPrintf("TEST : Abording test, no master found")
 		cluster.ShutdownClusterSemiSync()
@@ -318,9 +321,7 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 
 func (cluster *Cluster) closeTestCluster(conf string, test string) bool {
 	cluster.ShutdownClusterSemiSync()
-	cluster.master = nil
 	cluster.restoreConf()
-	cluster.sme.UnDiscovered()
 
 	return true
 }
@@ -340,6 +341,7 @@ func (cluster *Cluster) restoreConf() {
 	cluster.conf.AutorejoinSemisync = savedConf.AutorejoinSemisync
 	cluster.failoverTs = savedFailoverTs
 	cluster.failoverCtr = savedFailoverCtr
+
 }
 
 func (cluster *Cluster) disableSemisync() error {
