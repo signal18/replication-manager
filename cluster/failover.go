@@ -123,12 +123,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if fail == false {
 		cluster.LogPrint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
-		if cluster.conf.Verbose {
+		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
 		}
 		dbhelper.MasterPosWait(cluster.master.Conn, oldMaster.BinlogPos.Sprint(), 30)
-		if cluster.conf.Verbose {
+		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrint("DEBUG: MASTER_POS_WAIT executed.")
 			cluster.master.log()
 		}
@@ -256,7 +256,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if fail == false {
 			cluster.LogPrintf("INFO : Waiting for slave %s to sync", sl.URL)
 			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint(), 30)
-			if cluster.conf.Verbose {
+			if cluster.conf.LogLevel > 2 {
 				sl.log()
 			}
 		}
