@@ -55,6 +55,8 @@ type Cluster struct {
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
 	switchoverChan       chan bool
+	testStopCluster      bool
+	testStartCluster     bool
 }
 
 //var switchoverChan = make(chan bool)
@@ -67,6 +69,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.rejoinCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
+	cluster.testStopCluster = true
+	cluster.testStartCluster = true
 	cluster.conf = conf
 	cluster.tlog = tlog
 	cluster.termlength = termlength
@@ -547,6 +551,13 @@ func (cluster *Cluster) GetTestMode() bool {
 	return cluster.conf.Test
 }
 
+func (cluster *Cluster) SetTestStopCluster(check bool) {
+	cluster.testStopCluster = check
+}
+func (cluster *Cluster) SetTestStartCluster(check bool) {
+	cluster.testStartCluster = check
+}
+
 func (cluster *Cluster) GetDbUser() string {
 	return cluster.dbUser
 }
@@ -560,6 +571,10 @@ func (cluster *Cluster) Close() {
 	for _, server := range cluster.servers {
 		defer server.Conn.Close()
 	}
+}
+
+func (cluster *Cluster) SetLogStdout() {
+	cluster.conf.Daemon = true
 }
 
 func (cluster *Cluster) Bootstrap() error {

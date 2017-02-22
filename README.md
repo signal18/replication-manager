@@ -363,6 +363,41 @@ passwd=mypwd
 detect_stale_master=true
 ```
 
+## Non regression testing
+
+A testing framework is available via http or in command line.
+Setting  test variable in the predefined testing cluster in config file
+```  
+[Cluster_Test_2_Nodes]
+hosts = "127.0.0.1:3310,127.0.0.1:3311"
+user = "root:"
+rpluser = "root:"
+title = "cluster1"
+connect-timeout = 1
+prefmaster = "127.0.0.1:3310"
+haproxy-write-port=3303
+haproxy-read-port=3304
+test=true
+```  
+
+The test can be run on existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server install locally.    
+
+```  
+mariadb-binary-path = "/usr/local/mysql/bin"
+```
+
+Command line print test
+
+```
+./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes --show-tests=true test
+INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSync testSwitchOverLongQueryNoRplCheckNoSemiSync testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync testSlaReplAllDelay testFailoverReplAllDelayInteractive testFailoverReplAllDelayAutoRejoinFlashback testSwitchoverReplAllDelay testSlaReplAllSlavesStopNoSemiSync testSwitchOverReadOnlyNoRplCheck testSwitchOverNoReadOnlyNoRplCheck testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck testSwitchOverBackPreferedMasterNoRplCheckSemiSync testSwitchOverAllSlavesStopRplCheckNoSemiSync testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck testSwitchOverAllSlavesDelayRplCheckNoSemiSync testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayRplChecksNoSemiSync testFailOverNoRplChecksNoSemiSync testNumberFailOverLimitReach testFailOverTimeNotReach]
+```
+Command line running some tests via  passing a list of tests in run-tests
+
+```
+./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
+```
+
 ## System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.

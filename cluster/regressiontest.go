@@ -298,8 +298,9 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 	savedConf = cluster.conf
 	savedFailoverCtr = cluster.failoverCtr
 	savedFailoverTs = cluster.failoverTs
-
-	cluster.InitClusterSemiSync()
+	if cluster.testStartCluster {
+		cluster.InitClusterSemiSync()
+	}
 	cluster.CleanAll = true
 	err := cluster.Bootstrap()
 	if err != nil {
@@ -327,7 +328,9 @@ func (cluster *Cluster) initTestCluster(conf string, test string) bool {
 }
 
 func (cluster *Cluster) closeTestCluster(conf string, test string) bool {
-	cluster.ShutdownClusterSemiSync()
+	if cluster.testStopCluster {
+		cluster.ShutdownClusterSemiSync()
+	}
 	cluster.restoreConf()
 
 	return true

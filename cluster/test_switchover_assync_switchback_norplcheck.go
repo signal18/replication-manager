@@ -28,7 +28,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck(co
 			cluster.closeTestCluster(conf, test)
 			return false
 		}
-		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
+		cluster.LogPrintf("TEST :  Master  %s ", cluster.master.URL)
 		SaveMasterURL := cluster.master.URL
 		cluster.switchoverWaitTest()
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
@@ -42,7 +42,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck(co
 
 	for _, s := range cluster.slaves {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("TEST : Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.LogPrintf("TEST : Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
 			cluster.closeTestCluster(conf, test)
 			return false
 		}
