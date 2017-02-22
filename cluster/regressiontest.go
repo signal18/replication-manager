@@ -336,7 +336,7 @@ func (cluster *Cluster) closeTestCluster(conf string, test string) bool {
 func (cluster *Cluster) switchoverWaitTest() {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	cluster.waitSwitchover(wg)
+	go cluster.waitSwitchover(wg)
 	cluster.switchoverChan <- true
 	wg.Wait()
 }

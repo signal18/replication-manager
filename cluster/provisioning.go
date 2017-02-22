@@ -80,6 +80,7 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	cluster.servers = nil
 	cluster.slaves = nil
 	cluster.master = nil
+	cluster.sme.UnDiscovered()
 	cluster.newServerList()
 
 	cluster.sme.RemoveFailoverState()
