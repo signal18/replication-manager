@@ -36,7 +36,7 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck(conf
 			return false
 		}
 	}
-
+	time.Sleep(2 * time.Second)
 	for _, s := range cluster.slaves {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("ERROR : Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)

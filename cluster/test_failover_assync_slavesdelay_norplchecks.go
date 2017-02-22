@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"sync"
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
@@ -58,9 +59,11 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 	cluster.failoverCtr = 0
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 4
-	cluster.checkfailed()
-
-	cluster.waitFailoverEnd()
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.waitFailover(wg)
+	cluster.killMariaDB(cluster.master)
+	wg.Wait()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 
 	time.Sleep(2 * time.Second)
@@ -69,12 +72,7 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	err = cluster.enableSemisync()
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
+
 	cluster.closeTestCluster(conf, test)
 	return true
 }

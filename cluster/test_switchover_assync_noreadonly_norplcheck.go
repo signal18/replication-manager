@@ -10,7 +10,6 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test str
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
 	cluster.LogPrintf("TEST : Master is %s", cluster.master.URL)
@@ -32,8 +31,9 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test str
 	}
 	for _, s := range cluster.slaves {
 		cluster.LogPrintf("INFO : Server  %s is %s", s.URL, s.ReadOnly)
+		s.refresh()
 		if s.ReadOnly != "OFF" {
-			cluster.LogPrintf("ERROR : Connot turn off readonly")
+			cluster.LogPrintf("ERROR : READ ONLY on slave was set by switchover")
 			cluster.closeTestCluster(conf, test)
 			return false
 		}
