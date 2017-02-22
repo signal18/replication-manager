@@ -3,7 +3,7 @@ package cluster
 import "time"
 
 func (cluster *Cluster) testSwitchOverAllSlavesStopRplCheckNoSemiSync(conf string, test string) bool {
-	if cluster.initTestCluster(conf,test) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.MaxDelay = 0
@@ -25,9 +25,7 @@ func (cluster *Cluster) testSwitchOverAllSlavesStopRplCheckNoSemiSync(conf strin
 	SaveMasterURL := cluster.master.URL
 
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
-
-	cluster.switchoverChan <- true
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 

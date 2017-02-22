@@ -23,16 +23,14 @@ func (cluster *Cluster) testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSe
 	db, err := cluster.getClusterProxyConn()
 	if err != nil {
 		cluster.LogPrintf("INFO : Can't take proxy conn %s ", err)
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	go dbhelper.InjectLongTrx(db, 20)
 	time.Sleep(2 * time.Second)
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
-	cluster.switchoverChan <- true
-
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 	err = cluster.enableSemisync()
 	if err != nil {

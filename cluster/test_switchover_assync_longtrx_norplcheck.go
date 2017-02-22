@@ -44,10 +44,7 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf s
 	time.Sleep(12 * time.Second)
 
 	cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
-
-	cluster.switchoverChan <- true
-
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
 	err = cluster.enableSemisync()
 	if err != nil {
@@ -58,9 +55,9 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf s
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("TEST : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf,test)
+	cluster.closeTestCluster(conf, test)
 	return true
 }

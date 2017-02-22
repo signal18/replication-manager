@@ -79,7 +79,6 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 
 	cluster.servers = nil
 	cluster.slaves = nil
-	cluster.sme.UnDiscovered()
 	cluster.master = nil
 	cluster.newServerList()
 
@@ -217,7 +216,7 @@ func (cluster *Cluster) waitFailover(wg *sync.WaitGroup) {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Failover startup")
+			cluster.LogPrint("TEST: Waiting Failover end")
 			exitloop++
 		case <-cluster.failoverCond.Recv:
 			return
@@ -225,9 +224,33 @@ func (cluster *Cluster) waitFailover(wg *sync.WaitGroup) {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Failover started")
+		cluster.LogPrintf("TEST: Failover end")
 	} else {
-		cluster.LogPrintf("TEST: Failover timeout")
+		cluster.LogPrintf("TEST: Failover end timeout")
+		return
+	}
+	return
+}
+
+func (cluster *Cluster) waitSwitchover(wg *sync.WaitGroup) {
+
+	defer wg.Done()
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	for exitloop < 30 {
+		select {
+		case <-ticker.C:
+			cluster.LogPrint("TEST: Waiting Switchover end")
+			exitloop++
+		case <-cluster.switchoverCond.Recv:
+			return
+		default:
+		}
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("TEST: Switchover end")
+	} else {
+		cluster.LogPrintf("TEST: Switchover end timeout")
 		return
 	}
 	return

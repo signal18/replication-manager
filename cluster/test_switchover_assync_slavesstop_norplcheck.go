@@ -1,10 +1,6 @@
 package cluster
 
-import (
-	"time"
-
-	"github.com/tanji/replication-manager/dbhelper"
-)
+import "time"
 
 func (cluster *Cluster) testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
@@ -12,34 +8,25 @@ func (cluster *Cluster) testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck(conf str
 	}
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 0
-	cluster.LogPrintf("TESTING : Starting Test %s", "testSwitchOverAllSlavesStopNoRplCheck")
-	for _, s := range cluster.servers {
-		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
-		_, err = s.Conn.Exec("set global rpl_semi_sync_slave_enabled='OFF'")
-		if err != nil {
-			cluster.LogPrintf("TESTING : %s", err)
-		}
+	err := cluster.disableSemisync()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
-	for _, s := range cluster.slaves {
-		dbhelper.StopSlave(s.Conn)
+	err = cluster.stopSlaves()
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
-	time.Sleep(2 * time.Second)
 
 	SaveMasterURL := cluster.master.URL
 
 	cluster.LogPrintf("INFO : Master is %s", cluster.master.URL)
-
-	cluster.switchoverChan <- true
-
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 
-	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
-	}
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)

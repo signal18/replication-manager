@@ -7,7 +7,7 @@ import (
 )
 
 func (cluster *Cluster) testSwitchOverLongQueryNoRplCheckNoSemiSync(conf string, test string) bool {
-	if cluster.initTestCluster(conf,test) == false {
+	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.conf.RplChecks = false
@@ -23,8 +23,7 @@ func (cluster *Cluster) testSwitchOverLongQueryNoRplCheckNoSemiSync(conf string,
 	go dbhelper.InjectLongTrx(cluster.master.Conn, 20)
 
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
-	cluster.switchoverChan <- true
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 
 	time.Sleep(20 * time.Second)

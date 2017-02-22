@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/tanji/replication-manager/config"
@@ -330,6 +331,14 @@ func (cluster *Cluster) closeTestCluster(conf string, test string) bool {
 	cluster.restoreConf()
 
 	return true
+}
+
+func (cluster *Cluster) switchoverWaitTest() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	cluster.waitSwitchover(wg)
+	cluster.switchoverChan <- true
+	wg.Wait()
 }
 
 func (cluster *Cluster) restoreConf() {

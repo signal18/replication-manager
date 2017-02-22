@@ -23,8 +23,7 @@ func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test str
 		}
 	}
 	SaveMasterURL := cluster.master.URL
-	cluster.switchoverChan <- true
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("TEST : New Master is %s ", cluster.master.URL)
 	if SaveMasterURL == cluster.master.URL {
 		cluster.LogPrintf("ERROR : same server URL after switchover")

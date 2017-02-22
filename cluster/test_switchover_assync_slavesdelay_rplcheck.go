@@ -23,16 +23,11 @@ func (cluster *Cluster) testSwitchOverAllSlavesDelayRplCheckNoSemiSync(conf stri
 	time.Sleep(15 * time.Second)
 
 	SaveMasterURL := cluster.master.URL
-	for i := 0; i < 1; i++ {
 
-		cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
+	cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
+	cluster.switchoverWaitTest()
+	cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
 
-		cluster.switchoverChan <- true
-
-		cluster.waitFailoverEnd()
-		cluster.LogPrintf("TEST : New Master  %s ", cluster.master.URL)
-
-	}
 	err = cluster.startSlaves()
 	if err != nil {
 		cluster.LogPrintf("ERROR : %s", err)

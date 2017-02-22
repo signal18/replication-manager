@@ -19,8 +19,7 @@ func (cluster *Cluster) testSwitchOverReadOnlyNoRplCheck(conf string, test strin
 			return false
 		}
 	}
-	cluster.switchoverChan <- true
-	cluster.waitFailoverEnd()
+	cluster.switchoverWaitTest()
 	cluster.LogPrintf("TEST : New Master is %s ", cluster.master.URL)
 	for _, s := range cluster.slaves {
 		cluster.LogPrintf("TEST : Server  %s is %s", s.URL, s.ReadOnly)

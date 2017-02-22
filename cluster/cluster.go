@@ -51,6 +51,7 @@ type Cluster struct {
 	CleanAll             bool
 	canFlashBack         bool
 	failoverCond         *nbc.NonBlockingChan
+	switchoverCond       *nbc.NonBlockingChan
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
 	switchoverChan       chan bool
@@ -62,6 +63,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
 	cluster.failoverCond = nbc.New()
+	cluster.switchoverCond = nbc.New()
 	cluster.rejoinCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
@@ -237,6 +239,7 @@ func (cluster *Cluster) Run() {
 				case sig := <-cluster.switchoverChan:
 					if sig {
 						cluster.MasterFailover(false)
+						cluster.switchoverCond.Send <- true
 					}
 
 				default:
