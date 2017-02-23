@@ -2,14 +2,13 @@
 # Example replication-manager configuration file
 
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
-# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01 monitor --daemon
+# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01,Cluster_Test_2_Nodes monitor --daemon
 
 [Cluster_Test_2_Nodes]
 hosts = "127.0.0.1:3310,127.0.0.1:3311"
 user = "root:"
 rpluser = "root:"
 title = "cluster1"
-connect-timeout = 1
 prefmaster = "127.0.0.1:3310"
 haproxy-write-port=3303
 haproxy-read-port=3304
@@ -20,21 +19,18 @@ hosts = "127.0.0.1:3312,127.0.0.1:3313,127.0.0.1:3314"
 user = "root:"
 rpluser = "root:"
 title = "ClusterTestSemisync"
-connect-timeout = 1
 prefmaster = "127.0.0.1:3310"
 haproxy-write-port=3305
 haproxy-read-port=3306
 test = true
+ignore-servers = "127.0.0.1:3314"
 
 [Cluster01]
 hosts = "127.0.0.1:5054,127.0.0.1:5012"
 user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
 title = "Cluster01"
-connect-timeout = 1
 prefmaster = "127.0.0.1:5012"
-#ignore-servers = "127.0.0.1:5012"
-test = false
 
 [Default]
 
@@ -53,10 +49,10 @@ verbose = true
 
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
-
 readonly = true
 failover-event-scheduler = false
 failover-event-status = false
+connect-timeout = 1
 
 # HTTP
 # ----
@@ -124,7 +120,7 @@ failover-max-slave-delay = 30
 switchover-wait-kill = 5000
 switchover-wait-trx = 10
 switchover-wait-write-query = 10
-switchover-at-equal-gtid = true
+switchover-at-equal-gtid = false
 switchover-at-sync = true
 switchover-max-slave-delay = 30
 
@@ -180,11 +176,11 @@ autorejoin-mysqldump = false
 
 #agent-hosts = "127.0.0.1:4001,127.0.0.1:4002,127.0.0.1:4003"
 
-[Agent1]
+#[Agent1]
 #agent-watch = "127.0.0.1:5012"
 
-[Agent2]
+#[Agent2]
 #agent-watch = "127.0.0.1:5054"
 
-[Agent3]
+#[Agent3]
 #agent-watch = ""
