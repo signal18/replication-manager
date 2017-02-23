@@ -28,19 +28,9 @@ func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf s
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	_, err2 := db.Exec("start transaction")
-	if err2 != nil {
-		cluster.LogPrintf("ERROR : %s", err2)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
-	err = dbhelper.InjectLongTrx(db, 10)
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
-	cluster.LogPrintf("TEST : Wainting 12s in some trx")
+
+	go dbhelper.InjectTrxWithoutCommit(db, 10)
+	cluster.LogPrintf("TEST : Wainting in some trx 12s more wait-trx  default 10 ")
 	time.Sleep(12 * time.Second)
 
 	cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)

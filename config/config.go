@@ -37,8 +37,6 @@ type Config struct {
 	LogFile                  string
 	MonitoringTicker         int64 `mapstructure:"monitoring-ticker"`
 	Timeout                  int   `mapstructure:"connect-timeout"`
-	FailLimit                int   `mapstructure:"failover-limit"`
-	FailTime                 int64 `mapstructure:"failover-time-limit"`
 	CheckType                string
 	CheckReplFilter          bool
 	CheckBinFilter           bool
@@ -58,6 +56,8 @@ type Config struct {
 	MailTo                   string `mapstructure:"mail-to"`
 	MailSMTPAddr             string `mapstructure:"mail-smtp-addr"`
 	MasterConnectRetry       int    `mapstructure:"master-connect-retry"`
+	FailLimit                int    `mapstructure:"failover-limit"`
+	FailTime                 int64  `mapstructure:"failover-time-limit"`
 	FailSync                 bool   `mapstructure:"failover-at-sync"`
 	SwitchSync               bool   `mapstructure:"switchover-at-sync"`
 	FailEventScheduler       bool   `mapstructure:"failover-event-scheduler"`

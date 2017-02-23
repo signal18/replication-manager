@@ -840,6 +840,17 @@ func InjectLongTrx(db *sqlx.DB, time int) error {
 	return nil
 }
 
+func InjectTrxWithoutCommit(db *sqlx.DB, time int) error {
+	benchWarmup(db)
+	_, err := db.Exec("set binlog_format='STATEMENT'")
+	_, err = db.Exec("BEGIN")
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val)  select  1 from dual")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func benchWarmup(db *sqlx.DB) error {
 	db.SetMaxIdleConns(16)
 	_, err := db.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
