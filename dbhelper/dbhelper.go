@@ -635,6 +635,48 @@ func SetEventScheduler(db *sqlx.DB, state bool) error {
 	return err
 }
 
+func SetSlaveHeartbeat(db *sqlx.DB, interval string) error {
+	var err error
+
+	stmt := "Stop Slave"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "change master to MASTER_HEARTBEAT_PERIOD=" + interval
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "Start Slave"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func SetSlaveGTIDMode(db *sqlx.DB, mode string) error {
+	var err error
+
+	stmt := "Stop Slave"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "change master to master_use_gtid=" + mode
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "Start Slave"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
 /* Check if a slave is in sync with his master */
 func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB) bool {
 	if debug {

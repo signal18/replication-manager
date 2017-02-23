@@ -91,6 +91,12 @@ check-replication-filters = true
 check-binlog-filters = true
 check-replication-state = true
 
+
+autoinforce-slave-heartbeat= true
+autoinforce-slave-gtid-mode = true
+autoinforce-slave-semisync = true
+autoinforce-slave-readonly = true
+
 # Failover after N failures detection
 # Reset number of failure if server auto recover after N seconds
 failcount = 5
@@ -99,12 +105,14 @@ failcount-reset-time = 300
 # Cancel failover if already N failover
 # Cancel failover if last failover was N seconds before
 # Cancel failover in semi-sync when one slave is not in sync
+# Cancel failover if one slave receive master heartbeat
 # Cancel failover when replication delay is more than N seconds
 failover-limit = 3
 failover-time-limit = 10
 failover-at-sync = true
-switchover-at-sync = true
-maxdelay = 30
+failover-falsepositive-heartbeat = true
+failover-max-slave-delay = 30
+
 
 # SWITCHOVER
 # ----------
@@ -113,10 +121,12 @@ maxdelay = 30
 # Cancel switchover if transaction running more than N seconds
 # Cancel switchover if write query running more than N seconds
 # Cancel switchover if one of the slaves is not synced based on GTID equality
-wait-kill = 5000
-wait-trx = 10
-wait-write-query = 10
-gtidcheck = true
+switchover-wait-kill = 5000
+switchover-wait-trx = 10
+switchover-wait-write-query = 10
+switchover-at-equal-gtid = true
+switchover-at-sync = true
+switchover-max-slave-delay = 30
 
 # HAPROXY WRAPPER MODE
 # --------------------

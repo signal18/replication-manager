@@ -11,13 +11,14 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"log"
+	"strings"
+	"sync"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
-	"log"
-	"strings"
-	"sync"
 )
 
 type topologyError struct {
@@ -262,9 +263,21 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 
 	// Check that all slave servers have the same master.
-	if cluster.conf.MultiMaster == false {
+	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-
+			if cluster.conf.AutoInforceSlaveReadOnly && sl.ReadOnly == "OFF" {
+				// In non-multimaster mode, enforce read-only flag if the option is set
+				dbhelper.SetReadOnly(sl.Conn, true)
+				cluster.LogPrintf("DEBUG: Enforce read only on slave %s", sl.DSN)
+			}
+			if cluster.conf.AutoInforceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
+				dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
+				cluster.LogPrintf("DEBUG: Enforce heartbeat to 1s on slave %s", sl.DSN)
+			}
+			if cluster.conf.AutoInforceSlaveGtid && sl.MasterUseGtid == "No" {
+				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
+				cluster.LogPrintf("DEBUG: Enforce GTID replication on slave %s", sl.DSN)
+			}
 			if sl.hasSiblings(cluster.slaves) == false {
 				// possibly buggy code
 				// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
@@ -296,13 +309,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 				dbhelper.SetReadOnly(server.Conn, false)
 			} else {
 				cluster.sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a prefered master.", ErrFrom: "TOPO"})
-			}
-		}
-	} else if cluster.conf.ReadOnly {
-		// In non-multimaster mode, enforce read-only flag if the option is set
-		for _, s := range cluster.slaves {
-			if s.ReadOnly == "OFF" && cluster.conf.Spider == false {
-				dbhelper.SetReadOnly(s.Conn, true)
 			}
 		}
 	}

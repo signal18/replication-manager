@@ -60,6 +60,11 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinSemisync, "autorejoin-semisync", true, "Automatically rejoin a failed server to the current master when elected semisync status is SYNC ")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")
+	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat ", true, "Failover checks that slaves do not receive hearbeat")
+	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveHeartbeat, "autoinforce-slave-heartbeat", true, "Automatically activate heartbeat on slave")
+	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveGtid, "autoinforce-slave-gtid-mode", true, "Automatically activate gtid mode on slave")
+	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveSemisync, "autoinforce-slave-semisync", true, "Automatically activate semisync on slave")
+	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveReadOnly, "autoinforce-slave-readonly", true, "Automatically activate read only on slave")
 	monitorCmd.Flags().StringVar(&conf.CheckType, "check-type", "tcp", "Type of server health check (tcp, agent)")
 	monitorCmd.Flags().BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that elected master have equal replication filters")
 	monitorCmd.Flags().BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that elected master have equal binlog filters")
@@ -123,13 +128,22 @@ func init() {
 func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
 	cmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
-	cmd.Flags().Int64Var(&conf.MaxDelay, "maxdelay", 0, "Maximum replication delay before initiating failover")
-	cmd.Flags().BoolVar(&conf.GtidCheck, "gtidcheck", false, "Do not initiate failover unless slaves are fully in sync")
+	cmd.Flags().Int64Var(&conf.MaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
+	cmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Maximum replication delay before initiating failover")
 	cmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	cmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
-	cmd.Flags().Int64Var(&conf.WaitKill, "wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
-	cmd.Flags().Int64Var(&conf.WaitTrx, "wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
-	cmd.Flags().IntVar(&conf.WaitWrite, "wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
+	cmd.Flags().Int64Var(&conf.WaitKill, "wait-kill", 5000, "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
+	cmd.Flags().Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
+	cmd.Flags().Int64Var(&conf.WaitTrx, "wait-trx", 10, "Depecrate for switchover-wait-trx Wait this many seconds before transactions end to cancel switchover")
+	cmd.Flags().Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
+	cmd.Flags().BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Only failover when state semisync is sync for last status")
+	cmd.Flags().BoolVar(&conf.GtidCheck, "gtidcheck", false, "Depecrate for failover-at-equal-gtid do not initiate failover unless slaves are fully in sync")
+	cmd.Flags().BoolVar(&conf.SwitchGtidCheck, "swichover-at-equal-gtid", false, "Do not initiate failover unless slaves are fully in sync")
+	cmd.Flags().Int64Var(&conf.SwitchMaxDelay, "swichover-max-slave-delay", 0, "Maximum replication delay before initiating switchover")
+
+	cmd.Flags().IntVar(&conf.WaitWrite, "wait-write-query", 10, "Deprecate  Wait this many seconds before write query end to cancel switchover")
+	cmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
+
 	cmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover")
 	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
@@ -141,13 +155,18 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	viper.BindPFlags(cmd.Flags())
 	cmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
+
 	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
-	cmd.Flags().BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Only failover when state semisync is sync for last status")
 
 	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.FailEventScheduler, "failover-event-scheduler", false, "Failover Event Scheduler")
 	cmd.Flags().BoolVar(&conf.FailEventStatus, "failover-event-status", false, "Failover Event Status ENABLE OR DISABLE ON SLAVE")
 	cmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
+	conf.MaxDelay = conf.FailMaxDelay
+	conf.WaitTrx = conf.SwitchWaitTrx
+	conf.WaitKill = conf.SwitchWaitKill
+	conf.WaitWrite = conf.SwitchWaitWrite
+	conf.GtidCheck = conf.SwitchGtidCheck
 }
 
 var failoverCmd = &cobra.Command{

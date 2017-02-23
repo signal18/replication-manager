@@ -67,6 +67,8 @@ type ServerMonitor struct {
 	ClusterGroup                *Cluster
 	MasterLogFile               string
 	MasterLogPos                string
+	MasterHeartbeatPeriod       float64
+	MasterUseGtid               string
 	FailoverMasterLogFile       string
 	FailoverMasterLogPos        string
 	FailoverSemiSyncSlaveStatus bool
@@ -335,7 +337,8 @@ func (server *ServerMonitor) refresh() error {
 		server.SQLErrno = 0
 		server.MasterLogFile = ""
 		server.MasterLogPos = "0"
-
+		server.MasterHeartbeatPeriod = 0
+		server.MasterUseGtid = "No"
 	} else {
 		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
 		server.UsingGtid = slaveStatus.Using_Gtid
@@ -349,6 +352,8 @@ func (server *ServerMonitor) refresh() error {
 		server.SQLError = slaveStatus.Last_SQL_Error
 		server.SQLErrno = slaveStatus.Last_SQL_Errno
 		server.MasterLogFile = slaveStatus.Master_Log_File
+		server.MasterUseGtid = slaveStatus.Using_Gtid
+		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
 		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
 
