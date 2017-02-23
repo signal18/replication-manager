@@ -840,6 +840,18 @@ func InjectLongTrx(db *sqlx.DB, time int) error {
 	return nil
 }
 
+func ChecksumTable(db *sqlx.DB, table string) (string, error) {
+	var tableres string
+	var checkres string
+	tableres = ""
+	checkres = ""
+	err := db.QueryRowx("CHECKSUM TABLE "+table+" EXTENDED").Scan(&tableres, &checkres)
+	if err != nil {
+		log.Println("ERROR: Could not checksum table", err)
+	}
+	return checkres, err
+}
+
 func InjectTrxWithoutCommit(db *sqlx.DB, time int) error {
 	benchWarmup(db)
 	_, err := db.Exec("set binlog_format='STATEMENT'")

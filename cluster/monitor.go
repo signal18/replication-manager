@@ -534,51 +534,61 @@ func (server *ServerMonitor) rejoin() error {
 	} else {
 
 		server.ClusterGroup.LogPrintf("INFO : Found different old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
-		if server.ClusterGroup.master.FailoverSemiSyncSlaveStatus == true {
-			server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover ", server.ClusterGroup.master.URL)
+
+		server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNC using semisync, searching for a rejoin method")
+		if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+			// Flashback here
+			binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
+			clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+			server.ClusterGroup.LogPrintf("FlashBack: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", binlogCmd.Args)
+			var err error
+			clientCmd.Stdin, err = binlogCmd.StdoutPipe()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("Error opening pipe: %s", err)
+				return err
+			}
+			if err := binlogCmd.Start(); err != nil {
+				server.ClusterGroup.LogPrintf("Error in mysqlbinlog command: %s at %s", err, binlogCmd.Path)
+				return err
+			}
+			if err := clientCmd.Run(); err != nil {
+				server.ClusterGroup.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
+				return err
+			}
 			server.ClusterGroup.LogPrintf("INFO : SET GLOBAL gtid_slave_pos = \"%s\"", server.ClusterGroup.master.FailoverIOGtid.Sprint())
-			_, err := server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + server.ClusterGroup.master.FailoverIOGtid.Sprint() + "\"")
+			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + server.ClusterGroup.master.FailoverIOGtid.Sprint() + "\"")
 			if err != nil {
 				return err
 			}
 			cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=SLAVE_POS"
 			_, err2 := server.Conn.Exec(cm)
-			dbhelper.StartSlave(server.Conn)
-			return err2
-		} else {
-			server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNC using semisync, searching for a rejoin method")
-			if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
-				// Flashback here
-				binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
-				clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-				var err error
-				clientCmd.Stdin, err = binlogCmd.StdoutPipe()
-				if err != nil {
-					server.ClusterGroup.LogPrintf("Error opening pipe: %s", err)
-					return err
-				}
-				if err := binlogCmd.Start(); err != nil {
-					server.ClusterGroup.LogPrintf("Error in mysqlbinlog command: %s at %s", err, binlogCmd.Path)
-					return err
-				}
-				if err := clientCmd.Run(); err != nil {
-					server.ClusterGroup.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
-					return err
-				}
-
-				return nil
-			} else {
-				server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
-				if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-					// dump here
-					server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-					return nil
-				}
-				server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
-				server.ClusterGroup.LogPrintf("INFO : No rejoin method found let me alone")
+			if err2 != nil {
+				return err
 			}
-
+			dbhelper.StartSlave(server.Conn)
+			if server.FailoverSemiSyncSlaveStatus == true {
+				server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover safe flashback, no lost committed events", server.ClusterGroup.master.URL)
+			} else {
+				t := time.Now()
+				backupdir := server.ClusterGroup.conf.WorkingDir + "/crash" + t.Format("20060102150405")
+				server.ClusterGroup.LogPrintf("INFO : New Master %s was not sync before failover, unsafe flashback, lost events backing up event to %s ", server.ClusterGroup.master.URL, backupdir)
+				os.Mkdir(backupdir, 0777)
+				os.Rename(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile, backupdir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
+			}
+			return nil
+		} else {
+			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
+			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
+				// dump here
+				server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+				dbhelper.StartSlave(server.Conn)
+				return nil
+			}
+			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
+			server.ClusterGroup.LogPrintf("INFO : No rejoin method found let me alone")
 		}
+
+		//}
 	}
 
 	return nil

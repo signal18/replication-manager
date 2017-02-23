@@ -26,7 +26,8 @@ var tests = []string{
 	"testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync",
 	"testSlaReplAllDelay",
 	"testFailoverReplAllDelayInteractive",
-	"testFailoverReplAllDelayAutoRejoinFlashback",
+	"testFailoverAssyncAutoRejoinFlashback",
+	"testFailoverSemisyncAutoRejoinFlashback",
 	"testSwitchoverReplAllDelay",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSwitchOverReadOnlyNoRplCheck",
@@ -73,9 +74,16 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
 
-	if test == "testFailoverReplAllDelayAutoRejoinFlashback" || test == "ALL" {
-		res = cluster.testFailoverReplAllDelayAutoRejoinFlashback("semisync.cnf", "testFailoverReplAllDelayAutoRejoinFlashback")
-		allTests["1 Failover all slaves delay rejoin flashback<cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+	if test == "testFailoverSemisyncAutoRejoinFlashback" || test == "ALL" {
+		res = cluster.testFailoverSemisyncAutoRejoinFlashback("semisync.cnf", "testFailoverSemisyncAutoRejoinFlashback")
+		allTests["1 Failover rejoin flashback <cluster.conf.RplChecks=false> <Semisync=ture> "] = cluster.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverAssyncAutoRejoinFlashback" || test == "ALL" {
+		res = cluster.testFailoverAssyncAutoRejoinFlashback("semisync.cnf", "testFailoverAssyncAutoRejoinFlashback")
+		allTests["1 Failover  rejoin flashback <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -275,6 +283,28 @@ func (cluster *Cluster) RunSysbench() error {
 	cluster.PrepareBench()
 	cluster.RunBench()
 	return nil
+}
+
+func (cluster *Cluster) checkTableConsistency(table string) bool {
+	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
+	if err != nil {
+		cluster.LogPrintf("Failed to take master checksum table ")
+	} else {
+		cluster.LogPrintf("Checksum master table test.sbtest =  %s ", checksum)
+	}
+	for _, s := range cluster.slaves {
+		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
+		if err != nil {
+			cluster.LogPrintf("Failed to take master checksum table ")
+		} else {
+			cluster.LogPrintf("Checksum slave table test.sbtest =  %s ", checksum)
+		}
+		if checksumslave != checksum {
+			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
+			return false
+		}
+	}
+	return true
 }
 
 func (cluster *Cluster) DelayAllSlaves() error {

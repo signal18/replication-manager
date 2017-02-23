@@ -1,8 +1,11 @@
 package cluster
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
-func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string, test string) bool {
+func (cluster *Cluster) testFailoverSemisyncAutoRejoinFlashback(conf string, test string) bool {
 
 	if cluster.initTestCluster(conf, test) == false {
 		return false
@@ -19,6 +22,8 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string,
 	//clusteruster.DelayAllSlaves()
 	cluster.PrepareBench()
 	//go clusteruster.RunBench()
+	go cluster.RunSysbench()
+	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.waitFailover(wg)
@@ -37,6 +42,12 @@ func (cluster *Cluster) testFailoverReplAllDelayAutoRejoinFlashback(conf string,
 	go cluster.waitRejoin(wg2)
 	cluster.startMariaDB(SaveMaster)
 	wg2.Wait()
+
+	if cluster.checkTableConsistency("test.sbtest") != true {
+		cluster.LogPrintf("ERROR: Inconsitant slave")
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
 	cluster.closeTestCluster(conf, test)
 
 	return true
