@@ -28,6 +28,7 @@ var tests = []string{
 	"testFailoverReplAllDelayInteractive",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
+	"testFailoverAssyncAutoRejoinNowrites",
 	"testSwitchoverReplAllDelay",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSwitchOverReadOnlyNoRplCheck",
@@ -88,7 +89,13 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 			ret = res
 		}
 	}
-
+	if test == "testFailoverAssyncAutoRejoinNowrites" || test == "ALL" {
+		res = cluster.testFailoverAssyncAutoRejoinNowrites("semisync.cnf", "testFailoverAssyncAutoRejoinNowrites")
+		allTests["1 Failover rejoin No Writes <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
 	if test == "testFailoverAssyncAutoRejoinDump" || test == "ALL" {
 		res = cluster.testFailoverAssyncAutoRejoinDump("semisync.cnf", "testFailoverAssyncAutoRejoinDump")
 		allTests["1 Failover rejoin Dump <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)

@@ -525,7 +525,7 @@ func (server *ServerMonitor) rejoin() error {
 		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on  rejoined %s", server.URL)
 	}
 
-	if server.CurrentGtid == server.ClusterGroup.master.FailoverIOGtid {
+	if server.CurrentGtid.Sprint() == server.ClusterGroup.master.FailoverIOGtid.Sprint() {
 		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.URL)
 		cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=CURRENT_POS"
 		_, err := server.Conn.Exec(cm)
