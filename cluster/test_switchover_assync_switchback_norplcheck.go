@@ -39,18 +39,9 @@ func (cluster *Cluster) testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck(co
 			return false
 		}
 	}
-	time.Sleep(2 * time.Second)
-	for _, s := range cluster.slaves {
-		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("TEST : Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
-			cluster.closeTestCluster(conf, test)
-			return false
-		}
-		if s.MasterServerID != cluster.master.ServerID {
-			cluster.LogPrintf("TEST :  Replication is  pointing to wrong master %s ", cluster.master.ServerID)
-			cluster.closeTestCluster(conf, test)
-			return false
-		}
+	if cluster.checkSlavesRunning() == false {
+		cluster.closeTestCluster(conf, test)
+		return false
 	}
 	cluster.closeTestCluster(conf, test)
 	return true

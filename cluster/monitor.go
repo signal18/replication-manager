@@ -579,6 +579,11 @@ func (server *ServerMonitor) rejoin() error {
 		} else {
 			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
 			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
+				cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=SLAVE_POS"
+				_, err := server.Conn.Exec(cm)
+				if err != nil {
+					return err
+				}
 				// dump here
 				server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
 				dbhelper.StartSlave(server.Conn)

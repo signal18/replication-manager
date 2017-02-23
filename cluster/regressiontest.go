@@ -83,7 +83,15 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	}
 	if test == "testFailoverAssyncAutoRejoinFlashback" || test == "ALL" {
 		res = cluster.testFailoverAssyncAutoRejoinFlashback("semisync.cnf", "testFailoverAssyncAutoRejoinFlashback")
-		allTests["1 Failover  rejoin flashback <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["1 Failover rejoin flashback <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+
+	if test == "testFailoverAssyncAutoRejoinDump" || test == "ALL" {
+		res = cluster.testFailoverAssyncAutoRejoinDump("semisync.cnf", "testFailoverAssyncAutoRejoinDump")
+		allTests["1 Failover rejoin Dump <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -285,6 +293,22 @@ func (cluster *Cluster) RunSysbench() error {
 	return nil
 }
 
+func (cluster *Cluster) checkSlavesRunning() bool {
+	time.Sleep(2 * time.Second)
+	for _, s := range cluster.slaves {
+		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
+			cluster.LogPrintf("TEST : Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
+
+			return false
+		}
+		if s.MasterServerID != cluster.master.ServerID {
+			cluster.LogPrintf("TEST :  Replication is  pointing to wrong master %s ", cluster.master.ServerID)
+			return false
+		}
+	}
+	return true
+}
+
 func (cluster *Cluster) checkTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 	if err != nil {
@@ -292,10 +316,13 @@ func (cluster *Cluster) checkTableConsistency(table string) bool {
 	} else {
 		cluster.LogPrintf("Checksum master table test.sbtest =  %s ", checksum)
 	}
+
+	ctslave := 0
 	for _, s := range cluster.slaves {
+		ctslave++
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogPrintf("Failed to take master checksum table ")
+			cluster.LogPrintf("Failed to take slave checksum table ")
 		} else {
 			cluster.LogPrintf("Checksum slave table test.sbtest =  %s ", checksum)
 		}
@@ -303,6 +330,10 @@ func (cluster *Cluster) checkTableConsistency(table string) bool {
 			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
 			return false
 		}
+	}
+	if ctslave == 0 {
+		cluster.LogPrintf("ERROR:  No slaves while checking consistancy")
+		return false
 	}
 	return true
 }
