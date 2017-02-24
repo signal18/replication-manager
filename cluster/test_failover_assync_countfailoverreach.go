@@ -22,6 +22,7 @@ func (cluster *Cluster) testNumberFailOverLimitReach(conf string, test string) b
 	cluster.conf.FailLimit = 3
 	cluster.conf.FailTime = 0
 	cluster.failoverCtr = 3
+	cluster.conf.CheckFalsePositiveHeartbeat = false
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 20
 	cluster.checkfailed()

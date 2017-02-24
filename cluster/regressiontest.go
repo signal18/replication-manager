@@ -427,6 +427,7 @@ func (cluster *Cluster) restoreConf() {
 	cluster.conf.AutorejoinSemisync = savedConf.AutorejoinSemisync
 	cluster.failoverTs = savedFailoverTs
 	cluster.failoverCtr = savedFailoverCtr
+	cluster.conf.CheckFalsePositiveHeartbeat = savedConf.CheckFalsePositiveHeartbeat
 
 }
 

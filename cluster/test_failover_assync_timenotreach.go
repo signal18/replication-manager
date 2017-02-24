@@ -25,6 +25,7 @@ func (cluster *Cluster) testFailOverTimeNotReach(conf string, test string) bool 
 	cluster.failoverCtr = 1
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 20
+	cluster.conf.CheckFalsePositiveHeartbeat = false
 	cluster.checkfailed()
 
 	cluster.waitFailoverEnd()
