@@ -2,7 +2,7 @@ package cluster
 
 import "time"
 
-func (cluster *Cluster) testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
+func (cluster *Cluster) testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}

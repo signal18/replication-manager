@@ -1,6 +1,6 @@
 package cluster
 
-func (cluster *Cluster) testSwitchOverNoReadOnlyNoRplCheck(conf string, test string) bool {
+func (cluster *Cluster) testSwitchoverNoReadOnlyNoRplCheck(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}

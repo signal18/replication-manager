@@ -1,6 +1,6 @@
 package cluster
 
-func (cluster *Cluster) testFailOverNoRplChecksNoSemiSync(conf string, test string) bool {
+func (cluster *Cluster) testFailoverNoRplChecksNoSemiSync(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}
@@ -23,6 +23,7 @@ func (cluster *Cluster) testFailOverNoRplChecksNoSemiSync(conf string, test stri
 	cluster.failoverCtr = 0
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 20
+	cluster.conf.CheckFalsePositiveHeartbeat = false
 	cluster.checkfailed()
 
 	cluster.waitFailoverEnd()

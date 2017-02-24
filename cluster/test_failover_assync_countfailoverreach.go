@@ -1,6 +1,6 @@
 package cluster
 
-func (cluster *Cluster) testNumberFailOverLimitReach(conf string, test string) bool {
+func (cluster *Cluster) testFailoverNumberFailureLimitReach(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}

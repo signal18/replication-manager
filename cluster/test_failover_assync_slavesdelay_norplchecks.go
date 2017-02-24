@@ -7,7 +7,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
+func (cluster *Cluster) testFailoverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
 
 	if cluster.initTestCluster(conf, test) == false {
 		return false
@@ -59,6 +59,7 @@ func (cluster *Cluster) testFailOverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 	cluster.failoverCtr = 0
 	cluster.conf.RplChecks = false
 	cluster.conf.MaxDelay = 4
+	cluster.conf.CheckFalsePositiveHeartbeat = false
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.waitFailover(wg)

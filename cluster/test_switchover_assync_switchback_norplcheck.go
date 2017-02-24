@@ -6,7 +6,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck(conf string, test string) bool {
+func (cluster *Cluster) testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}

@@ -6,7 +6,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testSwitchOverLongTransactionNoRplCheckNoSemiSync(conf string, test string) bool {
+func (cluster *Cluster) testSwitchoverLongTransactionNoRplCheckNoSemiSync(conf string, test string) bool {
 	if cluster.initTestCluster(conf, test) == false {
 		return false
 	}

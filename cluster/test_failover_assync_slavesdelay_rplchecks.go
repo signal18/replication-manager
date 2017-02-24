@@ -6,7 +6,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) testFailOverAllSlavesDelayRplChecksNoSemiSync(conf string, test string) bool {
+func (cluster *Cluster) testFailoverAllSlavesDelayRplChecksNoSemiSync(conf string, test string) bool {
 
 	if cluster.initTestCluster(conf, test) == false {
 		return false
@@ -48,6 +48,7 @@ func (cluster *Cluster) testFailOverAllSlavesDelayRplChecksNoSemiSync(conf strin
 	cluster.failoverCtr = 0
 	cluster.conf.RplChecks = true
 	cluster.conf.MaxDelay = 4
+	cluster.conf.CheckFalsePositiveHeartbeat = false
 	cluster.checkfailed()
 
 	cluster.waitFailoverEnd()
@@ -56,7 +57,7 @@ func (cluster *Cluster) testFailOverAllSlavesDelayRplChecksNoSemiSync(conf strin
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	err = cluster.enableSemisync()
@@ -65,6 +66,6 @@ func (cluster *Cluster) testFailOverAllSlavesDelayRplChecksNoSemiSync(conf strin
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf,test)
+	cluster.closeTestCluster(conf, test)
 	return true
 }
