@@ -896,9 +896,11 @@ func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 
 func InjectTrxWithoutCommit(db *sqlx.DB, time int) error {
 	benchWarmup(db)
-	_, err := db.Exec("set binlog_format='STATEMENT'")
-	_, err = db.Exec("BEGIN")
-	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val)  select  1 from dual")
+	_, err := db.Exec("START TRANSACTION")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val)  VALUES(1)")
 	if err != nil {
 		return err
 	}

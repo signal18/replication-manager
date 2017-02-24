@@ -331,9 +331,9 @@ replication-manager get 4 cases for rejoin:
 
 1 - GTID of the new leader at time of election is equal to GTID of the joiner we proceed with rejoin.
 
-2 - GTID is ahead on joiner, we backup extra events , if semisync was in sync at election we force the GTID saved at election on joiner
+2 - GTID is ahead on joiner, we backup extra events , if semisync was in sync  we must do falshback to come back to physical state that client connection never seen  
 
-3 - GTID is ahead but semisync status at election was unsync we flashback if replication-manager settings use the rejoin-flashback flag
+3 - GTID is ahead but semisync status at election was unsync we flashback if replication-manager settings use the rejoin-flashback flag, lost event are saved in a crash directory in the working directory
 
 4 - GTID is ahead but semisync status at election was unsync we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag
 
@@ -380,10 +380,16 @@ haproxy-read-port=3304
 test=true
 ```  
 
-The test can be run on existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server install locally.    
+The test can be run on existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server install locally.  
+Some test are requiring sysbench and haproxy so it's advice to set    
 
 ```  
 mariadb-binary-path = "/usr/local/mysql/bin"
+sysbench-binary-path = "/usr/sbin/sysbench"
+sysbench-threads = 4
+sysbench-time = 60
+haproxy = true
+haproxy-binary-path = "/usr/sbin/haproxy"
 ```
 
 Command line print test
@@ -392,8 +398,8 @@ Command line print test
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes --show-tests=true test
 INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSync testSwitchOverLongQueryNoRplCheckNoSemiSync testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync testSlaReplAllDelay testFailoverReplAllDelayInteractive testFailoverReplAllDelayAutoRejoinFlashback testSwitchoverReplAllDelay testSlaReplAllSlavesStopNoSemiSync testSwitchOverReadOnlyNoRplCheck testSwitchOverNoReadOnlyNoRplCheck testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck testSwitchOverBackPreferedMasterNoRplCheckSemiSync testSwitchOverAllSlavesStopRplCheckNoSemiSync testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck testSwitchOverAllSlavesDelayRplCheckNoSemiSync testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayRplChecksNoSemiSync testFailOverNoRplChecksNoSemiSync testNumberFailOverLimitReach testFailOverTimeNotReach]
 ```
-Command line running some tests via  passing a list of tests in run-tests
-
+Command line running some tests via passing a list of tests in run-tests
+ALL is special test to run all available tests
 ```
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
 ```

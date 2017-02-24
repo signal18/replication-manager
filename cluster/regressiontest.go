@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 var tests = []string{
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
 	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
-	"testSwitchoverLongTransactionWithoutCommitNoRplCheckNoSemiSync",
+	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
 	"testSwitchoverReplAllDelay",
 	"testSwitchoverReadOnlyNoRplCheck",
 	"testSwitchoverNoReadOnlyNoRplCheck",
@@ -74,28 +75,28 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 
 	if test == "testFailoverSemisyncAutoRejoinFlashback" || test == "ALL" {
 		res = cluster.testFailoverSemisyncAutoRejoinFlashback("semisync.cnf", "testFailoverSemisyncAutoRejoinFlashback")
-		allTests["1 Failover rejoin flashback <cluster.conf.RplChecks=false> <Semisync=ture> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverSemisyncAutoRejoinFlashback"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverAssyncAutoRejoinFlashback" || test == "ALL" {
 		res = cluster.testFailoverAssyncAutoRejoinFlashback("semisync.cnf", "testFailoverAssyncAutoRejoinFlashback")
-		allTests["1 Failover rejoin flashback <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverAssyncAutoRejoinFlashback"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverAssyncAutoRejoinNowrites" || test == "ALL" {
 		res = cluster.testFailoverAssyncAutoRejoinNowrites("semisync.cnf", "testFailoverAssyncAutoRejoinNowrites")
-		allTests["1 Failover rejoin No Writes <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverAssyncAutoRejoinNowrites"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverAssyncAutoRejoinDump" || test == "ALL" {
 		res = cluster.testFailoverAssyncAutoRejoinDump("semisync.cnf", "testFailoverAssyncAutoRejoinDump")
-		allTests["1 Failover rejoin Dump <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverAssyncAutoRejoinDump"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -103,7 +104,7 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 
 	if test == "testSwitchoverLongTransactionNoRplCheckNoSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverLongTransactionNoRplCheckNoSemiSync("semisync.cnf", "testSwitchoverLongTransactionNoRplCheckNoSemiSync")
-		allTests["1 Switchover Concurrent Long Transaction <cluster.conf.ReadOnly=false> <cluster.conf.RplChecks=true>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverLongTransactionNoRplCheckNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -111,84 +112,84 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 
 	if test == "testSwitchoverLongQueryNoRplCheckNoSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverLongQueryNoRplCheckNoSemiSync("semisync.cnf", "testSwitchoverLongQueryNoRplCheckNoSemiSync")
-		allTests["1 Switchover Concurrent Long Query <cluster.conf.ReadOnly=false> <cluster.conf.RplChecks=true>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverLongQueryNoRplCheckNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverNoReadOnlyNoRplCheck" || test == "ALL" {
 		res = cluster.testSwitchoverNoReadOnlyNoRplCheck("semisync.cnf", "testSwitchoverNoReadOnlyNoRplCheck")
-		allTests["1 Switchover <cluster.conf.ReadOnly=false> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverNoReadOnlyNoRplCheck"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverReadOnlyNoRplCheck" || test == "ALL" {
 		res = cluster.testSwitchoverReadOnlyNoRplCheck("semisync.cnf", "testSwitchoverReadOnlyNoRplCheck")
-		allTests["1 Switchover <cluster.conf.ReadOnly=true> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverReadOnlyNoRplCheck"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck" || test == "ALL" {
 		res = cluster.testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck("semisync.cnf", "testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck")
-		allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=false> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchover2TimesReplicationOkSemiSyncNoRplCheck" || test == "ALL" {
 		res = cluster.testSwitchover2TimesReplicationOkSemiSyncNoRplCheck("semisync.cnf", "testSwitchover2TimesReplicationOkSemiSyncNoRplCheck")
-		allTests["2 Switchover Replication Ok <2 threads benchmark> <semisync=true> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchover2TimesReplicationOkSemiSyncNoRplCheck"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverBackPreferedMasterNoRplCheckSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverBackPreferedMasterNoRplCheckSemiSync("semisync.cnf", "testSwitchoverBackPreferedMasterNoRplCheckSemiSync")
-		allTests["2 Switchover Back Prefered Master <semisync=true> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverBackPreferedMasterNoRplCheckSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverAllSlavesStopRplCheckNoSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverAllSlavesStopRplCheckNoSemiSync("semisync.cnf", "testSwitchoverAllSlavesStopRplCheckNoSemiSync")
-		allTests["Can't Switchover All Slaves Stop  <semisync=false> <cluster.conf.RplChecks=true>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverAllSlavesStopRplCheckNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck" || test == "ALL" {
 		res = cluster.testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck("semisync.cnf", "testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck")
-		allTests["Can Switchover All Slaves Stop <semisync=false> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverAllSlavesDelayRplCheckNoSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverAllSlavesDelayRplCheckNoSemiSync("semisync.cnf", "testSwitchoverAllSlavesDelayRplCheckNoSemiSync")
-		allTests["Can't Switchover All Slaves Delay <semisync=false> <cluster.conf.RplChecks=true>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverAllSlavesDelayRplCheckNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync("semisync.cnf", "testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync")
-		allTests["Can Switchover All Slaves Delay <semisync=false> <cluster.conf.RplChecks=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSlaReplAllSlavesStopNoSemiSync" || test == "ALL" {
 		res = cluster.testSlaReplAllSlavesStopNoSemiSync("semisync.cnf", "testSlaReplAllSlavesStopNoSemiSync")
-		allTests["SLA Decrease Can't Switchover All Slaves Stop <Semisync=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSlaReplAllSlavesStopNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testSlaReplAllSlavesDelayNoSemiSync" || test == "ALL" {
 		res = cluster.testSlaReplAllSlavesDelayNoSemiSync("semisync.cnf", "testSlaReplAllSlavesDelayNoSemiSync")
-		allTests["SLA Decrease Can't Switchover All Slaves Delay <Semisync=false>"] = cluster.getTestResultLabel(res)
+		allTests["testSlaReplAllSlavesDelayNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -196,35 +197,35 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 
 	if test == "testFailoverNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailoverNoRplChecksNoSemiSync("semisync.cnf", "testFailoverNoRplChecksNoSemiSync")
-		allTests["1 Failover <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverNoRplChecksNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailoverAllSlavesDelayNoRplChecksNoSemiSync("semisync.cnf", "testFailoverAllSlavesDelayNoRplChecksNoSemiSync")
-		allTests["1 Failover All Slave Delay <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverAllSlavesDelayNoRplChecksNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverAllSlavesDelayRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailoverAllSlavesDelayRplChecksNoSemiSync("semisync.cnf", "testFailoverAllSlavesDelayRplChecksNoSemiSync")
-		allTests["1 Failover All Slave Delay <cluster.conf.RplChecks=true> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverAllSlavesDelayRplChecksNoSemiSync"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverNumberFailureLimitReach" || test == "ALL" {
 		res = cluster.testFailoverNumberFailureLimitReach("semisync.cnf", "testFailoverNumberFailureLimitReach")
-		allTests["1 Failover Number of Failover Reach <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverNumberFailureLimitReach"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
 	}
 	if test == "testFailoverTimeNotReach" || test == "ALL" {
 		res = cluster.testFailoverTimeNotReach("semisync.cnf", "testFailoverTimeNotReach")
-		allTests["1 Failover Before Time Limit <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
+		allTests["testFailoverTimeNotReach"] = cluster.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
@@ -237,7 +238,7 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	sort.Strings(keys)
 
 	for _, v := range keys {
-		cluster.LogPrintf("TESTS : Result  %s -> %s", v, allTests[v])
+		cluster.LogPrintf("TESTS : Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v])
 	}
 
 	cluster.CleanAll = false
@@ -490,7 +491,7 @@ func (cluster *Cluster) startSlaves() error {
 
 func (cluster *Cluster) getTestResultLabel(res bool) string {
 	if res == false {
-		return "FAILED"
+		return "FAIL"
 	} else {
 		return "PASS"
 	}

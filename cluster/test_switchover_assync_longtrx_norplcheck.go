@@ -20,8 +20,7 @@ func (cluster *Cluster) testSwitchoverLongTransactionNoRplCheckNoSemiSync(conf s
 	}
 
 	SaveMasterURL := cluster.master.URL
-	masterTest, _ := cluster.newServerMonitor(cluster.master.URL)
-	defer masterTest.Conn.Close()
+
 	db, err := cluster.getClusterProxyConn()
 	if err != nil {
 		cluster.LogPrintf("ERROR : %s", err)
@@ -29,9 +28,15 @@ func (cluster *Cluster) testSwitchoverLongTransactionNoRplCheckNoSemiSync(conf s
 		return false
 	}
 
-	go dbhelper.InjectTrxWithoutCommit(db, 10)
-	cluster.LogPrintf("TEST : Wainting in some trx 12s more wait-trx  default 10 ")
-	time.Sleep(12 * time.Second)
+	err = dbhelper.InjectTrxWithoutCommit(db, 20)
+	if err != nil {
+		cluster.LogPrintf("ERROR : %s", err)
+		cluster.closeTestCluster(conf, test)
+		return false
+	}
+
+	cluster.LogPrintf("TEST : Wainting in some trx 12s more wait-trx  default %d ", cluster.conf.WaitTrx)
+	time.Sleep(14 * time.Second)
 
 	cluster.LogPrintf("TEST :  Master is %s", cluster.master.URL)
 	cluster.switchoverWaitTest()
@@ -44,7 +49,7 @@ func (cluster *Cluster) testSwitchoverLongTransactionNoRplCheckNoSemiSync(conf s
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.master.URL != SaveMasterURL {
-		cluster.LogPrintf("TEST : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.master.URL)
+		cluster.LogPrintf("TEST : Saved  master %s <> from master  %s  ", SaveMasterURL, cluster.master.URL)
 		cluster.closeTestCluster(conf, test)
 		return false
 	}

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
@@ -148,8 +149,14 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 	for exitloop < 30 {
 		time.Sleep(time.Millisecond * 2000)
 		cluster.LogPrint("Waiting MariaDB startup ..")
-		err2 := server.refresh()
+		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
+		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
+			grants := "grant all on *.* to '" + cluster.dbUser + "'@'%%' identified by '" + cluster.dbPass + "'"
+			conn.Exec("grant all on *.* to '" + cluster.dbUser + "'@'%' identified by '" + cluster.dbPass + "'")
+			cluster.LogPrintf(grants)
+			grants2 := "grant all on *.* to '" + cluster.dbUser + "'@'127.0.0.1' identified by '" + cluster.dbPass + "'"
+			conn.Exec(grants2)
 			exitloop = 100
 		}
 		exitloop++
@@ -163,8 +170,6 @@ func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
 		return errors.New("Failed to start")
 	}
 
-	mariadbdCmdGrant := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user=root", "-e \"grant all on *.* to ''"+cluster.dbUser+"''@'%' identified by '"+cluster.dbPass+"'\"")
-	mariadbdCmdGrant.Run()
 	return nil
 }
 

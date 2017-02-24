@@ -521,18 +521,15 @@ func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
 		return nil, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
-	mydsn := func() string {
-		dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-		if proxyHost != "" {
-			dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
-		} else {
-			return ""
-		}
-		return dsn
-	}
 
-	return sqlx.Open("mysql", mydsn())
+	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+
+	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	if proxyHost != "" {
+		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
+	}
+	cluster.LogPrint(dsn)
+	return sqlx.Open("mysql", dsn)
 
 }
 
