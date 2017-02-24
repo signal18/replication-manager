@@ -18,7 +18,7 @@ func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync(conf string, test str
 	cluster.sme.ResetUpTime()
 	time.Sleep(3 * time.Second)
 	sla1 := cluster.sme.GetUptimeFailable()
-	err = cluster.startSlaves()
+	err = cluster.stopSlaves()
 	if err != nil {
 		cluster.LogPrintf("ERROR : %s", err)
 		cluster.closeTestCluster(conf, test)
@@ -39,10 +39,10 @@ func (cluster *Cluster) testSlaReplAllSlavesStopNoSemiSync(conf string, test str
 		return false
 	}
 	if sla2 == sla1 {
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	} else {
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return true
 	}
 }
