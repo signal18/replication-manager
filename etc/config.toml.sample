@@ -31,6 +31,7 @@ user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
 title = "Cluster01"
 prefmaster = "127.0.0.1:5012"
+interactive = true
 
 [Default]
 

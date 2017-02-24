@@ -60,7 +60,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinSemisync, "autorejoin-semisync", true, "Automatically rejoin a failed server to the current master when elected semisync status is SYNC ")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")
-	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat ", true, "Failover checks that slaves do not receive hearbeat")
+	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat", true, "Failover checks that slaves do not receive hearbeat")
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveHeartbeat, "autoinforce-slave-heartbeat", true, "Automatically activate heartbeat on slave")
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveGtid, "autoinforce-slave-gtid-mode", true, "Automatically activate gtid mode on slave")
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveSemisync, "autoinforce-slave-semisync", true, "Automatically activate semisync on slave")
@@ -111,7 +111,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "number of threads to run benchmark")
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
-
+	monitorCmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
 	viper.BindPFlags(monitorCmd.Flags())
 
 	var err error
@@ -161,7 +161,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.FailEventScheduler, "failover-event-scheduler", false, "Failover Event Scheduler")
 	cmd.Flags().BoolVar(&conf.FailEventStatus, "failover-event-status", false, "Failover Event Status ENABLE OR DISABLE ON SLAVE")
-	cmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
+
 	conf.MaxDelay = conf.FailMaxDelay
 	conf.WaitTrx = conf.SwitchWaitTrx
 	conf.WaitKill = conf.SwitchWaitKill

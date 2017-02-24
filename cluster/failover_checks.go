@@ -1,11 +1,9 @@
 package cluster
 
 import (
-	"log"
-	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/misc"
+	"github.com/tanji/replication-manager/dbhelper"
 )
 
 func (cluster *Cluster) checkfailed() {
@@ -17,7 +15,7 @@ func (cluster *Cluster) checkfailed() {
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-			if cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false {
+			if cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false {
 				cluster.MasterFailover(true)
 				cluster.failoverCond.Send <- true
 			} else {
@@ -46,7 +44,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountReach() bool {
 		return false
 	}
 	if cluster.failoverCtr == cluster.conf.FailLimit {
-		cluster.LogPrintf("DEBUG: Can't failover, maximum number of cluster failover reached")
+		cluster.LogPrintf("ERROR: Can't failover, maximum number of cluster failover reached")
 		return true
 	}
 	return false
@@ -59,26 +57,29 @@ func (cluster *Cluster) isBeetwenFailoverTimeTooShort() bool {
 		return false
 	}
 	if rem > 0 {
-		cluster.LogPrintf("DEBUG: Can failover, time between failover to short ")
+		cluster.LogPrintf("ERROR: Can failover, time between failover to short ")
 		return true
 	}
 	return false
 }
 
-func (cluster *Cluster) agentFlagCheck() {
+func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
+	if cluster.conf.CheckFalsePositiveHeartbeat == false {
+		return false
+	}
 
-	// if slaves option has been supplied, split into a slice.
-	if cluster.conf.Hosts != "" {
-		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
-	} else {
-		log.Fatal("No hosts list specified")
+	for _, s := range cluster.slaves {
+
+		status, _ := dbhelper.GetStatusAsInt(s.Conn)
+		saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
+		cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+		time.Sleep(3 * time.Second)
+		status2, _ := dbhelper.GetStatusAsInt(s.Conn)
+		cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+		if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
+			cluster.LogPrintf("ERROR: Can't failover,  slave %s still see the master ", s.DSN)
+			return true
+		}
 	}
-	if len(cluster.hostList) > 1 {
-		log.Fatal("Agent can only monitor a single host")
-	}
-	// validate users.
-	if cluster.conf.User == "" {
-		log.Fatal("No master user/pair specified")
-	}
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
+	return false
 }

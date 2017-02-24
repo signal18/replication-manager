@@ -200,7 +200,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
-	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d", cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry)
+	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d, master_heartbeat_period=%d", cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 	if fail == false {
 		// Get latest GTID pos
 		oldMaster.refresh()

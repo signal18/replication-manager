@@ -22,14 +22,14 @@ func (cluster *Cluster) testFailOverNoRplChecksNoSemiSync(conf string, test stri
 	cluster.conf.FailTime = 0
 	cluster.failoverCtr = 0
 	cluster.conf.RplChecks = false
-	cluster.conf.MaxDelay = 4
+	cluster.conf.MaxDelay = 20
 	cluster.checkfailed()
 
 	cluster.waitFailoverEnd()
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.master.URL)
 	if cluster.master.URL == SaveMasterURL {
 		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf,test)
+		cluster.closeTestCluster(conf, test)
 		return false
 	}
 	err = cluster.enableSemisync()
