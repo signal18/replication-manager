@@ -3,8 +3,6 @@ package cluster
 import (
 	"sync"
 	"time"
-
-	"github.com/tanji/replication-manager/dbhelper"
 )
 
 func (cluster *Cluster) testFailoverAllSlavesDelayNoRplChecksNoSemiSync(conf string, test string) bool {
@@ -19,36 +17,8 @@ func (cluster *Cluster) testFailoverAllSlavesDelayNoRplChecksNoSemiSync(conf str
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	err = cluster.stopSlaves()
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err.Error())
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
 	SaveMasterURL := cluster.master.URL
-	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s %s", err.Error(), result)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
-	cluster.LogPrintf("BENCH : Write Concurrent Insert")
-
-	err = dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s %s", err.Error(), result)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
-	cluster.LogPrintf("BENCH : Inject Long Trx")
-	time.Sleep(10 * time.Second)
-
-	err = cluster.startSlaves()
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err.Error())
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
+	cluster.DelayAllSlaves()
 
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 	cluster.conf.Interactive = false

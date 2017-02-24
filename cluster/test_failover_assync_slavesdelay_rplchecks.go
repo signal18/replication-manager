@@ -1,10 +1,6 @@
 package cluster
 
-import (
-	"time"
-
-	"github.com/tanji/replication-manager/dbhelper"
-)
+import "time"
 
 func (cluster *Cluster) testFailoverAllSlavesDelayRplChecksNoSemiSync(conf string, test string) bool {
 
@@ -18,26 +14,10 @@ func (cluster *Cluster) testFailoverAllSlavesDelayRplChecksNoSemiSync(conf strin
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	err = cluster.stopSlaves()
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
+
 	SaveMasterURL := cluster.master.URL
 
-	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
-	if err != nil {
-		cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
-	}
-	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-	time.Sleep(10 * time.Second)
-	err = cluster.startSlaves()
-	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err.Error())
-		cluster.closeTestCluster(conf, test)
-		return false
-	}
+	cluster.DelayAllSlaves()
 	cluster.LogPrintf("INFO :  Master is %s", cluster.master.URL)
 
 	cluster.master.State = stateFailed

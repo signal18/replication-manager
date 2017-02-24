@@ -45,7 +45,7 @@ var tests = []string{
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
 	"testSlaReplAllSlavesStopNoSemiSync",
-	"testSlaReplAllDelay",
+	"testSlaReplAllSlavesDelayNoSemiSync",
 }
 
 var savedConf config.Config
@@ -56,10 +56,6 @@ const recoverTime = 8
 
 func (cluster *Cluster) GetTests() []string {
 	return tests
-}
-
-func (cluster *Cluster) testSlaReplAllDelay() bool {
-	return false
 }
 
 func (cluster *Cluster) testFailoverReplAllDelayInteractive() bool {
@@ -190,6 +186,14 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 			ret = res
 		}
 	}
+	if test == "testSlaReplAllSlavesDelayNoSemiSync" || test == "ALL" {
+		res = cluster.testSlaReplAllSlavesDelayNoSemiSync("semisync.cnf", "testSlaReplAllSlavesDelayNoSemiSync")
+		allTests["SLA Decrease Can't Switchover All Slaves Delay <Semisync=false>"] = cluster.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+
 	if test == "testFailoverNoRplChecksNoSemiSync" || test == "ALL" {
 		res = cluster.testFailoverNoRplChecksNoSemiSync("semisync.cnf", "testFailoverNoRplChecksNoSemiSync")
 		allTests["1 Failover <cluster.conf.RplChecks=false> <Semisync=false> "] = cluster.getTestResultLabel(res)
