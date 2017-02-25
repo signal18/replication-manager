@@ -131,6 +131,13 @@ switchover-max-slave-delay = 30
 # for 2 nodes cluster maxscale can be driven by replication manager
 
 maxscale = false
+
+# when false replication manager fully drive maxscale for 2 nodes cluster 
+maxscale-monitor = false
+
+# maxinfo|maxadmin
+
+maxscale-get-info-method = "maxinfo"
 maxscale-maxinfo-port = 4002
 
 maxscale-host = "192.168.0.201"

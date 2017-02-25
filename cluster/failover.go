@@ -168,7 +168,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrint("INFO : Post-failover script complete", string(out))
 	}
 	if cluster.conf.HaproxyOn {
-		cluster.initHaproxy()
+		cluster.initHaproxy(oldMaster)
+	}
+	// Signal MaxScale that we have a new topology
+	if cluster.conf.MxsOn == true {
+		cluster.initMaxscale(oldMaster)
 	}
 	if cluster.conf.MultiMaster == false {
 		cluster.LogPrint("INFO : Resetting slave on new master and set read/write mode on")
@@ -292,41 +296,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 
-	// Signal MaxScale that we have a new topology
-	if cluster.conf.MxsOn {
-		m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
-		err = m.Connect()
-		if err != nil {
-			cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
-		} else {
-			if cluster.master.MxsServerName != "" {
-				err = m.Command("set server " + cluster.master.MxsServerName + " master")
-				if err != nil {
-					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
-				}
-			} else {
-				cluster.LogPrint("ERROR: MaxScale server nameundiscovered:")
-			}
-			/*
-				   	maxServerList, err := m.ListServers()
-						if err != nil {
-							cluster.LogPrint("Could not get MaxScale server list")
-						} else {
-							server := maxServerList.GetServer(cluster.master.IP)
-							err = m.Command("set server " + server + " master")
-							if err != nil {
-								cluster.LogPrint("ERROR: MaxScale client could not send command:", err)
-							}
-
-						}
-			*/
-		}
-		if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
-			prm := cluster.foundPreferedMaster(cluster.slaves)
-			if prm != nil {
-				cluster.LogPrint("INFO: Not on Prefered Master after Failover")
-				cluster.MasterFailover(false)
-			}
+	if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
+		prm := cluster.foundPreferedMaster(cluster.slaves)
+		if prm != nil {
+			cluster.LogPrint("INFO: Not on Prefered Master after Failover")
+			cluster.MasterFailover(false)
 		}
 	}
 
@@ -338,6 +312,52 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.sme.RemoveFailoverState()
 	return true
+}
+
+func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
+	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
+	err := m.Connect()
+	if err != nil {
+		cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
+	} else {
+
+		/*
+			maxServerList, err := m.ListServers()
+			if err != nil {
+				cluster.LogPrint("Could not get MaxScale server list")
+			} else {
+				server := maxServerList.GetServer(cluster.master.IP)
+				err = m.Command("set server " + server + " master")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:", err)
+				}
+
+			}
+		*/
+		if cluster.master.MxsServerName != "" {
+			err = m.Command("set server " + cluster.master.MxsServerName + " master")
+			if err != nil {
+				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+			}
+			if cluster.conf.MxsMonitor == false {
+				for _, s := range cluster.slaves {
+					err = m.Command("set server " + s.MxsServerName + " slave")
+					if err != nil {
+						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+					}
+				}
+				if oldmaster != nil {
+					err = m.Command("set server " + oldmaster.MxsServerName + " slave")
+					if err != nil {
+						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+					}
+				}
+
+			}
+		} else {
+			cluster.LogPrint("ERROR: MaxScale server name undiscovered")
+		}
+	}
 }
 
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
