@@ -168,7 +168,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrint("INFO : Post-failover script complete", string(out))
 	}
 	if cluster.conf.HaproxyOn {
-		cluster.initHaproxy(oldMaster)
+		cluster.initHaproxy()
 	}
 	// Signal MaxScale that we have a new topology
 	if cluster.conf.MxsOn == true {
