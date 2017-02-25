@@ -210,6 +210,9 @@ func (cluster *Cluster) Run() {
 						if cluster.conf.HaproxyOn {
 							cluster.initHaproxy()
 						}
+						if cluster.conf.MxsOn {
+							cluster.initMaxscale(nil)
+						}
 						cluster.runOnceAfterTopology = false
 					}
 				}
