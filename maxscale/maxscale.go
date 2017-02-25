@@ -4,9 +4,13 @@ package maxscale
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -25,7 +29,17 @@ type Server struct {
 	Address string
 }
 
+type ServerMaxinfo struct {
+	Server      string
+	Address     string
+	Port        int
+	Connections int
+	Status      string
+}
+
 type ServerList []Server
+
+var ServerMaxinfos = make([]ServerMaxinfo, 0)
 
 const (
 	maxDefaultPort    = "6603"
@@ -73,6 +87,41 @@ func (m *MaxScale) Connect() error {
 		return errors.New("Authentication failed")
 	}
 	return nil
+}
+
+func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
+	client := &http.Client{}
+
+	// Send the request via a client
+	// Do sends an HTTP request and
+	// returns an HTTP response
+	// Build the request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal("NewRequest: ", err)
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("Do: ", err)
+		return nil, err
+	}
+
+	// Callers should close resp.Body
+	// when done reading from it
+	// Defer the closing of the body
+	defer resp.Body.Close()
+	monjson, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal("Do: ", err)
+		return nil, err
+	}
+
+	// Use json.Decode for reading streams of JSON data
+	if err := json.Unmarshal(monjson, &ServerMaxinfos); err != nil {
+		log.Println(err)
+	}
+	return ServerMaxinfos, nil
 }
 
 func (m *MaxScale) ShowServers() ([]byte, error) {
@@ -132,6 +181,16 @@ func (sl ServerList) GetServer(ip string) string {
 		}
 	}
 	return ""
+}
+
+func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {
+	for _, s := range ServerMaxinfos {
+		//	log.Printf("%s,%s", s.Address, ip)
+		if s.Address == ip && s.Port == port {
+			return s.Server, s.Status, s.Connections
+		}
+	}
+	return "", "", 0
 }
 
 func (m *MaxScale) Command(cmd string) error {

@@ -16,8 +16,8 @@ test = true
 
 [Cluster_Test_3_Nodes]
 hosts = "127.0.0.1:3312,127.0.0.1:3313,127.0.0.1:3314"
-user = "root:"
-rpluser = "root:"
+user = "root:test"
+rpluser = "root:test"
 title = "ClusterTestSemisync"
 prefmaster = "127.0.0.1:3310"
 haproxy-write-port=3305
@@ -124,6 +124,26 @@ switchover-wait-write-query = 10
 switchover-at-equal-gtid = false
 switchover-at-sync = true
 switchover-max-slave-delay = 30
+
+# MAXSCALE PROXY
+# --------------
+
+# for 2 nodes cluster maxscale can be driven by replication manager
+
+maxscale = false
+maxscale-maxinfo-port = 4002
+
+maxscale-host = "192.168.0.201"
+maxscale-port = 4003
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+
+maxscale-binlog = false
+maxscale-binlog-port = 4009
+
 
 # HAPROXY WRAPPER MODE
 # --------------------

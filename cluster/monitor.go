@@ -25,6 +25,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/gtid"
+	"github.com/tanji/replication-manager/maxscale"
 
 	"github.com/tanji/replication-manager/misc"
 )
@@ -76,6 +77,9 @@ type ServerMonitor struct {
 	Process                     *os.Process
 	Name                        string //Unique name given by reg test initMariaDB
 	Conf                        string //Unique Conf given by reg test initMariaDB
+	MxsServerName               string //Unique server Name in maxscale conf
+	MxsServerStatus             string
+	MxsServerConnections        int
 }
 
 type serverList []*ServerMonitor
@@ -361,8 +365,18 @@ func (server *ServerMonitor) refresh() error {
 	if server.ClusterGroup.conf.HaproxyOn {
 		// status, err := haproxy.parse(page)
 	}
-	// Initialize graphite monitoring
 
+	if server.ClusterGroup.conf.MxsOn {
+		m := maxscale.MaxScale{Host: server.ClusterGroup.conf.MxsHost, Port: server.ClusterGroup.conf.MxsPort, User: server.ClusterGroup.conf.MxsUser, Pass: server.ClusterGroup.conf.MxsPass}
+
+		_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR: Could not get servers from Maxscale MaxInfo plugin")
+		}
+		srvport, _ := strconv.Atoi(server.Port)
+		server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport)
+	}
+	// Initialize graphite monitoring
 	if server.ClusterGroup.conf.GraphiteMetrics {
 		graph, err := graphite.NewGraphite(server.ClusterGroup.conf.GraphiteCarbonHost, server.ClusterGroup.conf.GraphiteCarbonPort)
 		if err == nil {

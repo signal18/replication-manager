@@ -241,6 +241,7 @@ This mode is similar to the normal console mode with the exception of automated 
   switchover  Perform a master switch
   topology    Print replication topology
   version     Print the replication manager version number
+  test        Run non regression tests
 ```
 
 To print the help and option flags for each command, use `replication-manager [command] --help`

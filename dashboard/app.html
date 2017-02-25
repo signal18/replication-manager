@@ -212,6 +212,33 @@ td {
 
 			 </md-content>
 	 </md-tab>
+	 <md-tab label="Proxies">
+		 <md-content class="md-padding">
+
+
+			 <p class="sectionheader">MAXSCALE</p>
+			 <table ng-if="servers" class="table">
+				 <tr>
+		 			 <th>Host</th>
+					 <th>Port</th>
+					 <th>Status</th>
+					 <th>MaxScale Name</th>
+					 <th>MaxScale Status</th>
+					 <th>MaxScale Connection</th>
+
+				 </tr>
+				 <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+					  <td>{{server.Host}}</td>
+					 <td>{{server.Port}}</td>
+					 <td>{{server.State}}</td>
+					 <td>{{server.MxsServerName}}</td>
+					 <td>{{server.MxsServerStatus}}</td>
+					 <td>{{server.MxsServerConnections}}</td>
+				 </tr>
+			 </table>
+
+		 </md-content>
+ </md-tab>
 		 <md-tab label="Settings">
 			 <md-content class="md-padding">
 				 <div layout="column" layout-gt-xs="row">
