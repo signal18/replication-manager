@@ -44,9 +44,13 @@ type MonitorMaxinfo struct {
 	Monitor string
 	Status  string
 }
+type Monitor struct {
+	Monitor string
+	Status  string
+}
 
 type ServerList []Server
-type MonitorList []MonitorMaxinfo
+type MonitorList []Monitor
 
 var ServerMaxinfos = make([]ServerMaxinfo, 0)
 var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
@@ -238,11 +242,12 @@ func (m *MaxScale) ListMonitors() (MonitorList, error) {
 	list := strings.Split(string(response), "\n")
 	var sl MonitorList
 	for _, line := range list {
-		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*`)
+		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*`)
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 {
-			if match[0] != "" && match[1] != "Server" {
-				item := MonitorMaxinfo{Monitor: match[1], Status: match[2]}
+			log.Println(match)
+			if match[0] != "" && match[1] != "Monitor" {
+				item := Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")}
 				sl = append(sl, item)
 			}
 		}
@@ -252,7 +257,7 @@ func (m *MaxScale) ListMonitors() (MonitorList, error) {
 
 func (sl MonitorList) GetMonitor() string {
 	for _, s := range sl {
-		if s.Status == "running" {
+		if s.Status == "Running" {
 			return s.Monitor
 		}
 	}
@@ -261,7 +266,7 @@ func (sl MonitorList) GetMonitor() string {
 
 func (m *MaxScale) GetMaxInfoMonitor() string {
 	for _, s := range MonitorMaxinfos {
-		if s.Status == "running" {
+		if s.Status == "Running" {
 			return s.Monitor
 		}
 	}
@@ -290,6 +295,15 @@ func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {
 func (m *MaxScale) Command(cmd string) error {
 	writer := bufio.NewWriter(m.Conn)
 	if _, err := fmt.Fprint(writer, cmd); err != nil {
+		return err
+	}
+	err := writer.Flush()
+	return err
+}
+
+func (m *MaxScale) ShutdownMonitor(monitor string) error {
+	writer := bufio.NewWriter(m.Conn)
+	if _, err := fmt.Fprintf(writer, "shutdown monitor \"%s\"", monitor); err != nil {
 		return err
 	}
 	err := writer.Flush()

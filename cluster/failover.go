@@ -322,8 +322,9 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 		cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
 		return
 	}
-	if cluster.master.MxsServerName != "" {
+	if cluster.master.MxsServerName == "" {
 		cluster.LogPrint("ERROR: MaxScale server name undiscovered")
+		return
 	}
 	//disable monitoring
 	if cluster.conf.MxsMonitor == false {
@@ -333,17 +334,23 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 			monitor = m.GetMaxInfoMonitor()
 
 		} else {
+			cluster.LogPrint("ERROR: Getting Maxscale monitors")
+
 			mls, err := m.ListMonitors()
 			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could lis monitors monitor:%s", err)
+				cluster.LogPrint("ERROR: MaxScale client could list monitors monitor:%s", err)
 			}
 			monitor = mls.GetMonitor()
 		}
 		if monitor != "" {
-			err = m.Command("shutdown monitor \"" + monitor + "\"")
+			cmd := "shutdown monitor \"" + monitor + "\""
+			cluster.LogPrintf("INFO: %s", cmd)
+			err = m.ShutdownMonitor(monitor)
 			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could not shut down monitor:%s", err)
+				cluster.LogPrint("ERROR: MaxScale client could not shutdown monitor:%s", err)
 			}
+		} else {
+			cluster.LogPrint("INFO: MaxScale No running Monitor")
 		}
 	}
 

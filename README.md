@@ -161,8 +161,27 @@ thread_handling = pool-of-threads
 extra_port = 3307   
 extra_max_connections = 10
 ```   
+Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
 
-Also, to better protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
+
+## Maxscale settings
+
+Replication-Manager can operate with MaxScale in 2 modes, in passive MaxScale auto discover the new topology after failover or switchover. Replication Manager will  tell MaxScale the new master to accelerate the time MaxScale will block clients . This setup only work in 3 nodes in Master-Slaves cluster, one slave should always be available for re discovering new topology.
+
+Important note.
+In case all slaves are down MaxScale can still operate on the Master with following maxscale monitoring setup  
+```
+detect_stale_master
+```
+
+Operating MaxScale without monitoring is the second Replication-Manager mode via
+```
+maxscale-monitor = false
+```
+
+Replication will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mod of operation smilar to HaProxy , but can lead to unusable cluster if replication can't contact the proxy. It is so strongly advice to collocate the 2 services   
+
+Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
 
 ```
 [Splitter Service]
