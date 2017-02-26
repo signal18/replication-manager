@@ -46,6 +46,7 @@ type MonitorMaxinfo struct {
 }
 
 type ServerList []Server
+type MonitorList []MonitorMaxinfo
 
 var ServerMaxinfos = make([]ServerMaxinfo, 0)
 var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
@@ -216,6 +217,55 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 		}
 	}
 	return sl, nil
+}
+
+func (m *MaxScale) ListMonitors() (MonitorList, error) {
+	m.Command("list Monitors")
+	reader := bufio.NewReader(m.Conn)
+	var response []byte
+	buf := make([]byte, 80)
+	for {
+		res, err := reader.Read(buf)
+		if err != nil {
+		}
+		str := string(buf[0:res])
+		if res < 80 && strings.HasSuffix(str, "OK") {
+			response = append(response, buf[0:res-2]...)
+			break
+		}
+		response = append(response, buf[0:res]...)
+	}
+	list := strings.Split(string(response), "\n")
+	var sl MonitorList
+	for _, line := range list {
+		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*`)
+		match := re.FindStringSubmatch(line)
+		if len(match) > 0 {
+			if match[0] != "" && match[1] != "Server" {
+				item := MonitorMaxinfo{Monitor: match[1], Status: match[2]}
+				sl = append(sl, item)
+			}
+		}
+	}
+	return sl, nil
+}
+
+func (sl MonitorList) GetMonitor() string {
+	for _, s := range sl {
+		if s.Status == "running" {
+			return s.Monitor
+		}
+	}
+	return ""
+}
+
+func (m *MaxScale) GetMaxInfoMonitor() string {
+	for _, s := range MonitorMaxinfos {
+		if s.Status == "running" {
+			return s.Monitor
+		}
+	}
+	return ""
 }
 
 func (sl ServerList) GetServer(ip string, port string) (string, string, string) {

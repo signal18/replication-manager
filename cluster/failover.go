@@ -322,6 +322,25 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 	} else {
 
 		if cluster.master.MxsServerName != "" {
+			//disable monitoring
+			if cluster.conf.MxsMonitor == false {
+				var monitor=""
+				if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+					m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
+					monitor = m.GetMaxInfoMonitor()
+
+				} else  {
+						mls:= m.GetMonitors()
+						monitor = mls.GetMonitor()
+				}
+				if monitor != "" {
+					err = m.Command("shutdown monitor \"" + monitor + "\"")
+					if err != nil {
+						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+					}
+					}
+				}
+			}
 			err = m.Command("set server " + cluster.master.MxsServerName + " master")
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
