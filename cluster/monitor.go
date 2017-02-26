@@ -368,13 +368,26 @@ func (server *ServerMonitor) refresh() error {
 
 	if server.ClusterGroup.conf.MxsOn {
 		m := maxscale.MaxScale{Host: server.ClusterGroup.conf.MxsHost, Port: server.ClusterGroup.conf.MxsPort, User: server.ClusterGroup.conf.MxsUser, Pass: server.ClusterGroup.conf.MxsPass}
+		if server.ClusterGroup.conf.MxsGetInfoMethod == "maxinfo" {
 
-		_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR: Could not get servers from Maxscale MaxInfo plugin")
+			_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR: Could not get servers from Maxscale MaxInfo plugin")
+			}
+			srvport, _ := strconv.Atoi(server.Port)
+			server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport)
+		} else {
+
+			maxServerList, err := m.ListServers()
+			if err != nil {
+				server.ClusterGroup.LogPrint("Could not get MaxScale server list")
+			} else {
+				var connections string
+				server.MxsServerName, connections, server.MxsServerStatus = maxServerList.GetServer(server.IP, server.Port)
+				server.MxsServerConnections, _ = strconv.Atoi(connections)
+			}
 		}
-		srvport, _ := strconv.Atoi(server.Port)
-		server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport)
+
 	}
 	// Initialize graphite monitoring
 	if server.ClusterGroup.conf.GraphiteMetrics {

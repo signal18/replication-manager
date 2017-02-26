@@ -25,8 +25,11 @@ type MaxScale struct {
 }
 
 type Server struct {
-	Server  string
-	Address string
+	Server      string
+	Address     string
+	Port        string
+	Connections string
+	Status      string
 }
 
 type ServerMaxinfo struct {
@@ -37,9 +40,15 @@ type ServerMaxinfo struct {
 	Status      string
 }
 
+type MonitorMaxinfo struct {
+	Monitor string
+	Status  string
+}
+
 type ServerList []Server
 
 var ServerMaxinfos = make([]ServerMaxinfo, 0)
+var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
 
 const (
 	maxDefaultPort    = "6603"
@@ -124,6 +133,41 @@ func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	return ServerMaxinfos, nil
 }
 
+func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
+	client := &http.Client{}
+
+	// Send the request via a client
+	// Do sends an HTTP request and
+	// returns an HTTP response
+	// Build the request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal("NewRequest: ", err)
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("Do: ", err)
+		return nil, err
+	}
+
+	// Callers should close resp.Body
+	// when done reading from it
+	// Defer the closing of the body
+	defer resp.Body.Close()
+	monjson, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal("Do: ", err)
+		return nil, err
+	}
+
+	// Use json.Decode for reading streams of JSON data
+	if err := json.Unmarshal(monjson, &MonitorMaxinfos); err != nil {
+		log.Println(err)
+	}
+	return MonitorMaxinfos, nil
+}
+
 func (m *MaxScale) ShowServers() ([]byte, error) {
 	m.Command("show serversjson")
 	reader := bufio.NewReader(m.Conn)
@@ -162,11 +206,11 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 	list := strings.Split(string(response), "\n")
 	var sl ServerList
 	for _, line := range list {
-		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*`)
+		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*`)
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 {
 			if match[0] != "" && match[1] != "Server" {
-				item := Server{Server: match[1], Address: match[2]}
+				item := Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]}
 				sl = append(sl, item)
 			}
 		}
@@ -174,13 +218,13 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 	return sl, nil
 }
 
-func (sl ServerList) GetServer(ip string) string {
+func (sl ServerList) GetServer(ip string, port string) (string, string, string) {
 	for _, s := range sl {
-		if s.Address == ip {
-			return s.Server
+		if s.Address == ip && s.Port == port {
+			return s.Server, s.Connections, s.Status
 		}
 	}
-	return ""
+	return "", "", ""
 }
 
 func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {

@@ -321,19 +321,6 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 		cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
 	} else {
 
-		/*
-			maxServerList, err := m.ListServers()
-			if err != nil {
-				cluster.LogPrint("Could not get MaxScale server list")
-			} else {
-				server := maxServerList.GetServer(cluster.master.IP)
-				err = m.Command("set server " + server + " master")
-				if err != nil {
-					cluster.LogPrint("ERROR: MaxScale client could not send command:", err)
-				}
-
-			}
-		*/
 		if cluster.master.MxsServerName != "" {
 			err = m.Command("set server " + cluster.master.MxsServerName + " master")
 			if err != nil {
