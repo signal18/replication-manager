@@ -11,6 +11,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
@@ -319,51 +320,53 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 	err := m.Connect()
 	if err != nil {
 		cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
-	} else {
+		return
+	}
+	if cluster.master.MxsServerName != "" {
+		cluster.LogPrint("ERROR: MaxScale server name undiscovered")
+	}
+	//disable monitoring
+	if cluster.conf.MxsMonitor == false {
+		var monitor string
+		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+			m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
+			monitor = m.GetMaxInfoMonitor()
 
-		if cluster.master.MxsServerName != "" {
-			//disable monitoring
-			if cluster.conf.MxsMonitor == false {
-				var monitor=""
-				if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-					m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
-					monitor = m.GetMaxInfoMonitor()
-
-				} else  {
-						mls:= m.GetMonitors()
-						monitor = mls.GetMonitor()
-				}
-				if monitor != "" {
-					err = m.Command("shutdown monitor \"" + monitor + "\"")
-					if err != nil {
-						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
-					}
-					}
-				}
+		} else {
+			mls, err := m.ListMonitors()
+			if err != nil {
+				cluster.LogPrint("ERROR: MaxScale client could lis monitors monitor:%s", err)
 			}
-			err = m.Command("set server " + cluster.master.MxsServerName + " master")
+			monitor = mls.GetMonitor()
+		}
+		if monitor != "" {
+			err = m.Command("shutdown monitor \"" + monitor + "\"")
+			if err != nil {
+				cluster.LogPrint("ERROR: MaxScale client could not shut down monitor:%s", err)
+			}
+		}
+	}
+
+	err = m.Command("set server " + cluster.master.MxsServerName + " master")
+	if err != nil {
+		cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+	}
+	if cluster.conf.MxsMonitor == false {
+		for _, s := range cluster.slaves {
+			err = m.Command("set server " + s.MxsServerName + " slave")
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 			}
-			if cluster.conf.MxsMonitor == false {
-				for _, s := range cluster.slaves {
-					err = m.Command("set server " + s.MxsServerName + " slave")
-					if err != nil {
-						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
-					}
-				}
-				if oldmaster != nil {
-					err = m.Command("set server " + oldmaster.MxsServerName + " slave")
-					if err != nil {
-						cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
-					}
-				}
-
-			}
-		} else {
-			cluster.LogPrint("ERROR: MaxScale server name undiscovered")
 		}
+		if oldmaster != nil {
+			err = m.Command("set server " + oldmaster.MxsServerName + " slave")
+			if err != nil {
+				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+			}
+		}
+
 	}
+
 }
 
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
