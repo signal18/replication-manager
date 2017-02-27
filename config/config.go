@@ -86,7 +86,7 @@ type Config struct {
 	MxsBinlogOn                 bool   `mapstructure:"maxscale-binlog"`
 	MxsBinlogPort               int    `mapstructure:"maxscale-binlog-port"`
 	MxsMonitor                  bool   `mapstructure:"maxscale-monitor"`
-	MxsGetInfoMethod            string `mapstructure:"maxscale-get-info-method "`
+	MxsGetInfoMethod            string `mapstructure:"maxscale-get-info-method"`
 	HaproxyOn                   bool   `mapstructure:"haproxy"`
 	HaproxyWritePort            int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort             int    `mapstructure:"haproxy-read-port"`
