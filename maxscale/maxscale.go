@@ -214,10 +214,14 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 	list := strings.Split(string(response), "\n")
 	var sl ServerList
 	for _, line := range list {
-		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*`)
+
+		re := regexp.MustCompile(`^([[:graph:]]+)[[:space:]]*\|[[:space:]]*([[:graph:]]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([[:ascii:]]+)*`)
+
 		match := re.FindStringSubmatch(line)
+
 		if len(match) > 0 {
 			if match[0] != "" && match[1] != "Server" {
+
 				item := Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]}
 				sl = append(sl, item)
 			}
@@ -227,7 +231,7 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 }
 
 func (m *MaxScale) ListMonitors() (MonitorList, error) {
-	m.Command("list Monitors")
+	m.Command("list monitors")
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 80)
@@ -245,10 +249,9 @@ func (m *MaxScale) ListMonitors() (MonitorList, error) {
 	list := strings.Split(string(response), "\n")
 	var sl MonitorList
 	for _, line := range list {
-		re := regexp.MustCompile(`^([0-9A-Za-z]+)[[:space:]]*\|[[:space:]]*`)
+		re := regexp.MustCompile(`^([[:ascii:]]+)*\|[[:space:]]*([[:ascii:]]+)*`)
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 {
-			log.Println(match)
 			if match[0] != "" && match[1] != "Monitor" {
 				item := Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")}
 				sl = append(sl, item)

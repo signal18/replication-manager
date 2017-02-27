@@ -387,6 +387,7 @@ func (server *ServerMonitor) refresh() error {
 			if err != nil {
 				server.ClusterGroup.LogPrint("Could not get MaxScale server list")
 			} else {
+				//		server.ClusterGroup.LogPrint("get MaxScale server list")
 				var connections string
 				server.MxsServerName, connections, server.MxsServerStatus = maxServerList.GetServer(server.IP, server.Port)
 				server.MxsServerConnections, _ = strconv.Atoi(connections)

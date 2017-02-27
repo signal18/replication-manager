@@ -262,7 +262,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected", ErrFrom: "TOPO"})
 	}
 
-	// Check that all slave servers have the same master and confomity.
+	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
 			if cluster.conf.AutoInforceSlaveReadOnly && sl.ReadOnly == "OFF" {
