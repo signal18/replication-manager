@@ -103,6 +103,9 @@ func (m *MaxScale) Connect() error {
 	return nil
 }
 
+func (m *MaxScale) Close() {
+	m.Conn.Close()
+}
 func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	client := &http.Client{}
 
@@ -303,7 +306,7 @@ func (m *MaxScale) Command(cmd string) error {
 
 func (m *MaxScale) ShutdownMonitor(monitor string) error {
 	writer := bufio.NewWriter(m.Conn)
-	if _, err := fmt.Fprintf(writer, "shutdown monitor \"%s\"", monitor); err != nil {
+	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c", '"', monitor, '"'); err != nil {
 		return err
 	}
 	err := writer.Flush()

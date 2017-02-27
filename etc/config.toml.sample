@@ -55,6 +55,11 @@ failover-event-scheduler = false
 failover-event-status = false
 connect-timeout = 1
 
+autoinforce-slave-heartbeat= true
+autoinforce-slave-gtid-mode = true
+autoinforce-slave-semisync = true
+autoinforce-slave-readonly = true
+
 # HTTP
 # ----
 
@@ -87,12 +92,6 @@ check-type = "tcp"
 check-replication-filters = true
 check-binlog-filters = true
 check-replication-state = true
-
-
-autoinforce-slave-heartbeat= true
-autoinforce-slave-gtid-mode = true
-autoinforce-slave-semisync = true
-autoinforce-slave-readonly = true
 
 # Failover after N failures detection
 # Reset number of failure if server auto recover after N seconds

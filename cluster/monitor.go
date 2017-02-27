@@ -368,6 +368,11 @@ func (server *ServerMonitor) refresh() error {
 
 	if server.ClusterGroup.conf.MxsOn {
 		m := maxscale.MaxScale{Host: server.ClusterGroup.conf.MxsHost, Port: server.ClusterGroup.conf.MxsPort, User: server.ClusterGroup.conf.MxsUser, Pass: server.ClusterGroup.conf.MxsPass}
+		err := m.Connect()
+		if err != nil {
+			server.ClusterGroup.LogPrint("ERROR: Could not connect to MaxScale:", err)
+		}
+		defer m.Close()
 		if server.ClusterGroup.conf.MxsGetInfoMethod == "maxinfo" {
 
 			_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")
