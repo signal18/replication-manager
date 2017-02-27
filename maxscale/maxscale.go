@@ -306,7 +306,7 @@ func (m *MaxScale) Command(cmd string) error {
 
 func (m *MaxScale) ShutdownMonitor(monitor string) error {
 	writer := bufio.NewWriter(m.Conn)
-	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c", '"', monitor, '"'); err != nil {
+	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c\n", '"', monitor, '"'); err != nil {
 		return err
 	}
 	err := writer.Flush()
