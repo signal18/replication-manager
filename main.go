@@ -71,11 +71,18 @@ func initConfig() {
 	viper.SetConfigType("toml")
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
+		if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+			log.Fatal("No config file " + cfgFile)
+		}
 	} else {
 		viper.SetConfigName("config")
 		viper.AddConfigPath("/etc/replication-manager/")
 		viper.AddConfigPath(".")
+		if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
+			log.Fatal("No config file etc/replication-manager/config.toml ")
+		}
 	}
+
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
