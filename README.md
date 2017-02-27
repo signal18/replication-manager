@@ -433,7 +433,7 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 
 Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
-## Features
+## 1.0 Features
 
  * High availability support with leader election
 
@@ -465,8 +465,21 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
  * Docker deployment via OpenSVC on premise for Ubuntu and OSX
 
+## 1.1 Features
 
-## Roadmap
+ * Multi cluster support
+
+ * Flashback and dump rejoin  
+
+ * Forced rejoin with lost events, backup lost events  
+
+ * Trends   
+
+ * Maxscale 2 nodes master-slave driving
+
+ * Replication heartbeat false positive detection
+
+## Roadmap 1.1
 
  * Maxscale binlog server support
 
@@ -487,6 +500,10 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 Guillaume Lefranc <guillaume@mariadb.com>
 
 Stephane Varoqui <stephane@mariadb.com>
+
+## Special Thanks
+
+Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tistan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu, Johan Anderson from S9 Cluster Control.
 
 ## License
 
