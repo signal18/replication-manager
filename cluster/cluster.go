@@ -16,6 +16,7 @@ import (
 	"github.com/tanji/replication-manager/config"
 	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 	"github.com/tanji/replication-manager/termlog"
@@ -57,6 +58,7 @@ type Cluster struct {
 	switchoverChan       chan bool
 	testStopCluster      bool
 	testStartCluster     bool
+	mxs                  *maxscale.MaxScale
 }
 
 //var switchoverChan = make(chan bool)
@@ -185,6 +187,13 @@ func (cluster *Cluster) Stop() {
 }
 func (cluster *Cluster) Run() {
 
+	/*	cluster.mxs = maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
+		if cluster.conf.MxsOn {
+			err := cluster.mxs.Connect()
+			if err != nil {
+				cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
+			}
+		}*/
 	interval := time.Second
 	ticker := time.NewTicker(interval * time.Duration(cluster.conf.MonitoringTicker))
 	for cluster.exit == false {

@@ -348,7 +348,7 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 
 func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrint("INFO: Force to ignore conditions %v", currentCluster.GetRplChecks)
+	currentCluster.LogPrint("INFO: Force to ignore conditions %v", currentCluster.GetRplChecks())
 	currentCluster.SetRplChecks(!currentCluster.GetRplChecks())
 	return
 }

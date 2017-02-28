@@ -338,11 +338,11 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 
 		} else {
 			cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
-			mls, err := m.ListMonitors()
+			_, err := m.ListMonitors()
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could list monitors monitor:%s", err)
 			}
-			monitor = mls.GetMonitor()
+			monitor = m.GetMonitor()
 		}
 		if monitor != "" {
 			cmd := "shutdown monitor \"" + monitor + "\""

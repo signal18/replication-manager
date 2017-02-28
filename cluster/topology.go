@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
 )
@@ -172,6 +173,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf("DEBUG: Entering topology detection")
 	}
+	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
+	if cluster.conf.MxsOn {
+		err := m.Connect()
+		if err != nil {
+			cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
+		}
+	}
+
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
 		err := sv.refresh()
@@ -180,6 +189,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.LogPrintf("DEBUG: Server %s could not be refreshed: %s", sv.URL, err)
 			}
 			continue
+		}
+		if cluster.conf.MxsOn {
+			sv.getMaxscaleInfos(&m)
 		}
 		if sv.UsingGtid != "" {
 			if cluster.conf.LogLevel > 2 {
@@ -256,7 +268,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 	}
-
+	m.Close()
 	// If no cluster.slaves are detected, generate an error
 	if len(cluster.slaves) == 0 {
 		cluster.sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected", ErrFrom: "TOPO"})

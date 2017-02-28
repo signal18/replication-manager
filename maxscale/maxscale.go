@@ -49,8 +49,8 @@ type Monitor struct {
 	Status  string
 }
 
-type ServerList []Server
-type MonitorList []Monitor
+var ServerList = make([]Server, 0)
+var MonitorList = make([]Monitor, 0)
 
 var ServerMaxinfos = make([]ServerMaxinfo, 0)
 var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
@@ -59,7 +59,7 @@ const (
 	maxDefaultPort    = "6603"
 	maxDefaultUser    = "admin"
 	maxDefaultPass    = "mariadb"
-	maxDefaultTimeout = (10 * time.Second)
+	maxDefaultTimeout = (1 * time.Second)
 	// Error types
 	ErrorNegotiation = "Incorrect maxscale protocol negotiation"
 	ErrorReader      = "Error reading from buffer"
@@ -104,7 +104,9 @@ func (m *MaxScale) Connect() error {
 }
 
 func (m *MaxScale) Close() {
-	m.Conn.Close()
+	if m.Conn != nil {
+		m.Conn.Close()
+	}
 }
 func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	client := &http.Client{}
@@ -195,26 +197,31 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 	return response, nil
 }
 
-func (m *MaxScale) ListServers() (ServerList, error) {
+func (m *MaxScale) ListServers() ([]Server, error) {
 	m.Command("list servers")
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
-	buf := make([]byte, 80)
+	buf := make([]byte, 1024)
 	for {
 		res, err := reader.Read(buf)
+
 		if err != nil {
+			return ServerList, nil
 		}
 		str := string(buf[0:res])
-		if res < 80 && strings.HasSuffix(str, "OK") {
+		//	log.Println(str)
+		if strings.HasSuffix(str, "OK") {
+
 			response = append(response, buf[0:res-2]...)
 			break
 		}
 		response = append(response, buf[0:res]...)
 	}
-	list := strings.Split(string(response), "\n")
-	var sl ServerList
-	for _, line := range list {
 
+	list := strings.Split(string(response), "\n")
+
+	for _, line := range list {
+		//log.Println(line)
 		re := regexp.MustCompile(`^([[:graph:]]+)[[:space:]]*\|[[:space:]]*([[:graph:]]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([[:ascii:]]+)*`)
 
 		match := re.FindStringSubmatch(line)
@@ -223,15 +230,19 @@ func (m *MaxScale) ListServers() (ServerList, error) {
 			if match[0] != "" && match[1] != "Server" {
 
 				item := Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]}
-				sl = append(sl, item)
+				ServerList = append(ServerList, item)
 			}
 		}
 	}
-	return sl, nil
+	return ServerList, nil
+
 }
 
-func (m *MaxScale) ListMonitors() (MonitorList, error) {
-	m.Command("list monitors")
+func (m *MaxScale) ListMonitors() ([]Monitor, error) {
+	err := m.Command("list monitors")
+	if err != nil {
+		return nil, err
+	}
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 80)
@@ -247,22 +258,22 @@ func (m *MaxScale) ListMonitors() (MonitorList, error) {
 		response = append(response, buf[0:res]...)
 	}
 	list := strings.Split(string(response), "\n")
-	var sl MonitorList
+
 	for _, line := range list {
 		re := regexp.MustCompile(`^([[:ascii:]]+)*\|[[:space:]]*([[:ascii:]]+)*`)
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 {
 			if match[0] != "" && match[1] != "Monitor" {
 				item := Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")}
-				sl = append(sl, item)
+				MonitorList = append(MonitorList, item)
 			}
 		}
 	}
-	return sl, nil
+	return MonitorList, nil
 }
 
-func (sl MonitorList) GetMonitor() string {
-	for _, s := range sl {
+func (m *MaxScale) GetMonitor() string {
+	for _, s := range MonitorList {
 		if s.Status == "Running" {
 			return s.Monitor
 		}
@@ -279,8 +290,8 @@ func (m *MaxScale) GetMaxInfoMonitor() string {
 	return ""
 }
 
-func (sl ServerList) GetServer(ip string, port string) (string, string, string) {
-	for _, s := range sl {
+func (m *MaxScale) GetServer(ip string, port string) (string, string, string) {
+	for _, s := range ServerList {
 		if s.Address == ip && s.Port == port {
 			return s.Server, s.Connections, s.Status
 		}
