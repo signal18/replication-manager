@@ -44,10 +44,18 @@ type Config struct {
 	CheckType                          string
 	CheckReplFilter                    bool
 	CheckBinFilter                     bool
-	AutoInforceSlaveHeartbeat          bool
-	AutoInforceSlaveGtid               bool
-	AutoInforceSlaveSemisync           bool
-	AutoInforceSlaveReadOnly           bool
+	ForceSlaveHeartbeat                bool `mapstructure:"force-slave-heartbeat"`
+	ForceSlaveGtid                     bool `mapstructure:"force-slave-gtid-mode"`
+	ForceSlaveSemisync                 bool `mapstructure:"force-slave-semisync"`
+	ForceSlaveReadOnly                 bool `mapstructure:"force-slave-readonly"`
+	ForceBinlogRow                     bool `mapstructure:"force-binlog-row"`
+	ForceBinlogAnnotate                bool `mapstructure:"force-binlog-annotate"`
+	ForceBinlogSlowqueries             bool `mapstructure:"force-binlog-slowqueries"`
+	ForceInmemoryBinlogCacheSize       bool `mapstructure:"force-inmemory-binlog-cache-size"`
+	ForceDiskRelayLogSizeLimit         bool `mapstructure:"force-disk-relaylog-size-limit"`
+	ForceSyncBinlog                    bool `mapstructure:"force-sync-binlog"`
+	ForceSyncInnoDB                    bool `mapstructure:"force-sync-innodb"`
+	ForceBinlogChecksum                bool `mapstructure:"force-binlog-checksum"`
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
 	MultiMaster                        bool

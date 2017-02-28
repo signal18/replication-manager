@@ -80,6 +80,13 @@ type ServerMonitor struct {
 	MxsServerName               string //Unique server Name in maxscale conf
 	MxsServerStatus             string
 	MxsServerConnections        int
+	HaveSemiSync                bool
+	HaveInnodbTrxCommit         bool
+	HaveSyncBinLog              bool
+	HaveChecksum                bool
+	HaveBinlogRow               bool
+	HaveBinlogAnnotate          bool
+	HaveBinlogSlowqueries       bool
 }
 
 type serverList []*ServerMonitor
@@ -103,6 +110,14 @@ const (
 func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
+	server.HaveSemiSync = true
+	server.HaveInnodbTrxCommit = true
+	server.HaveSyncBinLog = true
+	server.HaveChecksum = true
+	server.HaveBinlogRow = true
+	server.HaveBinlogAnnotate = true
+	server.HaveBinlogSlowqueries = true
+
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
@@ -303,6 +318,36 @@ func (server *ServerMonitor) refresh() error {
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
 	server.ReadOnly = sv["READ_ONLY"]
+	if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
+		server.HaveInnodbTrxCommit = false
+	} else {
+		server.HaveInnodbTrxCommit = true
+	}
+	if sv["SYNC_BINLOG"] != "1" {
+		server.HaveSyncBinLog = false
+	} else {
+		server.HaveSyncBinLog = true
+	}
+	if sv["INNODB_CHECKSUM"] == "NONE" {
+		server.HaveChecksum = false
+	} else {
+		server.HaveChecksum = true
+	}
+	if sv["BINLOG_FORMAT"] != "ROW" {
+		server.HaveBinlogRow = false
+	} else {
+		server.HaveBinlogRow = true
+	}
+	if sv["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
+		server.HaveBinlogAnnotate = false
+	} else {
+		server.HaveBinlogAnnotate = true
+	}
+	if sv["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
+		server.HaveBinlogSlowqueries = false
+	} else {
+		server.HaveBinlogSlowqueries = true
+	}
 	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
@@ -317,6 +362,9 @@ func (server *ServerMonitor) refresh() error {
 		return err
 	}
 	su, _ := dbhelper.GetStatus(server.Conn)
+	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
+		server.HaveSemiSync = false
+	}
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
 	} else {

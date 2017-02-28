@@ -277,19 +277,45 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if cluster.conf.AutoInforceSlaveReadOnly && sl.ReadOnly == "OFF" {
+			if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
+				cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
+				dbhelper.InstallSemiSync(sl.Conn)
+			}
+			if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
+				// In non-multimaster mode, enforce read-only flag if the option is set
+				dbhelper.SetBinlogFormat(sl.Conn, "ROW")
+				cluster.LogPrintf("DEBUG: Enforce binlog format ROW on slave %s", sl.DSN)
+			}
+			if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
 				// In non-multimaster mode, enforce read-only flag if the option is set
 				dbhelper.SetReadOnly(sl.Conn, true)
 				cluster.LogPrintf("DEBUG: Enforce read only on slave %s", sl.DSN)
 			}
-			if cluster.conf.AutoInforceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
+			if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
 				dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
 				cluster.LogPrintf("DEBUG: Enforce heartbeat to 1s on slave %s", sl.DSN)
 			}
-			if cluster.conf.AutoInforceSlaveGtid && sl.MasterUseGtid == "No" {
+			if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
 				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
 				cluster.LogPrintf("DEBUG: Enforce GTID replication on slave %s", sl.DSN)
 			}
+			if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
+				dbhelper.SetSyncInnodb(sl.Conn)
+				cluster.LogPrintf("DEBUG: Enforce sync InnoDB  on slave %s", sl.DSN)
+			}
+			if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
+				dbhelper.SetBinlogChecksum(sl.Conn)
+				cluster.LogPrintf("DEBUG: Enforce checksum on slave %s", sl.DSN)
+			}
+			if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
+				dbhelper.SetBinlogSlowqueries(sl.Conn)
+				cluster.LogPrintf("DEBUG: Enforce log slow queries of replication on slave %s", sl.DSN)
+			}
+			if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
+				dbhelper.SetBinlogAnnotate(sl.Conn)
+				cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
+			}
+
 			if sl.hasSiblings(cluster.slaves) == false {
 				// possibly buggy code
 				// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
@@ -382,6 +408,30 @@ func (cluster *Cluster) TopologyDiscover() error {
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
+		if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
+			cluster.LogPrintf("DEBUG: Enforce semisync non Master %s", cluster.master.DSN)
+			dbhelper.InstallSemiSync(cluster.master.Conn)
+		}
+		if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {
+			dbhelper.SetBinlogFormat(cluster.master.Conn, "ROW")
+			cluster.LogPrintf("DEBUG: Enforce binlog format ROW on Master %s", cluster.master.DSN)
+		}
+		if cluster.conf.ForceSyncBinlog && cluster.master.HaveSyncBinLog == false {
+			dbhelper.SetSyncBinlog(cluster.master.Conn)
+			cluster.LogPrintf("DEBUG: Enforce sync binlog on Master %s", cluster.master.DSN)
+		}
+		if cluster.conf.ForceSyncInnoDB && cluster.master.HaveSyncBinLog == false {
+			dbhelper.SetSyncInnodb(cluster.master.Conn)
+			cluster.LogPrintf("DEBUG: Enforce innodb sync on Master %s", cluster.master.DSN)
+		}
+		if cluster.conf.ForceBinlogAnnotate && cluster.master.HaveBinlogAnnotate == false {
+			dbhelper.SetBinlogAnnotate(cluster.master.Conn)
+			cluster.LogPrintf("DEBUG: Enforce binlog annotate on master %s", cluster.master.DSN)
+		}
+		if cluster.conf.ForceBinlogChecksum && cluster.master.HaveChecksum == false {
+			dbhelper.SetBinlogChecksum(cluster.master.Conn)
+			cluster.LogPrintf("DEBUG: Enforce ckecsum annotate on master %s", cluster.master.DSN)
+		}
 
 		// Replication checks
 		if cluster.conf.MultiMaster == false {

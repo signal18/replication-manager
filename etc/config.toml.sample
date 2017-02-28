@@ -59,10 +59,18 @@ failover-event-scheduler = false
 failover-event-status = false
 connect-timeout = 1
 
-autoinforce-slave-heartbeat= true
-autoinforce-slave-gtid-mode = true
-autoinforce-slave-semisync = true
-autoinforce-slave-readonly = true
+force-slave-heartbeat= true
+force-slave-gtid-mode = true
+force-slave-semisync = true
+force-slave-readonly = true
+force-binlog-row = true
+force-binlog-annotate = true
+force-binlog-slowqueries = true
+force-inmemory-binlog-cache-size = true
+force-disk-relaylog-size-limit = true
+force-sync-binlog = true
+force-sync-innodb = true
+force-binlog-checksum = true
 
 # HTTP
 # ----

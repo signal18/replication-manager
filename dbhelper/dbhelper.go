@@ -336,6 +336,83 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 	return err
 }
 
+func InstallSemiSync(db *sqlx.DB) error {
+	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	stmt = "INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'"
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("set global rpl_semi_sync_master_enabled='ON'")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("set global rpl_semi_sync_slave_enabled='ON'")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetBinlogFormat(db *sqlx.DB, format string) error {
+	_, err := db.Exec("set global binlog_format='" + format + "'")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetBinlogAnnotate(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL binlog_annotate_row_events=ON")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL replicate-annotate-row-events=ON")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetBinlogSlowqueries(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL log_slow_slave_statements=ON")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSyncBinlog(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL sync_binlog=1")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func SetSyncInnodb(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL innodb_flush_log_at_trx_commit=1")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetBinlogChecksum(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL binlog_checksum=1")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL master_verify_checksum=1")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func ResetAllSlaves(db *sqlx.DB) error {
 	ss, err := GetAllSlavesStatus(db)
 	if err != nil {
