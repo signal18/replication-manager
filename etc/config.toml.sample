@@ -44,6 +44,10 @@ share-directory = "/usr/share/replication-manager"
 logfile = "/var/log/replication-manager.log"
 verbose = true
 
+# Enterpise SAS key
+arbitration-sas-secret = "13787932529099014144"
+arbitration-sas-hosts = "www.scrambledb.org"
+
 # TOPOLOGY
 # --------
 
@@ -107,6 +111,10 @@ failover-limit = 3
 failover-time-limit = 10
 failover-at-sync = true
 failover-falsepositive-heartbeat = true
+failover-falsepositive-heartbeat-timeout = 3
+failover-falsepositive-maxscale = true
+failover-falsepositive-maxscale-timeout = 14
+failover-falsepositive-sas = true
 failover-max-slave-delay = 30
 
 

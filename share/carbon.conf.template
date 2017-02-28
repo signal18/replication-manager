@@ -3,7 +3,7 @@ user = ""
 logfile = ""
 log-level = "info"
 graph-prefix = "carbon.agents.mrm"
-# graph-prefix = ""
+
 
 max-cpu = 1
 metric-interval = "1m0s"

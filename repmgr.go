@@ -61,6 +61,10 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat", true, "Failover checks that slaves do not receive hearbeat")
+	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveHeartbeatTimeout, "failover-falsepositive-heartbeat-timeout", 3, "Failover checks that slaves do not receive hearbeat detection timeout ")
+	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", true, "Failover checks that maxscale detect failed master")
+	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
+
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveHeartbeat, "autoinforce-slave-heartbeat", true, "Automatically activate heartbeat on slave")
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveGtid, "autoinforce-slave-gtid-mode", true, "Automatically activate gtid mode on slave")
 	monitorCmd.Flags().BoolVar(&conf.AutoInforceSlaveSemisync, "autoinforce-slave-semisync", true, "Automatically activate semisync on slave")
@@ -134,8 +138,6 @@ func init() {
 func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
 	cmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
-	cmd.Flags().Int64Var(&conf.MaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
-	cmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Maximum replication delay before initiating failover")
 	cmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
 	cmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
 	cmd.Flags().Int64Var(&conf.WaitKill, "wait-kill", 5000, "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
@@ -157,16 +159,15 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
 	cmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	cmd.Flags().BoolVar(&conf.Test, "test", false, "Enable non regression tests ")
-
-	viper.BindPFlags(cmd.Flags())
+	cmd.Flags().Int64Var(&conf.MaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
+	cmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Maximum replication delay before initiating failover")
+	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	cmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
-
-	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
-
 	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.FailEventScheduler, "failover-event-scheduler", false, "Failover Event Scheduler")
 	cmd.Flags().BoolVar(&conf.FailEventStatus, "failover-event-status", false, "Failover Event Status ENABLE OR DISABLE ON SLAVE")
+	viper.BindPFlags(cmd.Flags())
 
 	conf.MaxDelay = conf.FailMaxDelay
 	conf.WaitTrx = conf.SwitchWaitTrx

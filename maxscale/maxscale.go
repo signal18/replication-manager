@@ -282,9 +282,27 @@ func (m *MaxScale) GetMonitor() string {
 	return ""
 }
 
+func (m *MaxScale) GetStoppedMonitor() string {
+	for _, s := range MonitorList {
+		if s.Status == "Stopped" {
+			return s.Monitor
+		}
+	}
+	return ""
+}
+
 func (m *MaxScale) GetMaxInfoMonitor() string {
 	for _, s := range MonitorMaxinfos {
 		if s.Status == "Running" {
+			return s.Monitor
+		}
+	}
+	return ""
+}
+
+func (m *MaxScale) GetMaxInfoStoppedMonitor() string {
+	for _, s := range MonitorMaxinfos {
+		if s.Status == "Stopped" {
 			return s.Monitor
 		}
 	}
@@ -322,6 +340,15 @@ func (m *MaxScale) Command(cmd string) error {
 func (m *MaxScale) ShutdownMonitor(monitor string) error {
 	writer := bufio.NewWriter(m.Conn)
 	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c\n", '"', monitor, '"'); err != nil {
+		return err
+	}
+	err := writer.Flush()
+	return err
+}
+
+func (m *MaxScale) RestartMonitor(monitor string) error {
+	writer := bufio.NewWriter(m.Conn)
+	if _, err := fmt.Fprintf(writer, "restart monitor %c%s%c\n", '"', monitor, '"'); err != nil {
 		return err
 	}
 	err := writer.Flush()

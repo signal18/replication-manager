@@ -370,13 +370,20 @@ func (server *ServerMonitor) refresh() error {
 	// Initialize graphite monitoring
 	if server.ClusterGroup.conf.GraphiteMetrics {
 		graph, err := graphite.NewGraphite(server.ClusterGroup.conf.GraphiteCarbonHost, server.ClusterGroup.conf.GraphiteCarbonPort)
+
 		if err == nil {
-			graph.SimpleSend(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", server.Delay.Int64))
-			graph.SimpleSend(fmt.Sprintf("server%d.status.ComSelect", server.ServerID), su["COM_SELECT"])
-			graph.SimpleSend(fmt.Sprintf("server%d.status.Queries", server.ServerID), su["QUERIES"])
-			graph.SimpleSend(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), su["THREADS_RUNNING"])
-			graph.SimpleSend(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), su["BYTES_SENT"])
-			graph.SimpleSend(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), su["BYTES_RECEIVED"])
+			var metrics = make([]graphite.Metric, 5)
+			metrics[0] = graphite.NewMetric(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", server.Delay.Int64), time.Now().Unix())
+			metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), su["QUERIES"], time.Now().Unix())
+			metrics[2] = graphite.NewMetric(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), su["THREADS_RUNNING"], time.Now().Unix())
+			metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), su["BYTES_SENT"], time.Now().Unix())
+			metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), su["BYTES_RECEIVED"], time.Now().Unix())
+			//	metrics[5] = graphite.NewMetric(, time.Now().Unix())
+			//	metrics[6] = graphite.NewMetric(, time.Now().Unix())
+			//	metrics[7] = graphite.NewMetric(, time.Now().Unix())
+			//	metrics[8] = graphite.NewMetric(, time.Now().Unix())
+			graph.SendMetrics(metrics)
+
 			graph.Disconnect()
 		}
 	}
