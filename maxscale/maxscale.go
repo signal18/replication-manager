@@ -245,13 +245,14 @@ func (m *MaxScale) ListMonitors() ([]Monitor, error) {
 	}
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
-	buf := make([]byte, 80)
+	buf := make([]byte, 512)
 	for {
 		res, err := reader.Read(buf)
 		if err != nil {
+			return MonitorList, nil
 		}
 		str := string(buf[0:res])
-		if res < 80 && strings.HasSuffix(str, "OK") {
+		if strings.HasSuffix(str, "OK") {
 			response = append(response, buf[0:res-2]...)
 			break
 		}
