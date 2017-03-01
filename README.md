@@ -163,7 +163,6 @@ extra_max_connections = 10
 ```   
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
 
-
 ## Maxscale settings
 
 Replication-Manager can operate with MaxScale in 2 modes, in passive MaxScale auto discover the new topology after failover or switchover. Replication Manager will  tell MaxScale the new master to accelerate the time MaxScale will block clients . This setup only work in 3 nodes in Master-Slaves cluster, one slave should always be available for re discovering new topology.
@@ -357,6 +356,15 @@ replication-manager get 4 cases for rejoin:
 
 4 - GTID is ahead but semisync status at election was unsync we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag
 
+## False positive detection
+
+All replicats and Maxscale will be question for consensus detection of leader death
+
+failover-falsepositive-heartbeat = true
+failover-falsepositive-heartbeat-timeout = 3
+failover-falsepositive-maxscale = true
+failover-falsepositive-maxscale-timeout = 14
+
 ## Calling external scripts
 
 Replication-Manager call external scripts and provide following parameters in this order: Old leader host and new elected leader
@@ -436,64 +444,45 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 ## 1.0 Features
 
  * High availability support with leader election
-
  * Semi-sync replication support
-
  * Provisioning
-
  * Bootstrap
-
  * Http daemon mode
-
  * Email alerts
-
  * Configuration file
-
  * AES Password encryption
-
  * 2 nodes Multi Master Switchover support
-
  * On-leave mode
-
  * Failover SLA tracking
-
  * Log facilities and verbosity
-
  * Docker images
-
  * Docker deployment via OpenSVC in Google Cloud
-
  * Docker deployment via OpenSVC on premise for Ubuntu and OSX
+ * Non regression tests via http
+ * Haproxy wrapper
 
 ## 1.1 Features
 
  * Multi cluster support
-
  * Flashback and dump rejoin  
-
  * Forced rejoin with lost events, backup lost events  
-
- * Trends   
-
+ * Trends store  
  * Maxscale 2 nodes master-slave driving
-
  * Replication heartbeat false positive detection
+ * Maxscale state server display
+ * MaxScale integration to disable traffic on READ_ONLY flag https://jira.mariadb.org/browse/MXS-778
+ * Trends display
+ * Force replication best practice
+ * Non regression tests via command line
 
-## Roadmap 1.1
+## 1.1 Roadmap
 
  * Maxscale binlog server support
-
- * Maxscale state display
-
- * Trends display
-
- * Load and non regression simulator  
-
+ * Load and non regression simulator
+ * Etcd integration
  * Agent base server stop leader on switchover   
-
  * MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
 
- * MaxScale integration to disable traffic on READ_ONLY flag https://jira.mariadb.org/browse/MXS-778
 
 ## Authors
 
@@ -503,7 +492,7 @@ Stephane Varoqui <stephane@mariadb.com>
 
 ## Special Thanks
 
-Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tistan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu, Johan Anderson from S9 Cluster Control.
+Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tistan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu for MHA, Johan Anderson at S9 Cluster Control.
 
 ## License
 
