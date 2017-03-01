@@ -1,10 +1,10 @@
-## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=master)](https://travis-ci.org/tanji/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
-Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforce best practices to get minimum up to zero lost in most case on failures.
+Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
-To perform switchover, preserving data consistency, replication-manager uses improve workflow similar to common MySQL failover tools such as MHA:
+To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
@@ -49,18 +49,18 @@ enable_root_user=true
 
 ## replication-manager advantages
 
-Leader Election Cluster is best to use in such scenarios:
+Leader Election Cluster is best used in such scenarios:
 
    * Dysfunctional node does not impact leader performance
    * Heterogeneous node in configuration and resources does not impact leader performance
-   * Leader Pick Performance is not impacted by the data replication
+   * Leader peak performance is not impacted by data replication
    * Read scalability does not impact write scalability
-   * Network inter connect quality fluctuation
+   * Network interconnect quality fluctuation
    * Can benefit of human expertise on false positive failure detection
    * Can benefit a minimum cluster size of two data nodes
-   * Can benefit having different storage engine
+   * Can benefit having different storage engines
 
-This is achieved via following drawbacks:
+This is achieved via the following drawbacks:
 
    * Overloading the leader can lead to data loss during failover or no failover depending of setup   
    * READ on replica is eventually consistent  
@@ -89,7 +89,7 @@ In order to reach this state most of the time, we advise following settings:
 
 ### Running replication at full speed
 
-The history of MariaDB replication has reached a point that replication can almost in any case catch with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
+The history of MariaDB replication has reached a point where replication can almost in any case catch up with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
 
 MariaDB 10.1 settings for in-order optimistic parallel replication:
 
@@ -119,8 +119,8 @@ rpl_semi_sync_master_timeout = 10
 
 Such parameters will print an expected warning in error.log on slaves about SemiSyncMaster Status switched OFF.
 
-__Important Note__: semisync SYNC status does not guaranty that the old leader is replication consistent with the cluster in case of crash [![MDEV-11855](https://jira.mariadb.org/browse/MDEV-11855)]  or shutdown [![MDEV-11853](https://jira.mariadb.org/browse/MDEV-11853)] of the master,the failure can leave more data in the binary log but it guaranty that no client applications have seen those pending transactions if they have not touch a replica. This lead to a situation that semisync is used to slowdown the workload to the speed of the network until it rich a timeout where it no more possible to catchup. A crash or shutdown will lead to the requirement of re provisioning the old leader from an other node in most heavy write scenarios.  
-Setting rpl_semi_sync_master_wait_point to AFTER_SYNC may limit the number of extra transactions inside the binlog after a crash but those transactions would  have been made visible to the clients and may have been lost during failover to an other node. This is highly recommended to keep AFTER_COMMIT to make sure the workload is safe more than the sate of the old master    
+__Important Note__: semisync SYNC status does not guarantee that the old leader is replication consistent with the cluster in case of crash [![MDEV-11855](https://jira.mariadb.org/browse/MDEV-11855)]  or shutdown [![MDEV-11853](https://jira.mariadb.org/browse/MDEV-11853)] of the master,the failure can leave more data in the binary log but it guarantees that no client applications have seen those pending transactions if they have not touched a replica. This leads to a situation where semisync is used to slowdown the workload to the speed of the network until it reaches a timeout where it is not possible to catch up anymore. A crash or shutdown will lead to the requirement of re-provisioning the old leader from another node in most heavy write scenarios.  
+Setting rpl_semi_sync_master_wait_point to AFTER_SYNC may limit the number of extra transactions inside the binlog after a crash but those transactions would have been made visible to the clients and may have been lost during failover to an other node. It is highly recommended to keep AFTER_COMMIT to make sure the workload is safer than the state of the old master.    
 
 ## State: Not in-sync & failable
 
@@ -133,7 +133,7 @@ This is the second SLA display. This SLA tracks the time we can failover under t
 Probability to lose data is increased with a single slave topology, when the slave is delayed by a long running transaction or was stopped for maintenance, catching on replication events, with heavy single threaded writes process, network performance can't catch up with the leader performance.
 
 
-To limit such cases we advise usage of a 3 nodes cluster that removes some of such scenarios like losing a slave.
+To limit such cases we advise usage of a 3 nodes cluster that removes such scenarios as losing a slave.
 
 ## State: Not in-sync & unfailable
 
@@ -142,7 +142,7 @@ The first SLA is the one that tracks the presence of a valid topology from  __re
 
 This is the opportunity to work on long running WRITE transactions and split them in smaller chunks. Preferably we should minimize time in this state as failover would not be possible without big impact that  __replication-manager__ can force in interactive mode.  
 
-A good practice is to enable slow query detection on slaves using in slow query log
+A good practice is to enable slow query detection on slaves using in slow query log:
 ```
 log_slow_slave_statements = 1
 ```
@@ -162,20 +162,21 @@ Also, to protect consistency it is strongly advised to disable *SUPER* privilege
 
 ## Maxscale settings
 
-Replication-Manager can operate with MaxScale in 2 modes, in passive MaxScale auto discover the new topology after failover or switchover. Replication Manager will  tell MaxScale the new master to accelerate the time MaxScale will block clients . This setup only work in 3 nodes in Master-Slaves cluster, one slave should always be available for re discovering new topology.
+Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup only works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
-Important note.
-In case all slaves are down MaxScale can still operate on the Master with following maxscale monitoring setup  
+### Important note
+
+In case all slaves are down, MaxScale can still operate on the Master with the following maxscale monitoring setup :
 ```
 detect_stale_master
 ```
 
-Operating MaxScale without monitoring is the second Replication-Manager mode via
+Operating MaxScale without monitoring is the second Replication-Manager mode via:
 ```
 maxscale-monitor = false
 ```
 
-Replication will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mod of operation smilar to HaProxy , but can lead to unusable cluster if replication can't contact the proxy. It is so strongly advice to collocate the 2 services   
+Replication will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
 
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
 
@@ -335,27 +336,27 @@ Per default Semi-Sync replication status is not checked during failover, but thi
 
 - Last semi sync status was SYNC  (failsync=false)  
 
-A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console use "Failover Sync" button
+A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console, use "Failover Sync" button
 
 ## Rejoining old leader
 
-Since replication-manager 1.1 Rejoin of dead leader as been improved to cover more cases
+Since replication-manager 1.1, rejoin of dead leader has been improved to cover more cases.
 
-MariaDB 10.2 binary package can collocated with replication-manager via teh config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
+MariaDB 10.2 binary package can be colocated with replication-manager via the config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
 
-replication-manager get 4 cases for rejoin:
+replication-manager gets 4 different cases for rejoin:
 
-1 - GTID of the new leader at time of election is equal to GTID of the joiner we proceed with rejoin.
+1. If GTID of the new leader at time of election is equal to GTID of the joiner, we proceed with rejoin.
 
-2 - GTID is ahead on joiner, we backup extra events , if semisync was in sync  we must do falshback to come back to physical state that client connection never seen  
+2. If GTID is ahead on joiner, we backup extra events, if semisync replication was in sync status, we must do flashback to come back to a physical state that client connections have never seen.  
 
-3 - GTID is ahead but semisync status at election was unsync we flashback if replication-manager settings use the rejoin-flashback flag, lost event are saved in a crash directory in the working directory
+3. If GTID is ahead but semisync replication status at election was desynced, we flashback if replication-manager settings use the rejoin-flashback flag, lost events are saved in a crash directory in the working directory path.
 
-4 - GTID is ahead but semisync status at election was unsync we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag
+4. If GTID is ahead but semisync replication status at election was desynced, we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag.
 
 ## False positive detection
 
-All replicats and Maxscale will be question for consensus detection of leader death
+All replicas and Maxscale will be questioned for consensus detection of leader death:
 
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
@@ -364,11 +365,11 @@ failover-falsepositive-maxscale-timeout = 14
 
 ## Calling external scripts
 
-Replication-Manager call external scripts and provide following parameters in this order: Old leader host and new elected leader
+Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
 ## Multi-master
 
-`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explictely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
+`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 
 ```
 read_only = 1
@@ -388,10 +389,10 @@ passwd=mypwd
 detect_stale_master=true
 ```
 
-## Non regression testing
+## Non-regression testing
 
 A testing framework is available via http or in command line.
-Setting  test variable in the predefined testing cluster in config file
+Setting the `test` variable in the predefined testing cluster in config file:
 ```  
 [Cluster_Test_2_Nodes]
 hosts = "127.0.0.1:3310,127.0.0.1:3311"
@@ -405,8 +406,8 @@ haproxy-read-port=3304
 test=true
 ```  
 
-The test can be run on existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server install locally.  
-Some test are requiring sysbench and haproxy so it's advice to set    
+The tests can be run on am existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server installed locally.  
+Some tests are requiring sysbench and haproxy so it's advised to set:    
 
 ```  
 mariadb-binary-path = "/usr/local/mysql/bin"
@@ -417,14 +418,14 @@ haproxy = true
 haproxy-binary-path = "/usr/sbin/haproxy"
 ```
 
-Command line print test
+Command line test printing
 
 ```
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes --show-tests=true test
 INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSync testSwitchOverLongQueryNoRplCheckNoSemiSync testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync testSlaReplAllDelay testFailoverReplAllDelayInteractive testFailoverReplAllDelayAutoRejoinFlashback testSwitchoverReplAllDelay testSlaReplAllSlavesStopNoSemiSync testSwitchOverReadOnlyNoRplCheck testSwitchOverNoReadOnlyNoRplCheck testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck testSwitchOverBackPreferedMasterNoRplCheckSemiSync testSwitchOverAllSlavesStopRplCheckNoSemiSync testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck testSwitchOverAllSlavesDelayRplCheckNoSemiSync testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayRplChecksNoSemiSync testFailOverNoRplChecksNoSemiSync testNumberFailOverLimitReach testFailOverTimeNotReach]
 ```
-Command line running some tests via passing a list of tests in run-tests
-ALL is special test to run all available tests
+Command-line running some tests via passing a list of tests in run-tests
+ALL is a special test to run all available tests.
 ```
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
 ```
@@ -483,13 +484,13 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 ## Authors
 
-Guillaume Lefranc <guillaume@mariadb.com>
+Guillaume Lefranc <guillaume@signal18.io>
 
 Stephane Varoqui <stephane@mariadb.com>
 
 ## Special Thanks
 
-Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tistan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu for MHA, Johan Anderson at S9 Cluster Control.
+Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu for MHA, Johan Anderson at S9 Cluster Control.
 
 ## License
 
