@@ -84,7 +84,7 @@ type Config struct {
 	CheckFalsePositiveMaxscale         bool
 	CheckFalsePositiveHeartbeatTimeout int
 	CheckFalsePositiveMaxscaleTimeout  int
-	CheckFalsePositiveSas              bool
+	CheckFalsePositiveSas              bool   `mapstructure:"failover-falsepositive-sas"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-host"`
