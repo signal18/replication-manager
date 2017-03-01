@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB
-// Authors: Guillaume Lefranc <guillaume.lefranc@mariadb.com>
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <stephane.varoqui@mariadb.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as

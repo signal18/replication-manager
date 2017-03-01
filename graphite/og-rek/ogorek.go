@@ -1,3 +1,8 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
+//          Stephane Varoqui  <stephane@mariadb.com>
+// This source code is licensed under the GNU General Public License, version 3.
+
 // Package ogórek is a library for decoding Python's pickle format.
 //
 // ogórek is Polish for "pickle".

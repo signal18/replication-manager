@@ -1,3 +1,8 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
+//          Stephane Varoqui  <stephane@mariadb.com>
+// This source code is licensed under the GNU General Public License, version 3.
+
 // this is a parser for graphite's storage-schemas.conf
 // it supports old and new retention format
 // see https://graphite.readthedocs.io/en/0.9.9/config-carbon.html#storage-schemas-conf
