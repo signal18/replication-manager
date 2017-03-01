@@ -2,13 +2,13 @@
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
-Goals are topology detection and its monitoring, to enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover).
+Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforce best practices to get minimum up to zero lost in most case on failures.
 
-To perform switchover, preserving data consistency, replication-manager uses a proven mechanism similar to common MySQL failover tools such as MHA:
+To perform switchover, preserving data consistency, replication-manager uses improve workflow similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
   * Check (configurable) replication on the slaves
-  * Check for long running queries on master
+  * Check for long running queries and transactions on master
   * Elect a new master (default to most up to date, but it could also be a designated candidate)
   * Put down the IP address on master by calling an optional script
   * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
@@ -18,7 +18,7 @@ To perform switchover, preserving data consistency, replication-manager uses a p
   * Watching for all slaves to catch up to the current GTID position
   * Promote the candidate slave to be a new master
   * Put up the IP address on new master by calling an optional script
-  * Switch other slaves and old master to be slaves of the new master and set them as read-only
+  * Switch other slaves and old master to be slaves of the new master and set them read-only
 
 __replication-manager__ is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
@@ -65,10 +65,7 @@ This is achieved via following drawbacks:
    * Overloading the leader can lead to data loss during failover or no failover depending of setup   
    * READ on replica is eventually consistent  
    * ACID can be preserved via route to leader always
-
-Coming soon in MariaDB 10.2:
-
-   * READ on replica can be COMMITTED READ under using semi-sync no slave behind feature
+   * READ on replica can be COMMITTED READ under usage of the 10.2 semi-sync no slave behind feature
 
 
 Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", __replication-manager__ will track failover SLA (Service Level Availability).
@@ -340,7 +337,7 @@ Per default Semi-Sync replication status is not checked during failover, but thi
 
 A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console use "Failover Sync" button
 
-## Rejoining Old Leader
+## Rejoining old leader
 
 Since replication-manager 1.1 Rejoin of dead leader as been improved to cover more cases
 
