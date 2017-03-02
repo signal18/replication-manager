@@ -335,10 +335,13 @@ func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {
 
 func (m *MaxScale) Command(cmd string) error {
 	writer := bufio.NewWriter(m.Conn)
-	if _, err := fmt.Fprint(writer, cmd); err != nil {
+	var err error
+	if _, err = fmt.Fprint(writer, cmd); err != nil {
 		return err
 	}
-	err := writer.Flush()
+	if writer != nil {
+		err = writer.Flush()
+	}
 	return err
 }
 
