@@ -193,11 +193,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.MxsOn {
 			sv.getMaxscaleInfos(&m)
 		}
-		if sv.UsingGtid != "" || sv.IsMaxscale {
+		if sv.UsingGtid != "" || sv.IsRelay {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
 			}
-			if sv.IsMaxscale == false {
+			if sv.IsRelay == false {
 				sv.replicationCheck()
 				//		sv.State = stateSlave
 			}
@@ -228,7 +228,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Privilege check on %s", sv.URL)
 		}
-		if sv.State != stateFailed && sv.IsMaxscale == false {
+		if sv.State != stateFailed && sv.IsRelay == false {
 			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
@@ -253,7 +253,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			// Check replication user has correct privs.
 			for _, sv2 := range cluster.servers {
-				if sv2.URL != sv.URL && sv2.IsMaxscale == false {
+				if sv2.URL != sv.URL && sv2.IsRelay == false {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
@@ -279,7 +279,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if sl.IsMaxscale == false {
+			if sl.IsRelay == false {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
 					cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
 					dbhelper.InstallSemiSync(sl.Conn)
@@ -440,7 +440,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
 			for _, sl := range cluster.slaves {
-				if sl.IsMaxscale == false {
+				if sl.IsRelay == false {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
@@ -497,7 +497,7 @@ func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Server %s was lookup if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
 		}
-		if server.IsMaxscale {
+		if server.IsRelay {
 			return server
 		}
 	}

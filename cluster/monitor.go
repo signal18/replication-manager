@@ -89,6 +89,7 @@ type ServerMonitor struct {
 	HaveBinlogSlowqueries       bool
 	Version                     int
 	IsMaxscale                  bool
+	IsRelay                     bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 }
@@ -108,7 +109,7 @@ const (
 	stateShard       string = "Shard"
 	stateProv        string = "Provision"
 	stateMasterAlone string = "MasterAlone"
-	stateMaxscale    string = "Maxscale"
+	stateRelay       string = "Relay"
 )
 
 /* Initializes a server object */
@@ -314,8 +315,9 @@ func (server *ServerMonitor) refresh() error {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
 			server.IsMaxscale = true
+			server.IsRelay = true
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
-			server.State = stateMaxscale
+			server.State = stateRelay
 		}
 	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)

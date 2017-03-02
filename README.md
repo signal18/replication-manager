@@ -388,6 +388,25 @@ user=myuser
 passwd=mypwd
 detect_stale_master=true
 ```
+## Maxscale Binlog Server and Slave Relay
+
+All MariaDB Nodes should have same binlog prefix
+```
+bin_log='mariadb-bin'
+```
+
+Maxscale settings
+```
+router_options=mariadb10-compatibility=1,server-id=999,user=skysql,password=skyvodka,send_slave_heartbeat=on,transaction_safety=on,semisync=1
+```
+
+replication-manager
+Add the binlog server and port in the list of hosts
+
+```
+maxscale-binlog = true
+maxscale-binlog-port = 4009
+```
 
 ## Non-regression testing
 
