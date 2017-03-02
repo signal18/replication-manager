@@ -167,9 +167,13 @@ Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxSca
 ### Important note
 
 In case all slaves are down, MaxScale can still operate on the Master with the following maxscale monitoring setup :
+https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover
+
 ```
 detect_stale_master
 ```
+In Maxscale 2.2
+[![Failover to last node have been introduce so that transparent support of 2 nodes cluster is transaparent   ](https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover)]
 
 Operating MaxScale without monitoring is the second Replication-Manager mode via:
 ```

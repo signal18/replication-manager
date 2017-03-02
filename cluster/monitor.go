@@ -643,7 +643,7 @@ func (server *ServerMonitor) rejoin() error {
 		if server.MxsHaveGtid || server.IsMaxscale == false {
 			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
 		} else {
-			err = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+			err = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
 		}
 		dbhelper.StartSlave(server.Conn)
 		return err
@@ -680,7 +680,7 @@ func (server *ServerMonitor) rejoin() error {
 			if server.MxsHaveGtid || server.IsMaxscale == false {
 				err2 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
 			} else {
-				err2 = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+				err2 = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
 			}
 			if err2 != nil {
 				return err2
@@ -704,7 +704,7 @@ func (server *ServerMonitor) rejoin() error {
 				if server.MxsHaveGtid || server.IsMaxscale == false {
 					err3 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
 				} else {
-					err3 = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+					err3 = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
 				}
 				if err3 != nil {
 					return err3

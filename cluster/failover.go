@@ -11,6 +11,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -148,7 +149,22 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 		cluster.master.FailoverIOGtid = cluster.master.IOGtid
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
-
+	}
+	// if relay server than failover and switchover converge to a new binlog  make this happen
+	var relaymaster *ServerMonitor
+	if cluster.conf.MxsBinlogOn {
+		relaymaster = cluster.getMxsBinlogServer()
+		re := regexp.MustCompile(`[[:ascii:]]*.([0-9]+)`)
+		match := re.FindStringSubmatch(relaymaster.MasterLogFile)
+		binlogfiletoreach, _ := strconv.Atoi(match[1])
+		ctbinlog := 1
+		for ctbinlog < binlogfiletoreach {
+			ctbinlog += ctbinlog
+			dbhelper.FlushLogs(cluster.master.Conn)
+		}
+		cluster.master.refresh()
+		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
+		cluster.master.FailoverMasterLogPos = "4"
 	}
 	// Phase 3: Prepare new master
 	if cluster.conf.MultiMaster == false {
@@ -205,6 +221,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
+
 	cm := fmt.Sprintf("CHANGE MASTER TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_connect_retry=%d, master_heartbeat_period=%d", cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 	if fail == false {
 		// Get latest GTID pos
@@ -254,8 +271,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 5: Switch slaves to new master
 	cluster.LogPrint("INFO : Switching other slaves to the new master")
 	for _, sl := range cluster.slaves {
-		// Don't switch if slave was the old master or is in a multiple master setup.
-		if sl.URL == oldMaster.URL || sl.State == stateMaster {
+		// Don't switch if slave was the old master or is in a multiple master setup or with relay server.
+		if sl.URL == oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.conf.MxsBinlogOn == true) {
 			continue
 		}
 		if fail == false {
@@ -276,7 +293,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogPrintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
 		}
-		_, err = sl.Conn.Exec(cm)
+		if cluster.conf.MxsBinlogOn == false {
+			err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+		} else {
+			if sl.MxsHaveGtid || sl.IsMaxscale == false {
+				err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			} else {
+				err = dbhelper.ChangeMasterOldStyle(sl.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			}
+		}
 		if err != nil {
 			cluster.LogPrintf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
 		}

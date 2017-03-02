@@ -176,8 +176,13 @@ func ChangeMasterGtidSlavePos(db *sqlx.DB, host string, port string, user string
 
 	return err
 }
-func ChangeMasterOldStyle(db *sqlx.DB, host string, port string, user string, password string, filename string, filepos string) error {
+func ChangeMasterOldStyleMaxscale(db *sqlx.DB, host string, port string, user string, password string, filename string, filepos string) error {
 	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', master_log_file='" + filename + "', master_log_pos=" + filepos
+	_, err := db.Exec(cm)
+	return err
+}
+func ChangeMasterOldStyle(db *sqlx.DB, host string, port string, user string, password string, filename string, filepos string, retry string, hearbeat string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', master_log_file='" + filename + "', master_log_pos=" + filepos + ", MASTER_USE_GTID=NO , master_connect_retry=" + retry + ", master_heartbeat_period=" + hearbeat
 	_, err := db.Exec(cm)
 	return err
 }
@@ -605,6 +610,11 @@ func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 		return "", errors.New("Could not get variable by name")
 	}
 	return value, nil
+}
+
+func FlushLogs(db *sqlx.DB) error {
+	_, err := db.Exec("FLUSH LOGS")
+	return err
 }
 
 func FlushTables(db *sqlx.DB) error {
