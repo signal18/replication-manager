@@ -163,15 +163,15 @@ func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	return value, err
 }
 
-func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string) error {
-	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=CURRENT_POS"
+func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string, retry string, hearbeat string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=CURRENT_POS,  master_connect_retry=" + retry + ", master_heartbeat_period=" + hearbeat
 	_, err := db.Exec(cm)
 
 	return err
 }
 
-func ChangeMasterGtidSlavePos(db *sqlx.DB, host string, port string, user string, password string) error {
-	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=SLAVE_POS"
+func ChangeMasterGtidSlavePos(db *sqlx.DB, host string, port string, user string, password string, retry string, hearbeat string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=SLAVE_POS , master_connect_retry=" + retry + ", master_heartbeat_period=" + hearbeat
 	_, err := db.Exec(cm)
 
 	return err

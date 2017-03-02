@@ -424,6 +424,10 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 			}
 			continue
 		}
+		if sl.IsRelay {
+			cluster.LogPrintf("WARN : Slave %s is Relay . Skipping", sl.URL)
+			continue
+		}
 
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl) == false {
@@ -443,6 +447,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 
 		if cluster.master.State != stateFailed {
 			seqnos = sl.SlaveGtid.GetSeqNos()
+
 		} else {
 			seqnos = sl.IOGtid.GetSeqNos()
 		}
@@ -514,6 +519,11 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 	}
 	if ss.Seconds_Behind_Master.Valid == false && cluster.conf.RplChecks == true {
 		cluster.LogPrintf("WARN : Slave %s is stopped. Skipping", sl.URL)
+		return false
+	}
+
+	if sl.IsMaxscale || sl.IsRelay {
+		cluster.LogPrintf("WARN : Slave %s is relay. Skipping", sl.URL)
 		return false
 	}
 	return true

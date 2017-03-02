@@ -45,6 +45,8 @@ type Config struct {
 	CheckReplFilter                    bool
 	CheckBinFilter                     bool
 	ForceSlaveHeartbeat                bool `mapstructure:"force-slave-heartbeat"`
+	ForceSlaveHeartbeatTime            int  `mapstructure:"force-slave-heartbeat-time"`
+	ForceSlaveHeartbeatRetry           int  `mapstructure:"force-slave-heartbeat-retry"`
 	ForceSlaveGtid                     bool `mapstructure:"force-slave-gtid-mode"`
 	ForceSlaveSemisync                 bool `mapstructure:"force-slave-semisync"`
 	ForceSlaveReadOnly                 bool `mapstructure:"force-slave-readonly"`

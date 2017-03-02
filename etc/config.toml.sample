@@ -60,6 +60,8 @@ failover-event-status = false
 connect-timeout = 1
 
 force-slave-heartbeat= true
+force-slave-heartbeat-retry = 5
+force-slave-heartbeat-time = 3
 force-slave-gtid-mode = true
 force-slave-semisync = true
 force-slave-readonly = true

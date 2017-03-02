@@ -404,9 +404,11 @@ replication-manager
 Add the binlog server and port in the list of hosts
 
 ```
+force-slave-gtid-mode = false
 maxscale-binlog = true
 maxscale-binlog-port = 4009
 ```
+Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode= false is not needed anymore
 
 ## Non-regression testing
 
