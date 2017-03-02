@@ -87,6 +87,10 @@ type ServerMonitor struct {
 	HaveBinlogRow               bool
 	HaveBinlogAnnotate          bool
 	HaveBinlogSlowqueries       bool
+	Version                     int
+	IsMaxscale                  bool
+	MxsVersion                  int
+	MxsHaveGtid                 bool
 }
 
 type serverList []*ServerMonitor
@@ -104,6 +108,7 @@ const (
 	stateShard       string = "Shard"
 	stateProv        string = "Provision"
 	stateMasterAlone string = "MasterAlone"
+	stateMaxscale    string = "Maxscale"
 )
 
 /* Initializes a server object */
@@ -117,7 +122,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.HaveBinlogRow = true
 	server.HaveBinlogAnnotate = true
 	server.HaveBinlogSlowqueries = true
-
+	server.MxsHaveGtid = false
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
@@ -305,10 +310,57 @@ func (server *ServerMonitor) refresh() error {
 	if err != nil {
 		return err
 	}
+	if server.ClusterGroup.conf.MxsBinlogOn {
+		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
+		if mxsversion != "" {
+			server.IsMaxscale = true
+			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
+			server.State = stateMaxscale
+		}
+	}
+	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
+	if err != nil {
+		server.UsingGtid = ""
+		server.IOThread = "No"
+		server.SQLThread = "No"
+		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
+		server.MasterServerID = 0
+		server.MasterHost = ""
+		server.IOErrno = 0
+		server.IOError = ""
+		server.SQLError = ""
+		server.SQLErrno = 0
+		server.MasterLogFile = ""
+		server.MasterLogPos = "0"
+		server.MasterHeartbeatPeriod = 0
+		server.MasterUseGtid = "No"
+	} else {
+		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
+		server.UsingGtid = slaveStatus.Using_Gtid
+		server.IOThread = slaveStatus.Slave_IO_Running
+		server.SQLThread = slaveStatus.Slave_SQL_Running
+		server.Delay = slaveStatus.Seconds_Behind_Master
+		server.MasterServerID = slaveStatus.Master_Server_Id
+		server.MasterHost = slaveStatus.Master_Host
+		server.IOErrno = slaveStatus.Last_IO_Errno
+		server.IOError = slaveStatus.Last_IO_Error
+		server.SQLError = slaveStatus.Last_SQL_Error
+		server.SQLErrno = slaveStatus.Last_SQL_Errno
+		server.MasterLogFile = slaveStatus.Master_Log_File
+		server.MasterUseGtid = slaveStatus.Using_Gtid
+		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
+		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
+	}
+	// if MaxScale exit the variables and status part
+	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
+		return nil
+	}
 	sv, err := dbhelper.GetVariables(server.Conn)
 	if err != nil {
 		return err
 	}
+	server.Version = dbhelper.MariaDBVersion(sv["VERSION"])
+
 	if sv["EVENT_SCHEDULER"] != "ON" {
 		server.EventScheduler = false
 	} else {
@@ -359,7 +411,6 @@ func (server *ServerMonitor) refresh() error {
 	server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR: Could not get events")
-		return err
 	}
 	su, _ := dbhelper.GetStatus(server.Conn)
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
@@ -374,40 +425,6 @@ func (server *ServerMonitor) refresh() error {
 		server.SemiSyncSlaveStatus = true
 	} else {
 		server.SemiSyncSlaveStatus = false
-	}
-
-	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
-	if err != nil {
-		server.UsingGtid = ""
-		server.IOThread = "No"
-		server.SQLThread = "No"
-		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
-		server.MasterServerID = 0
-		server.MasterHost = ""
-		server.IOErrno = 0
-		server.IOError = ""
-		server.SQLError = ""
-		server.SQLErrno = 0
-		server.MasterLogFile = ""
-		server.MasterLogPos = "0"
-		server.MasterHeartbeatPeriod = 0
-		server.MasterUseGtid = "No"
-	} else {
-		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
-		server.UsingGtid = slaveStatus.Using_Gtid
-		server.IOThread = slaveStatus.Slave_IO_Running
-		server.SQLThread = slaveStatus.Slave_SQL_Running
-		server.Delay = slaveStatus.Seconds_Behind_Master
-		server.MasterServerID = slaveStatus.Master_Server_Id
-		server.MasterHost = slaveStatus.Master_Host
-		server.IOErrno = slaveStatus.Last_IO_Errno
-		server.IOError = slaveStatus.Last_IO_Error
-		server.SQLError = slaveStatus.Last_SQL_Error
-		server.SQLErrno = slaveStatus.Last_SQL_Errno
-		server.MasterLogFile = slaveStatus.Master_Log_File
-		server.MasterUseGtid = slaveStatus.Using_Gtid
-		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
-		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
 
 	//monitor haproxy
@@ -614,10 +631,18 @@ func (server *ServerMonitor) rejoin() error {
 		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on  rejoined %s", server.URL)
 	}
 
+	realmaster := server.ClusterGroup.master
+	if server.ClusterGroup.conf.MxsBinlogOn {
+		realmaster = server.ClusterGroup.getMxsBinlogServer()
+	}
 	if server.CurrentGtid.Sprint() == server.ClusterGroup.master.FailoverIOGtid.Sprint() {
 		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.URL)
-		cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=CURRENT_POS"
-		_, err := server.Conn.Exec(cm)
+		var err error
+		if server.MxsHaveGtid || server.IsMaxscale == false {
+			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass)
+		} else {
+			err = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+		}
 		dbhelper.StartSlave(server.Conn)
 		return err
 	} else {
@@ -649,10 +674,14 @@ func (server *ServerMonitor) rejoin() error {
 			if err != nil {
 				return err
 			}
-			cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=SLAVE_POS"
-			_, err2 := server.Conn.Exec(cm)
+			var err2 error
+			if server.MxsHaveGtid || server.IsMaxscale == false {
+				err2 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass)
+			} else {
+				err2 = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+			}
 			if err2 != nil {
-				return err
+				return err2
 			}
 			dbhelper.StartSlave(server.Conn)
 			if server.FailoverSemiSyncSlaveStatus == true {
@@ -668,10 +697,15 @@ func (server *ServerMonitor) rejoin() error {
 		} else {
 			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
 			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-				cm := "CHANGE MASTER TO master_host='" + server.ClusterGroup.master.IP + "', master_port=" + server.ClusterGroup.master.Port + ", master_user='" + server.ClusterGroup.rplUser + "', master_password='" + server.ClusterGroup.rplPass + "', MASTER_USE_GTID=SLAVE_POS"
-				_, err := server.Conn.Exec(cm)
-				if err != nil {
-					return err
+				var err3 error
+				// done change master just to set the host and port before dump
+				if server.MxsHaveGtid || server.IsMaxscale == false {
+					err3 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass)
+				} else {
+					err3 = dbhelper.ChangeMasterOldStyle(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+				}
+				if err3 != nil {
+					return err3
 				}
 				// dump here
 				server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)

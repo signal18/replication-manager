@@ -56,6 +56,7 @@ type Config struct {
 	ForceSyncBinlog                    bool `mapstructure:"force-sync-binlog"`
 	ForceSyncInnoDB                    bool `mapstructure:"force-sync-innodb"`
 	ForceBinlogChecksum                bool `mapstructure:"force-binlog-checksum"`
+	ForceNoslaveBehind                 bool `mapstructure:"force-noslave-behind"`
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
 	MultiMaster                        bool

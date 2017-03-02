@@ -15,6 +15,8 @@ import (
 	"hash/crc64"
 	"log"
 	"net"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -152,6 +154,43 @@ func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
 	return pl, nil
+}
+
+func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
+	var value string
+	value = ""
+	err := db.QueryRowx("Select @@maxscale_version").Scan(&value)
+	return value, err
+}
+
+func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=CURRENT_POS"
+	_, err := db.Exec(cm)
+
+	return err
+}
+
+func ChangeMasterGtidSlavePos(db *sqlx.DB, host string, port string, user string, password string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=SLAVE_POS"
+	_, err := db.Exec(cm)
+
+	return err
+}
+func ChangeMasterOldStyle(db *sqlx.DB, host string, port string, user string, password string, filename string, filepos string) error {
+	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', master_log_file='" + filename + "', master_log_pos=" + filepos
+	_, err := db.Exec(cm)
+	return err
+}
+
+func MariaDBVersion(server string) int {
+	re := regexp.MustCompile(`([0-9]+).([0-9]+).([0-9]+)*`)
+	match := re.FindStringSubmatch(server)
+
+	x, _ := strconv.Atoi(match[1])
+	y, _ := strconv.Atoi(match[2])
+	z, _ := strconv.Atoi(match[3])
+	return (x*10000 + y*100 + z)
+	//return ((versionSplit[0]*10000+versionSplit[1])*100 + versionSplit[2])
 }
 
 func GetHostFromProcessList(db *sqlx.DB, user string) string {

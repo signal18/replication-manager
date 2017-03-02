@@ -193,12 +193,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.MxsOn {
 			sv.getMaxscaleInfos(&m)
 		}
-		if sv.UsingGtid != "" {
+		if sv.UsingGtid != "" || sv.IsMaxscale {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
 			}
-			sv.replicationCheck()
-			//		sv.State = stateSlave
+			if sv.IsMaxscale == false {
+				sv.replicationCheck()
+				//		sv.State = stateSlave
+			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			var n int
@@ -226,7 +228,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Privilege check on %s", sv.URL)
 		}
-		if sv.State != stateFailed {
+		if sv.State != stateFailed && sv.IsMaxscale == false {
 			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
@@ -251,7 +253,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			// Check replication user has correct privs.
 			for _, sv2 := range cluster.servers {
-				if sv2.URL != sv.URL {
+				if sv2.URL != sv.URL && sv2.IsMaxscale == false {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
@@ -277,50 +279,52 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
-				cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
-				dbhelper.InstallSemiSync(sl.Conn)
-			}
-			if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
-				// In non-multimaster mode, enforce read-only flag if the option is set
-				dbhelper.SetBinlogFormat(sl.Conn, "ROW")
-				cluster.LogPrintf("DEBUG: Enforce binlog format ROW on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
-				// In non-multimaster mode, enforce read-only flag if the option is set
-				dbhelper.SetReadOnly(sl.Conn, true)
-				cluster.LogPrintf("DEBUG: Enforce read only on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
-				dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
-				cluster.LogPrintf("DEBUG: Enforce heartbeat to 1s on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
-				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
-				cluster.LogPrintf("DEBUG: Enforce GTID replication on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
-				dbhelper.SetSyncInnodb(sl.Conn)
-				cluster.LogPrintf("DEBUG: Enforce sync InnoDB  on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
-				dbhelper.SetBinlogChecksum(sl.Conn)
-				cluster.LogPrintf("DEBUG: Enforce checksum on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
-				dbhelper.SetBinlogSlowqueries(sl.Conn)
-				cluster.LogPrintf("DEBUG: Enforce log slow queries of replication on slave %s", sl.DSN)
-			}
-			if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
-				dbhelper.SetBinlogAnnotate(sl.Conn)
-				cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
-			}
+			if sl.IsMaxscale == false {
+				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
+					cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
+					dbhelper.InstallSemiSync(sl.Conn)
+				}
+				if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
+					// In non-multimaster mode, enforce read-only flag if the option is set
+					dbhelper.SetBinlogFormat(sl.Conn, "ROW")
+					cluster.LogPrintf("DEBUG: Enforce binlog format ROW on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
+					// In non-multimaster mode, enforce read-only flag if the option is set
+					dbhelper.SetReadOnly(sl.Conn, true)
+					cluster.LogPrintf("DEBUG: Enforce read only on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
+					dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
+					cluster.LogPrintf("DEBUG: Enforce heartbeat to 1s on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
+					dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
+					cluster.LogPrintf("DEBUG: Enforce GTID replication on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
+					dbhelper.SetSyncInnodb(sl.Conn)
+					cluster.LogPrintf("DEBUG: Enforce sync InnoDB  on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
+					dbhelper.SetBinlogChecksum(sl.Conn)
+					cluster.LogPrintf("DEBUG: Enforce checksum on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
+					dbhelper.SetBinlogSlowqueries(sl.Conn)
+					cluster.LogPrintf("DEBUG: Enforce log slow queries of replication on slave %s", sl.DSN)
+				}
+				if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
+					dbhelper.SetBinlogAnnotate(sl.Conn)
+					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
+				}
 
-			if sl.hasSiblings(cluster.slaves) == false {
-				// possibly buggy code
-				// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
-				cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
-				// cluster.conf.MultiMaster = true
+				if sl.hasSiblings(cluster.slaves) == false {
+					// possibly buggy code
+					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
+					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
+					// cluster.conf.MultiMaster = true
+				}
 			}
 		}
 	}
@@ -436,18 +440,21 @@ func (cluster *Cluster) TopologyDiscover() error {
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
 			for _, sl := range cluster.slaves {
-				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
-				}
-				if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP) == false {
-					cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", cluster.master.URL, cluster.master.Host), ErrFrom: "TOPO"})
-				}
-				if sl.LogBin == "OFF" {
-					cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
+				if sl.IsMaxscale == false {
+					if cluster.conf.LogLevel > 2 {
+						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
+					}
+					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP) == false {
+						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", cluster.master.URL, cluster.master.Host), ErrFrom: "TOPO"})
+					}
+					if sl.LogBin == "OFF" {
+						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
+					}
 				}
 				if sl.Delay.Int64 <= cluster.conf.MaxDelay && sl.SQLThread == "Yes" {
 					cluster.master.RplMasterStatus = true
 				}
+
 			}
 		}
 
@@ -479,6 +486,18 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 			cluster.LogPrintf("DEBUG: Server %s was lookup if prefered master: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.URL == cluster.conf.PrefMaster {
+			return server
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
+	for _, server := range cluster.servers {
+		if cluster.conf.LogLevel > 2 {
+			cluster.LogPrintf("DEBUG: Server %s was lookup if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
+		}
+		if server.IsMaxscale {
 			return server
 		}
 	}
