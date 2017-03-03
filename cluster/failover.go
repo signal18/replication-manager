@@ -243,19 +243,20 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		if cluster.conf.MxsBinlogOn == false {
 			err = dbhelper.ChangeMasterGtidSlavePos(oldMaster.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			if err != nil {
+				cluster.LogPrint("WARN : Change master failed on old master", err)
+			}
+			err = dbhelper.StartSlave(oldMaster.Conn)
+			if err != nil {
+				cluster.LogPrint("WARN : Start slave failed on old master", err)
+			}
 		} else {
+			// Don't start slave until the relay as been point to new master
 			if relaymaster.MxsHaveGtid {
 				err = dbhelper.ChangeMasterGtidSlavePos(oldMaster.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
 			} else {
 				err = dbhelper.ChangeMasterOldStyle(oldMaster.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
 			}
-		}
-		if err != nil {
-			cluster.LogPrint("WARN : Change master failed on old master", err)
-		}
-		err = dbhelper.StartSlave(oldMaster.Conn)
-		if err != nil {
-			cluster.LogPrint("WARN : Start slave failed on old master", err)
 		}
 
 		if cluster.conf.ReadOnly {
@@ -283,7 +284,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if sl.URL == oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.conf.MxsBinlogOn == true) {
 			continue
 		}
-		if fail == false {
+		// maxscale is in the list of slave
+
+		if fail == false && cluster.conf.MxsBinlogOn == false {
 			cluster.LogPrintf("INFO : Waiting for slave %s to sync", sl.URL)
 			dbhelper.MasterPosWait(sl.Conn, oldMaster.BinlogPos.Sprint(), 30)
 			if cluster.conf.LogLevel > 2 {
@@ -295,13 +298,21 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
-		if fail == false {
+		if fail == false && cluster.conf.MxsBinlogOn == false {
 			_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
 		}
-		err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+		if cluster.conf.MxsBinlogOn == false {
+			err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+		} else {
+			if sl.MxsHaveGtid {
+				err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			} else {
+				err = dbhelper.ChangeMasterOldStyleMaxscale(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
+			}
+		}
 		if err != nil {
 			cluster.LogPrintf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
 		}
@@ -309,15 +320,21 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf("ERROR: could not start slave on server %s, %s", sl.URL, err)
 		}
-		if cluster.conf.ReadOnly {
+		// now start the old master ras elay is ready
+		if cluster.conf.MxsBinlogOn && fail == false {
+			dbhelper.StartSlave(oldMaster.Conn)
+		}
+		if cluster.conf.ReadOnly && cluster.conf.MxsBinlogOn == false {
 			err = dbhelper.SetReadOnly(sl.Conn, true)
 			if err != nil {
 				cluster.LogPrintf("ERROR: Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		} else {
-			err = dbhelper.SetReadOnly(sl.Conn, false)
-			if err != nil {
-				cluster.LogPrintf("ERROR: Could not remove slave %s as read-only, %s", sl.URL, err)
+			if cluster.conf.MxsBinlogOn == false {
+				err = dbhelper.SetReadOnly(sl.Conn, false)
+				if err != nil {
+					cluster.LogPrintf("ERROR: Could not remove slave %s as read-only, %s", sl.URL, err)
+				}
 			}
 		}
 	}
