@@ -119,6 +119,9 @@ func initConfig() {
 	cfgGroupIndex = 0
 
 	cf1 := viper.Sub("Default")
+	if cf1 == nil {
+		log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
+	}
 	cf1.Unmarshal(&conf)
 
 	if cfgGroup != "" {
