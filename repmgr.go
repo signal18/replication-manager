@@ -248,7 +248,7 @@ var topologyCmd = &cobra.Command{
 
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
-	Short: "Start the conf.Interactive replication monitor",
+	Short: "Starts the interactive replication monitor",
 	Long: `Starts replication-manager in stateful monitor daemon mode.
 Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
