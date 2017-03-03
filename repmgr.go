@@ -161,8 +161,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Wait this many seconds before transactions end to cancel switchover")
 	cmd.Flags().BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.GtidCheck, "gtidcheck", false, "Depecrate for failover-at-equal-gtid do not initiate failover unless slaves are fully in sync")
-	cmd.Flags().BoolVar(&conf.SwitchGtidCheck, "swichover-at-equal-gtid", false, "Do not initiate failover unless slaves are fully in sync")
-	cmd.Flags().Int64Var(&conf.SwitchMaxDelay, "swichover-max-slave-delay", 0, "Maximum replication delay before initiating switchover")
+	cmd.Flags().BoolVar(&conf.SwitchGtidCheck, "switchover-at-equal-gtid", false, "Do not initiate failover unless slaves are fully in sync")
+	cmd.Flags().Int64Var(&conf.SwitchMaxDelay, "switchover-max-slave-delay", 0, "Maximum replication delay before initiating switchover")
 
 	cmd.Flags().IntVar(&conf.WaitWrite, "wait-write-query", 10, "Deprecate  Wait this many seconds before write query end to cancel switchover")
 	cmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
