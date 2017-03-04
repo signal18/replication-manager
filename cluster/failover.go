@@ -147,7 +147,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO : Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
-		cluster.master.FailoverIOGtid = cluster.master.IOGtid
+		if cluster.conf.MxsBinlogOn {
+			cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
+		} else {
+			cluster.master.FailoverIOGtid = cluster.master.IOGtid
+		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	}
 	// if relay server than failover and switchover converge to a new binlog  make this happen
@@ -166,13 +170,16 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		ctbinlog := 0
 		for ctbinlog < binlogfiletoreach {
 			ctbinlog += 1
-			cluster.LogPrintf("INFO : Flush Log on candidate Master %s", ctbinlog)
+			cluster.LogPrintf("INFO : Flush Log on candidate Master %d", ctbinlog)
 			dbhelper.FlushLogs(cluster.master.Conn)
 		}
-		time.Sleep(1 * time.Second)
-		cluster.master.refresh()
-		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
-		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+		time.Sleep(2 * time.Second)
+		ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn)
+		cluster.master.FailoverMasterLogFile = ms.File
+		cluster.master.FailoverMasterLogPos = "4"
+		//strconv.FormatUint(uint64(ms.Position), 10)
+		cluster.LogPrintf("INFO : Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
+
 	}
 	// Phase 3: Prepare new master
 	if cluster.conf.MultiMaster == false {
@@ -451,9 +458,13 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 	ll := len(l)
 	seqList := make([]uint64, ll)
+	posList := make([]uint64, ll)
+	hipos := 0
 	hiseq := 0
 	var max uint64
+	var maxpos uint64
 	var seqnos []uint64
+
 	for i, sl := range l {
 		/* If server is in the ignore list, do not elect it */
 		if misc.Contains(cluster.ignoreList, sl.URL) {
@@ -498,7 +509,17 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 			}
 			return i
 		}
+		//old style replication
+		re := regexp.MustCompile(`[[:ascii:]]*.([0-9]+)`)
+		match := re.FindStringSubmatch(sl.MasterLogFile)
+		filepos := sl.MasterLogPos
+		for len(filepos) > 10 {
+			filepos = "0" + filepos
+		}
 
+		pos := match[1] + filepos
+		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
+		posList[i] = binlogposreach
 		if cluster.master.State != stateFailed {
 			seqnos = sl.SlaveGtid.GetSeqNos()
 
@@ -508,6 +529,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Got sequence(s) %v for server [%d]", seqnos, i)
 		}
+
 		for _, v := range seqnos {
 			seqList[i] += v
 		}
@@ -515,10 +537,18 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 			max = seqList[i]
 			hiseq = i
 		}
+		if posList[i] > maxpos {
+			maxpos = posList[i]
+			hipos = i
+		}
 	} //end loop all slaves
 	if max > 0 {
 		/* Return key of slave with the highest seqno. */
 		return hiseq
+	}
+	if maxpos > 0 {
+		/* Return key of slave with the highest pos. */
+		return hipos
 	}
 	// cluster.LogPrint("ERROR: No suitable candidates found.") TODO: move this outside func
 	return -1

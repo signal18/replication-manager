@@ -126,6 +126,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.MxsHaveGtid = false
 	// consider all nodes are relay if maxscale avoid  sending command until discoverd
 	server.IsRelay = true
+	server.IsMaxscale = true
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
@@ -208,7 +209,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				server.FailCount++
 				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.conf.MaxFail {
-						server.ClusterGroup.LogPrintf("WARN : Deserver.ClusterGrouparing server %s as failed", server.URL)
+						server.ClusterGroup.LogPrintf("WARN : Declaring server %s as failed", server.URL)
 						server.State = stateFailed
 					} else {
 						server.State = stateSuspect
@@ -321,9 +322,11 @@ func (server *ServerMonitor) refresh() error {
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
 			server.State = stateRelay
 		} else {
+			server.IsMaxscale = false
 			server.IsRelay = false
 		}
 	} else {
+		server.IsMaxscale = false
 		server.IsRelay = false
 	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
@@ -643,8 +646,10 @@ func (server *ServerMonitor) rejoin() error {
 	if server.ClusterGroup.conf.MxsBinlogOn {
 		realmaster = server.ClusterGroup.getMxsBinlogServer()
 	}
-	if server.CurrentGtid.Sprint() == server.ClusterGroup.master.FailoverIOGtid.Sprint() {
-		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s on new master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.URL)
+	server.ClusterGroup.LogPrintf("INFO : rejoined %d", server.CurrentGtid.GetSeqNos()[1])
+
+	if server.CurrentGtid.GetSeqNos()[1] == server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[1] {
+		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s %d on new master %s and %s ,%d on rejoin", server.CurrentGtid.Sprint(), server.CurrentGtid.GetSeqNos()[2], server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[2])
 		var err error
 		if server.MxsHaveGtid || server.IsMaxscale == false {
 			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
