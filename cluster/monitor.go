@@ -124,6 +124,8 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.HaveBinlogAnnotate = true
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
+	// consider all nodes are relay if maxscale avoid  sending command until discoverd
+	server.IsRelay = true
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
@@ -318,7 +320,11 @@ func (server *ServerMonitor) refresh() error {
 			server.IsRelay = true
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
 			server.State = stateRelay
+		} else {
+			server.IsRelay = false
 		}
+	} else {
+		server.IsRelay = false
 	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {

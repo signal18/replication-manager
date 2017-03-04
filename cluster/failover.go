@@ -454,6 +454,10 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Checking eligibility of slave server %s [%d]", sl.URL, i)
 		}
+		if sl.IsRelay {
+			cluster.LogPrintf("WARN : Slave %s is Relay . Skipping", sl.URL)
+			continue
+		}
 		if cluster.conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.LogPrintf("WARN : Slave %s has state Master. Skipping", sl.URL)
 			continue
@@ -464,10 +468,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("WARN : Slave %s has isSlaveElectableForSwitchover false. Skipping", sl.URL)
 			}
-			continue
-		}
-		if sl.IsRelay {
-			cluster.LogPrintf("WARN : Slave %s is Relay . Skipping", sl.URL)
 			continue
 		}
 
