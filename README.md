@@ -4,6 +4,24 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
+- [Overview](## Overview)
+- [Why replication-manager](## Why replication-manager)
+- [Usage](## Usage)
+- [Howto reach state in-sync](## Howto reach state in-sync)
+- [Switchover workflow](## Switchover workflow)
+- [Failover workflow](## Failover workflow)
+- [Using Maxscale](## Using Maxscale)
+- [Using command line client](## Using command line)
+- [Using command line monitoring](## Using command line monitoring)
+- [Configuration file](## Configuration file)
+- [Multi-master](## Multi-master)
+- [Non-regression testing](## Non-regression testing)
+- [System requirements](## System requirements)
+- [Bugs](## Bugs)
+- [Features](## Features)
+- [Authors](## Authors)
+
+## Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
@@ -47,7 +65,7 @@ enable_root_user=true
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-## replication-manager advantages
+## Why replication-manager
 
 Leader Election Cluster is best used in such scenarios:
 
@@ -81,7 +99,7 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-## State: in-sync
+## Howto reach state in-sync
 
 If the replication was in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
@@ -122,7 +140,7 @@ Such parameters will print an expected warning in error.log on slaves about Semi
 __Important Note__: semisync SYNC status does not guarantee that the old leader is replication consistent with the cluster in case of crash [![MDEV-11855](https://jira.mariadb.org/browse/MDEV-11855)]  or shutdown [![MDEV-11853](https://jira.mariadb.org/browse/MDEV-11853)] of the master,the failure can leave more data in the binary log but it guarantees that no client applications have seen those pending transactions if they have not touched a replica. This leads to a situation where semisync is used to slowdown the workload to the speed of the network until it reaches a timeout where it is not possible to catch up anymore. A crash or shutdown will lead to the requirement of re-provisioning the old leader from another node in most heavy write scenarios.  
 Setting rpl_semi_sync_master_wait_point to AFTER_SYNC may limit the number of extra transactions inside the binlog after a crash but those transactions would have been made visible to the clients and may have been lost during failover to an other node. It is highly recommended to keep AFTER_COMMIT to make sure the workload is safer than the state of the old master.    
 
-## State: Not in-sync & failable
+### State: Not in-sync & failable
 
 __replication-manager__ can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
 
@@ -135,7 +153,7 @@ Probability to lose data is increased with a single slave topology, when the sla
 
 To limit such cases we advise usage of a 3 nodes cluster that removes such scenarios as losing a slave.
 
-## State: Not in-sync & unfailable
+### State: Not in-sync & unfailable
 
 The first SLA is the one that tracks the presence of a valid topology from  __replication-manager__, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
@@ -147,7 +165,7 @@ A good practice is to enable slow query detection on slaves using in slow query 
 log_slow_slave_statements = 1
 ```
 
-## Data consistency inside switchover
+## Switchover workflow
 
 __replication-manager__ prevents additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by __replication-manager__.
 
@@ -160,7 +178,51 @@ extra_max_connections = 10
 ```   
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
 
-## Maxscale settings
+## Failover workflow
+
+After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
+
+When manual failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
+
+Per default following checks are disabled but are defined in the configuration template and advised to set:
+- Exceeding a given replication delay (maxdelay=0)
+- Failover did not happen previously in less than a given time interval (failover-time-limit=0)  
+- Failover limit was not reached (failover-limit=0)
+
+A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
+
+Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi- sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
+
+- Last semi sync status was SYNC  (failsync=false)  
+
+A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console, use "Failover Sync" button
+
+### False positive detection
+
+All replicas and Maxscale will be questioned for consensus detection of leader death:
+
+failover-falsepositive-heartbeat = true
+failover-falsepositive-heartbeat-timeout = 3
+failover-falsepositive-maxscale = true
+failover-falsepositive-maxscale-timeout = 14
+
+### Rejoining old leader
+
+Since replication-manager 1.1, rejoin of dead leader has been improved to cover more cases.
+
+MariaDB 10.2 binary package can be colocated with replication-manager via the config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
+
+replication-manager gets 4 different cases for rejoin:
+
+1. If GTID of the new leader at time of election is equal to GTID of the joiner, we proceed with rejoin.
+
+2. If GTID is ahead on joiner, we backup extra events, if semisync replication was in sync status, we must do flashback to come back to a physical state that client connections have never seen.  
+
+3. If GTID is ahead but semisync replication status at election was desynced, we flashback if replication-manager settings use the rejoin-flashback flag, lost events are saved in a crash directory in the working directory path.
+
+4. If GTID is ahead but semisync replication status at election was desynced, we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag.
+
+## Using Maxscale
 
 Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup only works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
@@ -201,8 +263,29 @@ GRANT SELECT ON mysql.tables_priv TO 'maxadmin'@'%';
 GRANT SHOW DATABASES, REPLICATION CLIENT ON *.* TO 'maxadmin'@'%';
 GRANT ALL ON maxscale_schema.* TO 'maxadmin'@'%';
 ```
+### Maxscale Binlog Server and Slave Relay
 
-## Procedural command line examples
+All MariaDB Nodes should have same binlog prefix
+```
+bin_log='mariadb-bin'
+```
+
+Maxscale settings
+```
+router_options=mariadb10-compatibility=1,server-id=999,user=skysql,password=skyvodka,send_slave_heartbeat=on,transaction_safety=on,semisync=1
+```
+
+replication-manager
+Add the binlog server and port in the list of hosts
+
+```
+force-slave-gtid-mode = false
+maxscale-binlog = true
+maxscale-binlog-port = 3306
+```
+Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode= false is not needed anymore
+
+## Using command line client
 
 Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
 
@@ -212,7 +295,7 @@ Run replication-manager in non-interactive failover mode, using full host and po
 
 `replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
-## Monitoring
+## Using command line monitoring
 
 Start replication-manager in console mode to monitor the cluster:
 
@@ -248,7 +331,7 @@ Start replication-manager in automatic daemon mode:
 
 This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
 
-## Available commands
+## Usage
 
 ```
   agent       Starts replication monitoring agent
@@ -323,51 +406,7 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-## Default Failover Workflow
-
-After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
-
-When manual failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
-
-Per default following checks are disabled but are defined in the configuration template and advised to set:
-- Exceeding a given replication delay (maxdelay=0)
-- Failover did not happen previously in less than a given time interval (failover-time-limit=0)  
-- Failover limit was not reached (failover-limit=0)
-
-A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
-
-Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi- sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
-
-- Last semi sync status was SYNC  (failsync=false)  
-
-A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console, use "Failover Sync" button
-
-## Rejoining old leader
-
-Since replication-manager 1.1, rejoin of dead leader has been improved to cover more cases.
-
-MariaDB 10.2 binary package can be colocated with replication-manager via the config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
-
-replication-manager gets 4 different cases for rejoin:
-
-1. If GTID of the new leader at time of election is equal to GTID of the joiner, we proceed with rejoin.
-
-2. If GTID is ahead on joiner, we backup extra events, if semisync replication was in sync status, we must do flashback to come back to a physical state that client connections have never seen.  
-
-3. If GTID is ahead but semisync replication status at election was desynced, we flashback if replication-manager settings use the rejoin-flashback flag, lost events are saved in a crash directory in the working directory path.
-
-4. If GTID is ahead but semisync replication status at election was desynced, we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag.
-
-## False positive detection
-
-All replicas and Maxscale will be questioned for consensus detection of leader death:
-
-failover-falsepositive-heartbeat = true
-failover-falsepositive-heartbeat-timeout = 3
-failover-falsepositive-maxscale = true
-failover-falsepositive-maxscale-timeout = 14
-
-## Calling external scripts
+## External scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
@@ -392,27 +431,6 @@ user=myuser
 passwd=mypwd
 detect_stale_master=true
 ```
-## Maxscale Binlog Server and Slave Relay
-
-All MariaDB Nodes should have same binlog prefix
-```
-bin_log='mariadb-bin'
-```
-
-Maxscale settings
-```
-router_options=mariadb10-compatibility=1,server-id=999,user=skysql,password=skyvodka,send_slave_heartbeat=on,transaction_safety=on,semisync=1
-```
-
-replication-manager
-Add the binlog server and port in the list of hosts
-
-```
-force-slave-gtid-mode = false
-maxscale-binlog = true
-maxscale-binlog-port = 3306
-```
-Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode= false is not needed anymore
 
 ## Non-regression testing
 
@@ -464,7 +482,9 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 
 Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
-## 1.0 Features
+## Features
+
+### 1.0 Features GA
 
  * High availability support with leader election
  * Semi-sync replication support
@@ -484,7 +504,7 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
  * Non regression tests via http
  * Haproxy wrapper
 
-## 1.1 Features
+### 1.1 Features Beta
 
  * Multi cluster support
  * Flashback and dump rejoin  
@@ -497,10 +517,10 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
  * Trends display
  * Force replication best practice
  * Non regression tests via command line
-
-## 1.1 Roadmap
-
  * Maxscale binlog server support
+
+### 1.1 Roadmap
+
  * Load and non regression simulator
  * Etcd integration
  * Agent base server stop leader on switchover   
@@ -513,11 +533,11 @@ Guillaume Lefranc <guillaume@signal18.io>
 
 Stephane Varoqui <stephane@mariadb.com>
 
-## Special Thanks
+### Special Thanks
 
 Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu for MHA, Johan Anderson at S9 Cluster Control.
 
-## License
+### License
 
 THIS PROGRAM IS PROVIDED “AS IS” AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
