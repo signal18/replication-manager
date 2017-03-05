@@ -4,22 +4,22 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
-- [Overview](##Overview)
-- [Why replication-manager](##Why replication-manager)
-- [Usage](##Usage)
-- [Howto reach state in-sync](##Howto reach state in-sync)
-- [Switchover workflow](## Switchover workflow)
-- [Failover workflow](##Failover workflow)
-- [Using Maxscale](##Using Maxscale)
-- [Using command line client](##Using command line)
-- [Using command line monitoring](##Using command line monitoring)
-- [Configuration file](##Configuration file)
-- [Multi-master](##Multi-master)
-- [Non-regression testing](##Non-regression testing)
-- [System requirements](##System requirements)
-- [Bugs](##Bugs)
-- [Features](##Features)
-- [Authors](##Authors)
+- [Overview](#Overview)
+- [Why replication-manager](#Why replication-manager)
+- [Usage](#Usage)
+- [Howto reach state in-sync](#Howto reach state in-sync)
+- [Switchover workflow](#Switchover workflow)
+- [Failover workflow](#Failover workflow)
+- [Using Maxscale](#Using Maxscale)
+- [Using command line client](#Using command line)
+- [Using command line monitoring](#Using command line monitoring)
+- [Configuration file](#Configuration file)
+- [Multi-master](#Multi-master)
+- [Non-regression testing](#Non-regression testing)
+- [System requirements](#System requirements)
+- [Bugs](#Bugs)
+- [Features](#Features)
+- [Authors](#Authors)
 
 ##Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
@@ -314,6 +314,8 @@ Ctrl-S  Switchover
 Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
 ```
+
+## Using daemon monitoring
 
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
