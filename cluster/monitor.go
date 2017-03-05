@@ -650,7 +650,7 @@ func (server *ServerMonitor) rejoin() error {
 	server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 
 	if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) == server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
-		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s %d on new master %s and %s ,%d on rejoin", server.CurrentGtid.Sprint(), server.CurrentGtid.GetSeqNos()[2], server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[2])
+		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s  and new master %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
 		var err error
 		if server.MxsHaveGtid || server.IsMaxscale == false {
 			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
