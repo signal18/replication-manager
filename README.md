@@ -4,10 +4,10 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
-- [Overview](## Overview)
-- [Why replication-manager](## Why replication-manager)
-- [Usage](## Usage)
-- [Howto reach state in-sync](## Howto reach state in-sync)
+- [Overview](##Overview)
+- [Why replication-manager](##Why replication-manager)
+- [Usage](##Usage)
+- [Howto reach state in-sync](##Howto reach state in-sync)
 - [Switchover workflow](## Switchover workflow)
 - [Failover workflow](## Failover workflow)
 - [Using Maxscale](## Using Maxscale)
