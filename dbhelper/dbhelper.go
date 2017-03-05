@@ -422,6 +422,13 @@ func SetBinlogAnnotate(db *sqlx.DB) error {
 	return nil
 }
 
+func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
+	_, err := db.Exec("SET GLOBAL relay-log-space-limit=" + size)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func SetBinlogSlowqueries(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL log_slow_slave_statements=ON")
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -318,7 +319,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
 					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
 				}
-
+				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
+					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
+					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
+				}
 				if sl.hasSiblings(cluster.slaves) == false {
 					// possibly buggy code
 					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})

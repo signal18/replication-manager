@@ -92,6 +92,7 @@ type ServerMonitor struct {
 	IsRelay                     bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
+	RelayLogSize                uint64
 }
 
 type serverList []*ServerMonitor
@@ -411,6 +412,8 @@ func (server *ServerMonitor) refresh() error {
 	} else {
 		server.HaveBinlogSlowqueries = true
 	}
+
+	server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
 	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)

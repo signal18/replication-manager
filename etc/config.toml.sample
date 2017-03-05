@@ -70,6 +70,7 @@ force-binlog-annotate = true
 force-binlog-slowqueries = true
 force-inmemory-binlog-cache-size = true
 force-disk-relaylog-size-limit = true
+force-disk-relaylog-size-limit-size = 1000000000
 force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true

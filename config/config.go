@@ -44,21 +44,22 @@ type Config struct {
 	CheckType                          string
 	CheckReplFilter                    bool
 	CheckBinFilter                     bool
-	ForceSlaveHeartbeat                bool `mapstructure:"force-slave-heartbeat"`
-	ForceSlaveHeartbeatTime            int  `mapstructure:"force-slave-heartbeat-time"`
-	ForceSlaveHeartbeatRetry           int  `mapstructure:"force-slave-heartbeat-retry"`
-	ForceSlaveGtid                     bool `mapstructure:"force-slave-gtid-mode"`
-	ForceSlaveSemisync                 bool `mapstructure:"force-slave-semisync"`
-	ForceSlaveReadOnly                 bool `mapstructure:"force-slave-readonly"`
-	ForceBinlogRow                     bool `mapstructure:"force-binlog-row"`
-	ForceBinlogAnnotate                bool `mapstructure:"force-binlog-annotate"`
-	ForceBinlogSlowqueries             bool `mapstructure:"force-binlog-slowqueries"`
-	ForceInmemoryBinlogCacheSize       bool `mapstructure:"force-inmemory-binlog-cache-size"`
-	ForceDiskRelayLogSizeLimit         bool `mapstructure:"force-disk-relaylog-size-limit"`
-	ForceSyncBinlog                    bool `mapstructure:"force-sync-binlog"`
-	ForceSyncInnoDB                    bool `mapstructure:"force-sync-innodb"`
-	ForceBinlogChecksum                bool `mapstructure:"force-binlog-checksum"`
-	ForceNoslaveBehind                 bool `mapstructure:"force-noslave-behind"`
+	ForceSlaveHeartbeat                bool   `mapstructure:"force-slave-heartbeat"`
+	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`
+	ForceSlaveHeartbeatRetry           int    `mapstructure:"force-slave-heartbeat-retry"`
+	ForceSlaveGtid                     bool   `mapstructure:"force-slave-gtid-mode"`
+	ForceSlaveSemisync                 bool   `mapstructure:"force-slave-semisync"`
+	ForceSlaveReadOnly                 bool   `mapstructure:"force-slave-readonly"`
+	ForceBinlogRow                     bool   `mapstructure:"force-binlog-row"`
+	ForceBinlogAnnotate                bool   `mapstructure:"force-binlog-annotate"`
+	ForceBinlogSlowqueries             bool   `mapstructure:"force-binlog-slowqueries"`
+	ForceInmemoryBinlogCacheSize       bool   `mapstructure:"force-inmemory-binlog-cache-size"`
+	ForceDiskRelayLogSizeLimit         bool   `mapstructure:"force-disk-relaylog-size-limit"`
+	ForceDiskRelayLogSizeLimitSize     uint64 `mapstructure:"force-disk-relaylog-size-limit-size"`
+	ForceSyncBinlog                    bool   `mapstructure:"force-sync-binlog"`
+	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
+	ForceBinlogChecksum                bool   `mapstructure:"force-binlog-checksum"`
+	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
 	MultiMaster                        bool
