@@ -613,7 +613,7 @@ func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 }
 
 func FlushLogs(db *sqlx.DB) error {
-	_, err := db.Exec("FLUSH LOGS")
+	_, err := db.Exec("FLUSH LOCAL BINARY LOGS")
 	return err
 }
 

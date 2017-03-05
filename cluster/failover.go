@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
@@ -160,17 +161,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO : Candidate Master Have to catch relay server log pos")
 		relaymaster = cluster.getMxsBinlogServer()
 		relaymaster.refresh()
-		re := regexp.MustCompile(`[[:ascii:]]*.([0-9]+)`)
 
-		match := re.FindStringSubmatch(relaymaster.MasterLogFile)
-		binlogfiletoreach, _ := strconv.Atoi(match[1])
+		binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
 		cluster.LogPrintf("INFO : Relay server log pos reach %d", binlogfiletoreach)
 		dbhelper.ResetMaster(cluster.master.Conn)
 		cluster.LogPrintf("INFO : Reset Master en candidate Master ")
 		ctbinlog := 0
 		for ctbinlog < binlogfiletoreach {
 			ctbinlog += 1
-			cluster.LogPrintf("INFO : Flush Log on candidate Master %d", ctbinlog)
+			cluster.LogPrintf("INFO : Flush Log on new Master %d", ctbinlog)
 			dbhelper.FlushLogs(cluster.master.Conn)
 		}
 		time.Sleep(2 * time.Second)

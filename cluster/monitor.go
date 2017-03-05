@@ -649,13 +649,13 @@ func (server *ServerMonitor) rejoin() error {
 	server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 	server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 
-	if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) == server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
+	if (server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) == server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID))) || server.ClusterGroup.conf.MxsBinlogOn {
 		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s  and new master %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
 		var err error
-		if server.MxsHaveGtid || server.IsMaxscale == false {
+		if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
 			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
 		} else {
-			err = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+			err = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, server.ClusterGroup.master.FailoverMasterLogFile, server.ClusterGroup.master.FailoverMasterLogPos)
 		}
 		dbhelper.StartSlave(server.Conn)
 		return err
