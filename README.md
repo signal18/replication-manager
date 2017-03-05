@@ -20,6 +20,8 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [System requirements](#system-requirements)
 - [Bugs](#bugs)
 - [Features](#features)
+- [Downloads](#downloads)
+-
 - [Authors](#authors)
 
 ##Overview
@@ -265,6 +267,9 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
+### Driving replication-manager from Maxscale
+
+[Automatic Failover](Automatic-Failover.md)
 
 ### Maxscale Binlog Server and Slave Relay
 
@@ -486,6 +491,15 @@ On the MariaDB side, slaves need to use GTID for replication. Old-style position
 ##Bugs
 
 Check https://github.com/tanji/replication-manager/issues for a list of issues.
+
+##Downloads
+
+Check https://github.com/tanji/replication-manager/releases for Os releases
+Custom builds can be provide on request to stephane@mariadb.com and guillaume@signal18.io  
+
+##Contributors
+
+[Building from source](BUILD.md)
 
 ##Features
 
