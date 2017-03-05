@@ -76,6 +76,16 @@ func (gl List) GetSeqNos() []uint64 {
 	return d
 }
 
+// return the sequence of a sprecific domain
+func (gl List) GetSeqServerIdNos(serverId uint64) uint64 {
+	for _, g := range gl {
+		if g.ServerID == serverId {
+			return g.SeqNo
+		}
+	}
+	return 0
+}
+
 // Sprint returns a formatted GTID List string
 func (gl List) Sprint() string {
 	var sl []string

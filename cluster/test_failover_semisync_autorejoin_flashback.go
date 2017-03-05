@@ -41,7 +41,7 @@ func (cluster *Cluster) testFailoverSemisyncAutoRejoinFlashback(conf string, tes
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-
+	cluster.PrepareBench()
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.waitRejoin(wg2)
