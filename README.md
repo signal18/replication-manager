@@ -7,13 +7,14 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Overview](#Overview)
 - [Why replication-manager](#Why replication-manager)
 - [Usage](#Usage)
-- [Howto reach state in-sync](#Howto reach state in-sync)
+- [Howto stay in sync](#Howto stay in-sync)
 - [Switchover workflow](#Switchover workflow)
 - [Failover workflow](#Failover workflow)
-- [Using Maxscale](#Using Maxscale)
-- [Using command line client](#Using command line)
-- [Using command line monitoring](#Using command line monitoring)
+- [Command line client](#Command line)
+- [Command line monitoring](#Command line monitoring)
+- [Daemon monitoring](#Command line monitoring)
 - [Configuration file](#Configuration file)
+- [Using Maxscale](#Using Maxscale)
 - [Multi-master](#Multi-master)
 - [Non-regression testing](#Non-regression testing)
 - [System requirements](#System requirements)
@@ -99,9 +100,9 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-##Howto reach state in-sync
+##Howto stay in sync
 
-If the replication was in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
+If the replication can be monitored in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
 In order to reach this state most of the time, we advise following settings:
 
@@ -285,7 +286,7 @@ maxscale-binlog-port = 3306
 ```
 Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode= false is not needed anymore
 
-## Using command line client
+##Command line client
 
 Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
 
@@ -295,7 +296,7 @@ Run replication-manager in non-interactive failover mode, using full host and po
 
 `replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
-## Using command line monitoring
+##Command line monitoring
 
 Start replication-manager in console mode to monitor the cluster:
 
@@ -315,7 +316,7 @@ Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
 ```
 
-## Using daemon monitoring
+##Daemon monitoring
 
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
