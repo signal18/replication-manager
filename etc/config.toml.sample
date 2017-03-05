@@ -154,7 +154,7 @@ maxscale-monitor = false
 
 # maxinfo|maxadmin
 
-maxscale-get-info-method = "maxinfo"
+maxscale-get-info-method = "maxadmin"
 maxscale-maxinfo-port = 4002
 
 maxscale-host = "192.168.0.201"

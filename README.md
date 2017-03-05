@@ -17,6 +17,8 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Using Maxscale](#using-maxscale)
 - [Using Haproxy](#using-haproxy)
 - [Using Multi-master](#using-multi-master)
+- [Force best practices](#force-best-practices)
+- [Metrics](#metrics)
 - [Non-regression tests](#non-regression-tests)
 - [System requirements](#system-requirements)
 - [Bugs](#bugs)
@@ -182,12 +184,14 @@ A user can change this check based on what is reported by SLA in sync, and decid
 
 ### False positive detection
 
-All replicas and Maxscale will be questioned for consensus detection of leader death:
+Since version 1.1 all replicas and Maxscale can be questioned for consensus detection of leader death:
 
+```
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
 failover-falsepositive-maxscale = true
 failover-falsepositive-maxscale-timeout = 14
+```
 
 ### Rejoining old leader
 
@@ -205,9 +209,19 @@ replication-manager gets 4 different cases for rejoin:
 
 4. If GTID is ahead but semisync replication status at election was desynced, we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag.
 
+```
+autorejoin = true
+autorejoin-semisync = true
+autorejoin-flashback = true
+autorejoin-mysqldump = false
+```
+
 ##Using Maxscale
 
-Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup only works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
+Replication-Manager can operate with MaxScale in 3 modes,  
+
+###Mode 1
+passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup best works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
 Example settings:
 
@@ -252,14 +266,6 @@ GRANT SELECT ON mysql.tables_priv TO 'maxadmin'@'%';
 GRANT SHOW DATABASES, REPLICATION CLIENT ON *.* TO 'maxadmin'@'%';
 GRANT ALL ON maxscale_schema.* TO 'maxadmin'@'%';
 ```
-
-Operating MaxScale without monitoring is the second Replication-Manager mode via:
-```
-maxscale-monitor = false
-```
-
-replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
-
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
 
 ```
@@ -268,9 +274,34 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
-### Driving replication-manager from Maxscale
+###Mode 2
+
+Operating MaxScale without monitoring is the second Replication-Manager mode via:
+This mode was introduce in version 1.1 and is control via
+```
+maxscale-monitor = false
+```
+replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
+
+###Mode 3
+
+Driving replication-manager from Maxscale
 
 [Automatic Failover](Automatic-Failover.md)
+
+### Daemon mode to print maxscale status  
+
+In version 1.1 one can see maxscale servers state in a new tab this is done and control via new parameters, default is to use maxadmin tcp row protocol via maxscale-get-info-method = "maxadmin"
+A more robust configuration can be enable via load ing the maxinfo plugin in maxscale that provide a JSON REST service to replication-manager
+
+```
+maxscale = true
+# maxinfo|maxadmin
+maxscale-get-info-method = "maxadmin"
+maxscale-maxinfo-port = 4002
+maxscale-host = "192.168.0.201"
+maxscale-port = 4003
+```
 
 ### Maxscale Binlog Server and Slave Relay
 
@@ -431,7 +462,7 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-##External scripts
+##Use External scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
@@ -456,6 +487,34 @@ user=myuser
 passwd=mypwd
 detect_stale_master=true
 ```
+
+##Force best practices
+
+Since version 1.1 replication can enforce the best practices about the replication usage. It dynamically configure the MariaDB it does monitor. Note that such enforcement will be lost if replication manager monitoring is shutdown and the MariaDB restarted. The command line usage do not enforce but default config file do, so disable what may not be possible in your custom production setup.   
+
+```
+force-slave-heartbeat= true
+force-slave-heartbeat-retry = 5
+force-slave-heartbeat-time = 3
+force-slave-gtid-mode = true
+force-slave-semisync = true
+force-slave-readonly = true
+force-binlog-row = true
+force-binlog-annotate = true
+force-binlog-slowqueries = true
+force-inmemory-binlog-cache-size = true
+force-disk-relaylog-size-limit = true
+force-sync-binlog = true
+force-sync-innodb = true
+force-binlog-checksum = true
+```
+##Metrics
+
+replication-manager 1.1 embed a graphite server and can serve as a carbon relay server, some graph are display via the giraffe JS library in the internal http server. One can create it's own dashboard via Grafana.
+
+very few metrics are yet push inside carbon, the metrics are pushed with the server-id prefix name. to get unicity against nodes  
+
+Contact the authors for contributions or custom metrics to be added.
 
 ##Non-regression tests
 
