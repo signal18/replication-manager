@@ -4,23 +4,23 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
-- [Overview](#Overview)
-- [Why replication-manager](#Why-replication-manager)
-- [Usage](#Usage)
-- [Howto stay in sync](#Howto-stay-in-sync)
-- [Switchover workflow](#Switchover-workflow)
-- [Failover workflow](#Failover-workflow)
-- [Command line client](#Command-line)
+- [Overview](#overview)
+- [Why replication-manager](#why-replication-manager)
+- [Usage](#usage)
+- [Howto stay in sync](#howto-stay-in-sync)
+- [Switchover workflow](#switchover-workflow)
+- [Failover workflow](#failover-workflow)
+- [Command line client](#command-line)
 - [Command line monitoring](#Command-line monitoring)
-- [Daemon monitoring](#Daemon-monitoring)
-- [Configuration file](#Configuration-file)
-- [Using Maxscale](#Using-Maxscale)
-- [Multi-master](#Using-Multi-master)
-- [Non-regression tests](#Non-regression-tests)
-- [System requirements](#System-requirements)
-- [Bugs](#Bugs)
-- [Features](#Features)
-- [Authors](#Authors)
+- [Daemon monitoring](#daemon-monitoring)
+- [Configuration file](#configuration-file)
+- [Using Maxscale](#using-Maxscale)
+- [Using Multi-master](#using-multi-master)
+- [Non-regression tests](#non-regression-tests)
+- [System requirements](#system-requirements)
+- [Bugs](#bugs)
+- [Features](#features)
+- [Authors](#authors)
 
 ##Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
@@ -236,7 +236,7 @@ https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/
 detect_stale_master
 ```
 In Maxscale 2.2
-[![Failover to last node have been introduce so that transparent support of 2 nodes cluster is transaparent   ](https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover)]
+Failover to last node have been introduce so that transparent support of 2 nodes cluster is transaparent [![Doc]](https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover)
 
 Operating MaxScale without monitoring is the second Replication-Manager mode via:
 ```
@@ -284,7 +284,7 @@ force-slave-gtid-mode = false
 maxscale-binlog = true
 maxscale-binlog-port = 3306
 ```
-Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode= false is not needed anymore
+Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode=false is not needed anymore
 
 ##Command line client
 
