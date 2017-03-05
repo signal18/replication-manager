@@ -14,7 +14,8 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Command line monitoring](#Command-line monitoring)
 - [Daemon monitoring](#daemon-monitoring)
 - [Configuration file](#configuration-file)
-- [Using Maxscale](#using-Maxscale)
+- [Using Maxscale](#using-maxscale)
+- [Using Haproxy](#using-haproxy)
 - [Using Multi-master](#using-multi-master)
 - [Non-regression tests](#non-regression-tests)
 - [System requirements](#system-requirements)
@@ -293,6 +294,20 @@ maxscale-binlog-port = 3306
 ```
 Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode=false is not needed anymore
 
+##Using Haproxy
+
+Haproxy can be used but only in same server as replication-manager, replication-manager will prepare a configuration file for haproxy for every cluster that it manage, this template is located in the share directory used by replication-manager. For safety haproxy is not stopped when replication-manager is stopped
+
+```
+haproxy = true
+haproxy-binary-path = "/usr/sbin/haproxy"
+
+# Read write traffic
+# Read only load balance least connection traffic
+haproxy-write-port = 3306
+haproxy-read-port = 3307
+```
+
 ##Command line client
 
 Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
@@ -494,7 +509,8 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 ##Downloads
 
-Check https://github.com/tanji/replication-manager/releases for Os releases
+Check https://github.com/tanji/replication-manager/releases for releases
+
 Custom builds can be provide on request to stephane@mariadb.com and guillaume@signal18.io  
 
 ##Contributors
