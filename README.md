@@ -5,19 +5,19 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
 - [Overview](#Overview)
-- [Why replication-manager](#Why replication-manager)
+- [Why replication-manager](#Why-replication-manager)
 - [Usage](#Usage)
-- [Howto stay in sync](#Howto stay in-sync)
-- [Switchover workflow](#Switchover workflow)
-- [Failover workflow](#Failover workflow)
-- [Command line client](#Command line)
-- [Command line monitoring](#Command line monitoring)
-- [Daemon monitoring](#Command line monitoring)
-- [Configuration file](#Configuration file)
-- [Using Maxscale](#Using Maxscale)
-- [Multi-master](#Multi-master)
-- [Non-regression testing](#Non-regression testing)
-- [System requirements](#System requirements)
+- [Howto stay in sync](#Howto-stay-in-sync)
+- [Switchover workflow](#Switchover-workflow)
+- [Failover workflow](#Failover-workflow)
+- [Command line client](#Command-line)
+- [Command line monitoring](#Command-line monitoring)
+- [Daemon monitoring](#Daemon-monitoring)
+- [Configuration file](#Configuration-file)
+- [Using Maxscale](#Using-Maxscale)
+- [Multi-master](#Using-Multi-master)
+- [Non-regression tests](#Non-regression-tests)
+- [System requirements](#System-requirements)
 - [Bugs](#Bugs)
 - [Features](#Features)
 - [Authors](#Authors)
@@ -413,7 +413,7 @@ The replication user needs the following privilege: `REPLICATION SLAVE`
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
-##Multi-master
+##Using multi master
 
 `replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 
@@ -435,7 +435,7 @@ passwd=mypwd
 detect_stale_master=true
 ```
 
-##Non-regression testing
+##Non-regression tests
 
 A testing framework is available via http or in command line.
 Setting the `test` variable in the predefined testing cluster in config file:
