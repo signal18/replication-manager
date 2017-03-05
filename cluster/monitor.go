@@ -646,9 +646,10 @@ func (server *ServerMonitor) rejoin() error {
 	if server.ClusterGroup.conf.MxsBinlogOn {
 		realmaster = server.ClusterGroup.getMxsBinlogServer()
 	}
-	server.ClusterGroup.LogPrintf("INFO : rejoined %d", server.CurrentGtid.GetSeqNos()[1])
+	server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqNos()[0])
+	server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[0])
 
-	if server.CurrentGtid.GetSeqNos()[1] == server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[1] {
+	if server.CurrentGtid.GetSeqNos()[0] == server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[0] {
 		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s %d on new master %s and %s ,%d on rejoin", server.CurrentGtid.Sprint(), server.CurrentGtid.GetSeqNos()[2], server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()[2])
 		var err error
 		if server.MxsHaveGtid || server.IsMaxscale == false {
