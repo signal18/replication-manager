@@ -9,19 +9,19 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Usage](##Usage)
 - [Howto reach state in-sync](##Howto reach state in-sync)
 - [Switchover workflow](## Switchover workflow)
-- [Failover workflow](## Failover workflow)
-- [Using Maxscale](## Using Maxscale)
-- [Using command line client](## Using command line)
-- [Using command line monitoring](## Using command line monitoring)
-- [Configuration file](## Configuration file)
-- [Multi-master](## Multi-master)
-- [Non-regression testing](## Non-regression testing)
-- [System requirements](## System requirements)
-- [Bugs](## Bugs)
-- [Features](## Features)
-- [Authors](## Authors)
+- [Failover workflow](##Failover workflow)
+- [Using Maxscale](##Using Maxscale)
+- [Using command line client](##Using command line)
+- [Using command line monitoring](##Using command line monitoring)
+- [Configuration file](##Configuration file)
+- [Multi-master](##Multi-master)
+- [Non-regression testing](##Non-regression testing)
+- [System requirements](##System requirements)
+- [Bugs](##Bugs)
+- [Features](##Features)
+- [Authors](##Authors)
 
-## Overview
+##Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
@@ -65,7 +65,7 @@ enable_root_user=true
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-## Why replication-manager
+##Why replication-manager
 
 Leader Election Cluster is best used in such scenarios:
 
@@ -99,7 +99,7 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-## Howto reach state in-sync
+##Howto reach state in-sync
 
 If the replication was in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
@@ -165,7 +165,7 @@ A good practice is to enable slow query detection on slaves using in slow query 
 log_slow_slave_statements = 1
 ```
 
-## Switchover workflow
+##Switchover workflow
 
 __replication-manager__ prevents additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by __replication-manager__.
 
@@ -178,7 +178,7 @@ extra_max_connections = 10
 ```   
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
 
-## Failover workflow
+##Failover workflow
 
 After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
 
@@ -222,7 +222,7 @@ replication-manager gets 4 different cases for rejoin:
 
 4. If GTID is ahead but semisync replication status at election was desynced, we restore the joiner via mysqldump from the new leader if replication-manager settings use the rejoin-mysqldump flag.
 
-## Using Maxscale
+##Using Maxscale
 
 Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup only works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
@@ -331,7 +331,7 @@ Start replication-manager in automatic daemon mode:
 
 This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
 
-## Usage
+##Usage
 
 ```
   agent       Starts replication monitoring agent
@@ -351,7 +351,7 @@ To print the help and option flags for each command, use `replication-manager [c
 
 Flags help for the monitor command is given below.
 
-## Monitor options
+### Monitor options
 
 ```
 Flags:
@@ -395,7 +395,7 @@ Global Flags:
       --verbose          Print detailed execution info
 ```
 
-## Configuration file
+##Configuration file
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
@@ -406,11 +406,11 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-## External scripts
+##External scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
-## Multi-master
+##Multi-master
 
 `replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 
@@ -432,7 +432,7 @@ passwd=mypwd
 detect_stale_master=true
 ```
 
-## Non-regression testing
+##Non-regression testing
 
 A testing framework is available via http or in command line.
 Setting the `test` variable in the predefined testing cluster in config file:
@@ -473,16 +473,16 @@ ALL is a special test to run all available tests.
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
 ```
 
-## System requirements
+##System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
 On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
 
-## Bugs
+##Bugs
 
 Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
-## Features
+##Features
 
 ### 1.0 Features GA
 
@@ -527,7 +527,7 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
  * MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
 
 
-## Authors
+##Authors
 
 Guillaume Lefranc <guillaume@signal18.io>
 
@@ -545,6 +545,6 @@ This program is free software; you can redistribute it and/or modify it under th
 
 You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 
-## Version
+##Version
 
 __replication-manager__ 1.0.0
