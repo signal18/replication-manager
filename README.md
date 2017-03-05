@@ -21,7 +21,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Bugs](#bugs)
 - [Features](#features)
 - [Downloads](#downloads)
--
+- [Contributors](#contributors)
 - [Authors](#authors)
 
 ##Overview
