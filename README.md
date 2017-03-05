@@ -41,28 +41,7 @@ To perform switchover, preserving data consistency, replication-manager uses an 
 
 __replication-manager__ is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
-- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology via similar settings:
-
-```
-[MySQL Monitor]  
-type=monitor  
-module=mysqlmon  
-servers=%%ENV:SERVERS_LIST%%  
-user=root  
-passwd=%%ENV:MYROOTPWD%%  
-monitor_interval=500  
-detect_stale_master=true
-
-[Write Connection Router]  
-type=service  
-router=readconnroute  
-router_options=master  
-servers=%%ENV:SERVERS_LIST%%  
-user=root  
-passwd=%%ENV:MYROOTPWD%%  
-enable_root_user=true  
-```
-
+- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
@@ -227,6 +206,28 @@ replication-manager gets 4 different cases for rejoin:
 
 Replication-Manager can operate with MaxScale in 2 modes, in passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup only works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
+Example settings:
+
+```
+[MySQL Monitor]  
+type=monitor  
+module=mysqlmon  
+servers=%%ENV:SERVERS_LIST%%  
+user=root  
+passwd=%%ENV:MYROOTPWD%%  
+monitor_interval=500  
+detect_stale_master=true
+
+[Write Connection Router]  
+type=service  
+router=readconnroute  
+router_options=master  
+servers=%%ENV:SERVERS_LIST%%  
+user=root  
+passwd=%%ENV:MYROOTPWD%%  
+enable_root_user=true  
+```
+
 ### Important note
 
 In case all slaves are down, MaxScale can still operate on the Master with the following maxscale monitoring setup :
@@ -238,22 +239,6 @@ detect_stale_master
 In Maxscale 2.2
 Failover to last node have been introduce so that transparent support of 2 nodes cluster is transaparent [![Doc]](https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover)
 
-Operating MaxScale without monitoring is the second Replication-Manager mode via:
-```
-maxscale-monitor = false
-```
-
-Replication will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
-
-Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
-
-```
-[Splitter Service]
-type=service
-router=readwritesplit
-max_slave_replication_lag=30
-```
-
 Use the following example grant for your MaxScale user:
 
 ```
@@ -264,6 +249,23 @@ GRANT SELECT ON mysql.tables_priv TO 'maxadmin'@'%';
 GRANT SHOW DATABASES, REPLICATION CLIENT ON *.* TO 'maxadmin'@'%';
 GRANT ALL ON maxscale_schema.* TO 'maxadmin'@'%';
 ```
+
+Operating MaxScale without monitoring is the second Replication-Manager mode via:
+```
+maxscale-monitor = false
+```
+
+replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
+
+Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the MaxScale user when the Read-Write split module is instructed to check for replication lag:
+
+```
+[Splitter Service]
+type=service
+router=readwritesplit
+max_slave_replication_lag=30
+```
+
 ### Maxscale Binlog Server and Slave Relay
 
 All MariaDB Nodes should have same binlog prefix
