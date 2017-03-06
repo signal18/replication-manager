@@ -415,7 +415,7 @@ func SetBinlogAnnotate(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("SET GLOBAL replicate-annotate-row-events=ON")
+	_, err = db.Exec("SET GLOBAL replicate_annotate_row_events=ON")
 	if err != nil {
 		return err
 	}
@@ -423,7 +423,7 @@ func SetBinlogAnnotate(db *sqlx.DB) error {
 }
 
 func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
-	_, err := db.Exec("SET GLOBAL relay-log-space-limit=" + size)
+	_, err := db.Exec("SET GLOBAL relay_log_space_limit=" + size)
 	if err != nil {
 		return err
 	}

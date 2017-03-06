@@ -47,7 +47,7 @@ func (cluster *Cluster) testFailoverSemisyncAutoRejoinFlashback(conf string, tes
 	go cluster.waitRejoin(wg2)
 	cluster.startMariaDB(SaveMaster)
 	wg2.Wait()
-
+	SaveMaster.readAllRelayLogs()
 	if cluster.checkTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR: Inconsitant slave")
 		cluster.closeTestCluster(conf, test)

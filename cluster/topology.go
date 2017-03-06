@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -199,8 +198,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
 			}
 			if sv.IsRelay == false {
+				//	set State stateSlave or SlaveLate
 				sv.replicationCheck()
-				//		sv.State = stateSlave
+
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
@@ -319,10 +319,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
 					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
 				}
-				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
-					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
-					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
-				}
+				/*
+					if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
+						dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
+						cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
+					}*/
 				if sl.hasSiblings(cluster.slaves) == false {
 					// possibly buggy code
 					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})

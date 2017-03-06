@@ -123,7 +123,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Sync candidate depending on the master status.
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
 	// If it's a failover, wait for the SQL thread to read all relay logs.
-	if fail == false {
+	// If maxsclale we should wait for relay catch via old style
+	if fail == false && cluster.conf.MxsBinlogOn == false {
 		cluster.LogPrint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.refresh()
 		if cluster.conf.LogLevel > 2 {
