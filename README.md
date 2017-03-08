@@ -324,6 +324,11 @@ maxscale-binlog = true
 maxscale-binlog-port = 3306
 ```
 Note that maxscale 2.2 can support MariaDB GTID so force-gtid-mode=false is not needed anymore
+part of task https://github.com/mariadb-corporation/MaxScale/tree/MXS-1075
+
+```
+  transaction_safety=On,mariadb10-compatibility=On,mariadb_gtid=On
+```  
 
 ##Using Haproxy
 
@@ -629,7 +634,7 @@ Stephane Varoqui <stephane@mariadb.com>
 
 ### Special Thanks
 
-Thanks to Markus Mäkelä from the MaxScale team for his code contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Arbitrator, Yoshinori Matsunobu for MHA, Johan Anderson at S9 Cluster Control.
+Thanks to Markus Mäkelä from the MaxScale team for his valuable time contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Orchestrator, Yoshinori Matsunobu for MHA, Johan Anderson for S9 Cluster Control.
 
 ### License
 

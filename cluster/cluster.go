@@ -102,91 +102,6 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	return nil
 }
 
-func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
-	cluster.agentFlagCheck()
-	if conf.LogFile != "" {
-		var err error
-		cluster.logPtr, err = os.Create(conf.LogFile)
-		if err != nil {
-			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
-			conf.LogFile = ""
-		}
-	}
-	db, err := cluster.newServerMonitor(conf.Hosts)
-	if err != nil {
-		log.WithError(err).Error("Error opening database connection")
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
-	cluster.cfgGroupDisplay = cfgGroup
-}
-
-func (cluster *Cluster) FailoverForce() error {
-	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
-	err := sf.access()
-	if err != nil {
-		cluster.LogPrint("WARN : Could not create state file")
-	}
-	err = sf.read()
-	if err != nil {
-		cluster.LogPrint("WARN : Could not read values from state file:", err)
-	} else {
-		cluster.failoverCtr = int(sf.Count)
-		cluster.failoverTs = sf.Timestamp
-	}
-	cluster.newServerList()
-	//if err != nil {
-	//	return err
-	//}
-	err = cluster.TopologyDiscover()
-	if err != nil {
-		for _, s := range cluster.sme.GetState() {
-			cluster.LogPrint(s)
-		}
-		// Test for ERR00012 - No master detected
-		if cluster.sme.CurState.Search("ERR00012") {
-			for _, s := range cluster.servers {
-				if s.State == "" {
-					s.State = stateFailed
-					if cluster.conf.LogLevel > 2 {
-						cluster.LogPrint("DEBUG: State failed set by state detection ERR00012")
-					}
-					cluster.master = s
-				}
-			}
-		} else {
-			return err
-
-		}
-	}
-	if cluster.master == nil {
-		cluster.LogPrint("ERROR: Could not find a failed server in the hosts list")
-		return errors.New("ERROR: Could not find a failed server in the hosts list")
-	}
-	if cluster.conf.FailLimit > 0 && cluster.failoverCtr >= cluster.conf.FailLimit {
-		cluster.LogPrintf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
-		return errors.New("ERROR: Failover has exceeded its configured limit")
-	}
-	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
-	if cluster.conf.FailTime > 0 && rem > 0 {
-		cluster.LogPrintf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
-		return errors.New("ERROR: Failover time limit enforced")
-	}
-	if cluster.MasterFailover(true) {
-		sf.Count++
-		sf.Timestamp = cluster.failoverTs
-		err := sf.write()
-		if err != nil {
-			cluster.LogPrintf("WARN : Could not write values to state file:%s", err)
-		}
-	}
-	return nil
-}
-
 func (cluster *Cluster) Stop() {
 	cluster.exit = true
 }
@@ -272,6 +187,91 @@ func (cluster *Cluster) Run() {
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
+	cluster.agentFlagCheck()
+	if conf.LogFile != "" {
+		var err error
+		cluster.logPtr, err = os.Create(conf.LogFile)
+		if err != nil {
+			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
+			conf.LogFile = ""
+		}
+	}
+	db, err := cluster.newServerMonitor(conf.Hosts)
+	if err != nil {
+		log.WithError(err).Error("Error opening database connection")
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
+	cluster.cfgGroupDisplay = cfgGroup
+}
+
+func (cluster *Cluster) FailoverForce() error {
+	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
+	err := sf.access()
+	if err != nil {
+		cluster.LogPrint("WARN : Could not create state file")
+	}
+	err = sf.read()
+	if err != nil {
+		cluster.LogPrint("WARN : Could not read values from state file:", err)
+	} else {
+		cluster.failoverCtr = int(sf.Count)
+		cluster.failoverTs = sf.Timestamp
+	}
+	cluster.newServerList()
+	//if err != nil {
+	//	return err
+	//}
+	err = cluster.TopologyDiscover()
+	if err != nil {
+		for _, s := range cluster.sme.GetState() {
+			cluster.LogPrint(s)
+		}
+		// Test for ERR00012 - No master detected
+		if cluster.sme.CurState.Search("ERR00012") {
+			for _, s := range cluster.servers {
+				if s.State == "" {
+					s.State = stateFailed
+					if cluster.conf.LogLevel > 2 {
+						cluster.LogPrint("DEBUG: State failed set by state detection ERR00012")
+					}
+					cluster.master = s
+				}
+			}
+		} else {
+			return err
+
+		}
+	}
+	if cluster.master == nil {
+		cluster.LogPrint("ERROR: Could not find a failed server in the hosts list")
+		return errors.New("ERROR: Could not find a failed server in the hosts list")
+	}
+	if cluster.conf.FailLimit > 0 && cluster.failoverCtr >= cluster.conf.FailLimit {
+		cluster.LogPrintf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
+		return errors.New("ERROR: Failover has exceeded its configured limit")
+	}
+	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
+	if cluster.conf.FailTime > 0 && rem > 0 {
+		cluster.LogPrintf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
+		return errors.New("ERROR: Failover time limit enforced")
+	}
+	if cluster.MasterFailover(true) {
+		sf.Count++
+		sf.Timestamp = cluster.failoverTs
+		err := sf.write()
+		if err != nil {
+			cluster.LogPrintf("WARN : Could not write values to state file:%s", err)
+		}
+	}
+	return nil
 }
 
 func (cluster *Cluster) SwitchOver() {
