@@ -49,6 +49,7 @@ func init() {
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
 	rootCmd.AddCommand(monitorCmd)
+	rootCmd.AddCommand(topologyCmd)	
 	initRepmgrFlags(switchoverCmd)
 	initRepmgrFlags(failoverCmd)
 	initRepmgrFlags(monitorCmd)
@@ -204,6 +205,8 @@ var failoverCmd = &cobra.Command{
 		if err != nil {
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
+		currentCluster.SetLogStdout()
+                currentCluster.TopologyDiscover()
 		currentCluster.FailoverForce()
 
 	},
@@ -225,6 +228,8 @@ and demoting the old master to slave`,
 		if err != nil {
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
+		currentCluster.SetLogStdout()
+                currentCluster.TopologyDiscover()
 		currentCluster.MasterFailover(false)
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -239,10 +244,12 @@ var topologyCmd = &cobra.Command{
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(confs[cfgGroup], cfgGroup, nil, termlength, runUUID, Version, repmgrHostname, nil)
+		err := currentCluster.Init(confs[cfgGroup], cfgGroup, &termlog.TermLog{}, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
+		currentCluster.SetLogStdout()
+                currentCluster.TopologyDiscover()
 		currentCluster.PrintTopology()
 
 	},
