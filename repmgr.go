@@ -49,7 +49,7 @@ func init() {
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
 	rootCmd.AddCommand(monitorCmd)
-	rootCmd.AddCommand(topologyCmd)	
+	rootCmd.AddCommand(topologyCmd)
 	initRepmgrFlags(switchoverCmd)
 	initRepmgrFlags(failoverCmd)
 	initRepmgrFlags(monitorCmd)
@@ -206,7 +206,7 @@ var failoverCmd = &cobra.Command{
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.SetLogStdout()
-                currentCluster.TopologyDiscover()
+		currentCluster.TopologyDiscover()
 		currentCluster.FailoverForce()
 
 	},
@@ -229,7 +229,7 @@ and demoting the old master to slave`,
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.SetLogStdout()
-                currentCluster.TopologyDiscover()
+		currentCluster.TopologyDiscover()
 		currentCluster.MasterFailover(false)
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -249,7 +249,7 @@ var topologyCmd = &cobra.Command{
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
 		currentCluster.SetLogStdout()
-                currentCluster.TopologyDiscover()
+		currentCluster.TopologyDiscover()
 		currentCluster.PrintTopology()
 
 	},
