@@ -283,6 +283,8 @@ Interactive console and HTTP dashboards are available for control`,
 			_, termlength = termbox.Size()
 			if termlength == 0 {
 				termlength = 120
+			} else if termlength < 18 {
+				log.Fatal("Terminal too small, please increase window size")
 			}
 		}
 		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
