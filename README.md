@@ -1,4 +1,4 @@
-## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager) [![Stories in Ready](https://badge.waffle.io/tanji/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/tanji/replication-manager)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
 
