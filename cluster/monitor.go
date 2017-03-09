@@ -712,7 +712,7 @@ func (server *ServerMonitor) rejoin() error {
 			}
 			return nil
 		} else {
-			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
+			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
 			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
 				var err3 error
 				// done change master just to set the host and port before dump
@@ -729,8 +729,8 @@ func (server *ServerMonitor) rejoin() error {
 				dbhelper.StartSlave(server.Conn)
 				return nil
 			}
-			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %d ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
-			server.ClusterGroup.LogPrintf("INFO : No rejoin method found let me alone")
+			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
+			server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: let me alone i'm ahead")
 		}
 
 		//}
