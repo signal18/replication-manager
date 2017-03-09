@@ -103,7 +103,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
 	monitorCmd.Flags().BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Turn on maxscale binlog server detection")
-	monitorCmd.Flags().BoolVar(&conf.MxsMonitor, "maxscale-monitor", true, "Disable maxscale monitoring for 2 nodes cluster")
+	monitorCmd.Flags().BoolVar(&conf.MxsMonitor, "maxscale-monitor", false, "Disable maxscale monitoring for 2 nodes cluster")
 	monitorCmd.Flags().StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
 	monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
 	monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")

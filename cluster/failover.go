@@ -427,7 +427,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 	if err != nil {
 		cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 	}
-	if cluster.conf.MxsMonitor == false {
+	if cluster.conf.MxsBinlogOn == false {
 		for _, s := range cluster.slaves {
 			err = m.Command("clear server " + s.MxsServerName + " master")
 			if err != nil {
