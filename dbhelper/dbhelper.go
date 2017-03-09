@@ -188,9 +188,14 @@ func ChangeMasterOldStyle(db *sqlx.DB, host string, port string, user string, pa
 }
 
 func MariaDBVersion(server string) int {
+	if server == "" {
+		return 0
+	}
 	re := regexp.MustCompile(`([0-9]+).([0-9]+).([0-9]+)*`)
 	match := re.FindStringSubmatch(server)
-
+	if len(match[1]) == 0 || len(match[2]) == 0 || len(match[3]) == 0 {
+		return 0
+	}
 	x, _ := strconv.Atoi(match[1])
 	y, _ := strconv.Atoi(match[2])
 	z, _ := strconv.Atoi(match[3])

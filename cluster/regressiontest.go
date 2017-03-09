@@ -45,6 +45,7 @@ var tests = []string{
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
+	"testFailoverCascadingSemisyncAutoRejoinFlashback",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
 }
@@ -72,6 +73,14 @@ func (cluster *Cluster) RunAllTests(test string) bool {
 	ret := true
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
+
+	if test == "testFailoverCascadingSemisyncAutoRejoinFlashback" || test == "ALL" {
+		res = cluster.testFailoverCascadingSemisyncAutoRejoinFlashback("semisync.cnf", "testFailoverCascadingSemisyncAutoRejoinFlashback")
+		allTests["testFailoverCascadingSemisyncAutoRejoinFlashback"] = cluster.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
 
 	if test == "testFailoverSemisyncAutoRejoinFlashback" || test == "ALL" {
 		res = cluster.testFailoverSemisyncAutoRejoinFlashback("semisync.cnf", "testFailoverSemisyncAutoRejoinFlashback")

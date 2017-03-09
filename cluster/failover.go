@@ -11,7 +11,6 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -510,14 +509,17 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor) int {
 			return i
 		}
 		//old style replication
-		re := regexp.MustCompile(`[[:ascii:]]*.([0-9]+)`)
-		match := re.FindStringSubmatch(sl.MasterLogFile)
+		if sl.MasterLogFile == "" {
+			cluster.LogPrintf("DEBUG: Election %s have no master log file, may be failed slave", sl.URL)
+			continue
+		}
+
 		filepos := sl.MasterLogPos
 		for len(filepos) > 10 {
 			filepos = "0" + filepos
 		}
 
-		pos := match[1] + filepos
+		pos := strings.Split(sl.MasterLogFile, ".")[1] + filepos
 		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
 		posList[i] = binlogposreach
 		if cluster.master.State != stateFailed {
