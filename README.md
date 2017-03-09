@@ -199,6 +199,8 @@ Since replication-manager 1.1, rejoin of dead leader has been improved to cover 
 
 MariaDB 10.2 binary package can be colocated with replication-manager via the config option mariadb-binary-path, binaries are used to backup binlogs from remote node via mysqlbinlog --read-from-remote-server into the system tmp directory and possibly to flashback those extra binlogs
 
+Note that the server-id to backup binlog used by replication-manager is 1000 so please don't use it on your cluster nodes
+
 replication-manager gets 4 different cases for rejoin:
 
 1. If GTID of the new leader at time of election is equal to GTID of the joiner, we proceed with rejoin.
