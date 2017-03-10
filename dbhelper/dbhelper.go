@@ -188,6 +188,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	case "POSITIONAL":
 		cm += "' MASTER_USE_GTID=NO , master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
 	}
+	if opt.SSL {
+		cm += ", MASTER_USE_SSL=1"
+	}
 	_, err := db.Exec(cm)
 	return err
 }
