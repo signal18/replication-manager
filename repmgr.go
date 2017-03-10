@@ -63,7 +63,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat", true, "Failover checks that slaves do not receive hearbeat")
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveHeartbeatTimeout, "failover-falsepositive-heartbeat-timeout", 3, "Failover checks that slaves do not receive hearbeat detection timeout ")
-	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", true, "Failover checks that maxscale detect failed master")
+	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveSas, "failover-falsepositive-sas", false, "Failover checks in sas ")
 	monitorCmd.Flags().BoolVar(&conf.ForceSlaveHeartbeat, "force-slave-heartbeat", false, "Automatically activate heartbeat on slave")
@@ -137,7 +137,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
 	monitorCmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
 	monitorCmd.Flags().StringVar(&conf.ArbitrationSasSecret, "arbitration-sas-secret", "", "")
-	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-sas-hosts", "wwww.scrambledb.org", "")
+	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-sas-hosts", "wwww.scrambledb.org:80", "")
 
 	viper.BindPFlags(monitorCmd.Flags())
 
