@@ -25,7 +25,7 @@ func (cluster *Cluster) testFailoverAssyncAutoRejoinFlashback(conf string, test 
 	SaveMasterURL := cluster.master.URL
 	SaveMaster := cluster.master
 	//clusteruster.DelayAllSlaves()
-	cluster.PrepareBench()
+	//cluster.PrepareBench()
 	//go clusteruster.RunBench()
 	go cluster.RunSysbench()
 	time.Sleep(4 * time.Second)

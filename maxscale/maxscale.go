@@ -334,6 +334,9 @@ func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {
 }
 
 func (m *MaxScale) Command(cmd string) error {
+	if m.Conn == nil {
+		return errors.New("Maxscale Connection was close")
+	}
 	writer := bufio.NewWriter(m.Conn)
 	var err error
 	if _, err = fmt.Fprint(writer, cmd); err != nil {
