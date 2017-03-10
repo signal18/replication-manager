@@ -783,8 +783,8 @@ func (server *ServerMonitor) rejoin() error {
 				dbhelper.StartSlave(server.Conn)
 				return nil
 			}
-			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %d , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
-			server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: let me alone i'm ahead")
+			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
+			server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")
 		}
 
 		//}
