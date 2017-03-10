@@ -256,7 +256,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrint("WARN : Could not set gtid_slave_pos on old master", err)
 		}
 		if cluster.conf.MxsBinlogOn == false {
-			err = dbhelper.ChangeMasterGtidSlavePos(oldMaster.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+				Host:      cluster.master.IP,
+				Port:      cluster.master.Port,
+				User:      cluster.rplUser,
+				Password:  cluster.rplPass,
+				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Mode:      "SLAVE_POS",
+			})
 			if err != nil {
 				cluster.LogPrint("WARN : Change master failed on old master", err)
 			}
@@ -268,9 +276,27 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			// Don't start slave until the relay as been point to new master
 			cluster.LogPrintf("WARN : Pointing old master to relay server")
 			if relaymaster.MxsHaveGtid {
-				err = dbhelper.ChangeMasterGtidSlavePos(oldMaster.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      relaymaster.IP,
+					Port:      relaymaster.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "SLAVE_POS",
+				})
 			} else {
-				err = dbhelper.ChangeMasterOldStyle(oldMaster.Conn, relaymaster.IP, relaymaster.Port, cluster.rplUser, cluster.rplPass, cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      relaymaster.IP,
+					Port:      relaymaster.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "POSITIONAL",
+					Logfile:   cluster.master.FailoverMasterLogFile,
+					Logpos:    cluster.master.FailoverMasterLogPos,
+				})
 			}
 		}
 
@@ -321,13 +347,37 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 		if cluster.conf.MxsBinlogOn == false {
-			err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+			err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+				Host:      cluster.master.IP,
+				Port:      cluster.master.Port,
+				User:      cluster.rplUser,
+				Password:  cluster.rplPass,
+				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Mode:      "SLAVE_POS",
+			})
 		} else {
 			cluster.LogPrintf("INFO : Pointing relay to the new master: %s:%s", cluster.master.IP, cluster.master.Port)
 			if sl.MxsHaveGtid {
-				err = dbhelper.ChangeMasterGtidSlavePos(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime))
+				err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.IP,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "SLAVE_POS",
+				})
 			} else {
-				err = dbhelper.ChangeMasterOldStyleMaxscale(sl.Conn, cluster.master.IP, cluster.master.Port, cluster.rplUser, cluster.rplPass, cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
+				err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.IP,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "MXS",
+				})
 			}
 		}
 		if err != nil {

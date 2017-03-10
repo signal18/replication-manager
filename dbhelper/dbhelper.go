@@ -163,7 +163,36 @@ func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	return value, err
 }
 
-func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string, retry string, hearbeat string) error {
+type ChangeMasterOpt struct {
+	Host      string
+	Port      string
+	User      string
+	Password  string
+	Retry     string
+	Heartbeat string
+	SSL       bool
+	Logfile   string
+	Logpos    string
+	Mode      string
+}
+
+func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
+	cm := "CHANGE MASTER TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+	switch opt.Mode {
+	case "SLAVE_POS":
+		cm += ", MASTER_USE_GTID=SLAVE_POS"
+	case "CURRENT_POS":
+		cm += ", MASTER_USE_GTID=CURRENT_POS"
+	case "MXS":
+		cm += "', master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+	case "POSITIONAL":
+		cm += "' MASTER_USE_GTID=NO , master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+	}
+	_, err := db.Exec(cm)
+	return err
+}
+
+/* func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string, retry string, hearbeat string) error {
 	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', MASTER_USE_GTID=CURRENT_POS,  master_connect_retry=" + retry + ", master_heartbeat_period=" + hearbeat
 	_, err := db.Exec(cm)
 
@@ -185,7 +214,7 @@ func ChangeMasterOldStyle(db *sqlx.DB, host string, port string, user string, pa
 	cm := "CHANGE MASTER TO master_host='" + host + "', master_port=" + port + ", master_user='" + user + "', master_password='" + password + "', master_log_file='" + filename + "', master_log_pos=" + filepos + ", MASTER_USE_GTID=NO , master_connect_retry=" + retry + ", master_heartbeat_period=" + hearbeat
 	_, err := db.Exec(cm)
 	return err
-}
+} */
 
 func MariaDBVersion(server string) int {
 	if server == "" {

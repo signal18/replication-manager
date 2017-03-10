@@ -656,9 +656,27 @@ func (server *ServerMonitor) rejoin() error {
 		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s  and new master %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
 		var err error
 		if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
-			err = dbhelper.ChangeMasterGtidCurrentPos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
+			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+				Host:      realmaster.IP,
+				Port:      realmaster.Port,
+				User:      server.ClusterGroup.rplUser,
+				Password:  server.ClusterGroup.rplPass,
+				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+				Mode:      "CURRENT_POS",
+			})
 		} else {
-			err = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, server.ClusterGroup.master.FailoverMasterLogFile, server.ClusterGroup.master.FailoverMasterLogPos)
+			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+				Host:      realmaster.IP,
+				Port:      realmaster.Port,
+				User:      server.ClusterGroup.rplUser,
+				Password:  server.ClusterGroup.rplPass,
+				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+				Mode:      "MXS",
+				Logfile:   server.ClusterGroup.master.FailoverMasterLogFile,
+				Logpos:    server.ClusterGroup.master.FailoverMasterLogPos,
+			})
 		}
 		dbhelper.StartSlave(server.Conn)
 		return err
@@ -693,9 +711,27 @@ func (server *ServerMonitor) rejoin() error {
 			}
 			var err2 error
 			if server.MxsHaveGtid || server.IsMaxscale == false {
-				err2 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
+				err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+					Host:      realmaster.IP,
+					Port:      realmaster.Port,
+					User:      server.ClusterGroup.rplUser,
+					Password:  server.ClusterGroup.rplPass,
+					Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+					Mode:      "SLAVE_POS",
+				})
 			} else {
-				err2 = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+				err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+					Host:      realmaster.IP,
+					Port:      realmaster.Port,
+					User:      server.ClusterGroup.rplUser,
+					Password:  server.ClusterGroup.rplPass,
+					Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+					Mode:      "MXS",
+					Logfile:   realmaster.FailoverMasterLogFile,
+					Logpos:    realmaster.FailoverMasterLogPos,
+				})
 			}
 			if err2 != nil {
 				return err2
@@ -717,9 +753,27 @@ func (server *ServerMonitor) rejoin() error {
 				var err3 error
 				// done change master just to set the host and port before dump
 				if server.MxsHaveGtid || server.IsMaxscale == false {
-					err3 = dbhelper.ChangeMasterGtidSlavePos(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry), strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime))
+					err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:      realmaster.IP,
+						Port:      realmaster.Port,
+						User:      server.ClusterGroup.rplUser,
+						Password:  server.ClusterGroup.rplPass,
+						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+						Mode:      "SLAVE_POS",
+					})
 				} else {
-					err3 = dbhelper.ChangeMasterOldStyleMaxscale(server.Conn, realmaster.IP, realmaster.Port, server.ClusterGroup.rplUser, server.ClusterGroup.rplPass, realmaster.FailoverMasterLogFile, realmaster.FailoverMasterLogPos)
+					err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:      realmaster.IP,
+						Port:      realmaster.Port,
+						User:      server.ClusterGroup.rplUser,
+						Password:  server.ClusterGroup.rplPass,
+						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+						Mode:      "MXS",
+						Logfile:   realmaster.FailoverMasterLogFile,
+						Logpos:    realmaster.FailoverMasterLogPos,
+					})
 				}
 				if err3 != nil {
 					return err3
