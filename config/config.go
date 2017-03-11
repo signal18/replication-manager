@@ -129,4 +129,5 @@ type Config struct {
 	MariaDBBinaryPath                  string `mapstructure:"mariadb-binary-path"`
 	ArbitrationSasSecret               string `mapstructure:"arbitration-sas-key"`
 	ArbitrationSasHosts                string `mapstructure:"arbitration-sas-hosts"`
+	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 }
