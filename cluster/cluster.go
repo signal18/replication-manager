@@ -546,11 +546,13 @@ func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
 }
 
 func (cluster *Cluster) Heartbeat() {
-
+	if cluster.conf.CheckFalsePositiveSas == false {
+		return
+	}
 	url := cluster.conf.ArbitrationSasHosts + "/heartbeat"
 	var mst string
 	if cluster.master != nil {
-		mst = cluster.master.DSN
+		mst = cluster.master.URL
 	}
 	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `"}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))

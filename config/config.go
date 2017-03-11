@@ -88,7 +88,7 @@ type Config struct {
 	CheckFalsePositiveMaxscale         bool
 	CheckFalsePositiveHeartbeatTimeout int
 	CheckFalsePositiveMaxscaleTimeout  int
-	CheckFalsePositiveSas              bool   `mapstructure:"failover-falsepositive-sas"`
+	CheckFalsePositiveSas              bool   `mapstructure:"failover-falsepositive-external"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-host"`
@@ -127,7 +127,7 @@ type Config struct {
 	SysbenchTime                       int    `mapstructure:"sysbench-time"`
 	SysbenchThreads                    int    `mapstructure:"sysbench-threads"`
 	MariaDBBinaryPath                  string `mapstructure:"mariadb-binary-path"`
-	ArbitrationSasSecret               string `mapstructure:"arbitration-sas-key"`
-	ArbitrationSasHosts                string `mapstructure:"arbitration-sas-hosts"`
+	ArbitrationSasSecret               string `mapstructure:"arbitration-external-secret"`
+	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 }

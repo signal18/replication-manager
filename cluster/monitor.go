@@ -470,7 +470,9 @@ func (server *ServerMonitor) refresh() error {
 }
 
 func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
-
+	if server.ClusterGroup.conf.MxsOn == false {
+		return
+	}
 	if server.ClusterGroup.conf.MxsGetInfoMethod == "maxinfo" {
 
 		_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")

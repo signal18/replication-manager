@@ -7,11 +7,51 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/dbhelper"
 )
+
+type Route struct {
+	Name        string
+	Method      string
+	Pattern     string
+	HandlerFunc http.HandlerFunc
+}
+
+type Routes []Route
+
+func NewRouter() *mux.Router {
+
+	router := mux.NewRouter().StrictSlash(true)
+	for _, route := range routes {
+		router.
+			Methods(route.Method).
+			Path(route.Pattern).
+			Name(route.Name).
+			Handler(route.HandlerFunc)
+	}
+
+	return router
+}
+
+var routes = Routes{
+	Route{
+		"Heartbeat",
+		"POST",
+		"/heartbeat",
+		handlerHeartbeat,
+	},
+	Route{
+		"Arbitrator",
+		"POST",
+		"/todos",
+		handlerArbitrator,
+	},
+}
 
 type heartbeat struct {
 	UUID    string `json:"uuid"`
@@ -43,13 +83,14 @@ var arbitratorCmd = &cobra.Command{
 
 		err = dbhelper.SetHeartbeatTable(db.Conn)
 		if err != nil {
-			currentCluster.LogPrint("ERROR: Error creating tables.")
+			log.Printf("ERROR: Error creating tables.")
 			panic(err)
 		}
 		db.Close()
-		http.HandleFunc("/heartbeat/", handlerHeartbeat)
-		http.HandleFunc("/abritrator/", handlerArbitrator)
-		log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(arbitratorPort), nil))
+		//http.HandleFunc("/heartbeat/", handlerHeartbeat)
+		//	http.HandleFunc("/abritrator/", handlerArbitrator)
+		router := NewRouter()
+		log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(arbitratorPort), router))
 	},
 }
 
@@ -90,9 +131,11 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var h heartbeat
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+
 	if err != nil {
 		panic(err)
 	}
+	//log.Printf("INFO: Hearbeat receive:%s", string(body))
 	if err := r.Body.Close(); err != nil {
 		panic(err)
 	}
@@ -102,6 +145,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(err); err != nil {
 			panic(err)
 		}
+		return
 	}
 
 	currentCluster = new(cluster.Cluster)
@@ -115,7 +159,6 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		send = `{"heartbeat":"failed"}`
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusCreated)
 
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)

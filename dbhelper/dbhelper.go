@@ -345,7 +345,7 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 		return err
 	}
 
-	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "'"
+	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "','" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "'"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
