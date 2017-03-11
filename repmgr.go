@@ -184,7 +184,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.FailEventScheduler, "failover-event-scheduler", false, "Failover Event Scheduler")
 	cmd.Flags().BoolVar(&conf.FailEventStatus, "failover-event-status", false, "Failover Event Status ENABLE OR DISABLE ON SLAVE")
-	cmd.Flags().String(&conf.ReplicationSSL, "replication-use-ssl", false, "Use SSL encryption to replicate from master")
+	cmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Use SSL encryption to replicate from master")
 	viper.BindPFlags(cmd.Flags())
 
 	conf.MaxDelay = conf.FailMaxDelay
