@@ -136,8 +136,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
 	monitorCmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
-	monitorCmd.Flags().StringVar(&conf.ArbitrationSasSecret, "arbitration-sas-secret", "", "")
-	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-sas-hosts", "wwww.scrambledb.org:80", "")
+	monitorCmd.Flags().StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "")
+	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "http://wwww.scrambledb.org:80", "")
 
 	viper.BindPFlags(monitorCmd.Flags())
 

@@ -102,11 +102,12 @@ func initConfig() {
 			if strings.Contains(k, ".") {
 				mycluster := strings.Split(k, ".")[0]
 				if mycluster != "default" {
+
 					_, ok := clusterDicovery[mycluster]
 					if !ok {
 						clusterDicovery[mycluster] = mycluster
 						discoveries = append(discoveries, mycluster)
-						//	log.Println(strings.Split(k, ".")[0])
+						//						log.Println(strings.Split(k, ".")[0])
 					}
 				}
 

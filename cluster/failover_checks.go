@@ -6,6 +6,9 @@
 package cluster
 
 import (
+	"bytes"
+	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +26,7 @@ func (cluster *Cluster) checkfailed() {
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-			if cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
+			if cluster.isActiveArbitration() && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
 				cluster.MasterFailover(true)
 				cluster.failoverCond.Send <- true
 			} else {
@@ -149,6 +152,35 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
 		cluster.LogPrintf("ERROR: Can't failover Master still up for Maxscale %s", cluster.master.MxsServerStatus)
+		return true
+	}
+	return false
+}
+
+func (cluster *Cluster) isActiveArbitration() bool {
+
+	if cluster.conf.CheckFalsePositiveSas == false {
+		return false
+	}
+	cluster.LogPrintf("CHECK: Failover External Abitration")
+
+	url := cluster.conf.ArbitrationSasHosts + "/arbitration"
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + cluster.master.DSN + `"}`)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		cluster.LogPrintf("ERROR :%s", err.Error())
+		return false
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	cluster.LogPrintf("INFO :Arbitrator say :%s", string(body))
+	if string(body) == `{"arbitration":"winner"}` {
 		return true
 	}
 	return false

@@ -204,6 +204,9 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 
 func (m *MaxScale) ListServers() ([]Server, error) {
 	m.Command("list servers")
+	if m.Conn == nil {
+		return nil, errors.New("Tcp Connection close")
+	}
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 1024)

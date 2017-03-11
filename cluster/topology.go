@@ -140,23 +140,8 @@ func (cluster *Cluster) pingServerList() {
 			}
 		}(sv)
 		// If not yet dicovered we can initiate hearbeat table on each node
-		if cluster.conf.Heartbeat {
-			if cluster.sme.IsDiscovered() == false {
-				err := dbhelper.SetHeartbeatTable(sv.Conn)
-				if err != nil {
-					cluster.sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: "Disable heartbeat table can't create table", ErrFrom: "RUN"})
-					cluster.conf.Heartbeat = false
-				}
-			}
-
-			if cluster.runStatus == "A" && dbhelper.CheckHeartbeat(sv.Conn, cluster.runUUID, "A") != true {
-				cluster.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: "Multiple Active Replication Monitor Switching Passive Mode", ErrFrom: "RUN"})
-				cluster.runStatus = "P"
-			}
-			if cluster.runStatus == "P" {
-				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: "Monitoring in Passive Mode Can't Failover", ErrFrom: "RUN"})
-			}
-			dbhelper.WriteHeartbeat(sv.Conn, cluster.runUUID, cluster.runStatus)
+		if cluster.conf.CheckFalsePositiveHeartbeat {
+			cluster.Heartbeat()
 		}
 	}
 
@@ -319,11 +304,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
 					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
 				}
-				/*
-					if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
-						dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
-						cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
-					}*/
+				/* Disable because read-only variable
+				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
+					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
+					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
+				}*/
 				if sl.hasSiblings(cluster.slaves) == false {
 					// possibly buggy code
 					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})

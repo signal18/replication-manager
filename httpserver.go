@@ -330,7 +330,7 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 
 func handlerSetActive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.GetActiveStatus()
+	//currentCluster.GetActiveStatus()
 	return
 }
 

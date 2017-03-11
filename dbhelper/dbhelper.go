@@ -330,7 +330,7 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(uuid varchar(128) PRIMARY KEY,date timestamp, status CHAR(1) ) engine=innodb"
+	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64), uuid varchar(128) ,cluster varchar(128),  master varchar(128) , date timestamp, status CHAR(1) DEFAULT 'U' ,PRIMARY KEY(secret,uuid,cluster) ) engine=innodb"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
@@ -338,57 +338,72 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	return err
 }
 
-func WriteHeartbeat(db *sqlx.DB, uuid string, status string) error {
+func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string) error {
 	stmt := "SET sql_log_bin=0"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
 
-	stmt = "INSERT INTO replication_manager_schema.heartbeat(uuid,date,status) VALUES('" + uuid + "', NOW(),'" + status + "') ON DUPLICATE KEY UPDATE date=NOW(),status='" + status + "'"
+	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "'"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
 	}
-	stmt = "DELETE FROM replication_manager_schema.heartbeat WHERE date < NOW() - INTERVAL 3 SECOND"
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
-	}
-	return err
+	return nil
 }
 
-func CheckHeartbeat(db *sqlx.DB, uuid string, status string) bool {
+func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string) bool {
 	var count int
-	stmt := "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE date > NOW() - INTERVAL 3 SECOND AND status IN ('A','F') and uuid<>'" + uuid + "'"
-	err := db.QueryRowx(stmt).Scan(&count)
+	stmt := "START TRANSACTION"
+	_, err := db.Exec(stmt)
 	if err != nil {
+		return false
+	}
+	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uuid<>'" + uuid + "' FOR UPDATE "
+	err = db.QueryRowx(stmt).Scan(&count)
+	if err != nil {
+		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "',status='E'"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			stmt = "COMMIT"
+			_, err = db.Exec(stmt)
+			if err != nil {
+				return false
+			}
+			stmt = "COMMIT"
+			_, err = db.Exec(stmt)
+			if err != nil {
+				return false
+			}
+			return false
+		}
+		stmt = "COMMIT"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return false
+		}
 		return true
 	}
 	if count > 0 {
+		stmt = "COMMIT"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return false
+		}
 		return false
 	}
 	return true
 }
 
-func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string) error {
-	/*	stmt := "START TRANSACTION"
-		_, err := db.Exec(stmt)
-		if err != nil {
-			return err
-		}
-	*/
-	stmt := "TRUNCATE TABLE replication_manager_schema.heartbeat"
+// SetStatusActiveHeartbeat abitrator can set or remove electetion flag "E"
+func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string) error {
+
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date ) VALUES('" + secret + "','" + uuid + "', NOW()) ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "', status='" + status + "' "
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
-	err = WriteHeartbeat(db, uuid, status)
-	/*	stmt = "COMMIT"
-		_, err = db.Exec(stmt)
-		if err != nil {
-			return err
-		}*/
 	return err
 }
 

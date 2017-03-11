@@ -45,8 +45,8 @@ logfile = "/var/log/replication-manager.log"
 verbose = true
 
 # Enterpise SAS key
-arbitration-sas-secret = "13787932529099014144"
-arbitration-sas-hosts = "www.scrambledb.org"
+arbitration-external-secret = "13787932529099014144"
+arbitration-external-hosts = "http://www.scrambledb.org:80"
 
 # TOPOLOGY
 # --------
@@ -121,12 +121,13 @@ failcount-reset-time = 300
 failover-limit = 3
 failover-time-limit = 10
 failover-at-sync = true
+failover-max-slave-delay = 30
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
-failover-falsepositive-maxscale = true
+failover-falsepositive-maxscale = false
 failover-falsepositive-maxscale-timeout = 14
-failover-falsepositive-sas = true
-failover-max-slave-delay = 30
+failover-falsepositive-external = false
+
 
 
 # SWITCHOVER

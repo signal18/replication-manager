@@ -6,8 +6,11 @@
 package cluster
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -190,6 +193,7 @@ func (cluster *Cluster) Run() {
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
+	cluster.conf = conf
 	cluster.agentFlagCheck()
 	if conf.LogFile != "" {
 		var err error
@@ -357,15 +361,6 @@ func (cluster *Cluster) ToggleInteractive() {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.conf.Interactive = check
-}
-
-func (cluster *Cluster) GetActiveStatus() {
-	for _, sv := range cluster.servers {
-		err := dbhelper.SetStatusActiveHeartbeat(sv.Conn, cluster.runUUID, "A")
-		if err == nil {
-			cluster.runStatus = "A"
-		}
-	}
 }
 
 func (cluster *Cluster) ResetFailoverCtr() {
@@ -548,6 +543,30 @@ func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
 	cluster.LogPrint(dsn)
 	return sqlx.Open("mysql", dsn)
 
+}
+
+func (cluster *Cluster) Heartbeat() {
+
+	url := cluster.conf.ArbitrationSasHosts + "/heartbeat"
+	var mst string
+	if cluster.master != nil {
+		mst = cluster.master.DSN
+	}
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `"}`)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		cluster.LogPrintf("ERROR :%s", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	cluster.LogPrintf("response :%s", string(body))
 }
 
 func (cluster *Cluster) agentFlagCheck() {
