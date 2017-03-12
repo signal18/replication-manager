@@ -330,7 +330,7 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64), uuid varchar(128) ,cluster varchar(128),  master varchar(128) , date timestamp, status CHAR(1) DEFAULT 'U' ,PRIMARY KEY(secret,uuid,cluster) ) engine=innodb"
+	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64) ,cluster varchar(128),uid int , uuid varchar(128),  master varchar(128) , date timestamp,arbitration_date timestamp, status CHAR(1) DEFAULT 'U' ,PRIMARY KEY(secret,cluster,uid) ) engine=innodb"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
@@ -338,32 +338,44 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	return err
 }
 
-func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string) error {
+func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) error {
 	stmt := "SET sql_log_bin=0"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
 
-	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "','" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "'"
+	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
 	}
+
+	var count int
+	stmt = "SELECT count(distinct master) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'"
+	err = db.QueryRowx(stmt).Scan(&count)
+	if err == nil && count == 1 {
+		stmt = "UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster='" + cluster + "' AND secret='" + secret + "'"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+
+	}
 	return nil
 }
 
-func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string) bool {
+func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) bool {
 	var count int
 	stmt := "START TRANSACTION"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return false
 	}
-	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uuid<>'" + uuid + "' FOR UPDATE "
+	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uid<>" + strconv.Itoa(uid) + " FOR UPDATE "
 	err = db.QueryRowx(stmt).Scan(&count)
 	if err == nil && count == 0 {
-		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "','" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "',status='E'"
+		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(), NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE arbitration_date=NOW(),date=NOW(),master='" + master + "',status='E', uuid='" + uuid + "'"
 		_, err = db.Exec(stmt)
 		if err != nil {
 			stmt = "COMMIT"
@@ -391,9 +403,9 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 }
 
 // SetStatusActiveHeartbeat abitrator can set or remove electetion flag "E"
-func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string) error {
+func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string, uid int) error {
 
-	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date ) VALUES('" + secret + "','" + uuid + "', NOW()) ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "', status='" + status + "' "
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uid,master,date ) VALUES('" + secret + "','" + strconv.Itoa(uid) + "', NOW()) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "', status='" + status + "' "
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err

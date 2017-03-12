@@ -129,5 +129,6 @@ type Config struct {
 	MariaDBBinaryPath                  string `mapstructure:"mariadb-binary-path"`
 	ArbitrationSasSecret               string `mapstructure:"arbitration-external-secret"`
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
+	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 }

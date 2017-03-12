@@ -7,6 +7,7 @@ package cluster
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -26,7 +27,7 @@ func (cluster *Cluster) checkfailed() {
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-			if cluster.isActiveArbitration() && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
+			if cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
 				cluster.MasterFailover(true)
 				cluster.failoverCond.Send <- true
 			} else {
@@ -169,7 +170,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if cluster.master != nil {
 		mst = cluster.master.URL
 	}
-	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `"}`)
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.conf.ArbitrationSasUniqueId) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
@@ -183,9 +184,20 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	defer resp.Body.Close()
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	cluster.LogPrintf("INFO :Arbitrator say :%s", string(body))
-	if string(body) == `{"arbitration":"winner"}` {
+
+	type response struct {
+		Arbitration string `json:"arbitration"`
+	}
+	var r response
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		cluster.LogPrintf("ERROR :abitrator says invalid JSON")
+		return false
+	}
+	if r.Arbitration == "winner" {
+		cluster.LogPrintf("INFO :Arbitrator say :winner")
 		return true
 	}
+	cluster.LogPrintf("INFO :Arbitrator say :looser")
 	return false
 }

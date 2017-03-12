@@ -58,6 +58,11 @@ type heartbeat struct {
 	Secret  string `json:"secret"`
 	Cluster string `json:"cluster"`
 	Master  string `json:"master"`
+	UID     int    `json:"id"`
+}
+
+type response struct {
+	Arbitration string `json:"arbitration"`
 }
 
 var (
@@ -111,15 +116,15 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 	}
-	var send string
+	var send response
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
-	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master)
+	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID)
 	db.Close()
 	if res {
-		send = `{"arbitration":"winner"}`
+		send.Arbitration = "winner"
 	} else {
-		send = `{"arbitration":"looser"}`
+		send.Arbitration = "looser"
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusCreated)
@@ -152,7 +157,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
-	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master)
+	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID)
 	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`

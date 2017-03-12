@@ -130,7 +130,7 @@ failover-falsepositive-maxscale-timeout = 14
 failover-falsepositive-external = false
 arbitration-external-secret = "13787932529099014144"
 arbitration-external-hosts = "http://www.scrambledb.org:80"
-
+arbitration-external-unique-id = 0 //set unique value on each replication-manager
 
 # SWITCHOVER
 # ----------
