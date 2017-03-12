@@ -362,8 +362,8 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 	}
 	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uuid<>'" + uuid + "' FOR UPDATE "
 	err = db.QueryRowx(stmt).Scan(&count)
-	if err != nil {
-		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "',status='E'"
+	if err == nil && count == 0 {
+		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "','" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE date=NOW(),master='" + master + "',status='E'"
 		_, err = db.Exec(stmt)
 		if err != nil {
 			stmt = "COMMIT"
@@ -371,12 +371,6 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 			if err != nil {
 				return false
 			}
-			stmt = "COMMIT"
-			_, err = db.Exec(stmt)
-			if err != nil {
-				return false
-			}
-			return false
 		}
 		stmt = "COMMIT"
 		_, err = db.Exec(stmt)
@@ -384,8 +378,8 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 			return false
 		}
 		return true
-	}
-	if count > 0 {
+	} else {
+
 		stmt = "COMMIT"
 		_, err = db.Exec(stmt)
 		if err != nil {
@@ -393,7 +387,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 		}
 		return false
 	}
-	return true
+	return false
 }
 
 // SetStatusActiveHeartbeat abitrator can set or remove electetion flag "E"

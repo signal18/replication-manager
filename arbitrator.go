@@ -48,7 +48,7 @@ var routes = Routes{
 	Route{
 		"Arbitrator",
 		"POST",
-		"/todos",
+		"/arbitrator",
 		handlerArbitrator,
 	},
 }
@@ -103,6 +103,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	if err := r.Body.Close(); err != nil {
 		panic(err)
 	}
+	log.Printf("INFO: Arbitrator receive:%s", string(body))
 	if err := json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
@@ -153,7 +154,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send string
 	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master)
 	db.Close()
-	if res != nil {
+	if res == nil {
 		send = `{"heartbeat":"succed"}`
 	} else {
 		send = `{"heartbeat":"failed"}`

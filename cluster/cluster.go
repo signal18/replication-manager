@@ -568,7 +568,9 @@ func (cluster *Cluster) Heartbeat() {
 	defer resp.Body.Close()
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	cluster.LogPrintf("response :%s", string(body))
+	if string(body) == `{\"heartbeat\":\"succed\"}` {
+		cluster.LogPrintf("response :%s", string(body))
+	}
 }
 
 func (cluster *Cluster) agentFlagCheck() {

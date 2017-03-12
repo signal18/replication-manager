@@ -164,8 +164,12 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	}
 	cluster.LogPrintf("CHECK: Failover External Abitration")
 
-	url := cluster.conf.ArbitrationSasHosts + "/arbitration"
-	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + cluster.master.DSN + `"}`)
+	url := cluster.conf.ArbitrationSasHosts + "/arbitrator"
+	var mst string
+	if cluster.master != nil {
+		mst = cluster.master.URL
+	}
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `"}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
