@@ -160,7 +160,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 func (cluster *Cluster) isActiveArbitration() bool {
 
 	if cluster.conf.CheckFalsePositiveSas == false {
-		return false
+		return true
 	}
 	cluster.LogPrintf("CHECK: Failover External Abitration")
 
