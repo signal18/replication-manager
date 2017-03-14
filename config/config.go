@@ -15,7 +15,7 @@ type Config struct {
 	Hosts                              string
 	Socket                             string
 	RplUser                            string
-	Interactive                        bool
+	Interactive                        bool `mapstructure:"interactive"`
 	Verbose                            bool
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
@@ -33,11 +33,11 @@ type Config struct {
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
 	ReadOnly                           bool
-	Autorejoin                         bool
-	AutorejoinFlashback                bool
-	AutorejoinMysqldump                bool
-	AutorejoinBackupBinlog             bool
-	AutorejoinSemisync                 bool
+	Autorejoin                         bool `mapstructure:"autorejoin"`
+	AutorejoinFlashback                bool `mapstructure:"autorejoin-flashback"`
+	AutorejoinMysqldump                bool `mapstructure:"autorejoin-mysqldump"`
+	AutorejoinBackupBinlog             bool `mapstructure:"autorejoin-backup-binlog"`
+	AutorejoinSemisync                 bool `mapstructure:"autorejoin-semisync"`
 	LogFile                            string
 	MonitoringTicker                   int64 `mapstructure:"monitoring-ticker"`
 	Timeout                            int   `mapstructure:"connect-timeout"`
