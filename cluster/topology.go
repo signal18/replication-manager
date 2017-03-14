@@ -40,13 +40,7 @@ func (cluster *Cluster) newServerList() error {
 		if cluster.conf.Verbose {
 			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[k].URL))
 		}
-		if cluster.conf.Heartbeat {
-			err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
-			if err != nil {
-				cluster.LogPrintf("ERROR: Can not set heartbeat table to  %s  ", url)
-				//return err
-			}
-		}
+
 	}
 	// Spider shard discover
 	if cluster.conf.Spider == true {
@@ -139,9 +133,11 @@ func (cluster *Cluster) pingServerList() {
 				}
 			}
 		}(sv)
-		// If not yet dicovered we can initiate hearbeat table on each node
+
 		if cluster.conf.CheckFalsePositiveHeartbeat {
-			cluster.Heartbeat()
+			if cluster.sme.GetHeartbeats()%10 == 0 {
+				cluster.Heartbeat()
+			}
 		}
 	}
 

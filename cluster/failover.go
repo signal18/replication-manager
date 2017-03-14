@@ -251,9 +251,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrint("WARN : Could not unlock tables on old master", err)
 		}
 		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
-		_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
-		if err != nil {
-			cluster.LogPrint("WARN : Could not set gtid_slave_pos on old master", err)
+		if cluster.conf.FailForceGtid {
+			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
+			if err != nil {
+				cluster.LogPrint("WARN : Could not set gtid_slave_pos on old master", err)
+			}
 		}
 		if cluster.conf.MxsBinlogOn == false {
 			err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -340,9 +342,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf("WARN : Could not stop slave on server %s, %s", sl.URL, err)
 		}
 		if fail == false && cluster.conf.MxsBinlogOn == false {
-			_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
-			if err != nil {
-				cluster.LogPrintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
+			if cluster.conf.FailForceGtid {
+				_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
+				if err != nil {
+					cluster.LogPrintf("WARN : Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
+				}
 			}
 		}
 

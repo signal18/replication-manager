@@ -43,6 +43,7 @@ var (
 func init() {
 	runUUID = uuid.NewV4().String()
 	runStatus = "A"
+	conf.FailForceGtid = true
 	//	conf := confs[cfgGroup]
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)

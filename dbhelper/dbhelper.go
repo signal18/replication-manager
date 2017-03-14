@@ -339,14 +339,9 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 }
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) error {
-	stmt := "SET sql_log_bin=0"
-	_, err := db.Exec(stmt)
-	if err != nil {
-		return err
-	}
 
-	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
-	_, err = db.Exec(stmt)
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
+	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
@@ -362,6 +357,17 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 		}
 
 	}
+	return nil
+}
+
+func ForgetArbitration(db *sqlx.DB, secret string) error {
+
+	stmt := "DELETE FROM replication_manager_schema.heartbeat WHERE secret='" + secret + "'"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
