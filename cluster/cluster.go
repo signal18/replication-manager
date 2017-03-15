@@ -167,6 +167,16 @@ func (cluster *Cluster) Run() {
 					go server.check(wg)
 				}
 				wg.Wait()
+
+				if cluster.conf.MxsOn {
+					for _, server := range cluster.servers {
+						if server.PrevState != server.State {
+							cluster.initMaxscale(nil)
+							break
+						}
+					}
+				}
+
 				cluster.pingServerList()
 				cluster.TopologyDiscover()
 				states := cluster.sme.GetState()
