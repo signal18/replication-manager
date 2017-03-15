@@ -39,11 +39,11 @@ type Config struct {
 	AutorejoinBackupBinlog             bool `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool `mapstructure:"autorejoin-semisync"`
 	LogFile                            string
-	MonitoringTicker                   int64 `mapstructure:"monitoring-ticker"`
-	Timeout                            int   `mapstructure:"connect-timeout"`
-	CheckType                          string
-	CheckReplFilter                    bool
-	CheckBinFilter                     bool
+	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
+	Timeout                            int    `mapstructure:"connect-timeout"`
+	CheckType                          string `mapstructure:"check-type"`
+	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
+	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
 	ForceSlaveHeartbeat                bool   `mapstructure:"force-slave-heartbeat"`
 	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`
 	ForceSlaveHeartbeatRetry           int    `mapstructure:"force-slave-heartbeat-retry"`
@@ -84,10 +84,10 @@ type Config struct {
 	MaxFail                            int    `mapstructure:"failcount"`
 	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
 	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
-	CheckFalsePositiveHeartbeat        bool
-	CheckFalsePositiveMaxscale         bool
-	CheckFalsePositiveHeartbeatTimeout int
-	CheckFalsePositiveMaxscaleTimeout  int
+	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
+	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
+	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
+	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
 	CheckFalsePositiveSas              bool   `mapstructure:"failover-falsepositive-external"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
