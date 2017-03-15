@@ -431,7 +431,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
-					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP) == false {
+					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port) == false {
 						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", cluster.master.URL, cluster.master.Host), ErrFrom: "TOPO"})
 					}
 					if sl.LogBin == "OFF" {
@@ -496,10 +496,12 @@ func (cluster *Cluster) getMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Server %s was lookup for it's master state  for rejoin : %s", server.URL, cluster.conf.PrefMaster)
 		}
-
-		if s.Replications[0].Master_Host == server.Host && strconv.FormatUint(uint64(s.Replications[0].Master_Port), 10) == server.Port {
-			return server, nil
+		if len(s.Replications) > 0 {
+			if s.Replications[0].Master_Host == server.Host && strconv.FormatUint(uint64(s.Replications[0].Master_Port), 10) == server.Port {
+				return server, nil
+			}
 		}
+
 	}
 	return nil, nil
 }

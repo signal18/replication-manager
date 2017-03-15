@@ -44,7 +44,7 @@ func (cluster *Cluster) testFailoverSemisyncSlavekilledAutoRejoin(conf string, t
 	cluster.RunSysbench()
 
 	cluster.startMariaDB(killedSlave)
-
+	time.Sleep(4 * time.Second)
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.waitRejoin(wg2)
