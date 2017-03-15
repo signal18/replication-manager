@@ -665,6 +665,7 @@ func (server *ServerMonitor) writeState() error {
 	return nil
 }
 
+// check if node see same master as the passed list
 func (server *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
 		if server.MasterServerID != sl.MasterServerID {

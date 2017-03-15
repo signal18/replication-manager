@@ -52,7 +52,7 @@ func (cluster *Cluster) testFailoverSemisyncSlavekilledAutoRejoin(conf string, t
 	wg2.Wait()
 	SaveMaster.readAllRelayLogs()
 
-	if cluster.master.hasSiblings(cluster.slaves) == false {
+	if killedSlave.hasSiblings(cluster.slaves) == false {
 		cluster.LogPrintf("ERROR: Not all slaves pointing to master")
 		cluster.closeTestCluster(conf, test)
 		return false
