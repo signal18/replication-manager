@@ -56,21 +56,23 @@ failover-event-scheduler = false
 failover-event-status = false
 connect-timeout = 1
 
-force-slave-heartbeat= true
+# Enforce best practice
+# ---------------------
+force-slave-heartbeat= false
 force-slave-heartbeat-retry = 5
 force-slave-heartbeat-time = 3
-force-slave-gtid-mode = true
-force-slave-semisync = true
+force-slave-gtid-mode = false
+force-slave-semisync = false
 force-slave-readonly = true
-force-binlog-row = true
-force-binlog-annotate = true
-force-binlog-slowqueries = true
-force-inmemory-binlog-cache-size = true
-force-disk-relaylog-size-limit = true
+force-binlog-row = false
+force-binlog-annotate = false
+force-binlog-slowqueries = false
+force-inmemory-binlog-cache-size = false
+force-disk-relaylog-size-limit = false
 force-disk-relaylog-size-limit-size = 1000000000
-force-sync-binlog = true
-force-sync-innodb = true
-force-binlog-checksum = true
+force-sync-binlog = false
+force-sync-innodb = false
+force-binlog-checksum = false
 
 # HTTP
 # ----
@@ -223,13 +225,10 @@ autorejoin-mysqldump = false
 # ETCD CLUSTER
 # ------------
 
-#agent-hosts = "127.0.0.1:4001,127.0.0.1:4002,127.0.0.1:4003"
-
 #[Agent1]
-#agent-watch = "127.0.0.1:5012"
+#hosts= "127.0.0.1:5012"
+#rpluser = "skysql:skyvodka"
 
 #[Agent2]
-#agent-watch = "127.0.0.1:5054"
-
-#[Agent3]
-#agent-watch = ""
+#hosts = "127.0.0.1:5054"
+#rpluser = "skysql:skyvodka"

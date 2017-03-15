@@ -351,6 +351,47 @@ func (m *MaxScale) Command(cmd string) error {
 	return err
 }
 
+func (m *MaxScale) Response() ([]string, error) {
+
+	reader := bufio.NewReader(m.Conn)
+	var response []byte
+	buf := make([]byte, 512)
+	for {
+		res, err := reader.Read(buf)
+		if err != nil {
+			return nil, errors.New("Failed to read result")
+		}
+		str := string(buf[0:res])
+		if strings.HasSuffix(str, "OK") {
+			response = append(response, buf[0:res-2]...)
+			break
+		}
+		response = append(response, buf[0:res]...)
+	}
+	list := strings.Split(string(response), "\n")
+	return list, nil
+}
+
+func (m *MaxScale) SetServer(server, status string) error {
+	err := m.Command("set server " + server + " " + status)
+
+	if err == nil {
+		_, err = m.Response()
+	}
+
+	return err
+}
+
+func (m *MaxScale) ClearServer(server, status string) error {
+	err := m.Command("clear server " + server + " " + status)
+
+	if err == nil {
+		_, err = m.Response()
+	}
+
+	return err
+}
+
 func (m *MaxScale) ShutdownMonitor(monitor string) error {
 	if m.Conn == nil {
 		return errors.New("Connection was close did you lost maxscale")

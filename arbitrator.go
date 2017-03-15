@@ -51,6 +51,12 @@ var routes = Routes{
 		"/arbitrator",
 		handlerArbitrator,
 	},
+	Route{
+		"Forget",
+		"PST",
+		"/forget/",
+		handlerForget,
+	},
 }
 
 type heartbeat struct {
@@ -88,8 +94,8 @@ var arbitratorCmd = &cobra.Command{
 
 		err = dbhelper.SetHeartbeatTable(db.Conn)
 		if err != nil {
-			log.Printf("ERROR: Error creating tables.")
-			panic(err)
+			log.Printf("ERROR: Error creating tables")
+			//panic(err)
 		}
 		db.Close()
 		//http.HandleFunc("/heartbeat/", handlerHeartbeat)
@@ -158,6 +164,44 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
 	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID)
+	db.Close()
+	if res == nil {
+		send = `{"heartbeat":"succed"}`
+	} else {
+		send = `{"heartbeat":"failed"}`
+	}
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	if err := json.NewEncoder(w).Encode(send); err != nil {
+		panic(err)
+	}
+
+}
+
+func handlerForget(w http.ResponseWriter, r *http.Request) {
+	var h heartbeat
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+
+	if err != nil {
+		panic(err)
+	}
+	//log.Printf("INFO: Hearbeat receive:%s", string(body))
+	if err := r.Body.Close(); err != nil {
+		panic(err)
+	}
+	if err := json.Unmarshal(body, &h); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode(err); err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	currentCluster = new(cluster.Cluster)
+	db, _ := currentCluster.InitAgent(confs["arbitrator"])
+	var send string
+	res := dbhelper.ForgetArbitration(db.Conn, h.Secret)
 	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`

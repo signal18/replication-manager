@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -40,13 +41,7 @@ func (cluster *Cluster) newServerList() error {
 		if cluster.conf.Verbose {
 			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[k].URL))
 		}
-		if cluster.conf.Heartbeat {
-			err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
-			if err != nil {
-				cluster.LogPrintf("ERROR: Can not set heartbeat table to  %s  ", url)
-				//return err
-			}
-		}
+
 	}
 	// Spider shard discover
 	if cluster.conf.Spider == true {
@@ -139,9 +134,11 @@ func (cluster *Cluster) pingServerList() {
 				}
 			}
 		}(sv)
-		// If not yet dicovered we can initiate hearbeat table on each node
+
 		if cluster.conf.CheckFalsePositiveHeartbeat {
-			cluster.Heartbeat()
+			if cluster.sme.GetHeartbeats()%10 == 0 {
+				cluster.Heartbeat()
+			}
 		}
 	}
 
@@ -434,7 +431,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
-					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP) == false {
+					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port) == false {
 						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", cluster.master.URL, cluster.master.Host), ErrFrom: "TOPO"})
 					}
 					if sl.LogBin == "OFF" {
@@ -492,4 +489,19 @@ func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
 		}
 	}
 	return nil
+}
+
+func (cluster *Cluster) getMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
+	for _, server := range cluster.servers {
+		if cluster.conf.LogLevel > 2 {
+			cluster.LogPrintf("DEBUG: Server %s was lookup for it's master state  for rejoin : %s", server.URL, cluster.conf.PrefMaster)
+		}
+		if len(s.Replications) > 0 {
+			if s.Replications[0].Master_Host == server.Host && strconv.FormatUint(uint64(s.Replications[0].Master_Port), 10) == server.Port {
+				return server, nil
+			}
+		}
+
+	}
+	return nil, nil
 }

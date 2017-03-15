@@ -131,4 +131,5 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
+	FailForceGtid                      bool   //suspicious code
 }

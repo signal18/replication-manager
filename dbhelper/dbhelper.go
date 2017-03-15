@@ -339,14 +339,9 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 }
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) error {
-	stmt := "SET sql_log_bin=0"
-	_, err := db.Exec(stmt)
-	if err != nil {
-		return err
-	}
 
-	stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
-	_, err = db.Exec(stmt)
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
+	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
@@ -362,6 +357,17 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 		}
 
 	}
+	return nil
+}
+
+func ForgetArbitration(db *sqlx.DB, secret string) error {
+
+	stmt := "DELETE FROM replication_manager_schema.heartbeat WHERE secret='" + secret + "'"
+	_, err := db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -787,7 +793,7 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
 }
 
 /* Check if server is connected to declared master */
-func IsSlaveof(db *sqlx.DB, s string, m string) bool {
+func IsSlaveof(db *sqlx.DB, s string, m string, p string) bool {
 	ss, err := GetSlaveStatus(db)
 	if err != nil {
 		// log.Printf("WARN : Server %s is not a slave. Skipping", s)
@@ -798,6 +804,10 @@ func IsSlaveof(db *sqlx.DB, s string, m string) bool {
 		// log.Println("ERROR: Could not resolve master hostname", ss.Master_Host)
 	}
 	if masterHost != m {
+		// log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
+		return false
+	}
+	if strconv.FormatUint(uint64(ss.Master_Port), 10) != p {
 		// log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
 		return false
 	}

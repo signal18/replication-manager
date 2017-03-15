@@ -93,6 +93,7 @@ type ServerMonitor struct {
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
+	Replications                []dbhelper.SlaveStatus
 }
 
 type serverList []*ServerMonitor
@@ -249,7 +250,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
-	_, err = dbhelper.GetSlaveStatus(server.Conn)
+	var ss dbhelper.SlaveStatus
+	ss, err = dbhelper.GetSlaveStatus(server.Conn)
 	if err == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
@@ -292,17 +294,60 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 		}
 		return
-	}
+	} else if err == nil {
+		// if a slave not connected to current master
+		mycurrentmaster, _ := server.ClusterGroup.getMasterFromReplication(server)
 
-	// In case of state change, reintroduce the server in the slave list
-	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
-		server.State = stateSlave
-		server.FailCount = 0
-		server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
-		if server.ClusterGroup.conf.ReadOnly {
-			err = dbhelper.SetReadOnly(server.Conn, true)
-			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
+		if mycurrentmaster != nil {
+
+			if mycurrentmaster != nil && ss.Slave_IO_Running != "Yes" && server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
+				server.ClusterGroup.LogPrintf("DEBUG: Found slave to rejoin  %s slave was priviously in %s replication io thread is %s , pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
+
+				if mycurrentmaster.State == stateFailed && mycurrentmaster.IsRelay == false {
+					realmaster := server.ClusterGroup.master
+					slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
+					master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
+					if slave_gtid == master_gtid {
+						server.ClusterGroup.LogPrintf("DEBUG: Rejoining slave server %s to master %s", server.URL, realmaster.URL)
+						err = dbhelper.StopSlave(server.Conn)
+						if err == nil {
+							err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+								Host:      realmaster.IP,
+								Port:      realmaster.Port,
+								User:      server.ClusterGroup.rplUser,
+								Password:  server.ClusterGroup.rplPass,
+								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+								Mode:      "CURRENT_POS",
+							})
+							if err == nil {
+								dbhelper.StartSlave(server.Conn)
+							} else {
+								server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin indirect slave server %s, stopping slave as a precaution.", server.URL)
+								server.ClusterGroup.LogPrint(err)
+							}
+						} else {
+							server.ClusterGroup.LogPrint(err)
+						}
+
+					} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {
+						server.ClusterGroup.LogPrintf("DEBUG: Slave server %s (%d) is behind master %s (%d)", server.URL, slave_gtid, realmaster.URL, master_gtid)
+					}
+				}
+			}
+
+		}
+
+		// In case of state change, reintroduce the server in the slave list
+		if server.PrevState == stateFailed || server.PrevState == stateUnconn {
+			server.State = stateSlave
+			server.FailCount = 0
+			server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
+			if server.ClusterGroup.conf.ReadOnly {
+				err = dbhelper.SetReadOnly(server.Conn, true)
+				if err != nil {
+					server.ClusterGroup.LogPrintf("ERROR: Could not set rejoining slave %s as read-only, %s", server.URL, err)
+				}
 			}
 		}
 	}
@@ -330,6 +375,7 @@ func (server *ServerMonitor) refresh() error {
 		server.IsMaxscale = false
 		server.IsRelay = false
 	}
+	server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		server.UsingGtid = ""
@@ -619,6 +665,7 @@ func (server *ServerMonitor) writeState() error {
 	return nil
 }
 
+// check if node see same master as the passed list
 func (server *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
 		if server.MasterServerID != sl.MasterServerID {
