@@ -41,7 +41,7 @@ func (cluster *Cluster) testFailoverSemisyncSlavekilledAutoRejoin(conf string, t
 		cluster.closeTestCluster(conf, test)
 		return false
 	}
-	cluster.RunSysbench()
+	cluster.PrepareBench()
 
 	cluster.startMariaDB(killedSlave)
 	time.Sleep(4 * time.Second)
