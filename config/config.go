@@ -11,16 +11,16 @@ package config
 type Config struct {
 	WorkingDir                         string `mapstructure:"working-directory"`
 	ShareDir                           string `mapstructure:"share-directory"`
-	User                               string
-	Hosts                              string
-	Socket                             string
-	RplUser                            string
-	Interactive                        bool `mapstructure:"interactive"`
-	Verbose                            bool
+	User                               string `mapstructure:"user"`
+	Hosts                              string `mapstructure:"hosts"`
+	Socket                             string `mapstructure:"socket"`
+	RplUser                            string `mapstructure:"rpluser"`
+	Interactive                        bool   `mapstructure:"interactive"`
+	Verbose                            bool   `mapstructure:"verbose"`
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
 	MaxDelay                           int64  //depreacate for failover-max-slave-delay
-	PrefMaster                         string
+	PrefMaster                         string `mapstructure:"prefmaster"`
 	IgnoreSrv                          string `mapstructure:"ignore-servers"`
 	WaitKill                           int64  `mapstructure:"wait-kill"`        // deprecat
 	WaitTrx                            int64  `mapstructure:"wait-trx"`         // deprecat
@@ -32,13 +32,13 @@ type Config struct {
 	SwitchGtidCheck                    bool   `mapstructure:"switchover-at-equal-gtid"`
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
-	ReadOnly                           bool
-	Autorejoin                         bool `mapstructure:"autorejoin"`
-	AutorejoinFlashback                bool `mapstructure:"autorejoin-flashback"`
-	AutorejoinMysqldump                bool `mapstructure:"autorejoin-mysqldump"`
-	AutorejoinBackupBinlog             bool `mapstructure:"autorejoin-backup-binlog"`
-	AutorejoinSemisync                 bool `mapstructure:"autorejoin-semisync"`
-	LogFile                            string
+	ReadOnly                           bool   `mapstructure:"readonly"`
+	Autorejoin                         bool   `mapstructure:"autorejoin"`
+	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
+	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
+	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
+	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
+	LogFile                            string `mapstructure:"logfile"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	Timeout                            int    `mapstructure:"connect-timeout"`
 	CheckType                          string `mapstructure:"check-type"`
@@ -62,8 +62,8 @@ type Config struct {
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
-	MultiMaster                        bool
-	Spider                             bool
+	MultiMaster                        bool   `mapstructure:"multimaster"`
+	Spider                             bool   `mapstructure:"spider"`
 	BindAddr                           string `mapstructure:"http-bind-address"`
 	HttpPort                           string `mapstructure:"http-port"`
 	HttpServ                           bool   `mapstructure:"http-server"`
@@ -71,7 +71,7 @@ type Config struct {
 	HttpAuth                           bool   `mapstructure:"http-auth"`
 	HttpBootstrapButton                bool   `mapstructure:"http-bootstrap-button"`
 	SessionLifeTime                    int    `mapstructure:"http-session-lifetime"`
-	Daemon                             bool
+	Daemon                             bool   `mapstructure:"daemon"`
 	MailFrom                           string `mapstructure:"mail-from"`
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
@@ -110,9 +110,9 @@ type Config struct {
 	HaproxyWriteBindIp                 string `mapstructure:"haproxy-ip-write-bind"`
 	HaproxyReadBindIp                  string `mapstructure:"haproxy-ip-read-bind"`
 	HaproxyBinaryPath                  string `mapstructure:"haproxy-binary-path"`
-	KeyPath                            string
-	LogLevel                           int `mapstructure:"log-level"`
-	Test                               bool
+	KeyPath                            string `mapstructure:"keypath"`
+	LogLevel                           int    `mapstructure:"log-level"`
+	Test                               bool   `mapstructure:"test"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`
 	GraphiteEmbedded                   bool   `mapstructure:"graphite-embedded"`
