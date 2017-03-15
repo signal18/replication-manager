@@ -465,41 +465,68 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not shutdown monitor:%s", err)
 			}
+			m.Response()
+			if err != nil {
+				cluster.LogPrint("ERROR: MaxScale client could not shutdown monitor:%s", err)
+			}
 		} else {
 			cluster.LogPrint("INFO: MaxScale No running Monitor")
 		}
 	}
 
-	err = m.Command("set server " + cluster.master.MxsServerName + " master")
+	err = m.SetServer(cluster.master.MxsServerName, "master")
 	if err != nil {
 		cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 	}
-	err = m.Command("clear server " + cluster.master.MxsServerName + " slave")
+	err = m.ClearServer(cluster.master.MxsServerName, "slave")
 	if err != nil {
 		cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 	}
-	if err != nil {
-		cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
-	}
+
 	if cluster.conf.MxsBinlogOn == false {
 		for _, s := range cluster.slaves {
-			err = m.Command("clear server " + s.MxsServerName + " master")
+			err = m.ClearServer(s.MxsServerName, "master")
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 			}
-			err = m.Command("set server " + s.MxsServerName + " slave")
-			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+
+			if s.State != stateSlave {
+				err = m.ClearServer(s.MxsServerName, "slave")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
+				err = m.ClearServer(s.MxsServerName, "running")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
+
+			} else {
+				err = m.SetServer(s.MxsServerName, "slave")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
 			}
 		}
 		if oldmaster != nil {
-			err = m.Command("clear server " + oldmaster.MxsServerName + " master")
+			err = m.ClearServer(oldmaster.MxsServerName, "master")
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
 			}
-			err = m.Command("set server " + oldmaster.MxsServerName + " slave")
-			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+
+			if oldmaster.State != stateSlave {
+				err = m.ClearServer(oldmaster.MxsServerName, "slave")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
+				err = m.ClearServer(oldmaster.MxsServerName, "running")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
+			} else {
+				err = m.SetServer(oldmaster.MxsServerName, "slave")
+				if err != nil {
+					cluster.LogPrint("ERROR: MaxScale client could not send command:%s", err)
+				}
 			}
 		}
 
