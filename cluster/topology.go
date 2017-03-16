@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -492,12 +491,14 @@ func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
 }
 
 func (cluster *Cluster) getMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
+
 	for _, server := range cluster.servers {
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Server %s was lookup for it's master state  for rejoin : %s", server.URL, cluster.conf.PrefMaster)
-		}
+
 		if len(s.Replications) > 0 {
-			if s.Replications[0].Master_Host == server.Host && strconv.FormatUint(uint64(s.Replications[0].Master_Port), 10) == server.Port {
+			if cluster.conf.LogLevel > 2 {
+				cluster.LogPrintf("DEBUG: rejoin replication master id %d was lookup if master %s is that one : %d", s.MasterServerID, server.DSN, server.ServerID)
+			}
+			if s.MasterServerID == server.ServerID {
 				return server, nil
 			}
 		}

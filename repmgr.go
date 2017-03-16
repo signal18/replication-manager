@@ -33,6 +33,7 @@ var (
 	runUUID        string
 	repmgrHostname string
 	runStatus      string
+	slitBrain      bool
 	swChan         = make(chan bool)
 	exitMsg        string
 	exit           bool
@@ -43,6 +44,7 @@ var (
 func init() {
 	runUUID = uuid.NewV4().String()
 	runStatus = "A"
+	slitBrain = false
 	conf.FailForceGtid = true
 	//	conf := confs[cfgGroup]
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))

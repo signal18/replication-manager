@@ -48,6 +48,9 @@ verbose = true
 # TOPOLOGY
 # --------
 
+multimaster=false
+detectrelay =false
+maxscale-binlog = false
 
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
@@ -55,6 +58,7 @@ readonly = true
 failover-event-scheduler = false
 failover-event-status = false
 connect-timeout = 1
+
 
 # Enforce best practice
 # ---------------------
@@ -170,8 +174,6 @@ maxscale-pass = "mariadb"
 maxscale-write-port = 4007
 maxscale-read-port = 4008
 maxscale-read-write-port = 4006
-
-maxscale-binlog = false
 maxscale-binlog-port = 4000
 
 

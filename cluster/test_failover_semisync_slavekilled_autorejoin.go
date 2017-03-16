@@ -28,7 +28,7 @@ func (cluster *Cluster) testFailoverSemisyncSlavekilledAutoRejoin(conf string, t
 	killedSlave := cluster.slaves[0]
 	cluster.killMariaDB(killedSlave)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(5 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.waitFailover(wg)
@@ -44,7 +44,7 @@ func (cluster *Cluster) testFailoverSemisyncSlavekilledAutoRejoin(conf string, t
 	cluster.PrepareBench()
 
 	cluster.startMariaDB(killedSlave)
-	time.Sleep(4 * time.Second)
+	time.Sleep(12 * time.Second)
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.waitRejoin(wg2)

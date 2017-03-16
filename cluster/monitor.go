@@ -251,8 +251,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.FailSuspectHeartbeat = 0
 	}
 	var ss dbhelper.SlaveStatus
-	ss, err = dbhelper.GetSlaveStatus(server.Conn)
-	if err == sql.ErrNoRows {
+	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+	if errss == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
@@ -294,49 +294,54 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 		}
 		return
-	} else if err == nil {
-		// if a slave not connected to current master
+	} else if errss == nil && server.PrevState == stateFailed {
+
+		// Test if slave not connected to current master
 		mycurrentmaster, _ := server.ClusterGroup.getMasterFromReplication(server)
 
 		if mycurrentmaster != nil {
+			if server.ClusterGroup.master != nil {
 
-			if mycurrentmaster != nil && ss.Slave_IO_Running != "Yes" && server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
-				server.ClusterGroup.LogPrintf("DEBUG: Found slave to rejoin  %s slave was priviously in %s replication io thread is %s , pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
+				if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
+					server.ClusterGroup.LogPrintf("DEBUG: Found slave to rejoin  %s slave was previously in %s replication io thread is %s , pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
 
-				if mycurrentmaster.State == stateFailed && mycurrentmaster.IsRelay == false {
-					realmaster := server.ClusterGroup.master
-					slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
-					master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
-					if slave_gtid == master_gtid {
-						server.ClusterGroup.LogPrintf("DEBUG: Rejoining slave server %s to master %s", server.URL, realmaster.URL)
-						err = dbhelper.StopSlave(server.Conn)
-						if err == nil {
-							err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-								Host:      realmaster.IP,
-								Port:      realmaster.Port,
-								User:      server.ClusterGroup.rplUser,
-								Password:  server.ClusterGroup.rplPass,
-								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-								Mode:      "CURRENT_POS",
-							})
+					if mycurrentmaster.State == stateFailed && mycurrentmaster.IsRelay == false {
+						realmaster := server.ClusterGroup.master
+						slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
+						master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
+						if slave_gtid < master_gtid {
+							server.ClusterGroup.LogPrintf("DEBUG: Rejoining slave server %s to master %s", server.URL, realmaster.URL)
+							err = dbhelper.StopSlave(server.Conn)
 							if err == nil {
-								dbhelper.StartSlave(server.Conn)
+								err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+									Host:      realmaster.IP,
+									Port:      realmaster.Port,
+									User:      server.ClusterGroup.rplUser,
+									Password:  server.ClusterGroup.rplPass,
+									Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+									Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+									Mode:      "SLAVE_POS",
+								})
+								if err == nil {
+									dbhelper.StartSlave(server.Conn)
+								} else {
+									server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin indirect slave server %s, stopping slave as a precaution.", server.URL)
+									server.ClusterGroup.LogPrint(err)
+								}
 							} else {
-								server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin indirect slave server %s, stopping slave as a precaution.", server.URL)
 								server.ClusterGroup.LogPrint(err)
 							}
-						} else {
-							server.ClusterGroup.LogPrint(err)
-						}
 
-					} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {
-						server.ClusterGroup.LogPrintf("DEBUG: Slave server %s (%d) is behind master %s (%d)", server.URL, slave_gtid, realmaster.URL, master_gtid)
+						} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {
+							server.ClusterGroup.LogPrintf("DEBUG: Slave server %s (%d) is ahead of master %s (%d)", server.URL, slave_gtid, realmaster.URL, master_gtid)
+						}
 					}
 				}
-			}
 
-		}
+			} else {
+				server.ClusterGroup.LogPrintf("ERROR: slave want's to rejoin non discovred master")
+			}
+		} // end mycurrentmaster !=nil
 
 		// In case of state change, reintroduce the server in the slave list
 		if server.PrevState == stateFailed || server.PrevState == stateUnconn {
@@ -376,13 +381,17 @@ func (server *ServerMonitor) refresh() error {
 		server.IsRelay = false
 	}
 	server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
+	if err != nil {
+		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show all slaves status on %s", server.DSN)
+	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
+		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)
 		server.UsingGtid = ""
 		server.IOThread = "No"
 		server.SQLThread = "No"
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
-		server.MasterServerID = 0
+		//server.MasterServerID = 0 Do not reset as we may need it for recovery
 		server.MasterHost = ""
 		server.IOErrno = 0
 		server.IOError = ""
@@ -398,7 +407,9 @@ func (server *ServerMonitor) refresh() error {
 		server.IOThread = slaveStatus.Slave_IO_Running
 		server.SQLThread = slaveStatus.Slave_SQL_Running
 		server.Delay = slaveStatus.Seconds_Behind_Master
-		server.MasterServerID = slaveStatus.Master_Server_Id
+		if slaveStatus.Master_Server_Id != 0 {
+			server.MasterServerID = slaveStatus.Master_Server_Id
+		}
 		server.MasterHost = slaveStatus.Master_Host
 		server.IOErrno = slaveStatus.Last_IO_Errno
 		server.IOError = slaveStatus.Last_IO_Error
@@ -409,6 +420,7 @@ func (server *ServerMonitor) refresh() error {
 		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
 		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
+
 	// if MaxScale exit the variables and status part
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
@@ -462,7 +474,8 @@ func (server *ServerMonitor) refresh() error {
 	server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
-	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 0)
+	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+
 	server.ServerID = uint(sid)
 	err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
 	if err != nil {
@@ -712,7 +725,7 @@ func (server *ServerMonitor) rejoin() error {
 				Password:  server.ClusterGroup.rplPass,
 				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-				Mode:      "CURRENT_POS",
+				Mode:      "SLAVE_POS",
 			})
 		} else {
 			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
