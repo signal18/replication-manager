@@ -280,18 +280,33 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges
 	row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 	//	fmt.Println("'" + user + "',''" + host + "','" + ip + "', ''" + ip + "/255.0.0.0'" + ", ''" + ip + "/255.255.0.0'" + "','" + ip + "/255.255.255.0" + "','" + iprange1 + "','" + iprange2 + "','" + iprange3)
 	err := row.StructScan(&priv)
-	/*
-		if err != nil && err == sql.ErrNoRows {
-			row := db.QueryRowx(stmt, user, "%")
-			err = row.StructScan(&priv)
-			if err != nil && err == sql.ErrNoRows {
-				row := db.QueryRowx(stmt, user, misc.GetLocalIP())
-				err = row.StructScan(&priv)
-				return priv, err
-			}
-			return priv, err
-		} */
 	return priv, err
+}
+
+func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string) (bool, error) {
+	db.MapperFunc(strings.Title)
+
+	splitip := strings.Split(ip, ".")
+
+	iprange1 := splitip[0] + ".%.%.%"
+	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
+	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
+	stmt := "SELECT STRCMP(Password) AS pass, PASSWORD(?) AS upass FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+	rows, err := db.Query(stmt, pass, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var pass, upass string
+		err = rows.Scan(&pass, &upass)
+		if err != nil {
+			return false, err
+		}
+		if pass != upass {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func GetSlaveStatus(db *sqlx.DB) (SlaveStatus, error) {
