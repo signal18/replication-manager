@@ -3,16 +3,18 @@
 //          Stephane Varoqui  <stephane@mariadb.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
-package cluster
+package regtest
 
 import (
 	"sync"
 	"time"
+
+	"github.com/tanji/replication-manager/cluster"
 )
 
-func (cluster *Cluster) testFailoverAssyncAutoRejoinNowrites(conf string, test string) bool {
+func testFailoverAssyncAutoRejoinNowrites(cluster *cluster.Cluster, conf string, test string) bool {
 
-	if cluster.initTestCluster(conf, test) == false {
+	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}
 	cluster.SetFailSync(false)
@@ -21,43 +23,43 @@ func (cluster *Cluster) testFailoverAssyncAutoRejoinNowrites(conf string, test s
 	cluster.SetRejoin(true)
 	cluster.SetRejoinFlashback(false)
 	cluster.SetRejoinDump(false)
-	cluster.disableSemisync()
-	SaveMasterURL := cluster.master.URL
-	SaveMaster := cluster.master
+	cluster.DisableSemisync()
+	SaveMasterURL := cluster.GetMaster().URL
+	SaveMaster := cluster.GetMaster()
 
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	go cluster.waitFailover(wg)
-	cluster.killMariaDB(cluster.master)
+	go cluster.WaitFailover(wg)
+	cluster.KillMariaDB(cluster.GetMaster())
 	wg.Wait()
 	/// give time to start the failover
 
-	if cluster.master.URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.master.URL)
-		cluster.closeTestCluster(conf, test)
+	if cluster.GetMaster().URL == SaveMasterURL {
+		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
-	go cluster.waitRejoin(wg2)
-	cluster.startMariaDB(SaveMaster)
+	go cluster.WaitRejoin(wg2)
+	cluster.StartMariaDB(SaveMaster)
 	wg2.Wait()
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
-	if cluster.checkTableConsistency("test.sbtest") != true {
+	if cluster.CheckTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR: Inconsitant slave")
-		cluster.closeTestCluster(conf, test)
+		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
-	if cluster.checkSlavesRunning() == false {
+	if cluster.CheckSlavesRunning() == false {
 		cluster.LogPrintf("ERROR: replication issue")
-		cluster.closeTestCluster(conf, test)
+		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-	cluster.closeTestCluster(conf, test)
+	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

@@ -65,9 +65,9 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 				server.Process, _ = os.FindProcess(pidint)
 			}
 
-			cluster.killMariaDB(server)
+			cluster.KillMariaDB(server)
 		}
-		cluster.initMariaDB(server, cluster.cfgGroup+strconv.Itoa(k), "semisync.cnf")
+		cluster.InitMariaDB(server, cluster.cfgGroup+strconv.Itoa(k), "semisync.cnf")
 	}
 	cluster.sme.RemoveFailoverState()
 
@@ -77,7 +77,7 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.servers {
-		cluster.killMariaDB(server)
+		cluster.KillMariaDB(server)
 
 	}
 	/*server.delete(&cluster.slaves)
@@ -94,7 +94,7 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	return nil
 }
 
-func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf string) error {
+func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf string) error {
 	server.Name = name
 	server.Conf = conf
 	path := cluster.conf.WorkingDir + "/" + name
@@ -108,7 +108,7 @@ func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf str
 	}*/
 
 	time.Sleep(time.Millisecond * 2000)
-	err := cluster.startMariaDB(server)
+	err := cluster.StartMariaDB(server)
 	time.Sleep(time.Millisecond * 2000)
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
@@ -120,7 +120,7 @@ func (cluster *Cluster) initMariaDB(server *ServerMonitor, name string, conf str
 	return nil
 }
 
-func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
+func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 
 	cluster.LogPrintf("TEST : Killing MariaDB %s %d", server.Name, server.Process.Pid)
 
@@ -132,7 +132,7 @@ func (cluster *Cluster) killMariaDB(server *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) startMariaDB(server *ServerMonitor) error {
+func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
 	path := cluster.conf.WorkingDir + "/" + server.Name
 	err := os.RemoveAll(path + "/" + server.Name + ".pid")
@@ -183,7 +183,7 @@ func (cluster *Cluster) StartAllNodes() error {
 	return nil
 }
 
-func (cluster *Cluster) waitFailoverEndState() {
+func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
 		cluster.LogPrintf("TEST: Waiting for failover stopped.")
@@ -191,8 +191,8 @@ func (cluster *Cluster) waitFailoverEndState() {
 	time.Sleep(recoverTime * time.Second)
 }
 
-func (cluster *Cluster) waitFailoverEnd() error {
-	cluster.waitFailoverEndState()
+func (cluster *Cluster) WaitFailoverEnd() error {
+	cluster.WaitFailoverEndState()
 	return nil
 
 	// following code deadlock they may be cases where the channel blocked lacking a receiver
@@ -219,7 +219,7 @@ func (cluster *Cluster) waitFailoverEnd() error {
 	return nil*/
 }
 
-func (cluster *Cluster) waitFailover(wg *sync.WaitGroup) {
+func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	exitloop := 0
@@ -243,7 +243,7 @@ func (cluster *Cluster) waitFailover(wg *sync.WaitGroup) {
 	return
 }
 
-func (cluster *Cluster) waitSwitchover(wg *sync.WaitGroup) {
+func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	exitloop := 0
@@ -267,7 +267,7 @@ func (cluster *Cluster) waitSwitchover(wg *sync.WaitGroup) {
 	return
 }
 
-func (cluster *Cluster) waitRejoin(wg *sync.WaitGroup) {
+func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
@@ -298,7 +298,7 @@ func (cluster *Cluster) waitRejoin(wg *sync.WaitGroup) {
 	return
 }
 
-func (cluster *Cluster) waitMariaDBStop(server *ServerMonitor) error {
+func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
@@ -322,7 +322,7 @@ func (cluster *Cluster) waitMariaDBStop(server *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) waitBootstrapDiscovery() error {
+func (cluster *Cluster) WaitBootstrapDiscovery() error {
 	cluster.LogPrint("TEST: Waiting Bootstrap and discovery")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)

@@ -14,6 +14,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
+	"github.com/tanji/replication-manager/regtest"
 )
 
 var (
@@ -47,14 +48,15 @@ var testCmd = &cobra.Command{
 		if err != nil {
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
+		regtest := new(regtest.RegTest)
 		if showtests == false {
 			todotests := strings.Split(runtests, ",")
 			for _, test := range todotests {
-				currentCluster.RunAllTests(test)
+				regtest.RunAllTests(currentCluster, test)
 			}
 		}
 		if showtests == true {
-			log.Println(currentCluster.GetTests())
+			log.Println(regtest.GetTests())
 		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {

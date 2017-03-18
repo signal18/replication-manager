@@ -57,7 +57,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.LogPrint("INFO : Electing a new master")
 	for _, s := range cluster.slaves {
-		s.refresh()
+		s.Refresh()
 	}
 	key := cluster.electCandidate(cluster.slaves)
 	if key == -1 {
@@ -125,7 +125,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If maxsclale we should wait for relay catch via old style
 	if fail == false && cluster.conf.MxsBinlogOn == false {
 		cluster.LogPrint("INFO : Waiting for candidate Master to synchronize")
-		oldMaster.refresh()
+		oldMaster.Refresh()
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Syncing on master GTID Binlog Pos [%s]", oldMaster.BinlogPos.Sprint())
 			oldMaster.log()
@@ -138,7 +138,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	} else {
 		cluster.LogPrint("INFO : Waiting for candidate Master to apply relay log")
-		err = cluster.master.readAllRelayLogs()
+		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
 			cluster.LogPrintf("ERROR: Error while reading relay logs on candidate: %s", err)
 		}
@@ -160,7 +160,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.conf.MxsBinlogOn {
 		cluster.LogPrintf("INFO : Candidate Master Have to catch relay server log pos")
 		relaymaster = cluster.getMxsBinlogServer()
-		relaymaster.refresh()
+		relaymaster.Refresh()
 
 		binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
 		cluster.LogPrintf("INFO : Relay server log pos reach %d", binlogfiletoreach)
@@ -238,7 +238,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	if fail == false {
 		// Get latest GTID pos
-		oldMaster.refresh()
+		oldMaster.Refresh()
 		// Insert a bogus transaction in order to have a new GTID pos on master
 		err = dbhelper.FlushTables(cluster.master.Conn)
 		if err != nil {

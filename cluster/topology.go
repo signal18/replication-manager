@@ -164,7 +164,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
-		err := sv.refresh()
+		err := sv.Refresh()
 		if err != nil {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG: Server %s could not be refreshed: %s", sv.URL, err)
@@ -305,7 +305,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
 				}*/
-				if sl.hasSiblings(cluster.slaves) == false {
+				if sl.HasSiblings(cluster.slaves) == false {
 					// possibly buggy code
 					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
 					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})

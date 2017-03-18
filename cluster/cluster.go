@@ -183,7 +183,7 @@ func (cluster *Cluster) Run() {
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
-				cluster.checkfailed()
+				cluster.CheckFailed()
 				select {
 				case sig := <-cluster.switchoverChan:
 					if sig {
@@ -373,13 +373,33 @@ func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.conf.Interactive = check
 }
 
+func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
+	cluster.conf.PrefMaster = PrefMaster
+}
+
 func (cluster *Cluster) ResetFailoverCtr() {
 	cluster.failoverCtr = 0
 	cluster.failoverTs = 0
 }
 
+func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
+	cluster.failoverCtr = failoverCtr
+}
+
+func (cluster *Cluster) SetFailoverTs(failoverTs int64) {
+	cluster.failoverTs = failoverTs
+}
+
+func (cluster *Cluster) SetCheckFalsePositiveHeartbeat(CheckFalsePositiveHeartbeat bool) {
+	cluster.conf.CheckFalsePositiveHeartbeat = CheckFalsePositiveHeartbeat
+}
+
 func (cluster *Cluster) GetServers() serverList {
 	return cluster.servers
+}
+
+func (cluster *Cluster) GetSlaves() serverList {
+	return cluster.slaves
 }
 
 func (cluster *Cluster) GetMaster() *ServerMonitor {
@@ -390,9 +410,14 @@ func (cluster *Cluster) GetConf() config.Config {
 	return cluster.conf
 }
 
+func (cluster *Cluster) GetWaitTrx() int64 {
+	return cluster.conf.WaitTrx
+}
+
 func (cluster *Cluster) GetStateMachine() *state.StateMachine {
 	return cluster.sme
 }
+
 func (cluster *Cluster) GetMasterFailCount() int {
 	return cluster.master.FailCount
 }
@@ -400,6 +425,7 @@ func (cluster *Cluster) GetMasterFailCount() int {
 func (cluster *Cluster) GetFailoverCtr() int {
 	return cluster.failoverCtr
 }
+
 func (cluster *Cluster) GetFailoverTs() int64 {
 	return cluster.failoverTs
 }
@@ -421,9 +447,15 @@ func (cluster *Cluster) SetSlavesReadOnly(check bool) {
 		dbhelper.SetReadOnly(sl.Conn, check)
 	}
 }
+func (cluster *Cluster) SetReadOnly(check bool) {
+	cluster.conf.ReadOnly = check
+}
 
 func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
+}
+func (cluster *Cluster) SetRplMaxDelay(delay int64) {
+	cluster.conf.MaxDelay = delay
 }
 
 func (cluster *Cluster) SetCleanAll(check bool) {
@@ -432,6 +464,22 @@ func (cluster *Cluster) SetCleanAll(check bool) {
 
 func (cluster *Cluster) GetRplChecks() bool {
 	return cluster.conf.RplChecks
+}
+
+func (cluster *Cluster) GetMaxFail() int {
+	return cluster.conf.MaxFail
+}
+
+func (cluster *Cluster) SetFailLimit(limit int) {
+	cluster.conf.FailLimit = limit
+}
+
+func (cluster *Cluster) SetFailTime(time int64) {
+	cluster.conf.FailTime = time
+}
+
+func (cluster *Cluster) SetMasterStateFailed() {
+	cluster.master.State = stateFailed
 }
 
 func (cluster *Cluster) SetFailSync(check bool) {
@@ -524,7 +572,7 @@ func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
 }
 
-func (cluster *Cluster) getClusterProxyConn() (*sqlx.DB, error) {
+func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	var proxyHost string
 	var proxyPort string
 	proxyHost = ""

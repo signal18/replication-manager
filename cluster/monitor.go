@@ -359,7 +359,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 }
 
 /* Refresh a server object */
-func (server *ServerMonitor) refresh() error {
+func (server *ServerMonitor) Refresh() error {
 
 	err := server.Conn.Ping()
 	if err != nil {
@@ -638,7 +638,7 @@ func (server *ServerMonitor) freeze() bool {
 	return true
 }
 
-func (server *ServerMonitor) readAllRelayLogs() error {
+func (server *ServerMonitor) ReadAllRelayLogs() error {
 	ss, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
 		return err
@@ -655,7 +655,7 @@ func (server *ServerMonitor) readAllRelayLogs() error {
 }
 
 func (server *ServerMonitor) log() {
-	server.refresh()
+	server.Refresh()
 	server.ClusterGroup.LogPrintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
 	return
 }
@@ -679,7 +679,7 @@ func (server *ServerMonitor) writeState() error {
 }
 
 // check if node see same master as the passed list
-func (server *ServerMonitor) hasSiblings(sib []*ServerMonitor) bool {
+func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
 		if server.MasterServerID != sl.MasterServerID {
 			return false

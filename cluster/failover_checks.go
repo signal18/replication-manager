@@ -18,7 +18,7 @@ import (
 	"github.com/tanji/replication-manager/maxscale"
 )
 
-func (cluster *Cluster) checkfailed() {
+func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
 		cluster.LogPrintf("DEBUG: In Failover skip checking failed master")

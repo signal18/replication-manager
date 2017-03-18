@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	"github.com/tanji/replication-manager/regtest"
 )
 
 type HandlerManager struct {
@@ -230,7 +231,8 @@ func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
-	currentCluster.RunAllTests(r.URL.Query().Get("test"))
+	regtest := new(regtest.RegTest)
+	regtest.RunAllTests(currentCluster, r.URL.Query().Get("test"))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
@@ -290,7 +292,8 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
 	s.Clusters = cfgGroupList
-	s.RegTests = currentCluster.GetTests()
+	regtest := new(regtest.RegTest)
+	s.RegTests = regtest.GetTests()
 
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
@@ -429,7 +432,9 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	err := currentCluster.RunAllTests("ALL")
+	regtest := new(regtest.RegTest)
+
+	err := regtest.RunAllTests(currentCluster, "ALL")
 	if err == false {
 		currentCluster.LogPrint("ERROR: Some tests failed")
 	}
