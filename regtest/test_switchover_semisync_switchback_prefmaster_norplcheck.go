@@ -28,11 +28,9 @@ func testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cluster *cluster.Cluster
 	time.Sleep(2 * time.Second)
 	SaveMasterURL := cluster.GetMaster().URL
 	for i := 0; i < 2; i++ {
-
 		cluster.LogPrintf("TEST : New Master  %s Failover counter %d", cluster.GetMaster().URL, i)
 		cluster.SwitchoverWaitTest()
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
-
 	}
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR : Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)

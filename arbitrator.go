@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -65,6 +68,7 @@ type heartbeat struct {
 	Cluster string `json:"cluster"`
 	Master  string `json:"master"`
 	UID     int    `json:"id"`
+	Status  string `json:"status"`
 }
 
 type response struct {
@@ -212,6 +216,143 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
+	}
+
+}
+
+func Heartbeat() {
+	if cfgGroup == "arbitrator" {
+		return
+	}
+	var peerList []string
+	// try to found an active peer replication-manager
+	if conf.ArbitrationPeerHosts != "" {
+		peerList = strings.Split(conf.ArbitrationPeerHosts, ",")
+	} else {
+		return
+	}
+	splitbrain := true
+	timeout := time.Duration(2 * time.Second)
+	for _, peer := range peerList {
+		url := "http://" + peer + "/heartbeat"
+		client := &http.Client{
+			Timeout: timeout,
+		}
+		// Send the request via a client
+		// Do sends an HTTP request and
+		// returns an HTTP response
+		// Build the request
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			currentCluster.LogPrintf("ERROR :%s", err)
+			continue
+
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			currentCluster.LogPrintf("ERROR :%s", err)
+			continue
+		}
+
+		// Callers should close resp.Body
+		// when done reading from it
+		// Defer the closing of the body
+		defer resp.Body.Close()
+		monjson, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			currentCluster.LogPrintf("ERROR :%s", err)
+		}
+		// Use json.Decode for reading streams of JSON data
+		var h heartbeat
+		if err := json.Unmarshal(monjson, &h); err != nil {
+			currentCluster.LogPrintf("ERROR :%s", err)
+		} else {
+			splitbrain = false
+			if conf.LogLevel > 3 {
+				currentCluster.LogPrintf("RETURN :%s", h)
+			}
+			if h.Status == "S" {
+				runStatus = "A"
+			} else {
+				runStatus = "S"
+			}
+		}
+
+	}
+	if splitbrain {
+		currentCluster.LogPrintf("INFO : Splitbrain")
+		for _, cl := range clusters {
+
+			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
+			var mst string
+			if cl.GetMaster() != nil {
+				mst = cl.GetMaster().URL
+			}
+			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `"}`)
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+			req.Header.Set("X-Custom-Header", "myvalue")
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Do(req)
+			if err != nil {
+				cl.LogPrintf("ERROR :%s", err.Error())
+				cl.SetActiceStatus("S")
+				runStatus = "S"
+				return
+			}
+			defer resp.Body.Close()
+
+			body, _ := ioutil.ReadAll(resp.Body)
+			//if string(body) == `{\"heartbeat\":\"succed\"}` {
+			//	cl.LogPrintf("response :%s", string(body))
+			//}
+
+			// request arbitration for the cluster
+			cl.LogPrintf("CHECK: External Abitration")
+
+			url = "http://" + conf.ArbitrationSasHosts + "/arbitrator"
+			req, err = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+			req.Header.Set("X-Custom-Header", "myvalue")
+			req.Header.Set("Content-Type", "application/json")
+
+			client = &http.Client{Timeout: timeout}
+			resp, err = client.Do(req)
+			if err != nil {
+				cl.LogPrintf("ERROR :%s", err.Error())
+				cl.SetActiceStatus("S")
+				runStatus = "S"
+				return
+			}
+			defer resp.Body.Close()
+
+			body, _ = ioutil.ReadAll(resp.Body)
+
+			type response struct {
+				Arbitration string `json:"arbitration"`
+			}
+			var r response
+			err = json.Unmarshal(body, &r)
+			if err != nil {
+				cl.LogPrintf("ERROR :abitrator says invalid JSON")
+				cl.SetActiceStatus("S")
+				runStatus = "S"
+				return
+
+			}
+			if r.Arbitration == "winner" {
+				cl.LogPrintf("INFO :Arbitrator say :winner")
+				cl.SetActiceStatus("A")
+				runStatus = "A"
+				return
+			}
+			cl.LogPrintf("INFO :Arbitrator say :looser")
+			cl.SetActiceStatus("S")
+			runStatus = "S"
+			return
+
+		}
+
 	}
 
 }

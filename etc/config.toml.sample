@@ -132,11 +132,13 @@ failover-falsepositive-maxscale = false
 failover-falsepositive-maxscale-timeout = 14
 
 
-# Enterpise SAS key
-failover-falsepositive-external = false
+# Enterpise SAS identity
+arbitration-external = false
 arbitration-external-secret = "13787932529099014144"
-arbitration-external-hosts = "http://www.scrambledb.org:80"
-arbitration-external-unique-id = 0 //set unique value on each replication-manager
+arbitration-external-hosts = "88.191.151.84:80"
+arbitration-peer-hosts ="127.0.0.1:10002"
+#set unique value on each replication-manager
+arbitration-external-unique-id = 0
 
 # SWITCHOVER
 # ----------

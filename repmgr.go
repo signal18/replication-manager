@@ -68,7 +68,6 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveHeartbeatTimeout, "failover-falsepositive-heartbeat-timeout", 3, "Failover checks that slaves do not receive hearbeat detection timeout ")
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
-	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveSas, "failover-falsepositive-external", false, "Failover checks in sas")
 	monitorCmd.Flags().BoolVar(&conf.ForceSlaveHeartbeat, "force-slave-heartbeat", false, "Automatically activate heartbeat on slave")
 	monitorCmd.Flags().IntVar(&conf.ForceSlaveHeartbeatRetry, "force-slave-heartbeat-retry", 5, "Replication heartbeat retry on slave")
 	monitorCmd.Flags().IntVar(&conf.ForceSlaveHeartbeatTime, "force-slave-heartbeat-time", 3, "Replication heartbeat time")
@@ -139,9 +138,11 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
 	monitorCmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
+	monitorCmd.Flags().BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
 	monitorCmd.Flags().StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "")
-	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "http://wwww.scrambledb.org:80", "")
+	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "88.191.151.84:80", "")
 	monitorCmd.Flags().IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique instance idententifier")
+	monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10002", "replication-manager hosts http port")
 
 	viper.BindPFlags(monitorCmd.Flags())
 
@@ -274,7 +275,9 @@ Interactive console and HTTP dashboards are available for control`,
 		if conf.LogLevel >= 2 {
 			log.Debug("%+v", conf)
 		}
-
+		if conf.Arbitration == true {
+			runStatus = "S"
+		}
 		if !conf.Daemon {
 			err := termbox.Init()
 			if err != nil {
@@ -345,7 +348,9 @@ Interactive console and HTTP dashboards are available for control`,
 
 			select {
 			case <-ticker.C:
-
+				if conf.Arbitration {
+					Heartbeat()
+				}
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:

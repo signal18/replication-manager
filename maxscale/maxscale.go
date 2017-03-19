@@ -115,7 +115,6 @@ func (m *MaxScale) Close() {
 }
 func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	client := &http.Client{}
-
 	// Send the request via a client
 	// Do sends an HTTP request and
 	// returns an HTTP response

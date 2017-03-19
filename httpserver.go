@@ -183,6 +183,7 @@ func httpserver() {
 		router.HandleFunc("/sysbench", handlerSysbench)
 		router.HandleFunc("/setactive", handlerSetActive)
 		router.HandleFunc("/dashboard.js", handlerJS)
+		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
@@ -213,6 +214,7 @@ func httpserver() {
 		http.HandleFunc("/sysbench", handlerSysbench)
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
+		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
 	if confs[cfgGroup].Verbose {
@@ -307,6 +309,18 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
+	}
+}
+
+func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var send heartbeat
+	send.UUID = runUUID
+	send.UID = conf.ArbitrationSasUniqueId
+	send.Secret = conf.ArbitrationSasSecret
+	send.Status = runStatus
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if err := json.NewEncoder(w).Encode(send); err != nil {
+		panic(err)
 	}
 }
 

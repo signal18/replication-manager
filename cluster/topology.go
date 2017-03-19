@@ -134,11 +134,6 @@ func (cluster *Cluster) pingServerList() {
 			}
 		}(sv)
 
-		if cluster.conf.CheckFalsePositiveHeartbeat {
-			if cluster.sme.GetHeartbeats()%10 == 0 {
-				cluster.Heartbeat()
-			}
-		}
 	}
 
 	wg.Wait()

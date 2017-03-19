@@ -160,12 +160,12 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 func (cluster *Cluster) isActiveArbitration() bool {
 
-	if cluster.conf.CheckFalsePositiveSas == false {
+	if cluster.conf.Arbitration == false {
 		return true
 	}
 	cluster.LogPrintf("CHECK: Failover External Abitration")
 
-	url := cluster.conf.ArbitrationSasHosts + "/arbitrator"
+	url := "http://" + cluster.conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
 	if cluster.master != nil {
 		mst = cluster.master.URL

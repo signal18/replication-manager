@@ -6,11 +6,8 @@
 package cluster
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -538,6 +535,10 @@ func (cluster *Cluster) GetRejoinFlashback() bool {
 	return cluster.conf.AutorejoinFlashback
 }
 
+func (cluster *Cluster) GetName() string {
+	return cluster.cfgGroup
+}
+
 func (cluster *Cluster) SetTestMode(check bool) {
 	cluster.conf.Test = check
 }
@@ -548,6 +549,10 @@ func (cluster *Cluster) GetTestMode() bool {
 
 func (cluster *Cluster) SetTestStopCluster(check bool) {
 	cluster.testStopCluster = check
+}
+
+func (cluster *Cluster) SetActiceStatus(status string) {
+	cluster.runStatus = status
 }
 func (cluster *Cluster) SetTestStartCluster(check bool) {
 	cluster.testStartCluster = check
@@ -601,34 +606,6 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	cluster.LogPrint(dsn)
 	return sqlx.Open("mysql", dsn)
 
-}
-
-func (cluster *Cluster) Heartbeat() {
-	if cluster.conf.CheckFalsePositiveSas == false {
-		return
-	}
-	url := cluster.conf.ArbitrationSasHosts + "/heartbeat"
-	var mst string
-	if cluster.master != nil {
-		mst = cluster.master.URL
-	}
-	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.conf.ArbitrationSasUniqueId) + `}`)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		cluster.LogPrintf("ERROR :%s", err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	if string(body) == `{\"heartbeat\":\"succed\"}` {
-		cluster.LogPrintf("response :%s", string(body))
-	}
 }
 
 func (cluster *Cluster) agentFlagCheck() {
