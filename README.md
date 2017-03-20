@@ -577,7 +577,7 @@ title = "arbitrator"
 And start it via
 /usr/bin/replication-manager arbitrator --arbitrator-port=80
 
-##Metrics
+## Metrics
 
 replication-manager 1.1 embed a graphite server and can serve as a carbon relay server, some graph are display via the giraffe JS library in the internal http server. One can create it's own dashboard via Grafana.
 
@@ -585,7 +585,7 @@ very few metrics are yet push inside carbon, the metrics are pushed with the ser
 
 Contact the authors for contributions or custom metrics to be added.
 
-##Non-regression tests
+## Non-regression tests
 
 A testing framework is available via http or in command line.
 Setting the `test` variable in the predefined testing cluster in config file:
@@ -626,7 +626,7 @@ ALL is a special test to run all available tests.
 ./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
 ```
 
-##System requirements
+## System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
 On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
