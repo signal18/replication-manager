@@ -122,8 +122,8 @@ td {
 							<th>Last Failover Time</th>
 						</tr>
 						<tr>
-							<td><span ng-if="settings.runstatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runstatus=='P'" class="label label-warning">PASSIVE</span></td>
-
+							<td><span ng-if="settings.runstatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span></td>
+what the fuck
 							<td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
 							<td>{{settings.lastfailover}}</td>
 						</tr>
@@ -175,9 +175,8 @@ td {
 					<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
 					<button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
 					<label for="test" action="/runonetest" ><p class="sectionheader">Tests: </p></label>
-						<select  name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
+						<select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
 							<option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
-
 						</select>
 
 					</td><td>
@@ -193,8 +192,6 @@ td {
 		 </md-tab>
 		 <md-tab label="SLA">
 			 <md-content class="md-padding">
-
-
 				 <p class="sectionheader">SLA</p>
 				 <table ng-if="settings" class="table">
 					 <tr>
