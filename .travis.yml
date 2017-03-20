@@ -4,11 +4,6 @@ go:
 - tip
 install: true
 script: go test -v .
-git:
-  submodules: false
-before_install:
-- sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
-- git submodule update --init --recursive
 before_deploy:
 - GOARCH=arm GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
 - GOARCH=386 GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
