@@ -6,3 +6,4 @@ copyright.*
 *.tar.gz
 build
 maxscale*.rpm
+data/*
