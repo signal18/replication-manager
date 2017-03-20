@@ -176,7 +176,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 			if sv.IsRelay == false {
 				//	set State stateSlave or SlaveLate
 				sv.replicationCheck()
-
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
@@ -306,6 +305,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
 					// cluster.conf.MultiMaster = true
 				}
+				if sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
+					sl.IsRelay = true
+					sl.State = stateRelay
+				}
 			}
 		}
 	}
@@ -426,7 +429,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port) == false {
-						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", cluster.master.URL, cluster.master.Host), ErrFrom: "TOPO"})
+						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", sl.URL, cluster.master.URL), ErrFrom: "TOPO"})
 					}
 					if sl.LogBin == "OFF" {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})

@@ -130,7 +130,8 @@ failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
 failover-falsepositive-maxscale = false
 failover-falsepositive-maxscale-timeout = 14
-
+failover-falsepositive-external = false
+failover-falsepositive-external-port = 80
 
 # Enterpise SAS identity
 arbitration-external = false

@@ -693,6 +693,15 @@ func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 	return true
 }
 
+func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
+	for _, sl := range sib {
+		if server.ServerID == sl.MasterServerID {
+			return true
+		}
+	}
+	return false
+}
+
 func (server *ServerMonitor) delete(sl *serverList) {
 	lsm := *sl
 	for k, s := range lsm {

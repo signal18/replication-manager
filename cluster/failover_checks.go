@@ -27,7 +27,7 @@ func (cluster *Cluster) CheckFailed() {
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-			if cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
+			if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
 				cluster.MasterFailover(true)
 				cluster.failoverCond.Send <- true
 			} else {
@@ -199,5 +199,24 @@ func (cluster *Cluster) isActiveArbitration() bool {
 		return true
 	}
 	cluster.LogPrintf("INFO :Arbitrator say :looser")
+	return false
+}
+
+func (cluster *Cluster) isExternalOk() bool {
+	if cluster.conf.CheckFalsePositiveExternal == false {
+		return false
+	}
+	cluster.LogPrintf("CHECK: Failover External Request")
+	if cluster.master == nil {
+		return false
+	}
+	url := "http://" + cluster.master.Host + ":" + strconv.Itoa(cluster.conf.CheckFalsePositiveExternalPort)
+	req, err := http.Get(url)
+	if err != nil {
+		return false
+	}
+	if req.StatusCode == 200 {
+		return true
+	}
 	return false
 }

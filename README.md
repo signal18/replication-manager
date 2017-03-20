@@ -188,11 +188,30 @@ A user can change this check based on what is reported by SLA in sync, and decid
 
 Since version 1.1 all replicas and Maxscale can be questioned for consensus detection of leader death:
 
+The default configuration is to check only for replication heartbeat
+
+
 ```
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
 failover-falsepositive-maxscale = true
 failover-falsepositive-maxscale-timeout = 14
+```
+
+It possible to check the death master status via some additional inetd or xinet or any http agent.
+
+```
+failover-falsepositive-external = true
+failover-falsepositive-external-port = 80
+```
+
+The agent should return header of style in case he think the master is still alive
+```
+HTTP/1.1 200 OK\r\n
+Content-Type: text/plain\r\n
+Connection: close\r\n
+Content-Length: 40\r\n
+\r\n
 ```
 
 ### Rejoining old leader

@@ -88,6 +88,8 @@ type Config struct {
 	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
 	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
 	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
+	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
+	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-host"`
@@ -131,7 +133,6 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
-
-	ReplicationSSL bool `mapstructure:"replication-use-ssl"`
-	FailForceGtid  bool //suspicious code
+	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
+	FailForceGtid                      bool   //suspicious code
 }
