@@ -18,6 +18,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Using Haproxy](#using-haproxy)
 - [Using Multi-master](#using-multi-master)
 - [Force best practices](#force-best-practices)
+- [Active standby with external arbitrator](#active-standby-with-external-arbitrator)
 - [Metrics](#metrics)
 - [Non-regression tests](#non-regression-tests)
 - [System requirements](#system-requirements)
@@ -516,7 +517,7 @@ force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true
 ```
-## Active Standby replication-manager with external arbitrator
+##Active standby with external arbitrator
 
 When inside a single zone we would flavor single replication-manager to failover  using keepalived or corosync or etcd but if you run on 2 DC it is possible to run two replication-manager in the same infrastructure. Both replication-manager will start pinging each others via the http mode so make sure you activate the web mode of replication-manager
 
