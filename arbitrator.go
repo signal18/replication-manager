@@ -341,12 +341,12 @@ func Heartbeat() {
 
 			}
 			if r.Arbitration == "winner" {
-				cl.LogPrintf("INFO :Arbitrator say :winner")
+				cl.LogPrintf("INFO :Arbitrator say winner")
 				cl.SetActiceStatus("A")
 				runStatus = "A"
 				return
 			}
-			cl.LogPrintf("INFO :Arbitrator say :looser")
+			cl.LogPrintf("INFO :Arbitrator say looser")
 			cl.SetActiceStatus("S")
 			runStatus = "S"
 			return

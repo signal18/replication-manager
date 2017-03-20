@@ -516,6 +516,66 @@ force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true
 ```
+## Active Standby replication-manager with external arbitrator
+
+When inside a single zone we would flavor single replication-manager to failover  using keepalived or corosync or etcd but if you run on 2 DC it is possible to run two replication-manager in the same infrastructure. Both replication-manager will start pinging each others via the http mode so make sure you activate the web mode of replication-manager
+
+To enable standby replication-manager activate the following setting on both replication-manager
+
+```
+# Enterpise SAS identity
+arbitration-external = true
+arbitration-external-secret = "1378793252.mariadb.com"
+arbitration-external-hosts = "88.191.151.84:80"
+arbitration-peer-hosts ="127.0.0.1:10002"
+# Unique value on each replication-manager
+arbitration-external-unique-id = 0
+```
+
+Give each arbitration-external-unique-id some different value, this define the unique replication-manager instance
+
+Also define one secret arbitration-external-secret it should be unique across all users of replication-manager, it is use to identify your cluster, organization name and random alpha-numeric is very welcome, declare this name to our team. If you wan't to enforce unicity.
+
+Give each instance it's peer replication-manager node
+
+On instance "127.0.0.1:10001"
+arbitration-peer-hosts ="127.0.0.1:10002"
+
+On instance "127.0.0.1:10002"
+arbitration-peer-hosts ="127.0.0.1:10001"    
+
+Once done start one replication-manager.
+
+```
+INFO[2017-03-20T09:48:38+01:00] [cluster_test_2_nodes] ERROR :Get http://127.0.0.1:10001/heartbeat: dial tcp 127.0.0.1:10001: getsockopt: connection refused
+INFO[2017-03-20T09:48:38+01:00] [cluster_test_2_nodes] INFO : Splitbrain     
+INFO[2017-03-20T09:48:38+01:00] [cluster_test_3_nodes] CHECK: External Abitration
+INFO[2017-03-20T09:48:38+01:00] [cluster_test_3_nodes] INFO :Arbitrator say winner
+INFO[2017-03-20T09:48:40+01:00] [cluster_test_2_nodes] ERROR :Get http://127.0.0.1:10001/heartbeat: dial tcp 127.0.0.1:10001: getsockopt: connection refused
+INFO[2017-03-20T09:48:40+01:00] [cluster_test_2_nodes] INFO : Splitbrain     
+INFO[2017-03-20T09:48:40+01:00] [cluster_test_3_nodes] CHECK: External Abitration
+INFO[2017-03-20T09:48:40+01:00] [cluster_test_3_nodes] INFO Arbitrator say :winner
+```
+
+What can be observe is the split brain detection. Because your are the first instance to start, the peer replication-manager is not joinable so it ask for an arbitration to arbitration-external-hosts = "88.191.151.84:80", provided to you as a SAS deployment of the arbitrator daemon. The arbitrator will enable that node to enter Active Mode  
+
+When you start the peer replication-manager, the split brain is resolve and replication-manager will detect an other active instance is running so it will get the Standby mode
+
+Note that failover in such mode is also requesting an arbitration. If arbitrator can't be contacted, you can come back to normal command line mode to failover but make sure you stopped all other replication-manager running .
+
+It's possible to run a private arbitrator via similar configuration
+
+```
+[arbitrator]
+hosts = "192.168.0.201:3306"
+user = "user:password"
+title = "arbitrator"     
+[default]
+```
+
+And start it via
+/usr/bin/replication-manager arbitrator --arbitrator-port=80
+
 ##Metrics
 
 replication-manager 1.1 embed a graphite server and can serve as a carbon relay server, some graph are display via the giraffe JS library in the internal http server. One can create it's own dashboard via Grafana.
@@ -620,6 +680,7 @@ Custom builds can be provide on request to stephane@mariadb.com and guillaume@si
  * Force replication best practice
  * Non regression tests via command line
  * Maxscale binlog server support
+ * Active Standby replication-manager via external arbitrator
 
 ### 1.1 Roadmap
 
