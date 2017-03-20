@@ -29,7 +29,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Contributors](#contributors)
 - [Authors](#authors)
 
-##Overview
+## Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
 
   * Verify replication settings
@@ -52,7 +52,7 @@ __replication-manager__ is commonly used as an arbitrator and drive a proxy that
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-##Why replication-manager
+## Why replication-manager
 
 Leader Election Cluster is best used in such scenarios:
 
@@ -86,7 +86,7 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-##Howto stay in sync
+## Howto stay in sync
 
 If the replication can be monitored in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
@@ -152,7 +152,7 @@ A good practice is to enable slow query detection on slaves using in slow query 
 log_slow_slave_statements = 1
 ```
 
-##Switchover workflow
+## Switchover workflow
 
 __replication-manager__ prevents additional writes to set READ_ONLY flag on the old leader, if routers are still sending Write Transactions, they can pile-up until timeout, despite being killed by __replication-manager__.
 
@@ -165,7 +165,7 @@ extra_max_connections = 10
 ```   
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
 
-##Failover workflow
+## Failover workflow
 
 After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
 
@@ -220,11 +220,11 @@ autorejoin-flashback = true
 autorejoin-mysqldump = false
 ```
 
-##Using Maxscale
+## Using Maxscale
 
 Replication-Manager can operate with MaxScale in 3 modes,  
 
-###Mode 1
+### Mode 1
 passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup best works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
 
 Example settings:
@@ -278,7 +278,7 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
-###Mode 2
+### Mode 2
 
 Operating MaxScale without monitoring is the second Replication-Manager mode via:
 This mode was introduce in version 1.1 and is control via
@@ -287,7 +287,7 @@ maxscale-monitor = false
 ```
 replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
 
-###Mode 3
+### Mode 3
 
 Driving replication-manager from Maxscale
 
@@ -334,7 +334,7 @@ part of task https://github.com/mariadb-corporation/MaxScale/tree/MXS-1075
   transaction_safety=On,mariadb10-compatibility=On,mariadb_gtid=On
 ```  
 
-##Using Haproxy
+## Using Haproxy
 
 Haproxy can be used but only in same server as replication-manager, replication-manager will prepare a configuration file for haproxy for every cluster that it manage, this template is located in the share directory used by replication-manager. For safety haproxy is not stopped when replication-manager is stopped
 
@@ -348,7 +348,7 @@ haproxy-write-port = 3306
 haproxy-read-port = 3307
 ```
 
-##Command line client
+## Command line client
 
 Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
 
@@ -358,7 +358,7 @@ Run replication-manager in non-interactive failover mode, using full host and po
 
 `replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
-##Command line monitoring
+## Command line monitoring
 
 Start replication-manager in console mode to monitor the cluster:
 
@@ -378,7 +378,7 @@ Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
 ```
 
-##Daemon monitoring
+## Daemon monitoring
 
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
@@ -396,7 +396,7 @@ Start replication-manager in automatic daemon mode:
 
 This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
 
-##Usage
+## Usage
 
 ```
   agent       Starts replication monitoring agent
@@ -460,7 +460,7 @@ Global Flags:
       --verbose          Print detailed execution info
 ```
 
-##Configuration file
+## Configuration file
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
@@ -471,11 +471,11 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-##Use External scripts
+## Use External scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
-##Using multi master
+## Using multi master
 
 `replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 
@@ -497,7 +497,7 @@ passwd=mypwd
 detect_stale_master=true
 ```
 
-##Force best practices
+## Force best practices
 
 Since version 1.1 replication can enforce the best practices about the replication usage. It dynamically configure the MariaDB it does monitor. Note that such enforcement will be lost if replication manager monitoring is shutdown and the MariaDB restarted. The command line usage do not enforce but default config file do, so disable what may not be possible in your custom production setup.   
 
@@ -517,7 +517,7 @@ force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true
 ```
-##Active standby with external arbitrator
+## Active standby with external arbitrator
 
 When inside a single zone we would flavor single replication-manager to failover  using keepalived or corosync or etcd but if you run on 2 DC it is possible to run two replication-manager in the same infrastructure. Both replication-manager will start pinging each others via the http mode so make sure you activate the web mode of replication-manager
 
@@ -631,21 +631,21 @@ ALL is a special test to run all available tests.
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
 On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
 
-##Bugs
+## Bugs
 
 Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
-##Downloads
+## Downloads
 
 Check https://github.com/tanji/replication-manager/releases for releases
 
 Custom builds can be provide on request to stephane@mariadb.com and guillaume@signal18.io  
 
-##Contributors
+## Contributors
 
 [Building from source](BUILD.md)
 
-##Features
+## Features
 
 ### 1.0 Features GA
 
@@ -691,7 +691,7 @@ Custom builds can be provide on request to stephane@mariadb.com and guillaume@si
  * MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
 
 
-##Authors
+## Authors
 
 Guillaume Lefranc <guillaume@signal18.io>
 
@@ -709,6 +709,6 @@ This program is free software; you can redistribute it and/or modify it under th
 
 You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 
-##Version
+## Version
 
-__replication-manager__ 1.0.0
+__replication-manager__ 1.1.0
