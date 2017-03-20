@@ -11,7 +11,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Switchover workflow](#switchover-workflow)
 - [Failover workflow](#failover-workflow)
 - [Command line client](#command-line)
-- [Command line monitoring](#Command-line monitoring)
+- [Command line monitoring](#Command-line-monitoring)
 - [Daemon monitoring](#daemon-monitoring)
 - [Configuration file](#configuration-file)
 - [Using Maxscale](#using-maxscale)
