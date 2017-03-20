@@ -558,8 +558,13 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
 
-	if server.ClusterGroup.sme.IsInFailover() || server.State == stateMaster || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
+	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
 		return "Master OK"
+	}
+	if server.ClusterGroup.master != nil {
+		if server.ServerID == server.ClusterGroup.master.ServerID {
+			return "Master OK"
+		}
 	}
 	if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 		if server.SQLThread == "Yes" && server.IOThread == "No" {
