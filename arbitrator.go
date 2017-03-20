@@ -224,6 +224,8 @@ func Heartbeat() {
 	if cfgGroup == "arbitrator" {
 		return
 	}
+	bcksplitbrain := splitBrain
+
 	var peerList []string
 	// try to found an active peer replication-manager
 	if conf.ArbitrationPeerHosts != "" {
@@ -231,7 +233,7 @@ func Heartbeat() {
 	} else {
 		return
 	}
-	splitbrain := true
+	splitBrain = true
 	timeout := time.Duration(2 * time.Second)
 	for _, peer := range peerList {
 		url := "http://" + peer + "/heartbeat"
@@ -244,13 +246,17 @@ func Heartbeat() {
 		// Build the request
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			currentCluster.LogPrintf("ERROR :%s", err)
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR :%s", err)
+			}
 			continue
 
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			currentCluster.LogPrintf("ERROR :%s", err)
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR :%s", err)
+			}
 			continue
 		}
 
@@ -267,7 +273,7 @@ func Heartbeat() {
 		if err := json.Unmarshal(monjson, &h); err != nil {
 			currentCluster.LogPrintf("ERROR :%s", err)
 		} else {
-			splitbrain = false
+			splitBrain = false
 			if conf.LogLevel > 3 {
 				currentCluster.LogPrintf("RETURN :%s", h)
 			}
@@ -279,8 +285,10 @@ func Heartbeat() {
 		}
 
 	}
-	if splitbrain {
-		currentCluster.LogPrintf("INFO : Splitbrain")
+	if splitBrain {
+		if bcksplitbrain != splitBrain {
+			currentCluster.LogPrintf("INFO : Splitbrain")
+		}
 		for _, cl := range clusters {
 
 			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
@@ -309,8 +317,9 @@ func Heartbeat() {
 			//}
 
 			// request arbitration for the cluster
-			cl.LogPrintf("CHECK: External Abitration")
-
+			if bcksplitbrain != splitBrain {
+				cl.LogPrintf("CHECK: External Abitration")
+			}
 			url = "http://" + conf.ArbitrationSasHosts + "/arbitrator"
 			req, err = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
@@ -341,12 +350,16 @@ func Heartbeat() {
 
 			}
 			if r.Arbitration == "winner" {
-				cl.LogPrintf("INFO :Arbitrator say winner")
+				if bcksplitbrain != splitBrain {
+					cl.LogPrintf("INFO :Arbitrator say winner")
+				}
 				cl.SetActiceStatus("A")
 				runStatus = "A"
 				return
 			}
-			cl.LogPrintf("INFO :Arbitrator say looser")
+			if bcksplitbrain != splitBrain {
+				cl.LogPrintf("INFO :Arbitrator say looser")
+			}
 			cl.SetActiceStatus("S")
 			runStatus = "S"
 			return

@@ -163,6 +163,7 @@ func httpserver() {
 		router.HandleFunc("/setcluster", handlerSetCluster)
 		router.HandleFunc("/runonetest", handlerSetOneTest)
 		router.HandleFunc("/master", handlerMaster)
+		router.HandleFunc("/slaves", handlerSlaves)
 		router.HandleFunc("/log", handlerLog)
 		router.HandleFunc("/switchover", handlerSwitchover)
 		router.HandleFunc("/failover", handlerFailover)
@@ -194,6 +195,7 @@ func httpserver() {
 		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/runonetest", handlerSetOneTest)
 		http.HandleFunc("/master", handlerMaster)
+		http.HandleFunc("/slaves", handlerSlaves)
 		http.HandleFunc("/log", handlerLog)
 		http.HandleFunc("/switchover", handlerSwitchover)
 		http.HandleFunc("/failover", handlerFailover)
@@ -249,6 +251,15 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
 	err := e.Encode(currentCluster.GetServers())
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+func handlerSlaves(w http.ResponseWriter, r *http.Request) {
+	e := json.NewEncoder(w)
+	err := e.Encode(currentCluster.GetSlaves())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
