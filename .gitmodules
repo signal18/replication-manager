@@ -1,3 +1,0 @@
-[submodule "dashboard"]
-	path = dashboard
-	url = git@github.com:tanji/replication-manager-dashboard.git
