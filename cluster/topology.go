@@ -169,7 +169,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.MxsOn {
 			sv.getMaxscaleInfos(&m)
 		}
-		if sv.UsingGtid != "" || sv.IsRelay {
+		if sv.UsingGtid != "" {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
 			}
@@ -299,17 +299,19 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
 				}*/
-				if sl.HasSiblings(cluster.slaves) == false {
+				if sl.HasSiblings(cluster.slaves) == false && cluster.conf.MultiTierSlave == false {
 					// possibly buggy code
 					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
 					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
 					// cluster.conf.MultiMaster = true
 				}
-				if sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
-					sl.IsRelay = true
-					sl.State = stateRelay
-				}
 			}
+			if sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
+				cluster.LogPrintf("DEBUG: Yes HasSlaves %s", sl.DSN)
+				sl.IsRelay = true
+				sl.State = stateRelay
+			}
+
 		}
 	}
 	if cluster.conf.MultiMaster == true {

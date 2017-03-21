@@ -112,6 +112,8 @@ const (
 	stateProv        string = "Provision"
 	stateMasterAlone string = "MasterAlone"
 	stateRelay       string = "Relay"
+	stateRelayErr    string = "RelayErr"
+	stateRelayLate   string = "RelayLate"
 )
 
 /* Initializes a server object */
@@ -127,7 +129,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
 	// consider all nodes are relay if maxscale avoid  sending command until discoverd
-	server.IsRelay = true
+	server.IsRelay = false
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
 	server.URL = url
@@ -305,7 +307,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
 					server.ClusterGroup.LogPrintf("DEBUG: Found slave to rejoin  %s slave was previously in %s replication io thread is %s , pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
 
-					if mycurrentmaster.State == stateFailed && mycurrentmaster.IsRelay == false {
+					if (mycurrentmaster.State == stateFailed || server.ClusterGroup.conf.MultiTierSlave == false) && mycurrentmaster.IsRelay == false {
 						realmaster := server.ClusterGroup.master
 						slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
 						master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
@@ -374,11 +376,10 @@ func (server *ServerMonitor) Refresh() error {
 			server.State = stateRelay
 		} else {
 			server.IsMaxscale = false
-			server.IsRelay = false
 		}
 	} else {
 		server.IsMaxscale = false
-		server.IsRelay = false
+
 	}
 	server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	if err != nil {
@@ -566,32 +567,62 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Master OK"
 		}
 	}
-	if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
-		if server.SQLThread == "Yes" && server.IOThread == "No" {
-			server.State = stateSlaveErr
-			return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
-		} else if server.SQLThread == "No" && server.IOThread == "Yes" {
-			server.State = stateSlaveErr
-			return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
-		} else if server.SQLThread == "No" && server.IOThread == "No" {
-			server.State = stateSlaveErr
-			return "NOT OK, ALL Stopped"
-		} else if server.IOThread == "Connecting" {
+	if server.IsRelay == false && server.IsMaxscale == false {
+		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
+			if server.SQLThread == "Yes" && server.IOThread == "No" {
+				server.State = stateSlaveErr
+				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
+				server.State = stateSlaveErr
+				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+			} else if server.SQLThread == "No" && server.IOThread == "No" {
+				server.State = stateSlaveErr
+				return "NOT OK, ALL Stopped"
+			} else if server.IOThread == "Connecting" {
+				server.State = stateSlave
+				return "NOT OK, IO Connecting"
+			}
 			server.State = stateSlave
-			return "NOT OK, IO Connecting"
+			return "Running OK"
+		}
+		if server.Delay.Int64 > 0 {
+			if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
+				server.State = stateSlaveLate
+			} else {
+				server.State = stateSlave
+			}
+			return "Behind master"
 		}
 		server.State = stateSlave
-		return "Running OK"
 	}
-	if server.Delay.Int64 > 0 {
-		if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
-			server.State = stateSlaveLate
-		} else {
-			server.State = stateSlave
+	if server.IsRelay {
+		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
+			if server.SQLThread == "Yes" && server.IOThread == "No" {
+				server.State = stateRelayErr
+				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
+				server.State = stateRelayErr
+				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+			} else if server.SQLThread == "No" && server.IOThread == "No" {
+				server.State = stateRelayErr
+				return "NOT OK, ALL Stopped"
+			} else if server.IOThread == "Connecting" {
+				server.State = stateRelay
+				return "NOT OK, IO Connecting"
+			}
+			server.State = stateRelay
+			return "Running OK"
 		}
-		return "Behind master"
+		if server.Delay.Int64 > 0 {
+			if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
+				server.State = stateRelayLate
+			} else {
+				server.State = stateRelay
+			}
+			return "Behind master"
+		}
+		server.State = stateRelay
 	}
-	server.State = stateSlave
 	return "Running OK"
 }
 
