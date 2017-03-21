@@ -624,7 +624,7 @@ func GetEventStatus(db *sqlx.DB) ([]Event, error) {
 }
 
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
-	stmt := "ALTER DEFINER='" + ev.Definer + "' EVENT "
+	stmt := "ALTER DEFINER=" + ev.Definer + " EVENT "
 	if status == 3 {
 		stmt = stmt + ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
 	} else {
