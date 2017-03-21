@@ -656,9 +656,11 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 ## Downloads
 
-Check https://github.com/tanji/replication-manager/releases for releases
+As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
 
-Custom builds can be provide on request to stephane@mariadb.com and guillaume@signal18.io  
+Check https://github.com/tanji/replication-manager/releases for official releases.
+
+Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
 
 ## Contributors
 
