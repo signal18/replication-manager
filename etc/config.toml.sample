@@ -48,8 +48,8 @@ verbose = true
 # TOPOLOGY
 # --------
 
-multimaster=false
-detectrelay =false
+multimaster = false
+multi-tier-slave = false
 maxscale-binlog = false
 
 # Automatically rejoin a failed server to the current master

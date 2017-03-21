@@ -63,6 +63,7 @@ type Config struct {
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
 	MultiMaster                        bool   `mapstructure:"multimaster"`
+	MultiTierSlave                     bool   `mapstructure:"multi-tier-slave"`
 	Spider                             bool   `mapstructure:"spider"`
 	BindAddr                           string `mapstructure:"http-bind-address"`
 	HttpPort                           string `mapstructure:"http-port"`

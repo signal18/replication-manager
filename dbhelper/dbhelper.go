@@ -27,9 +27,10 @@ import (
 const debug = false
 
 type Event struct {
-	Db     string
-	Name   string
-	Status int64
+	Db      string
+	Name    string
+	Definer string
+	Status  int64
 }
 
 type Processlist struct {
@@ -345,7 +346,7 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64) ,cluster varchar(128),uid int , uuid varchar(128),  master varchar(128) , date timestamp,arbitration_date timestamp, status CHAR(1) DEFAULT 'U' ,PRIMARY KEY(secret,cluster,uid) ) engine=innodb"
+	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64) ,cluster varchar(128),uid int , uuid varchar(128),  master varchar(128) , date timestamp,arbitration_date timestamp, status CHAR(1) DEFAULT 'U', hosts INT DEFAULT 0, failed INT DEFAULT 0, PRIMARY KEY(secret,cluster,uid) ) engine=innodb"
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
@@ -353,16 +354,16 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 	return err
 }
 
-func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) error {
+func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) error {
 
-	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "'"
+	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster, hosts , failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + " ) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
 
 	var count int
-	stmt = "SELECT count(distinct master) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'"
+	stmt = "SELECT count(distinct master) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "' AND date > NOW()-interval 10 second"
 	err = db.QueryRowx(stmt).Scan(&count)
 	if err == nil && count == 1 {
 		stmt = "UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster='" + cluster + "' AND secret='" + secret + "'"
@@ -386,39 +387,46 @@ func ForgetArbitration(db *sqlx.DB, secret string) error {
 	return nil
 }
 
-func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int) bool {
+func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) bool {
 	var count int
 	stmt := "START TRANSACTION"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return false
 	}
+	// count the number of replication manager Elected that is not me for this cluster
 	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uid<>" + strconv.Itoa(uid) + " FOR UPDATE "
 	err = db.QueryRowx(stmt).Scan(&count)
+	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
-		stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(), NOW(),'" + cluster + "') ON DUPLICATE KEY UPDATE arbitration_date=NOW(),date=NOW(),master='" + master + "',status='E', uuid='" + uuid + "'"
-		_, err = db.Exec(stmt)
-		if err != nil {
+		// A non elected replication-manager may see more nodes than me than in this case lose the election
+		stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('U') and uid<>" + strconv.Itoa(uid) + "  and failed <" + strconv.Itoa(failed) + " FOR UPDATE "
+		err = db.QueryRowx(stmt).Scan(&count)
+		if err == nil && count == 0 {
+			stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(), NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + ") ON DUPLICATE KEY UPDATE arbitration_date=NOW(),date=NOW(),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
+			_, err = db.Exec(stmt)
+			if err != nil {
+				stmt = "COMMIT"
+				_, err = db.Exec(stmt)
+				if err != nil {
+					return false
+				}
+			}
 			stmt = "COMMIT"
 			_, err = db.Exec(stmt)
 			if err != nil {
 				return false
 			}
-		}
-		stmt = "COMMIT"
-		_, err = db.Exec(stmt)
-		if err != nil {
-			return false
-		}
-		return true
-	} else {
+			return true
+		} else {
 
-		stmt = "COMMIT"
-		_, err = db.Exec(stmt)
-		if err != nil {
+			stmt = "COMMIT"
+			_, err = db.Exec(stmt)
+			if err != nil {
+				return false
+			}
 			return false
 		}
-		return false
 	}
 	return false
 }
@@ -608,7 +616,7 @@ func GetEventStatus(db *sqlx.DB) ([]Event, error) {
 	udb := db.Unsafe()
 
 	ss := []Event{}
-	err := udb.Select(&ss, "SELECT db as Db, name as Name, status+0  AS Status FROM mysql.event")
+	err := udb.Select(&ss, "SELECT db as Db, name as Name, definer as Definer, status+0  AS Status FROM mysql.event")
 	if err != nil {
 		return nil, errors.New("Could not get event status")
 	}
@@ -616,7 +624,7 @@ func GetEventStatus(db *sqlx.DB) ([]Event, error) {
 }
 
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
-	stmt := "ALTER EVENT "
+	stmt := "ALTER DEFINER='" + ev.Definer + "' EVENT "
 	if status == 3 {
 		stmt = stmt + ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
 	} else {

@@ -69,6 +69,8 @@ type heartbeat struct {
 	Master  string `json:"master"`
 	UID     int    `json:"id"`
 	Status  string `json:"status"`
+	Hosts   int    `json:"hosts"`
+	Failed  int    `json:"failed"`
 }
 
 type response struct {
@@ -129,7 +131,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var send response
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
-	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID)
+	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	db.Close()
 	if res {
 		send.Arbitration = "winner"
@@ -167,7 +169,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
-	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID)
+	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
@@ -289,14 +291,51 @@ func Heartbeat() {
 		if bcksplitbrain != splitBrain {
 			currentCluster.LogPrintf("INFO : Splitbrain")
 		}
-		for _, cl := range clusters {
 
+		// report arbitrator
+		for _, cl := range clusters {
+			if cl.LostMajority() {
+				if bcksplitbrain != splitBrain {
+					currentCluster.LogPrintf("INFO : Database cluster lost majority ")
+				}
+			}
 			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
 			var mst string
 			if cl.GetMaster() != nil {
 				mst = cl.GetMaster().URL
 			}
-			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `"}`)
+			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+			req.Header.Set("X-Custom-Header", "myvalue")
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Do(req)
+			if err != nil {
+				cl.LogPrintf("ERROR :%s", err.Error())
+				cl.SetActiceStatus("S")
+				runStatus = "S"
+				return
+			}
+			defer resp.Body.Close()
+
+		}
+		// give a chance to other partitions to report if just happened
+		if bcksplitbrain != splitBrain {
+			time.Sleep(5 * time.Second)
+		}
+		// request arbitration for the cluster
+		for _, cl := range clusters {
+
+			if bcksplitbrain != splitBrain {
+				cl.LogPrintf("CHECK: External Abitration")
+			}
+			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
+			var mst string
+			if cl.GetMaster() != nil {
+				mst = cl.GetMaster().URL
+			}
+			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
 			req.Header.Set("Content-Type", "application/json")
@@ -312,33 +351,10 @@ func Heartbeat() {
 			defer resp.Body.Close()
 
 			body, _ := ioutil.ReadAll(resp.Body)
-			//if string(body) == `{\"heartbeat\":\"succed\"}` {
-			//	cl.LogPrintf("response :%s", string(body))
-			//}
-
-			// request arbitration for the cluster
-			if bcksplitbrain != splitBrain {
-				cl.LogPrintf("CHECK: External Abitration")
-			}
-			url = "http://" + conf.ArbitrationSasHosts + "/arbitrator"
-			req, err = http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-			req.Header.Set("X-Custom-Header", "myvalue")
-			req.Header.Set("Content-Type", "application/json")
-
-			client = &http.Client{Timeout: timeout}
-			resp, err = client.Do(req)
-			if err != nil {
-				cl.LogPrintf("ERROR :%s", err.Error())
-				cl.SetActiceStatus("S")
-				runStatus = "S"
-				return
-			}
-			defer resp.Body.Close()
-
-			body, _ = ioutil.ReadAll(resp.Body)
 
 			type response struct {
 				Arbitration string `json:"arbitration"`
+				Master      string `json:"master"`
 			}
 			var r response
 			err = json.Unmarshal(body, &r)

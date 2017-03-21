@@ -504,3 +504,26 @@ func (cluster *Cluster) getMasterFromReplication(s *ServerMonitor) (*ServerMonit
 	}
 	return nil, nil
 }
+
+// CountFailed Count number of failed node
+func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
+	failed := 0
+	for _, server := range cluster.servers {
+		if server.State == stateFailed {
+			failed = failed + 1
+		}
+	}
+	return failed
+}
+
+// LostMajority should be call in case of splitbrain to set maintenance mode
+func (cluster *Cluster) LostMajority() bool {
+	failed := cluster.CountFailed(cluster.servers)
+	alive := len(cluster.servers) - failed
+	if alive > len(cluster.servers)/2 {
+		return false
+	} else {
+		return true
+	}
+
+}
