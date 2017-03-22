@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestHasSiblings(t *testing.T) {
-	if !Tservers[0].hasSiblings(Tservers) {
+	if !Tservers[0].HasSiblings(Tservers) {
 		t.Fatal("Returned false, expected true")
 	}
 }

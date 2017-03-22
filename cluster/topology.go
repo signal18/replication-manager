@@ -307,7 +307,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 				}
 			}
 			if sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
-				cluster.LogPrintf("DEBUG: Yes HasSlaves %s", sl.DSN)
 				sl.IsRelay = true
 				sl.State = stateRelay
 			}
@@ -478,7 +477,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 	return nil
 }
 
-func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
+func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Server %s was lookup if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
@@ -490,7 +489,7 @@ func (cluster *Cluster) getMxsBinlogServer() *ServerMonitor {
 	return nil
 }
 
-func (cluster *Cluster) getMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
+func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.servers {
 

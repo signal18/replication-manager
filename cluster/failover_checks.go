@@ -84,16 +84,20 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
 
 	for _, s := range cluster.slaves {
-
-		status, _ := dbhelper.GetStatusAsInt(s.Conn)
-		saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-		cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
-		time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
-		status2, _ := dbhelper.GetStatusAsInt(s.Conn)
-		cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
-		if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-			cluster.LogPrintf("ERROR: Can't failover,  slave %s still see the master ", s.DSN)
-			return true
+		relaycheck, _ := cluster.GetMasterFromReplication(s)
+		if relaycheck != nil {
+			if relaycheck.IsRelay == false {
+				status, _ := dbhelper.GetStatusAsInt(s.Conn)
+				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
+				cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+				time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
+				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
+				cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
+					cluster.LogPrintf("ERROR: Can't failover,  slave %s still see the master ", s.DSN)
+					return true
+				}
+			}
 		}
 	}
 	return false

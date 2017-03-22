@@ -157,9 +157,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
-	if cluster.conf.MxsBinlogOn {
+	if cluster.conf.MxsBinlogOn || cluster.conf.MultiTierSlave {
 		cluster.LogPrintf("INFO : Candidate Master Have to catch relay server log pos")
-		relaymaster = cluster.getMxsBinlogServer()
+		relaymaster = cluster.GetRelayServer()
 		relaymaster.Refresh()
 
 		binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])

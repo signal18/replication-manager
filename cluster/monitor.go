@@ -299,7 +299,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	} else if errss == nil && server.PrevState == stateFailed {
 
 		// Test if slave not connected to current master
-		mycurrentmaster, _ := server.ClusterGroup.getMasterFromReplication(server)
+		mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 
 		if mycurrentmaster != nil {
 			if server.ClusterGroup.master != nil {
@@ -746,6 +746,33 @@ func (server *ServerMonitor) delete(sl *serverList) {
 	*sl = lsm
 }
 
+// UseGtid  check is replication use gtid
+func (server *ServerMonitor) UsedGtidAtElection() bool {
+	if server.ClusterGroup.conf.LogLevel > 1 {
+		server.ClusterGroup.LogPrintf("DEBUG: Rejoin Server use gtid %s", server.UsingGtid)
+	}
+	// An old master  master do no have replication
+	if len(server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()) > 0 {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (server *ServerMonitor) isReplicationAheadOfMasterElection() bool {
+	if server.UsedGtidAtElection() {
+		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
+			return true
+		}
+		return false
+	} else {
+		if server.ClusterGroup.master.FailoverMasterLogFile == server.MasterLogFile && server.MasterLogPos == server.ClusterGroup.master.FailoverMasterLogPos {
+			return false
+		}
+		return true
+	}
+}
+
 func (server *ServerMonitor) rejoin() error {
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
@@ -753,14 +780,15 @@ func (server *ServerMonitor) rejoin() error {
 	}
 
 	realmaster := server.ClusterGroup.master
-	if server.ClusterGroup.conf.MxsBinlogOn {
-		realmaster = server.ClusterGroup.getMxsBinlogServer()
+	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
+		realmaster = server.ClusterGroup.GetRelayServer()
 	}
+
 	server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 	server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 
-	if (server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) == server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID))) || server.ClusterGroup.conf.MxsBinlogOn {
-		server.ClusterGroup.LogPrintf("INFO : Found same current GTID %s  and new master %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
+	if server.isReplicationAheadOfMasterElection() == false || server.ClusterGroup.conf.MxsBinlogOn {
+		server.ClusterGroup.LogPrintf("INFO : Found same or lower  GTID %s  and new elected master was %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
 		var err error
 		if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
 			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
