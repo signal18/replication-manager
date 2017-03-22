@@ -185,9 +185,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	case "CURRENT_POS":
 		cm += ", MASTER_USE_GTID=CURRENT_POS"
 	case "MXS":
-		cm += "', master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+		cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
 	case "POSITIONAL":
-		cm += "' MASTER_USE_GTID=NO , master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+		cm += ", MASTER_USE_GTID=NO , master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
 	}
 	if opt.SSL {
 		cm += ", MASTER_USE_SSL=1"

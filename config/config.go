@@ -48,6 +48,7 @@ type Config struct {
 	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`
 	ForceSlaveHeartbeatRetry           int    `mapstructure:"force-slave-heartbeat-retry"`
 	ForceSlaveGtid                     bool   `mapstructure:"force-slave-gtid-mode"`
+	ForceSlaveNoGtid                   bool   `mapstructure:"force-slave-no-gtid-mode"`
 	ForceSlaveSemisync                 bool   `mapstructure:"force-slave-semisync"`
 	ForceSlaveReadOnly                 bool   `mapstructure:"force-slave-readonly"`
 	ForceBinlogRow                     bool   `mapstructure:"force-binlog-row"`

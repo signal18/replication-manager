@@ -475,6 +475,9 @@ func (cluster *Cluster) SetFailTime(time int64) {
 	cluster.conf.FailTime = time
 }
 
+func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
+	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
+}
 func (cluster *Cluster) SetMasterStateFailed() {
 	cluster.master.State = stateFailed
 }
@@ -530,6 +533,7 @@ func (cluster *Cluster) GetRejoinSemisync() bool {
 func (cluster *Cluster) SetRejoinFlashback(check bool) {
 	cluster.conf.AutorejoinFlashback = check
 }
+
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
 	cluster.conf.MultiTierSlave = multitierslave
 }

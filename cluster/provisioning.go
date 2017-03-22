@@ -439,7 +439,7 @@ func (cluster *Cluster) Bootstrap() error {
 		cluster.LogPrint("WARN : RESET MASTER failed on master")
 	}
 	// master-slave
-	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
+	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false && cluster.conf.ForceSlaveNoGtid == false {
 
 		for key, server := range cluster.servers {
 			if key == masterKey {
@@ -464,6 +464,45 @@ func (cluster *Cluster) Bootstrap() error {
 		}
 		cluster.LogPrintf("INFO : Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
+	//Old style replication
+	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false && cluster.conf.ForceSlaveNoGtid == true {
+		masterKey := 0
+		for key, server := range cluster.servers {
+
+			if key == masterKey {
+				server.Refresh()
+				dbhelper.FlushTables(server.Conn)
+				dbhelper.SetReadOnly(server.Conn, false)
+				continue
+			} else {
+
+				err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.servers[masterKey].IP,
+					Port:      cluster.servers[masterKey].Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "POSITIONAL",
+					Logfile:   cluster.servers[masterKey].MasterLogFile,
+					Logpos:    cluster.servers[masterKey].MasterLogPos,
+				})
+				if err != nil {
+					cluster.sme.RemoveFailoverState()
+					return errors.New(fmt.Sprintln("ERROR:", err))
+				}
+				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
+				if err != nil {
+					cluster.sme.RemoveFailoverState()
+					return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+				}
+				dbhelper.SetReadOnly(server.Conn, true)
+			}
+		}
+		cluster.LogPrintf("INFO : Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
+	}
+
+	// Slave realy
 	if cluster.conf.MultiTierSlave == true {
 		masterKey = 0
 		relaykey := 1

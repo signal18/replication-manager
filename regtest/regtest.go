@@ -22,6 +22,7 @@ var tests = []string{
 	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync",
 	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
 	"testFailoverAssyncAutoRejoinRelay",
+	"testFailoverAssyncAutoRejoinNoGtid",
 	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync",
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync",
 	"testFailoverNoRplChecksNoSemiSync",
@@ -53,6 +54,13 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
 
+	if test == "testFailoverAssyncAutoRejoinNoGtid" || test == "ALL" {
+		res = testFailoverAssyncAutoRejoinNoGtid(cluster, "semisync.cnf", "testFailoverAssyncAutoRejoinNoGtid")
+		allTests["testFailoverAssyncAutoRejoinNoGtid"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
 	if test == "testFailoverAssyncAutoRejoinRelay" || test == "ALL" {
 		res = testFailoverAssyncAutoRejoinRelay(cluster, "semisync.cnf", "testFailoverAssyncAutoRejoinRelay")
 		allTests["testFailoverAssyncAutoRejoinRelay"] = regtest.getTestResultLabel(res)

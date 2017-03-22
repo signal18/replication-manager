@@ -117,7 +117,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		if err != nil {
 			cluster.LogPrintf("Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("Checksum slave table test.sbtest =  %s ", checksum)
+			cluster.LogPrintf("Checksum slave table test.sbtest =  %s ", checksumslave)
 		}
 		if checksumslave != checksum {
 			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
