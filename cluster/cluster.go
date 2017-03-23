@@ -475,9 +475,6 @@ func (cluster *Cluster) SetFailTime(time int64) {
 	cluster.conf.FailTime = time
 }
 
-func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
-	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
-}
 func (cluster *Cluster) SetMasterStateFailed() {
 	cluster.master.State = stateFailed
 }
@@ -534,8 +531,20 @@ func (cluster *Cluster) SetRejoinFlashback(check bool) {
 	cluster.conf.AutorejoinFlashback = check
 }
 
+// topology setter
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
 	cluster.conf.MultiTierSlave = multitierslave
+}
+
+func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
+	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
+}
+
+func (cluster *Cluster) SetMultiMaster(multimaster bool) {
+	cluster.conf.MultiMaster = multimaster
+}
+func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
+	cluster.conf.MxsBinlogOn = binlogserver
 }
 
 func (cluster *Cluster) GetRejoinFlashback() bool {

@@ -6,17 +6,23 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 
 - [Overview](#overview)
 - [Why replication-manager](#why-replication-manager)
-- [Usage](#usage)
-- [Howto stay in sync](#howto-stay-in-sync)
+- [Staying in sync](#howto-stay-in-sync)
+- [Using parallel replication](#using-parallel-replication)
+- [Using semi-synchronous replication](#using-semi-synchronous-replication)
 - [Switchover workflow](#switchover-workflow)
 - [Failover workflow](#failover-workflow)
-- [Command line client](#command-line)
-- [Command line monitoring](#Command-line-monitoring)
-- [Daemon monitoring](#daemon-monitoring)
-- [Configuration file](#configuration-file)
+- [Usage](#usage)
+- [Command line switchover](#command-line-switchover)
+- [Command line failover](#command-line-failover)
+- [Command line monitor](#Command-line-monitor)
+- [Command line bootstrap](#Command-line-bootstap)
+- [Using monitor in daemon mode](#daemon-monitoring)
+- [Using configuration files](#using-configuration-files)
+- [Using external scripts](#using-external-scripts)
 - [Using Maxscale](#using-maxscale)
 - [Using Haproxy](#using-haproxy)
-- [Using Multi-master](#using-multi-master)
+- [Using Multi Master](#using-multi-master)
+- [Using Multi Tier Slave](#using-multi-tier-slave)
 - [Force best practices](#force-best-practices)
 - [Active standby with external arbitrator](#active-standby-with-external-arbitrator)
 - [Metrics](#metrics)
@@ -86,13 +92,13 @@ We can classify SLA and failover scenario into 3 cases:
   * Replica stream not sync but state allows failover      
   * Replica stream not sync but state does not allow failover
 
-## Howto stay in sync
+## Staying in sync
 
 If the replication can be monitored in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 
 In order to reach this state most of the time, we advise following settings:
 
-### Running replication at full speed
+### Using parallel replication
 
 The history of MariaDB replication has reached a point where replication can almost in any case catch up with the master. It can be ensured using new features like Group Commit improvement, optimistic in-order parallel replication and semi-synchronous replication.
 
@@ -107,7 +113,7 @@ sync_binlog = 1
 log_slave_updates = ON
 ```
 
-### Usage of semi-synchronous replication
+### Using semi-synchronous replication
 
 Semi-synchronous replication enables to delay transaction commit until the transactional event reaches at least one replica. The "In Sync" status will be lost only when a tunable replication delay is attained. This Sync status is checked by __replication-manager__ to compute the last SLA metrics, the time we may auto-failover without losing data and when we can reintroduce the dead leader without re-provisioning it.
 
@@ -367,54 +373,6 @@ haproxy-write-port = 3306
 haproxy-read-port = 3307
 ```
 
-## Command line client
-
-Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
-
-`replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
-
-Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
-
-`replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
-
-## Command line monitoring
-
-Start replication-manager in console mode to monitor the cluster:
-
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
-
-![mrmconsole](https://cloud.githubusercontent.com/assets/971260/16738035/45f2bbf2-4794-11e6-8286-65f9a3179e31.png)
-
-The console mode accepts several commands:
-
-```
-Ctrl-D  Print debug information
-Ctrl-F  Manual Failover
-Ctrl-I  Toggle automatic/manual failover mode
-Ctrl-R  Set slaves read-only
-Ctrl-S  Switchover
-Ctrl-Q  Quit
-Ctrl-W  Set slaves read-write
-```
-
-## Daemon monitoring
-
-Start replication-manager in background to monitor the cluster, using the http server to control the daemon
-
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
-
-The http server is accessible on http://localhost:10001 by default, and looks like this:
-
-![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
-
-The http dashboard is an experimental angularjs application, please don't use it in production as it has no protected access for now (or use creativity to restrict access to it).
-
-Start replication-manager in automatic daemon mode:
-
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --interactive=false`
-
-This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
-
 ## Usage
 
 ```
@@ -479,7 +437,62 @@ Global Flags:
       --verbose          Print detailed execution info
 ```
 
-## Configuration file
+## Command line switchover
+
+Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
+
+`replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
+
+## Command line failover
+Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+
+`replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
+
+## Command line bootstrap
+With some already exiting database nodes but no replication  setup replication-manager enable you to init the replication on various topology
+master-slave | master-slave-no-gtid | maxscale-binlog | multi-master | multi-tier-slave
+
+`replication-manager --config-group=cluster_test_3_nodes bootstrap --clean-all --topology="multi-tier-slave"`
+
+## Command line monitor
+
+Start replication-manager in console mode to monitor the cluster:
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
+
+![mrmconsole](https://cloud.githubusercontent.com/assets/971260/16738035/45f2bbf2-4794-11e6-8286-65f9a3179e31.png)
+
+The console mode accepts several commands:
+
+```
+Ctrl-D  Print debug information
+Ctrl-F  Manual Failover
+Ctrl-I  Toggle automatic/manual failover mode
+Ctrl-R  Set slaves read-only
+Ctrl-S  Switchover
+Ctrl-Q  Quit
+Ctrl-W  Set slaves read-write
+```
+
+## Using monitor in daemon mode
+
+Start replication-manager in background to monitor the cluster, using the http server to control the daemon
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
+
+The http server is accessible on http://localhost:10001 by default, and looks like this:
+
+![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
+
+The http dashboard is an experimental angularjs application, please don't use it in production as it has no protected access for now (or use creativity to restrict access to it).
+
+Start replication-manager in automatic daemon mode:
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --interactive=false`
+
+This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
+
+## Using configuration files
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
@@ -490,7 +503,7 @@ The management user needs at least the following privileges: `SUPER`, `REPLICATI
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
-## Use External scripts
+## Using external scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
@@ -515,6 +528,14 @@ user=myuser
 passwd=mypwd
 detect_stale_master=true
 ```
+## Using Muti Tier slaves
+
+Replication-Manager have support for replication tree or relay slaves architecture, in case of master death one of the slaves under the relay is promoted as a master.   
+Add following parameter to your cluster section
+```
+multi-tier-slave=true
+```
+
 
 ## Force best practices
 

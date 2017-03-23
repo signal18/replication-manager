@@ -29,7 +29,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
 	bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
-	//bootstrapCmd.Flags().StringVar(&conf.Topology, "topology", "master-slave", "master-slave|master-master|maxscale-binlog|master-relay")
+	bootstrapCmd.Flags().StringVar(&conf.Topology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave")
 	bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 }
 
@@ -42,6 +42,33 @@ var bootstrapCmd = &cobra.Command{
 
 		currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
 		currentCluster.CleanAll = cleanall
+		switch conf.Topology {
+		case "master-slave":
+			currentCluster.SetMultiTierSlave(false)
+			currentCluster.SetForceSlaveNoGtid(false)
+			currentCluster.SetMultiMaster(false)
+			currentCluster.SetBinlogServer(false)
+		case "master-slave-no-gtid":
+			currentCluster.SetMultiTierSlave(false)
+			currentCluster.SetForceSlaveNoGtid(true)
+			currentCluster.SetMultiMaster(false)
+			currentCluster.SetBinlogServer(false)
+		case "multi-master":
+			currentCluster.SetMultiTierSlave(false)
+			currentCluster.SetForceSlaveNoGtid(false)
+			currentCluster.SetMultiMaster(true)
+			currentCluster.SetBinlogServer(false)
+		case "multi-tier-slave":
+			currentCluster.SetMultiTierSlave(true)
+			currentCluster.SetForceSlaveNoGtid(false)
+			currentCluster.SetMultiMaster(false)
+			currentCluster.SetBinlogServer(false)
+		case "maxscale-binlog":
+			currentCluster.SetMultiTierSlave(false)
+			currentCluster.SetForceSlaveNoGtid(false)
+			currentCluster.SetMultiMaster(false)
+			currentCluster.SetBinlogServer(true)
+		}
 		err := currentCluster.Bootstrap()
 		if err != nil {
 			log.WithError(err).Error("Error bootstrapping replication")

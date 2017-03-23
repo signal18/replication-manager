@@ -128,7 +128,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.HaveBinlogAnnotate = true
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
-	// consider all nodes are relay if maxscale avoid  sending command until discoverd
+	// consider all nodes are maxscale to avoid sending command until discoverd
 	server.IsRelay = false
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
