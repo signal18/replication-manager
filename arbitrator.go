@@ -74,7 +74,8 @@ type heartbeat struct {
 }
 
 type response struct {
-	Arbitration string `json:"arbitration"`
+	Arbitration   string `json:"arbitration"`
+	ElectedMaster string `json:"master"`
 }
 
 var (
@@ -132,11 +133,14 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	electedmaster := dbhelper.GetArbitrationMaster(db.Conn, h.Secret, h.Cluster)
 	db.Close()
 	if res {
 		send.Arbitration = "winner"
+		send.ElectedMaster = electedmaster
 	} else {
 		send.Arbitration = "looser"
+		send.ElectedMaster = electedmaster
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusCreated)

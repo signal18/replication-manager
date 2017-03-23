@@ -431,6 +431,17 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 	return false
 }
 
+func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
+	var master string
+	// count the number of replication manager Elected that is not me for this cluster
+	stmt := "SELECT master FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E')  FOR UPDATE "
+	err := db.QueryRowx(stmt).Scan(&master)
+	if err == nil {
+		return master
+	}
+	return ""
+}
+
 // SetStatusActiveHeartbeat abitrator can set or remove electetion flag "E"
 func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string, uid int) error {
 
