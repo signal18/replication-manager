@@ -659,7 +659,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor) bool {
 
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
-		cluster.LogPrintf("WARN : Slave %s do not ping or have no binlogs. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		return false
 	}
 	if ss.Seconds_Behind_Master.Int64 > cluster.conf.MaxDelay && cluster.conf.RplChecks == true {
@@ -671,7 +671,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor) bool {
 		return false
 	}
 	if sl.SemiSyncSlaveStatus == false && cluster.conf.FailSync == true && cluster.conf.RplChecks == true {
-		cluster.LogPrintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		return false
 	}
 
@@ -694,7 +694,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 		return false
 	}
 	if cluster.conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
-		cluster.LogPrintf("WARN : In-sync is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		return false
 	}
 	if sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync == true && cluster.conf.RplChecks == true {
