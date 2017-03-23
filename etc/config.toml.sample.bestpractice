@@ -62,21 +62,21 @@ connect-timeout = 1
 
 # Enforce best practice
 # ---------------------
-force-slave-heartbeat= false
+force-slave-heartbeat= true
 force-slave-heartbeat-retry = 5
 force-slave-heartbeat-time = 3
-force-slave-gtid-mode = false
-force-slave-semisync = false
-force-slave-readonly = false
-force-binlog-row = false
-force-binlog-annotate = false
-force-binlog-slowqueries = false
+force-slave-gtid-mode = true
+force-slave-semisync = true
+force-slave-readonly = true
+force-binlog-row = true
+force-binlog-annotate = true
+force-binlog-slowqueries = true
 force-inmemory-binlog-cache-size = false
 force-disk-relaylog-size-limit = false
 force-disk-relaylog-size-limit-size = 1000000000
-force-sync-binlog = false
-force-sync-innodb = false
-force-binlog-checksum = false
+force-sync-binlog = true
+force-sync-innodb = true
+force-binlog-checksum = true
 
 # HTTP
 # ----
@@ -123,7 +123,7 @@ failcount-reset-time = 300
 # Cancel failover when replication delay is more than N seconds
 failover-limit = 3
 failover-time-limit = 10
-failover-at-sync = false
+failover-at-sync = true
 failover-max-slave-delay = 30
 
 failover-falsepositive-heartbeat = true
@@ -152,7 +152,7 @@ switchover-wait-kill = 5000
 switchover-wait-trx = 10
 switchover-wait-write-query = 10
 switchover-at-equal-gtid = false
-switchover-at-sync = false
+switchover-at-sync = true
 switchover-max-slave-delay = 30
 
 # MAXSCALE PROXY

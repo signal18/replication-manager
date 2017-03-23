@@ -22,7 +22,7 @@ mkdir -p build/etc/init.d
 mkdir -p build/var/lib/replication-manager
 echo "# Copying files to build dir"
 cp replication-manager build/usr/bin/
-cp etc/config.toml.sample build/etc/replication-manager/config.toml.sample
+cp etc/* build/etc/replication-manager/
 cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp -r share/* build/usr/share/replication-manager/
 cp service/replication-manager.service build/etc/systemd/system
