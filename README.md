@@ -15,7 +15,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Command line switchover](#command-line-switchover)
 - [Command line failover](#command-line-failover)
 - [Command line monitor](#Command-line-monitor)
-- [Command line bootstrap](#Command-line-bootstap)
+- [Command line bootstrap](#Command-line-bootstrap)
 - [Using monitor in daemon mode](#daemon-monitoring)
 - [Using configuration files](#using-configuration-files)
 - [Using external scripts](#using-external-scripts)
@@ -24,7 +24,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Using Multi Master](#using-multi-master)
 - [Using Multi Tier Slave](#using-multi-tier-slave)
 - [Force best practices](#force-best-practices)
-- [Active standby with external arbitrator](#active-standby-with-external-arbitrator)
+- [Active standby and external arbitrator](#active-standby-and-external-arbitrator)
 - [Metrics](#metrics)
 - [Non-regression tests](#non-regression-tests)
 - [System requirements](#system-requirements)
@@ -444,11 +444,13 @@ Run replication-manager in switchover mode with master host db1 and slaves db2 a
 `replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
 
 ## Command line failover
+
 Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
 `replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
 ## Command line bootstrap
+
 With some already exiting database nodes but no replication  setup replication-manager enable you to init the replication on various topology
 master-slave | master-slave-no-gtid | maxscale-binlog | multi-master | multi-tier-slave
 
@@ -528,6 +530,7 @@ user=myuser
 passwd=mypwd
 detect_stale_master=true
 ```
+
 ## Using Muti Tier slaves
 
 Replication-Manager have support for replication tree or relay slaves architecture, in case of master death one of the slaves under the relay is promoted as a master.   
@@ -535,7 +538,6 @@ Add following parameter to your cluster section
 ```
 multi-tier-slave=true
 ```
-
 
 ## Force best practices
 
@@ -557,7 +559,7 @@ force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true
 ```
-## Active standby with external arbitrator
+## Active standby and external arbitrator
 
 When inside a single zone we would flavor single replication-manager to failover  using keepalived or corosync or etcd but if you run on 2 DC it is possible to run two replication-manager in the same infrastructure. Both replication-manager will start pinging each others via the http mode so make sure you activate the web mode of replication-manager
 
