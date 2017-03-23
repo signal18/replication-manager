@@ -398,7 +398,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
 		if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
-			cluster.LogPrintf("DEBUG: Enforce semisync non Master %s", cluster.master.DSN)
+			cluster.LogPrintf("DEBUG: Enforce semisync on Master %s", cluster.master.DSN)
 			dbhelper.InstallSemiSync(cluster.master.Conn)
 		}
 		if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {

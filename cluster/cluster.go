@@ -547,6 +547,15 @@ func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
 	cluster.conf.MxsBinlogOn = binlogserver
 }
 
+func (cluster *Cluster) SetMasterReadOnly() {
+	if cluster.GetMaster() != nil {
+		err := dbhelper.SetReadOnly(cluster.master.Conn, true)
+		if err != nil {
+			cluster.LogPrintf("ERROR: Could not set  master as read-only, %s", err)
+		}
+	}
+}
+
 func (cluster *Cluster) GetRejoinFlashback() bool {
 	return cluster.conf.AutorejoinFlashback
 }

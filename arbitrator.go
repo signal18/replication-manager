@@ -324,7 +324,7 @@ func Heartbeat() {
 		if bcksplitbrain != splitBrain {
 			time.Sleep(5 * time.Second)
 		}
-		// request arbitration for the cluster
+		// request arbitration for all cluster
 		for _, cl := range clusters {
 
 			if bcksplitbrain != splitBrain {
@@ -345,6 +345,7 @@ func Heartbeat() {
 			if err != nil {
 				cl.LogPrintf("ERROR :%s", err.Error())
 				cl.SetActiceStatus("S")
+				cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
 			}
@@ -361,6 +362,7 @@ func Heartbeat() {
 			if err != nil {
 				cl.LogPrintf("ERROR :abitrator says invalid JSON")
 				cl.SetActiceStatus("S")
+				cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
 
@@ -375,6 +377,12 @@ func Heartbeat() {
 			}
 			if bcksplitbrain != splitBrain {
 				cl.LogPrintf("INFO :Arbitrator say looser")
+				if cl.GetMaster() != nil {
+					mst = cl.GetMaster().URL
+				}
+				if r.Master != mst {
+					cl.SetMasterReadOnly()
+				}
 			}
 			cl.SetActiceStatus("S")
 			runStatus = "S"
