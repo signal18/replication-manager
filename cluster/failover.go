@@ -694,11 +694,11 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 		return false
 	}
 	if cluster.conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
-		cluster.LogPrintf("WARN : Slave %s not in sync. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : In-sync is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		return false
 	}
 	if sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync == true && cluster.conf.RplChecks == true {
-		cluster.LogPrintf("WARN : Slave %s not in semi-sync in sync. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		return false
 	}
 	if ss.Seconds_Behind_Master.Valid == false && cluster.conf.RplChecks == true {
@@ -707,7 +707,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
-		cluster.LogPrintf("WARN : Slave %s is relay. Skipping", sl.URL)
+		cluster.LogPrintf("WARN : Slave %s is a relay slave. Skipping", sl.URL)
 		return false
 	}
 	return true
