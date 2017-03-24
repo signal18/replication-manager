@@ -364,7 +364,7 @@ func Heartbeat() {
 			var r response
 			err = json.Unmarshal(body, &r)
 			if err != nil {
-				cl.LogPrintf("ERROR :abitrator says invalid JSON")
+				cl.LogPrintf("ERROR: Arbitrator says invalid JSON")
 				cl.SetActiceStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"
@@ -373,14 +373,14 @@ func Heartbeat() {
 			}
 			if r.Arbitration == "winner" {
 				if bcksplitbrain != splitBrain {
-					cl.LogPrintf("INFO :Arbitrator say winner")
+					cl.LogPrintf("INFO: Arbitrator says winner")
 				}
 				cl.SetActiceStatus("A")
 				runStatus = "A"
 				return
 			}
 			if bcksplitbrain != splitBrain {
-				cl.LogPrintf("INFO :Arbitrator say looser")
+				cl.LogPrintf("INFO: Arbitrator says loser")
 				if cl.GetMaster() != nil {
 					mst = cl.GetMaster().URL
 				}
