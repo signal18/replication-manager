@@ -670,7 +670,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor) bool {
 		cluster.LogPrintf("WARN : Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		return false
 	}
-	if sl.SemiSyncSlaveStatus == false && cluster.conf.FailSync == true && cluster.conf.RplChecks == true {
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.FailSync && cluster.conf.RplChecks {
 		cluster.LogPrintf("WARN : Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		return false
 	}
@@ -697,7 +697,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 		cluster.LogPrintf("WARN : Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		return false
 	}
-	if sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync == true && cluster.conf.RplChecks == true {
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
 		cluster.LogPrintf("WARN : Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		return false
 	}
