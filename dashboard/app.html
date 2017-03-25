@@ -187,12 +187,18 @@ td {
 				 </pre>
 	 </md-content>
 		</md-tab>
-			 		 <md-tab label="ALERTS">
-					 <md-content class="md-padding">
- 					 <p class="sectionheader">ERRORS</p>
-					 <div  ng-repeat="logline in log track by $index">{{ alerts }}</div>
+			 	<md-tab label="ALERTS">
+				<md-content class="md-padding">
+ 				<p class="sectionheader">ERRORS</p>
+				<pre class="alert alert-danger"  >
+				 <div  ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
+				 </pre>
 
-</md-content>
+				<p class="sectionheader">WARNINGS</p>
+				<pre class="alert alert-warning">
+					 <div  ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
+				</pre>
+				</md-content>
 		 </md-tab>
 		 <md-tab label="SLA">
 			 <md-content class="md-padding">

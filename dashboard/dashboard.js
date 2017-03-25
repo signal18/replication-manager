@@ -14,9 +14,6 @@ app.factory('Servers', function($resource) {
   return $resource('/servers');
 });
 
-app.factory('Alerts', function($resource) {
-  return $resource('/alerts');
-});
 
 app.factory('Log', function($resource) {
   return $resource('/log');
@@ -28,6 +25,14 @@ app.factory('Settings', function($resource) {
     '',
     { 'query':  {method:'GET', isArray:false} }
   );
+});
+
+app.factory('Alerts', function($resource) {
+  return $resource(
+  '/alerts' ,
+  '',
+  { 'query':  {method:'GET', isArray:false} } 
+);
 });
 
 app.factory('Master', function($resource) {
@@ -71,7 +76,7 @@ app.factory('Bootstrap', function($resource) {
 });
 
 
-app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings', 'Master', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings, Master) {
+app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master) {
 
    var timeFrame = $routeParams.timeFrame;
    if (timeFrame=="") {

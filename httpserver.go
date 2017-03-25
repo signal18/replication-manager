@@ -21,6 +21,7 @@ import (
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
 	"github.com/tanji/replication-manager/regtest"
+	"github.com/tanji/replication-manager/state"
 )
 
 type HandlerManager struct {
@@ -57,6 +58,11 @@ type settings struct {
 	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
 	Clusters            []string `json:"clusters"`
 	RegTests            []string `json:"regtests"`
+}
+
+type alerts struct {
+	Errors   []state.StateHttp `json:"errors"`
+	Warnings []state.StateHttp `json:"warnings"`
 }
 
 func httpserver() {
@@ -280,8 +286,11 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerAlerts(w http.ResponseWriter, r *http.Request) {
+	a := new(alerts)
+	a.Errors = currentCluster.GetStateMachine().GetOpenErrors()
+	a.Warnings = currentCluster.GetStateMachine().GetOpenWarnings()
 	e := json.NewEncoder(w)
-	err := e.Encode(currentCluster.GetStateMachine().GetOpenStates())
+	err := e.Encode(a)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

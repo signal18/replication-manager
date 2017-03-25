@@ -19,6 +19,12 @@ type State struct {
 	ErrFrom string
 }
 
+type StateHttp struct {
+	ErrNumber string `json:"number"`
+	ErrDesc   string `json:"desc"`
+	ErrFrom   string `json:"from"`
+}
+
 type Map map[string]State
 
 func NewMap() *Map {
@@ -227,11 +233,32 @@ func (SM *StateMachine) GetStates() []string {
 	return log
 }
 
-func (SM *StateMachine) GetOpenStates() []string {
-	var log []string
+func (SM *StateMachine) GetOpenErrors() []StateHttp {
+	var log []StateHttp
 	SM.Lock()
 	for key, value := range *SM.OldState {
-		log = append(log, fmt.Sprintf("%-5s: %s %s", value.ErrType, key, value.ErrDesc))
+		if value.ErrType == "ERROR" {
+			var httplog StateHttp
+			httplog.ErrDesc = value.ErrDesc
+			httplog.ErrNumber = key
+			httplog.ErrFrom = value.ErrFrom
+			log = append(log, httplog)
+		}
+	}
+	SM.Unlock()
+	return log
+}
+func (SM *StateMachine) GetOpenWarnings() []StateHttp {
+	var log []StateHttp
+	SM.Lock()
+	for key, value := range *SM.OldState {
+		if value.ErrType != "ERROR" {
+			var httplog StateHttp
+			httplog.ErrDesc = value.ErrDesc
+			httplog.ErrNumber = key
+			httplog.ErrFrom = value.ErrFrom
+			log = append(log, httplog)
+		}
 	}
 	SM.Unlock()
 	return log
