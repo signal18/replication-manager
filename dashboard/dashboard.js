@@ -95,7 +95,11 @@ app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$h
     $scope.settings = data;
   }, function(error) {
     $scope.reserror = true;
-
+  });
+  Alerts.query({}, function(data) {
+    $scope.alerts = data;
+  }, function(error) {
+    $scope.reserror = true;
   });
   Master.query({}, function(data) {
     $scope.master = data;
