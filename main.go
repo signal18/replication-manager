@@ -131,9 +131,11 @@ func initConfig() {
 		for _, gl := range cfgGroupList {
 
 			if gl != "" {
+				cf2 := viper.Sub("Default")
+				cf2.Unmarshal(&conf)
 				cfgGroup = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
-				cf2 := viper.Sub(gl)
+				cf2 = viper.Sub(gl)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}

@@ -230,7 +230,7 @@ func (SM *StateMachine) GetStates() []string {
 func (SM *StateMachine) GetOpenStates() []string {
 	var log []string
 	SM.Lock()
-	for key, value := range *SM.CurState {
+	for key, value := range *SM.OldState {
 		log = append(log, fmt.Sprintf("%-5s: %s %s", value.ErrType, key, value.ErrDesc))
 	}
 	SM.Unlock()

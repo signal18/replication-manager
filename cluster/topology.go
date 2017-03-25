@@ -159,7 +159,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 		err := m.Connect()
 		if err != nil {
 			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
-
 		}
 	}
 
