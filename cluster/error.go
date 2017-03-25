@@ -12,4 +12,5 @@ var clusterError = map[string]string{
 	"ERR00015": "Error getting privileges for user %s on server %s: %s",
 	"ERR00016": "Network issue - Master is unreachable but slaves are replicating",
 	"ERR00017": "MaxScale no monitor capture",
+	"ERR00018": "Could not connect to MaxScale: %s",
 }

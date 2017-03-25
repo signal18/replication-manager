@@ -158,7 +158,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.MxsOn {
 		err := m.Connect()
 		if err != nil {
-			cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
+			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
+
 		}
 	}
 
