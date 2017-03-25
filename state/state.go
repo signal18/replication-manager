@@ -226,3 +226,15 @@ func (SM *StateMachine) GetStates() []string {
 	SM.Unlock()
 	return log
 }
+
+func (SM *StateMachine) GetOpenStates() []string {
+	var log []string
+	SM.Lock()
+	for key, value := range *SM.CurState {
+		if SM.OldState.Search(key) == false {
+			log = append(log, fmt.Sprintf("%-5s: %s %s", value.ErrType, key, value.ErrDesc))
+		}
+	}
+	SM.Unlock()
+	return log
+}

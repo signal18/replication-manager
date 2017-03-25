@@ -185,7 +185,12 @@ td {
 			 	<pre>
 			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
 				 </pre>
-
+	 </md-content>
+		</md-tab>
+			 		 <md-tab label="ALERTS">
+					 <md-content class="md-padding">
+ 					 <p class="sectionheader">ERRORS</p>
+					 <div  ng-repeat="logline in log track by $index">{{ alerts }}</div>
 
 </md-content>
 		 </md-tab>

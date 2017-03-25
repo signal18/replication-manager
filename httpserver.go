@@ -281,7 +281,7 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 
 func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-	err := e.Encode(currentCluster.GetStateMachine().GetStates())
+	err := e.Encode(currentCluster.GetStateMachine().GetOpenStates())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
