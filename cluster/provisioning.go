@@ -75,6 +75,9 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 }
 
 func (cluster *Cluster) ShutdownClusterSemiSync() error {
+	if cluster.testStopCluster == false {
+		return nil
+	}
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.servers {
 		cluster.KillMariaDB(server)

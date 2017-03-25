@@ -11,6 +11,7 @@ package cluster
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -363,6 +364,10 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 /* Refresh a server object */
 func (server *ServerMonitor) Refresh() error {
 
+	if server.Conn == nil {
+		server.State = stateFailed
+		return errors.New("Connection is close server Unreachable ")
+	}
 	err := server.Conn.Ping()
 	if err != nil {
 		return err
@@ -728,6 +733,20 @@ func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
 		if server.ServerID == sl.MasterServerID {
 			return true
+		}
+	}
+	return false
+}
+
+func (server *ServerMonitor) HasCycling(sib []*ServerMonitor) bool {
+	for _, sl := range sib {
+		if sl.ServerID != server.ServerID {
+			mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(sl)
+			if mycurrentmaster != nil {
+				if mycurrentmaster.ServerID == server.ServerID {
+					return true
+				}
+			}
 		}
 	}
 	return false

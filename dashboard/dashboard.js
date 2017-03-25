@@ -14,6 +14,10 @@ app.factory('Servers', function($resource) {
   return $resource('/servers');
 });
 
+app.factory('Alerts', function($resource) {
+  return $resource('/alerts');
+});
+
 app.factory('Log', function($resource) {
   return $resource('/log');
 });

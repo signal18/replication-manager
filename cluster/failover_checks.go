@@ -126,13 +126,16 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	if cluster.conf.MxsMonitor == false {
 		var monitor string
 		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-			cluster.LogPrint("INFO: Getting Maxscale monitor via maxinfo")
-
+			if cluster.conf.LogLevel > 1 {
+				cluster.LogPrint("INFO: Getting Maxscale monitor via maxinfo")
+			}
 			m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 			monitor = m.GetMaxInfoStoppedMonitor()
 
 		} else {
-			cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
+			if cluster.conf.LogLevel > 1 {
+				cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
+			}
 			_, err := m.ListMonitors()
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could list monitors monitor:%s", err)
@@ -141,7 +144,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 			monitor = m.GetStoppedMonitor()
 		}
 		if monitor != "" {
-			cmd := "restart monitor \"" + monitor + "\""
+			cmd := "Restart monitor \"" + monitor + "\""
 			cluster.LogPrintf("INFO: %s", cmd)
 			err = m.RestartMonitor(monitor)
 			if err != nil {

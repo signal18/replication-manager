@@ -126,7 +126,7 @@ func (cluster *Cluster) Run() {
 				}
 				cluster.pingServerList()
 				cluster.TopologyDiscover()
-				states := cluster.sme.GetState()
+				states := cluster.sme.GetStates()
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
@@ -176,7 +176,7 @@ func (cluster *Cluster) Run() {
 
 				cluster.pingServerList()
 				cluster.TopologyDiscover()
-				states := cluster.sme.GetState()
+				states := cluster.sme.GetStates()
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
@@ -242,7 +242,7 @@ func (cluster *Cluster) FailoverForce() error {
 	//}
 	err = cluster.TopologyDiscover()
 	if err != nil {
-		for _, s := range cluster.sme.GetState() {
+		for _, s := range cluster.sme.GetStates() {
 			cluster.LogPrint(s)
 		}
 		// Test for ERR00012 - No master detected

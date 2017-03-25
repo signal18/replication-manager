@@ -4,34 +4,103 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01,Cluster_Test_2_Nodes monitor --daemon
 
-[Cluster_Test_2_Nodes]
-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-user = "root:"
-rpluser = "root:"
-title = "cluster1"
-prefmaster = "127.0.0.1:3310"
-haproxy-write-port=3303
-haproxy-read-port=3304
-test = true
-
-[Cluster_Test_3_Nodes]
-hosts = "127.0.0.1:3312,127.0.0.1:3313,127.0.0.1:3314"
+[Cluster_Test_MultiMaster]
+title = "ClusterTestMultiMaster"
+hosts = "127.0.0.1:3315,127.0.0.1:3316"
 user = "root:test"
 rpluser = "root:test"
+multimaster = true
+connect-timeout = 1
+prefmaster = "127.0.0.1:3315"
+haproxy-write-port=3300
+haproxy-read-port=3301
+test = true
+
+[Cluster_Test_MultiTierSlave]
 title = "ClusterTestSemisync"
+hosts = "127.0.0.1:3312,127.0.0.1:3313,127.0.0.1:3314"
+prefmaster = "127.0.0.1:3312"
+multi-tier-slave = true
+user = "root:test"
+rpluser = "root:test"
+connect-timeout = 1
+haproxy=true
+haproxy-write-port= 3305
+haproxy-read-port= 3304
+test = true
+
+[Cluster_Test_MasterSlave]
+title = "ClusterTestMasterSlave"
+hosts = "127.0.0.1:3310,127.0.0.1:3311"
 prefmaster = "127.0.0.1:3310"
-haproxy-write-port=3305
+user = "root:test"
+rpluser = "root:test"
+connect-timeout = 1
+haproxy=true
+haproxy-write-port=3303
+haproxy-read-port=3302
+test = true
+
+[Cluster_Test_MasterSlaveSlave]
+title = "ClusterTestMasterSlaveSlave"
+prefmaster = "127.0.0.1:3310"
+hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
+user = "root:test"
+rpluser = "root:test"
+connect-timeout = 1
+haproxy=true
+haproxy-write-port=3307
 haproxy-read-port=3306
 test = true
-ignore-servers = "127.0.0.1:3314"
 
-[Cluster01]
-hosts = "127.0.0.1:5054,127.0.0.1:5012"
+
+[Cluster_Test_Maxscale]
+title = "ClusterTestMaxscale"
+hosts = "127.0.0.1:5055,127.0.0.1:5056"
+prefmaster = "127.0.0.1:5055"
 user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
-title = "Cluster01"
-prefmaster = "127.0.0.1:5012"
 interactive = true
+maxscale = true
+maxscale-monitor = false
+maxscale-maxinfo-port = 3307
+maxscale-get-info-method = "maxadmin"
+maxscale-host = "127.0.0.1"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = false
+maxscale-binlog-port = 3305
+test = true
+
+[Cluster_Test_BinlogServer]
+title = "ClusterTestBinlogServer"
+hosts = "127.0.0.1:5057,127.0.0.1:5058,127.0.0.1:3305"
+prefmaster = "127.0.0.1:5057"
+switchover-at-sync = false
+failover-at-sync = false
+user = "skysql:skyvodka"
+rpluser = "skysql:skyvodka"
+connect-timeout = 1
+interactive = false
+maxscale = true
+maxscale-monitor = false
+maxscale-maxinfo-port = 3307
+maxscale-get-info-method = "maxadmin"
+maxscale-host = "127.0.0.1"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = true
+maxscale-binlog-port = 3305
+test = true
+
 
 [Default]
 

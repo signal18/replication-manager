@@ -8,6 +8,7 @@ import (
 )
 
 var tests = []string{
+	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
 	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
 	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
@@ -113,7 +114,13 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 			ret = res
 		}
 	}
-
+	if test == "testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync" || test == "ALL" {
+		res = testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cluster, "semisync.cnf", "testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync")
+		allTests["testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
 	if test == "testSwitchoverLongTransactionNoRplCheckNoSemiSync" || test == "ALL" {
 		res = testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster, "semisync.cnf", "testSwitchoverLongTransactionNoRplCheckNoSemiSync")
 		allTests["testSwitchoverLongTransactionNoRplCheckNoSemiSync"] = regtest.getTestResultLabel(res)

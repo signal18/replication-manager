@@ -112,25 +112,30 @@ func (cluster *Cluster) pingServerList() {
 		wg.Add(1)
 		go func(sv *ServerMonitor) {
 			defer wg.Done()
-			err := sv.Conn.Ping()
-			if err != nil {
-				if driverErr, ok := err.(*mysql.MySQLError); ok {
-					if driverErr.Number == 1045 {
-						sv.State = stateUnconn
-						cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
-					}
-				} else {
-					cluster.sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
-					// We can set the failed state at this point if we're in the initial loop
-					// Otherwise, let the monitor check function handle failures
-					if sv.State == "" {
-						if cluster.conf.LogLevel > 2 {
-							cluster.LogPrint("DEBUG: State failed set by topology detection INF00001")
+			//	tcpAddr, err := net.ResolveTCPAddr("tcp4", sv.)
+			if sv.Conn != nil {
+				err := sv.Conn.Ping()
+				if err != nil {
+					if driverErr, ok := err.(*mysql.MySQLError); ok {
+						if driverErr.Number == 1045 {
+							sv.State = stateUnconn
+							cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
-						sv.State = stateFailed
-					}
+					} else {
+						cluster.sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
+						// We can set the failed state at this point if we're in the initial loop
+						// Otherwise, let the monitor check function handle failures
+						if sv.State == "" {
+							if cluster.conf.LogLevel > 2 {
+								cluster.LogPrint("DEBUG: State failed set by topology detection INF00001")
+							}
+							sv.State = stateFailed
+						}
 
+					}
 				}
+			} else {
+				sv.State = stateFailed
 			}
 		}(sv)
 
@@ -299,14 +304,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
 				}*/
-				if sl.HasSiblings(cluster.slaves) == false && cluster.conf.MultiTierSlave == false {
-					// possibly buggy code
-					// cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected, auto switching to multimaster monitoring", ErrFrom: "TOPO"})
-					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters were detected", ErrFrom: "TOPO"})
-					// cluster.conf.MultiMaster = true
+				if sl.HasCycling(cluster.servers) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
+					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters detected but explicity setup, dynamicly setting", ErrFrom: "TOPO"})
+					cluster.conf.MultiMaster = true
 				}
 			}
-			if sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
+			if cluster.conf.MultiMaster == false && sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
 				sl.IsRelay = true
 				sl.State = stateRelay
 			}

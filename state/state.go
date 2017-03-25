@@ -208,7 +208,7 @@ func (SM *StateMachine) IsDiscovered() bool {
 	return SM.discovered
 }
 
-func (SM *StateMachine) GetState() []string {
+func (SM *StateMachine) GetStates() []string {
 	var log []string
 	SM.Lock()
 	for key2, value2 := range *SM.OldState {

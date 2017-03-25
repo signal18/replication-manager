@@ -18,6 +18,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
+	"github.com/tanji/replication-manager/state"
 )
 
 // MasterFailover triggers a master switchover and returns the new master URL
@@ -430,6 +431,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 }
 
 func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
+	if cluster.conf.MxsOn == false {
+		return
+	}
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
@@ -445,13 +449,16 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 	if cluster.conf.MxsMonitor == false {
 		var monitor string
 		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-			cluster.LogPrint("INFO: Getting Maxscale monitor via maxinfo")
-
+			if cluster.conf.LogLevel > 1 {
+				cluster.LogPrint("INFO: Getting Maxscale monitor via maxinfo")
+			}
 			m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 			monitor = m.GetMaxInfoMonitor()
 
 		} else {
-			cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
+			if cluster.conf.LogLevel > 1 {
+				cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
+			}
 			_, err := m.ListMonitors()
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could list monitors monitor:%s", err)
@@ -470,7 +477,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor) {
 				cluster.LogPrint("ERROR: MaxScale client could not shutdown monitor:%s", err)
 			}
 		} else {
-			cluster.LogPrint("INFO: MaxScale No running Monitor")
+			cluster.sme.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO"})
 		}
 	}
 

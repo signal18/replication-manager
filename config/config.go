@@ -137,4 +137,5 @@ type Config struct {
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	FailForceGtid                      bool   //suspicious code
+	RegTestStopCluster                 bool   //used by regtest to stop cluster
 }
