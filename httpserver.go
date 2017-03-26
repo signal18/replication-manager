@@ -58,6 +58,7 @@ type settings struct {
 	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
 	Clusters            []string `json:"clusters"`
 	RegTests            []string `json:"regtests"`
+	Topology            string   `json:"topology"`
 }
 
 type alerts struct {
@@ -309,7 +310,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RejoinSemiSync = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSemisync)
 	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
 	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
-	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().MaxDelay)
+	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().SwitchMaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
 	s.MonHearbeats = fmt.Sprintf("%d", currentCluster.GetStateMachine().GetHeartbeats())
@@ -335,6 +336,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.LastFailover = "N/A"
 	}
+	s.Topology = currentCluster.GetTopology()
 	e := json.NewEncoder(w)
 	err := e.Encode(s)
 	if err != nil {

@@ -19,13 +19,8 @@ type Config struct {
 	Verbose                            bool   `mapstructure:"verbose"`
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
-	MaxDelay                           int64  //depreacate for failover-max-slave-delay
 	PrefMaster                         string `mapstructure:"prefmaster"`
 	IgnoreSrv                          string `mapstructure:"ignore-servers"`
-	WaitKill                           int64  `mapstructure:"wait-kill"`        // deprecat
-	WaitTrx                            int64  `mapstructure:"wait-trx"`         // deprecat
-	WaitWrite                          int    `mapstructure:"wait-write-query"` // deprecat
-	GtidCheck                          bool   // deprecate for failover-at-equal-gtid
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx"`
 	SwitchWaitWrite                    int    `mapstructure:"switchover-wait-write-query"`

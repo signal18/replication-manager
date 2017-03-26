@@ -304,7 +304,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
 				}*/
-				if sl.HasCycling(cluster.servers) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
+				if sl.HasCycling(sl.ServerID) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
 					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters detected but explicity setup, dynamicly setting", ErrFrom: "TOPO"})
 					cluster.conf.MultiMaster = true
 				}
@@ -439,7 +439,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
 					}
 				}
-				if sl.Delay.Int64 <= cluster.conf.MaxDelay && sl.SQLThread == "Yes" {
+				if sl.Delay.Int64 <= cluster.conf.SwitchMaxDelay && sl.SQLThread == "Yes" {
 					cluster.master.RplMasterStatus = true
 				}
 
@@ -460,6 +460,23 @@ func (cluster *Cluster) TopologyDiscover() error {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
+}
+
+func (cluster *Cluster) GetTopology() string {
+	cluster.conf.Topology = "unknown"
+	if cluster.conf.MultiMaster {
+		cluster.conf.Topology = "multi-master"
+	} else if cluster.conf.MxsBinlogOn {
+		cluster.conf.Topology = "binlog-server"
+	} else {
+		relay := cluster.GetRelayServer()
+		if relay != nil {
+			cluster.conf.Topology = "multi-tier-slave"
+		} else if cluster.master != nil {
+			cluster.conf.Topology = "master-slave"
+		}
+	}
+	return cluster.conf.Topology
 }
 
 func (cluster *Cluster) PrintTopology() {

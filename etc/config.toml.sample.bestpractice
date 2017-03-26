@@ -43,8 +43,8 @@ test = true
 
 [Cluster_Test_MasterSlaveSlave]
 title = "ClusterTestMasterSlaveSlave"
-prefmaster = "127.0.0.1:3310"
 hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
+prefmaster = "127.0.0.1:3317"
 user = "root:test"
 rpluser = "root:test"
 connect-timeout = 1

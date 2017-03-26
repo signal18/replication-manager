@@ -29,7 +29,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
 	bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
-	bootstrapCmd.Flags().StringVar(&conf.Topology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave")
+	bootstrapCmd.Flags().StringVar(&conf.Topology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
 	bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 }
 
@@ -68,6 +68,7 @@ var bootstrapCmd = &cobra.Command{
 			currentCluster.SetForceSlaveNoGtid(false)
 			currentCluster.SetMultiMaster(false)
 			currentCluster.SetBinlogServer(true)
+		case "multi-master-ring":
 		}
 		err := currentCluster.Bootstrap()
 		if err != nil {

@@ -28,14 +28,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
-		cluster.LogPrint("INFO : Checking long running updates on master")
-		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.conf.WaitWrite) > 0 {
+		cluster.LogPrintf("INFO : Checking long running updates on master %d", cluster.conf.SwitchWaitWrite)
+		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.conf.SwitchWaitWrite) > 0 {
 			cluster.LogPrint("ERROR: Long updates running on master. Cannot switchover")
 			cluster.sme.RemoveFailoverState()
 			return false
 		}
 
-		cluster.LogPrintf("INFO : Flushing tables on %s (master)", cluster.master.URL)
+		cluster.LogPrintf("INFO : Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
 
 		go func() {
@@ -49,8 +49,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf("WARN : Could not flush tables on master", err)
 			}
-		case <-time.After(time.Second * time.Duration(cluster.conf.WaitTrx)):
-			cluster.LogPrint("ERROR: Long  running trx on master. Cannot switchover")
+		case <-time.After(time.Second * time.Duration(cluster.conf.SwitchWaitTrx)):
+			cluster.LogPrintf("ERROR: Long running trx on master at least %d, can not switchover ", cluster.conf.SwitchWaitTrx)
 			cluster.sme.RemoveFailoverState()
 			return false
 		}
@@ -159,27 +159,30 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
 	if cluster.conf.MxsBinlogOn || cluster.conf.MultiTierSlave {
-		cluster.LogPrintf("INFO : Candidate Master Have to catch relay server log pos")
+		cluster.LogPrintf("INFO : Candidate master have to catch with relay server log pos")
 		relaymaster = cluster.GetRelayServer()
-		relaymaster.Refresh()
+		if relaymaster != nil {
+			relaymaster.Refresh()
 
-		binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
-		cluster.LogPrintf("INFO : Relay server log pos reach %d", binlogfiletoreach)
-		dbhelper.ResetMaster(cluster.master.Conn)
-		cluster.LogPrintf("INFO : Reset Master en candidate Master ")
-		ctbinlog := 0
-		for ctbinlog < binlogfiletoreach {
-			ctbinlog += 1
-			cluster.LogPrintf("INFO : Flush Log on new Master %d", ctbinlog)
-			dbhelper.FlushLogs(cluster.master.Conn)
+			binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
+			cluster.LogPrintf("INFO : Relay server log pos reach %d", binlogfiletoreach)
+			dbhelper.ResetMaster(cluster.master.Conn)
+			cluster.LogPrintf("INFO : Reset Master en candidate Master ")
+			ctbinlog := 0
+			for ctbinlog < binlogfiletoreach {
+				ctbinlog += 1
+				cluster.LogPrintf("INFO : Flush Log on new Master %d", ctbinlog)
+				dbhelper.FlushLogs(cluster.master.Conn)
+			}
+			time.Sleep(2 * time.Second)
+			ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn)
+			cluster.master.FailoverMasterLogFile = ms.File
+			cluster.master.FailoverMasterLogPos = "4"
+			//strconv.FormatUint(uint64(ms.Position), 10)
+			cluster.LogPrintf("INFO : Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
+		} else {
+			cluster.LogPrintf("ERROR : No relay server found")
 		}
-		time.Sleep(2 * time.Second)
-		ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn)
-		cluster.master.FailoverMasterLogFile = ms.File
-		cluster.master.FailoverMasterLogPos = "4"
-		//strconv.FormatUint(uint64(ms.Position), 10)
-		cluster.LogPrintf("INFO : Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
-
 	}
 	// Phase 3: Prepare new master
 	if cluster.conf.MultiMaster == false {
@@ -669,8 +672,8 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor) bool {
 		cluster.LogPrintf("WARN : Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		return false
 	}
-	if ss.Seconds_Behind_Master.Int64 > cluster.conf.MaxDelay && cluster.conf.RplChecks == true {
-		cluster.LogPrintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.MaxDelay, ss.Seconds_Behind_Master.Int64)
+	if ss.Seconds_Behind_Master.Int64 > cluster.conf.SwitchMaxDelay && cluster.conf.RplChecks == true {
+		cluster.LogPrintf("WARN : Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64)
 		return false
 	}
 	if ss.Slave_SQL_Running == "No" && cluster.conf.RplChecks {
@@ -700,7 +703,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor) bool {
 		cluster.LogPrintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
 		return false
 	}
-	if cluster.conf.GtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
+	if cluster.conf.SwitchGtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
 		cluster.LogPrintf("WARN : Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		return false
 	}

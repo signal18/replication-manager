@@ -108,9 +108,11 @@ td {
 					<div flex-gt-xs="30" class="col-lg-33">
 					  <p class="sectionheader">MONITOR GROUP</p>
 			      <table class="table">
-			     	<tr><th>Group Name</th></tr>
-			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-warning">{{settings.confgroup}}</span></td></tr>
-		     	</table>
+			     	<tr><th>Group Name</th><th>Topology</th></tr>
+			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-warning">{{settings.confgroup}}</span></td><td><span  class="label label-warning">{{settings.topology}}</span></td></tr>
+		     	  </table>
+
+					
 			    </div>
 					<div  flex-gt-xs="10" ></div>
 					 <div  flex-gt-xs="60" class="col-lg-66">

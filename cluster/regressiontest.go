@@ -203,7 +203,7 @@ func (cluster *Cluster) RestoreConf() {
 	cluster.conf.ReadOnly = savedConf.ReadOnly
 	cluster.conf.PrefMaster = savedConf.PrefMaster
 	cluster.conf.Interactive = savedConf.Interactive
-	cluster.conf.MaxDelay = savedConf.MaxDelay
+	cluster.conf.SwitchMaxDelay = savedConf.SwitchMaxDelay
 	cluster.conf.FailLimit = savedConf.FailLimit
 	cluster.conf.FailTime = savedConf.FailTime
 	cluster.conf.Autorejoin = savedConf.Autorejoin

@@ -32,6 +32,7 @@ type Cluster struct {
 	servers              serverList
 	slaves               serverList
 	master               *ServerMonitor
+	mxs                  *maxscale.MaxScale
 	dbUser               string
 	dbPass               string
 	rplUser              string
@@ -63,7 +64,6 @@ type Cluster struct {
 	switchoverChan       chan bool
 	testStopCluster      bool
 	testStartCluster     bool
-	mxs                  *maxscale.MaxScale
 }
 
 //var switchoverChan = make(chan bool)
@@ -408,7 +408,7 @@ func (cluster *Cluster) GetConf() config.Config {
 }
 
 func (cluster *Cluster) GetWaitTrx() int64 {
-	return cluster.conf.WaitTrx
+	return cluster.conf.SwitchWaitTrx
 }
 
 func (cluster *Cluster) GetStateMachine() *state.StateMachine {
@@ -452,7 +452,7 @@ func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
 }
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
-	cluster.conf.MaxDelay = delay
+	cluster.conf.SwitchMaxDelay = delay
 }
 
 func (cluster *Cluster) SetCleanAll(check bool) {

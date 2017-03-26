@@ -364,7 +364,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 /* Refresh a server object */
 func (server *ServerMonitor) Refresh() error {
 
-	if server.Conn == nil {
+	if server.Conn.Unsafe() == nil {
 		server.State = stateFailed
 		return errors.New("Connection is close server Unreachable ")
 	}
@@ -375,6 +375,7 @@ func (server *ServerMonitor) Refresh() error {
 	if server.ClusterGroup.conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
+			server.ClusterGroup.LogPrintf("................FoundMaxscale")
 			server.IsMaxscale = true
 			server.IsRelay = true
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
@@ -591,7 +592,7 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Running OK"
 		}
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateSlaveLate
 			} else {
 				server.State = stateSlave
@@ -619,7 +620,7 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Running OK"
 		}
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.MaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateRelayLate
 			} else {
 				server.State = stateRelay
@@ -657,7 +658,7 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf("WARN : Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := server.ClusterGroup.conf.WaitKill; i > 0; i -= 500 {
+	for i := server.ClusterGroup.conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break
@@ -738,16 +739,16 @@ func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
 	return false
 }
 
-func (server *ServerMonitor) HasCycling(sib []*ServerMonitor) bool {
-	for _, sl := range sib {
-		if sl.ServerID != server.ServerID {
-			mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(sl)
-			if mycurrentmaster != nil {
-				if mycurrentmaster.ServerID == server.ServerID {
-					return true
-				}
-			}
+func (server *ServerMonitor) HasCycling(ServerID uint) bool {
+
+	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
+	if mycurrentmaster != nil {
+		if mycurrentmaster.ServerID == ServerID {
+			return true
+		} else {
+			mycurrentmaster.HasCycling(ServerID)
 		}
+
 	}
 	return false
 }
