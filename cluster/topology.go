@@ -180,6 +180,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			if sv.IsRelay == false {
 				//	set State stateSlave or SlaveLate
+
 				sv.replicationCheck()
 			}
 			cluster.slaves = append(cluster.slaves, sv)

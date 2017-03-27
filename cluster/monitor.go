@@ -255,6 +255,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 	var ss dbhelper.SlaveStatus
 	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+	// We have no replication can this be the old master
 	if errss == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
@@ -564,17 +565,21 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
+	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed {
 
-	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateUnconn || server.State == stateFailed {
 		return "Master OK"
 	}
+
 	if server.ClusterGroup.master != nil {
 		if server.ServerID == server.ClusterGroup.master.ServerID {
 			return "Master OK"
 		}
 	}
+
 	if server.IsRelay == false && server.IsMaxscale == false {
+
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
+
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateSlaveErr
 				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
@@ -591,6 +596,7 @@ func (server *ServerMonitor) replicationCheck() string {
 			server.State = stateSlave
 			return "Running OK"
 		}
+
 		if server.Delay.Int64 > 0 {
 			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateSlaveLate
@@ -836,11 +842,10 @@ func (server *ServerMonitor) rejoin() error {
 		dbhelper.StartSlave(server.Conn)
 		return err
 	} else {
-
-		server.ClusterGroup.LogPrintf("INFO : Found different old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
-
-		server.ClusterGroup.LogPrintf("INFO : Not same GTID , no SYNC using semisync, searching for a rejoin method")
+		server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+			//		server.ClusterGroup.LogPrintf("INFO :  SYNC using semisync, searching for a rejoin method")
+
 			// Flashback here
 			binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+server.ClusterGroup.master.FailoverMasterLogFile)
 			clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
