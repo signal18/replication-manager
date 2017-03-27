@@ -132,7 +132,7 @@ func initConfig() {
 		for _, gl := range cfgGroupList {
 
 			if gl != "" {
-				var clusterconf config.Config
+				clusterconf := conf
 				cf2 := viper.Sub("Default")
 				cf2.Unmarshal(&clusterconf)
 				cfgGroup = gl

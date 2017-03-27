@@ -91,6 +91,7 @@ type ServerMonitor struct {
 	Version                     int
 	IsMaxscale                  bool
 	IsRelay                     bool
+	IsSlave                     bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
@@ -164,9 +165,6 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.ClusterGroup.LogPrintf("DEBUG: Inside failover, skip server check")
 		}
 		return
-	}
-	if server.PrevState != server.State {
-		server.PrevState = server.State
 	}
 
 	if server.ClusterGroup.conf.LogLevel > 2 {
@@ -243,7 +241,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				}
 			}
 		}
-		return
+		//return
+
 	}
 	// Reset FailCount
 	/*	if conf.Verbose>0  {
@@ -290,12 +289,17 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						server.ClusterGroup.rejoinCond.Send <- true
 					}
 				}
+			} else {
+				server.ClusterGroup.LogPrintf("DEBUG: Auto Rejoin is disable")
 			}
 		} else if server.State != stateMaster {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG: State unconnected set by non-master rule on server %s", server.URL)
 			}
 			server.State = stateUnconn
+		}
+		if server.PrevState != server.State {
+			server.PrevState = server.State
 		}
 		return
 	} else if errss == nil && server.PrevState == stateFailed {
@@ -360,6 +364,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			}
 		}
 	}
+	if server.PrevState != server.State {
+		server.PrevState = server.State
+	}
 }
 
 /* Refresh a server object */
@@ -394,6 +401,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 	if err != nil {
+		server.IsSlave = false
 		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)
 		server.UsingGtid = ""
 		server.IOThread = "No"
@@ -410,6 +418,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.MasterHeartbeatPeriod = 0
 		server.MasterUseGtid = "No"
 	} else {
+		server.IsSlave = true
 		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
 		server.UsingGtid = slaveStatus.Using_Gtid
 		server.IOThread = slaveStatus.Slave_IO_Running
@@ -565,7 +574,7 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
-	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed {
+	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed || server.IsSlave == false {
 
 		return "Master OK"
 	}

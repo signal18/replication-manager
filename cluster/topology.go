@@ -174,15 +174,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.MxsOn {
 			sv.getMaxscaleInfos(&m)
 		}
-		if sv.UsingGtid != "" {
+		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
 			}
-			if sv.IsRelay == false {
-				//	set State stateSlave or SlaveLate
-
-				sv.replicationCheck()
-			}
+			sv.replicationCheck()
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			var n int
