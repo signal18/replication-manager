@@ -140,7 +140,7 @@ func MySQLConnect(user string, password string, address string, parameters ...st
 
 // MemDBConnect returns a SQLite memory connection
 func MemDBConnect() (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlite", ":memory:")
+	db, err := sqlx.Connect("sqlite3", ":memory:")
 	return db, err
 }
 
