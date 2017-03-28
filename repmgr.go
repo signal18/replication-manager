@@ -349,7 +349,7 @@ Interactive console and HTTP dashboards are available for control`,
 			select {
 			case <-ticker.C:
 				if conf.Arbitration {
-					Heartbeat()
+					fHeartbeat()
 				}
 			case event := <-termboxChan:
 				switch event.Type {

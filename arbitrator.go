@@ -12,49 +12,51 @@ import (
 
 	"github.com/gorilla/mux"
 
+	_ "github.com/mattn/go-sqlite3"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-type Route struct {
+type route struct {
 	Name        string
 	Method      string
 	Pattern     string
 	HandlerFunc http.HandlerFunc
 }
 
-type Routes []Route
+type routes []route
 
-func NewRouter() *mux.Router {
+func newRouter() *mux.Router {
 
 	router := mux.NewRouter().StrictSlash(true)
-	for _, route := range routes {
+	for _, r := range rs {
 		router.
-			Methods(route.Method).
-			Path(route.Pattern).
-			Name(route.Name).
-			Handler(route.HandlerFunc)
+			Methods(r.Method).
+			Path(r.Pattern).
+			Name(r.Name).
+			Handler(r.HandlerFunc)
 	}
 
 	return router
 }
 
-var routes = Routes{
-	Route{
+var rs = routes{
+	route{
 		"Heartbeat",
 		"POST",
 		"/heartbeat",
 		handlerHeartbeat,
 	},
-	Route{
+	route{
 		"Arbitrator",
 		"POST",
 		"/arbitrator",
 		handlerArbitrator,
 	},
-	Route{
+	route{
 		"Forget",
 		"PST",
 		"/forget/",
@@ -99,7 +101,7 @@ var arbitratorCmd = &cobra.Command{
 		}
 		currentCluster.SetLogStdout()
 
-		err = dbhelper.SetHeartbeatTable(db.Conn)
+		err = dbhelper.SetHeartbeatTable(db)
 		if err != nil {
 			log.Printf("ERROR: Error creating tables")
 			//panic(err)
@@ -107,7 +109,7 @@ var arbitratorCmd = &cobra.Command{
 		db.Close()
 		//http.HandleFunc("/heartbeat/", handlerHeartbeat)
 		//	http.HandleFunc("/abritrator/", handlerArbitrator)
-		router := NewRouter()
+		router := newRouter()
 		log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(arbitratorPort), router))
 	},
 }
@@ -125,15 +127,15 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(err); err != nil {
+		if err = json.NewEncoder(w).Encode(err); err != nil {
 			panic(err)
 		}
 	}
 	var send response
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
-	res := dbhelper.RequestArbitration(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
-	electedmaster := dbhelper.GetArbitrationMaster(db.Conn, h.Secret, h.Cluster)
+	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	db.Close()
 	if res {
 		send.Arbitration = "winner"
@@ -164,7 +166,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(err); err != nil {
+		if err = json.NewEncoder(w).Encode(err); err != nil {
 			panic(err)
 		}
 		return
@@ -173,7 +175,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
-	res := dbhelper.WriteHeartbeat(db.Conn, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
@@ -196,13 +198,13 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	//log.Printf("INFO: Hearbeat receive:%s", string(body))
-	if err := r.Body.Close(); err != nil {
+	if err = r.Body.Close(); err != nil {
 		panic(err)
 	}
-	if err := json.Unmarshal(body, &h); err != nil {
+	if err = json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
-		if err := json.NewEncoder(w).Encode(err); err != nil {
+		if err = json.NewEncoder(w).Encode(err); err != nil {
 			panic(err)
 		}
 		return
@@ -211,7 +213,7 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
-	res := dbhelper.ForgetArbitration(db.Conn, h.Secret)
+	res := dbhelper.ForgetArbitration(db, h.Secret)
 	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
@@ -226,7 +228,7 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func Heartbeat() {
+func fHeartbeat() {
 	if cfgGroup == "arbitrator" {
 		return
 	}
@@ -317,7 +319,7 @@ func Heartbeat() {
 			resp, err := client.Do(req)
 			if err != nil {
 				cl.LogPrintf("ERROR :%s", err.Error())
-				cl.SetActiceStatus("S")
+				cl.SetActiveStatus("S")
 				runStatus = "S"
 				return
 			}
@@ -348,7 +350,7 @@ func Heartbeat() {
 			resp, err := client.Do(req)
 			if err != nil {
 				cl.LogPrintf("ERROR :%s", err.Error())
-				cl.SetActiceStatus("S")
+				cl.SetActiveStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
@@ -365,7 +367,7 @@ func Heartbeat() {
 			err = json.Unmarshal(body, &r)
 			if err != nil {
 				cl.LogPrintf("ERROR: Arbitrator says invalid JSON")
-				cl.SetActiceStatus("S")
+				cl.SetActiveStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
@@ -375,7 +377,7 @@ func Heartbeat() {
 				if bcksplitbrain != splitBrain {
 					cl.LogPrintf("INFO: Arbitrator says winner")
 				}
-				cl.SetActiceStatus("A")
+				cl.SetActiveStatus("A")
 				runStatus = "A"
 				return
 			}
@@ -388,7 +390,7 @@ func Heartbeat() {
 					cl.SetMasterReadOnly()
 				}
 			}
-			cl.SetActiceStatus("S")
+			cl.SetActiveStatus("S")
 			runStatus = "S"
 			return
 

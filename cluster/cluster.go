@@ -199,18 +199,18 @@ func (cluster *Cluster) Run() {
 	}
 }
 
-func (cluster *Cluster) InitAgent(conf config.Config) (*ServerMonitor, error) {
+func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
 	cluster.conf = conf
 	cluster.agentFlagCheck()
 	if conf.LogFile != "" {
 		var err error
 		cluster.logPtr, err = os.Create(conf.LogFile)
 		if err != nil {
-			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session.")
+			log.Error("Cannot open logfile, disabling for the rest of the session.")
 			conf.LogFile = ""
 		}
 	}
-	db, err := cluster.newServerMonitor(conf.Hosts)
+	db, err := dbhelper.MemDBConnect()
 	if err != nil {
 		log.WithError(err).Error("Error opening database connection")
 		return nil, err
@@ -576,7 +576,7 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 	cluster.testStopCluster = check
 }
 
-func (cluster *Cluster) SetActiceStatus(status string) {
+func (cluster *Cluster) SetActiveStatus(status string) {
 	cluster.runStatus = status
 }
 func (cluster *Cluster) SetTestStartCluster(check bool) {
