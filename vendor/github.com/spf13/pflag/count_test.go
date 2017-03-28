@@ -1,9 +1,12 @@
 package pflag
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
+
+var _ = fmt.Printf
 
 func setUpCount(c *int) *FlagSet {
 	f := NewFlagSet("test", ContinueOnError)
