@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jmoiron/sqlx"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -28,6 +29,8 @@ type route struct {
 }
 
 type routes []route
+
+var db *sqlx.DB
 
 func newRouter() *mux.Router {
 
@@ -86,16 +89,17 @@ var (
 
 func init() {
 	rootCmd.AddCommand(arbitratorCmd)
-	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 80, "Arbitrator API port")
+	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 8080, "Arbitrator API port")
 }
 
 var arbitratorCmd = &cobra.Command{
 	Use:   "arbitrator",
 	Short: "Arbitrator environment",
-	Long:  `The arbitrator is used for falspositiv detection `,
+	Long:  `The arbitrator is used for false positive detection`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
-		db, err := currentCluster.InitAgent(confs["arbitrator"])
+		var err error
+		db, err = currentCluster.InitAgent(confs["arbitrator"])
 		if err != nil {
 			panic(err)
 		}
@@ -103,8 +107,7 @@ var arbitratorCmd = &cobra.Command{
 
 		err = dbhelper.SetHeartbeatTable(db)
 		if err != nil {
-			log.Printf("ERROR: Error creating tables")
-			//panic(err)
+			log.WithError(err).Error("Error creating tables")
 		}
 		db.Close()
 		//http.HandleFunc("/heartbeat/", handlerHeartbeat)
@@ -123,7 +126,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	if err := r.Body.Close(); err != nil {
 		panic(err)
 	}
-	log.Printf("INFO: Arbitrator receive:%s", string(body))
+	log.Info("Arbitrator message received:", string(body))
 	if err := json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
@@ -133,7 +136,6 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	}
 	var send response
 	currentCluster = new(cluster.Cluster)
-	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	db.Close()
@@ -173,7 +175,6 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentCluster = new(cluster.Cluster)
-	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	db.Close()
@@ -211,10 +212,8 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentCluster = new(cluster.Cluster)
-	db, _ := currentCluster.InitAgent(confs["arbitrator"])
 	var send string
 	res := dbhelper.ForgetArbitration(db, h.Secret)
-	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
 	} else {

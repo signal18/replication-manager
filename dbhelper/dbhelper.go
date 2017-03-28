@@ -341,23 +341,46 @@ func GetAllSlavesStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 }
 
 func SetHeartbeatTable(db *sqlx.DB) error {
-	stmt := "SET sql_log_bin=0"
-	_, err := db.Exec(stmt)
-	if err != nil {
-		return err
-	}
 
-	stmt = "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
+	if db.DriverName() == "mysql" {
+		stmt := "SET sql_log_bin=0"
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+
+		stmt = "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+		stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64) ,cluster varchar(128),uid int , uuid varchar(128),  master varchar(128) , date timestamp,arbitration_date timestamp, status CHAR(1) DEFAULT 'U', hosts INT DEFAULT 0, failed INT DEFAULT 0, PRIMARY KEY(secret,cluster,uid) ) engine=innodb"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	stmt = "CREATE TABLE IF NOT EXISTS replication_manager_schema.heartbeat(secret varchar(64) ,cluster varchar(128),uid int , uuid varchar(128),  master varchar(128) , date timestamp,arbitration_date timestamp, status CHAR(1) DEFAULT 'U', hosts INT DEFAULT 0, failed INT DEFAULT 0, PRIMARY KEY(secret,cluster,uid) ) engine=innodb"
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
+	if db.DriverName() == "sqlite3" {
+		stmt := `CREATE TABLE IF NOT EXISTS heartbeat(
+			secret varchar(64),
+			cluster varchar(128),
+			uid int,
+			uuid varchar(128),
+			master varchar(128),
+			date timestamp,
+			arbitration_date timestamp,
+			status CHAR(1) DEFAULT 'U',
+			hosts INT DEFAULT 0,
+			failed INT DEFAULT 0,
+			PRIMARY KEY(secret,cluster,uid)
+		)`
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) error {
