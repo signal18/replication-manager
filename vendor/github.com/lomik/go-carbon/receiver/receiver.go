@@ -7,6 +7,7 @@ import (
 
 	"github.com/lomik/go-carbon/helper"
 	"github.com/lomik/go-carbon/points"
+	"github.com/lomik/zapwriter"
 )
 
 type Receiver interface {
@@ -107,8 +108,9 @@ func New(dsn string, opts ...Option) (Receiver, error) {
 		}
 
 		r := &TCP{
-			out:  blackhole,
-			name: u.Scheme,
+			out:    blackhole,
+			name:   u.Scheme,
+			logger: zapwriter.Logger(u.Scheme),
 		}
 
 		if u.Scheme == "pickle" {
@@ -134,8 +136,9 @@ func New(dsn string, opts ...Option) (Receiver, error) {
 		}
 
 		r := &UDP{
-			out:  blackhole,
-			name: u.Scheme,
+			out:    blackhole,
+			name:   u.Scheme,
+			logger: zapwriter.Logger(u.Scheme),
 		}
 
 		for _, optApply := range opts {

@@ -1,6 +1,7 @@
 package expirecache
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -111,4 +112,18 @@ func TestCacheExpire(t *testing.T) {
 	if c.totalSize != 4 {
 		t.Errorf("unexpired cache size mismatch: got %d, want %d", c.totalSize, 3+3+4)
 	}
+
+	// getOrSet test
+	d := []byte("bar")
+	b := c.GetOrSet("bork", d, 3, 30)
+	if bytes.Compare(b.([]byte), d) != 0 {
+		t.Errorf("GetOrSet should return the same object if key doesn't exist")
+	}
+
+	d2 := []byte("baz")
+	b = c.GetOrSet("bork", d2, 3, 30)
+	if bytes.Compare(b.([]byte), d) != 0 {
+		t.Errorf("GetOrSet should return existing key if it already exist")
+	}
+
 }

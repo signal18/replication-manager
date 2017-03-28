@@ -4,8 +4,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"go.uber.org/zap"
+
 	"github.com/lomik/go-carbon/points"
+	"github.com/lomik/zapwriter"
 )
 
 type WriteoutQueue struct {
@@ -36,10 +38,17 @@ func (q *WriteoutQueue) makeRebuildCallback(nextRebuildTime time.Time) func(chan
 		// next rebuild
 		nextRebuildOnce.Do(func() {
 			now := time.Now()
-			logrus.Debugf("nextRebuildOnce.Do: %#v %#v", now.String(), nextRebuildTime.String())
+			logger := zapwriter.Logger("cache")
+
+			logger.Debug("WriteoutQueue.nextRebuildOnce.Do",
+				zap.String("now", now.String()),
+				zap.String("next", nextRebuildTime.String()),
+			)
 			if now.Before(nextRebuildTime) {
 				sleepTime := nextRebuildTime.Sub(now)
-				logrus.Debugf("sleep %s before rebuild", sleepTime.String())
+				logger.Debug("WriteoutQueue sleep before rebuild",
+					zap.String("sleepTime", sleepTime.String()),
+				)
 
 				select {
 				case <-time.After(sleepTime):

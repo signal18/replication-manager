@@ -14,13 +14,17 @@ import (
 // parameters at entry and exit.
 //
 // work is temporary storage, and lwork specifies the usable memory length.
-// At minimum, lwork >= m and this function will panic otherwise.
+// The length of work must be at least max(1, lwork) and lwork must be -1
+// or at least n, otherwise this function will panic.
 // Dgeqrf is a blocked QR factorization, but the block size is limited
 // by the temporary space available. If lwork == -1, instead of performing Dgeqrf,
 // the optimal work length will be stored into work[0].
 //
 // tau must have length at least min(m,n), and this function will panic otherwise.
 func (impl Implementation) Dgeqrf(m, n int, a []float64, lda int, tau, work []float64, lwork int) {
+	if len(work) < max(1, lwork) {
+		panic(shortWork)
+	}
 	// nb is the optimal blocksize, i.e. the number of columns transformed at a time.
 	nb := impl.Ilaenv(1, "DGEQRF", " ", m, n, -1, -1)
 	lworkopt := n * max(nb, 1)
@@ -30,9 +34,6 @@ func (impl Implementation) Dgeqrf(m, n int, a []float64, lda int, tau, work []fl
 		return
 	}
 	checkMatrix(m, n, a, lda)
-	if len(work) < lwork {
-		panic(shortWork)
-	}
 	if lwork < n {
 		panic(badWork)
 	}
@@ -41,6 +42,7 @@ func (impl Implementation) Dgeqrf(m, n int, a []float64, lda int, tau, work []fl
 		panic(badTau)
 	}
 	if k == 0 {
+		work[0] = float64(lworkopt)
 		return
 	}
 	nbmin := 2 // Minimal block size.
@@ -93,4 +95,5 @@ func (impl Implementation) Dgeqrf(m, n int, a []float64, lda int, tau, work []fl
 	if i < k {
 		impl.Dgeqr2(m-i, n-i, a[i*lda+i:], lda, tau[i:], work)
 	}
+	work[0] = float64(lworkopt)
 }

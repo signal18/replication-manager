@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"reflect"
 )
 
@@ -29,9 +30,12 @@ func NewEncoder(w io.Writer) *Encoder {
 // Encode writes the pickle encoding of v to w, the encoder's writer
 func (e *Encoder) Encode(v interface{}) error {
 	rv := reflectValueOf(v)
-	e.encode(rv)
-	e.w.Write([]byte{opStop})
-	return nil
+	err := e.encode(rv)
+	if err != nil {
+		return err
+	}
+	_, err = e.w.Write([]byte{opStop})
+	return err
 }
 
 func (e *Encoder) encode(rv reflect.Value) error {
@@ -49,6 +53,8 @@ func (e *Encoder) encode(rv reflect.Value) error {
 	case reflect.Array, reflect.Slice:
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
 			return e.encodeBytes(rv.Bytes())
+		} else if _, ok := rv.Interface().(Tuple); ok {
+			return e.encodeTuple(rv.Interface().(Tuple))
 		} else {
 			return e.encodeArray(rv)
 		}
@@ -86,6 +92,36 @@ func (e *Encoder) encode(rv reflect.Value) error {
 	}
 
 	return nil
+}
+
+func (e *Encoder) encodeTuple(t Tuple) error {
+	l := len(t)
+
+	switch l {
+	case 0:
+		_, err := e.w.Write([]byte{opEmptyTuple})
+		return err
+
+	// TODO this are protocol 2 opcodes - check e.protocol before using them
+	//case 1:
+	//case 2:
+	//case 3:
+	}
+
+	_, err := e.w.Write([]byte{opMark})
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < l; i++ {
+		err = e.encode(reflectValueOf(t[i]))
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = e.w.Write([]byte{opTuple})
+	return err
 }
 
 func (e *Encoder) encodeArray(arr reflect.Value) error {
@@ -192,6 +228,12 @@ func (e *Encoder) encodeInt(k reflect.Kind, i int64) error {
 	return err
 }
 
+func (e *Encoder) encodeLong(b *big.Int) error {
+	// TODO if e.protocol >= 2 use opLong1 & opLong4
+	_, err := fmt.Fprintf(e.w, "%c%dL\n", opLong, b)
+	return err
+}
+
 func (e *Encoder) encodeMap(m reflect.Value) error {
 
 	keys := m.MapKeys()
@@ -235,14 +277,32 @@ func (e *Encoder) encodeString(s string) error {
 	return e.encodeBytes([]byte(s))
 }
 
+func (e *Encoder) encodeCall(v *Call) error {
+	_, err := fmt.Fprintf(e.w, "%c%s\n%s\n", opGlobal, v.Callable.Module, v.Callable.Name)
+	if err != nil {
+		return err
+	}
+	err = e.encodeTuple(v.Args)
+	if err != nil {
+		return err
+	}
+	_, err = e.w.Write([]byte{opReduce})
+	return err
+}
+
 func (e *Encoder) encodeStruct(st reflect.Value) error {
 
 	typ := st.Type()
 
 	// first test if it's one of our internal python structs
-	if _, ok := st.Interface().(None); ok {
+	switch v := st.Interface().(type) {
+	case None:
 		_, err := e.w.Write([]byte{opNone})
 		return err
+	case Call:
+		return e.encodeCall(&v)
+	case big.Int:
+		return e.encodeLong(&v)
 	}
 
 	structTags := getStructTags(st)

@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lomik/go-carbon/logging"
-	"github.com/lomik/go-carbon/points"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/lomik/go-carbon/points"
+	"github.com/lomik/zapwriter"
 )
 
 func TestPickle(t *testing.T) {
@@ -35,27 +36,27 @@ func TestPickle(t *testing.T) {
 }
 
 func TestBadPickle(t *testing.T) {
+	defer zapwriter.Test()()
+
 	assert := assert.New(t)
 	test := newTCPTestCase(t, true)
 	defer test.Finish()
 
-	logging.Test(func(log logging.TestOut) {
-		test.Send("\x00\x00\x00#\x80\x02]q\x00q\x0bhello.worldq\x01Rixf8\xd3\x8eVK*\x86q\x02\x86q\x03a.")
-		time.Sleep(10 * time.Millisecond)
-		assert.Contains(log.String(), "I [pickle] Can't unpickle message")
-	})
+	test.Send("\x00\x00\x00#\x80\x02]q\x00q\x0bhello.worldq\x01Rixf8\xd3\x8eVK*\x86q\x02\x86q\x03a.")
+	time.Sleep(10 * time.Millisecond)
+	assert.Contains(zapwriter.TestString(), "can't unpickle message")
 }
 
 // https://github.com/lomik/go-carbon/issues/30
 func TestPickleMemoryError(t *testing.T) {
+	defer zapwriter.Test()()
+
 	assert := assert.New(t)
 	test := newTCPTestCase(t, true)
 	defer test.Finish()
 
-	logging.Test(func(log logging.TestOut) {
-		test.Send("\x80\x00\x00\x01") // 2Gb message length
-		time.Sleep(10 * time.Millisecond)
+	test.Send("\x80\x00\x00\x01") // 2Gb message length
+	time.Sleep(10 * time.Millisecond)
 
-		assert.Contains(log.String(), "W [pickle] Bad message")
-	})
+	assert.Contains(zapwriter.TestString(), "bad message size")
 }

@@ -22,7 +22,8 @@ func (e *ExpWeight) Push(x float64) {
 		e.v = 1
 	} else {
 		e.m1 = (1-e.alpha)*x + e.alpha*e.m1
-		e.v = (1-e.alpha)*(x-e.m1) + e.alpha*e.v
+		v := (x - e.m1)
+		e.v = (1-e.alpha)*(v*v) + e.alpha*e.v
 	}
 
 	e.n++

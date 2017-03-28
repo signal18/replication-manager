@@ -12,9 +12,10 @@ import (
 
 	trigram "github.com/dgryski/go-trigram"
 	"github.com/lomik/go-carbon/cache"
-	pb "github.com/lomik/go-carbon/carbonzipperpb"
+	pb "github.com/lomik/go-carbon/carbonzipperpb3"
 	"github.com/lomik/go-carbon/points"
 	whisper "github.com/lomik/go-whisper"
+	"go.uber.org/zap"
 )
 
 type point struct {
@@ -164,6 +165,21 @@ var singleMetricTests = []FetchTest{
 		expectedIsAbsent: []bool{false, false, false, false, false, false, false, false, true, true},
 	},
 	{
+		name:             "data-file-not-even",
+		createWhisper:    true,
+		fillWhisper:      true,
+		fillCache:        false,
+		from:             now - 300,
+		until:            now,
+		now:              now,
+		errIsNil:         true,
+		dataIsNil:        false,
+		expectedStep:     60,
+		expectedValues:   []float64{0.2, 0.3, 0.0, 0.0, 0.0},
+		expectedIsAbsent: []bool{false, false, true, true, true},
+		retention:        "1m:5m",
+	},
+	{
 		name:             "data-file",
 		createWhisper:    true,
 		fillWhisper:      true,
@@ -242,6 +258,7 @@ func testFetchSingleMetricCommon(t *testing.T, test *FetchTest) {
 	carbonserver := CarbonserverListener{
 		whisperData: path,
 		cacheGet:    cache.Get,
+		logger:      zap.NewNop(),
 	}
 	precision := 0.000001
 
@@ -262,8 +279,8 @@ func testFetchSingleMetricCommon(t *testing.T, test *FetchTest) {
 			return
 		}
 		fmt.Printf("%+v\n\n", data)
-		if *(data.StepTime) != test.expectedStep {
-			t.Errorf("Unepxected step: '%v', expected: '%v'\n", *(data.StepTime), test.expectedStep)
+		if data.StepTime != test.expectedStep {
+			t.Errorf("Unepxected step: '%v', expected: '%v'\n", data.StepTime, test.expectedStep)
 			return
 		}
 		if len(test.expectedValues) != len(data.Values) {
@@ -297,6 +314,7 @@ func TestFetchSingleMetricNonProperArchive(t *testing.T) {
 }
 
 /*
+ * Test is fuzzy, until https://github.com/lomik/go-whisper/pull/5 is fixed
 func TestFetchSingleMetricCrossRetention(t *testing.T) {
 	test := getSingleMetricTest("cross-retention")
 	testFetchSingleMetricCommon(t, test)
@@ -308,6 +326,14 @@ func TestFetchSingleMetricDataFile(t *testing.T) {
 	testFetchSingleMetricCommon(t, test)
 }
 
+/*
+ * Test is fuzzy, until https://github.com/lomik/go-whisper/pull/5 is fixed
+func TestFetchSingleMetricDataFileNotEven(t *testing.T) {
+	test := getSingleMetricTest("data-file-not-even")
+	testFetchSingleMetricCommon(t, test)
+}
+*/
+
 func TestFetchSingleMetricDataFileCache(t *testing.T) {
 	test := getSingleMetricTest("data-file-cache")
 	testFetchSingleMetricCommon(t, test)
@@ -316,6 +342,68 @@ func TestFetchSingleMetricDataFileCache(t *testing.T) {
 func TestFetchSingleMetricDataCache(t *testing.T) {
 	test := getSingleMetricTest("data-cache")
 	testFetchSingleMetricCommon(t, test)
+}
+
+func TestGetMetricsListEmpty(t *testing.T) {
+	cache := cache.New()
+	path, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(path)
+
+	carbonserver := CarbonserverListener{
+		whisperData: path,
+		cacheGet:    cache.Get,
+	}
+
+	metrics, err := carbonserver.getMetricsList()
+	if err != metricsListEmptyError {
+		t.Errorf("err: '%v', expected: '%v'", err, metricsListEmptyError)
+	}
+	if metrics != nil {
+		t.Errorf("metrics: '%v', expected: 'nil'", err)
+	}
+}
+
+func TestGetMetricsListWithData(t *testing.T) {
+	cache := cache.New()
+	path, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(path)
+
+	carbonserver := CarbonserverListener{
+		whisperData: path,
+		cacheGet:    cache.Get,
+	}
+
+	fidx := fileIndex{}
+	fidx.files = append(fidx.files, "/foo/bar.wsp")
+	fidx.files = append(fidx.files, "/foo/baz.wsp")
+	carbonserver.UpdateFileIndex(&fidx)
+
+	metrics, err := carbonserver.getMetricsList()
+	if err != nil {
+		t.Errorf("err: '%v', expected: 'nil'", err)
+		return
+	}
+
+	if metrics == nil {
+		t.Errorf("metrics: 'nil', but shouldn't be")
+		return
+	}
+
+	if len(metrics) != 2 {
+		t.Errorf("amount of metrics: %v, expected: 2", len(metrics))
+		return
+	}
+
+	if metrics[0] != "foo.bar" || metrics[1] != "foo.baz" {
+		t.Errorf("metrics: '%+v', expected [%s %s]", metrics, fidx.files[0], fidx.files[1])
+		return
+	}
 }
 
 func benchmarkFetchSingleMetricCommon(b *testing.B, test *FetchTest) {

@@ -16,6 +16,9 @@ import (
 // Copied from lapack/native. Keep in sync.
 const (
 	absIncNotOne    = "lapack: increment not one or negative one"
+	badAlpha        = "lapack: bad alpha length"
+	badAuxv         = "lapack: auxv has insufficient length"
+	badBeta         = "lapack: bad beta length"
 	badD            = "lapack: d has insufficient length"
 	badDecompUpdate = "lapack: bad decomp update"
 	badDiag         = "lapack: bad diag"
@@ -25,12 +28,17 @@ const (
 	badEVComp       = "lapack: bad EVComp"
 	badEVJob        = "lapack: bad EVJob"
 	badEVSide       = "lapack: bad EVSide"
+	badGSVDJob      = "lapack: bad GSVDJob"
 	badHowMany      = "lapack: bad HowMany"
 	badIlo          = "lapack: ilo out of range"
 	badIhi          = "lapack: ihi out of range"
-	badIpiv         = "lapack: insufficient permutation length"
+	badIpiv         = "lapack: bad permutation length"
 	badJob          = "lapack: bad Job"
+	badK1           = "lapack: k1 out of range"
+	badK2           = "lapack: k2 out of range"
+	badKperm        = "lapack: incorrect permutation length"
 	badLdA          = "lapack: index of a out of range"
+	badNb           = "lapack: nb out of range"
 	badNorm         = "lapack: bad norm"
 	badPivot        = "lapack: bad pivot"
 	badS            = "lapack: s has insufficient length"
@@ -43,6 +51,8 @@ const (
 	badTauQ         = "lapack: tauQ has insufficient length"
 	badTauP         = "lapack: tauP has insufficient length"
 	badTrans        = "lapack: bad trans"
+	badVn1          = "lapack: vn1 has insufficient length"
+	badVn2          = "lapack: vn2 has insufficient length"
 	badUplo         = "lapack: illegal triangle"
 	badWork         = "lapack: insufficient working memory"
 	badWorkStride   = "lapack: insufficient working array stride"
@@ -57,6 +67,7 @@ const (
 	negZ            = "lapack: negative z value"
 	nLT0            = "lapack: n < 0"
 	nLTM            = "lapack: n < m"
+	offsetGTM       = "lapack: offset > m"
 	shortWork       = "lapack: working array shorter than declared"
 	zeroDiv         = "lapack: zero divisor"
 )
@@ -107,6 +118,70 @@ func checkVector(n int, v []float64, inc int) {
 type Implementation struct{}
 
 var _ lapack.Float64 = Implementation{}
+
+// Dgeqp3 computes a QR factorization with column pivoting of the
+// m×n matrix A: A*P = Q*R using Level 3 BLAS.
+//
+// The matrix Q is represented as a product of elementary reflectors
+//  Q = H_0 H_1 . . . H_{k-1}, where k = min(m,n).
+// Each H_i has the form
+//  H_i = I - tau * v * v^T
+// where tau and v are real vectors with v[0:i-1] = 0 and v[i] = 1;
+// v[i:m] is stored on exit in A[i:m, i], and tau in tau[i].
+//
+// jpvt specifies a column pivot to be applied to A. If
+// jpvt[j] is at least zero, the jth column of A is permuted
+// to the front of A*P (a leading column), if jpvt[j] is -1
+// the jth column of A is a free column. If jpvt[j] < -1, Dgeqp3
+// will panic. On return, jpvt holds the permutation that was
+// applied; the jth column of A*P was the jpvt[j] column of A.
+// jpvt must have length n or Dgeqp3 will panic.
+//
+// tau holds the scalar factors of the elementary reflectors.
+// It must have length min(m, n), otherwise Dgeqp3 will panic.
+//
+// work must have length at least max(1,lwork), and lwork must be at least
+// 3*n+1, otherwise Dgeqp3 will panic. For optimal performance lwork must
+// be at least 2*n+(n+1)*nb, where nb is the optimal blocksize. On return,
+// work[0] will contain the optimal value of lwork.
+//
+// If lwork == -1, instead of performing Dgeqp3, only the optimal value of lwork
+// will be stored in work[0].
+//
+// Dgeqp3 is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dgeqp3(m, n int, a []float64, lda int, jpvt []int, tau, work []float64, lwork int) {
+	checkMatrix(m, n, a, lda)
+	if len(jpvt) != n {
+		panic(badIpiv)
+	}
+	if len(tau) != min(m, n) {
+		panic(badTau)
+	}
+	if len(work) < max(1, lwork) {
+		panic(badWork)
+	}
+
+	// Don't update jpvt if querying lwkopt.
+	if lwork == -1 {
+		lapacke.Dgeqp3(m, n, a, lda, nil, nil, work, -1)
+		return
+	}
+
+	jpvt32 := make([]int32, len(jpvt))
+	for i, v := range jpvt {
+		v++
+		if v != int(int32(v)) || v < 0 || n < v {
+			panic("lapack: jpvt element out of range")
+		}
+		jpvt32[i] = int32(v)
+	}
+
+	lapacke.Dgeqp3(m, n, a, lda, jpvt32, tau, work, lwork)
+
+	for i, v := range jpvt32 {
+		jpvt[i] = int(v - 1)
+	}
+}
 
 // Dlacn2 estimates the 1-norm of an n×n matrix A using sequential updates with
 // matrix-vector products provided externally.
@@ -168,6 +243,46 @@ func (impl Implementation) Dlacpy(uplo blas.Uplo, m, n int, a []float64, lda int
 	lapacke.Dlacpy(uplo, m, n, a, lda, b, ldb)
 }
 
+// Dlapmt rearranges the columns of the m×n matrix X as specified by the
+// permutation k_0, k_1, ..., k_n-1 of the integers 0, ..., n-1.
+//
+// If forward is true a forward permutation is performed:
+//
+//  X[0:m, k[j]] is moved to X[0:m, j] for j = 0, 1, ..., n-1.
+//
+// otherwise a backward permutation is performed:
+//
+//  X[0:m, j] is moved to X[0:m, k[j]] for j = 0, 1, ..., n-1.
+//
+// k must have length n, otherwise Dlapmt will panic. k is zero-indexed.
+//
+// Dlapmt is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dlapmt(forward bool, m, n int, x []float64, ldx int, k []int) {
+	checkMatrix(m, n, x, ldx)
+	if len(k) != n {
+		panic(badKperm)
+	}
+
+	if n <= 1 {
+		return
+	}
+
+	var forwrd int32
+	if forward {
+		forwrd = 1
+	}
+	k32 := make([]int32, len(k))
+	for i, v := range k {
+		v++ // Convert to 1-based indexing.
+		if v != int(int32(v)) {
+			panic("lapack: k element out of range")
+		}
+		k32[i] = int32(v)
+	}
+
+	lapacke.Dlapmt(forwrd, m, n, x, ldx, k32)
+}
+
 // Dlapy2 is the LAPACK version of math.Hypot.
 //
 // Dlapy2 is an internal routine. It is exported for testing purposes.
@@ -220,17 +335,7 @@ func (Implementation) Dlapy2(x, y float64) float64 {
 // this function will panic if this size is not met.
 //
 // Dlarfb is an internal routine. It is exported for testing purposes.
-func (Implementation) Dlarfb(side blas.Side, trans blas.Transpose, direct lapack.Direct,
-	store lapack.StoreV, m, n, k int, v []float64, ldv int, t []float64, ldt int,
-	c []float64, ldc int, work []float64, ldwork int) {
-
-	checkMatrix(m, n, c, ldc)
-	if m == 0 || n == 0 {
-		return
-	}
-	if k < 0 {
-		panic("lapack: negative number of transforms")
-	}
+func (Implementation) Dlarfb(side blas.Side, trans blas.Transpose, direct lapack.Direct, store lapack.StoreV, m, n, k int, v []float64, ldv int, t []float64, ldt int, c []float64, ldc int, work []float64, ldwork int) {
 	if side != blas.Left && side != blas.Right {
 		panic(badSide)
 	}
@@ -243,17 +348,28 @@ func (Implementation) Dlarfb(side blas.Side, trans blas.Transpose, direct lapack
 	if store != lapack.ColumnWise && store != lapack.RowWise {
 		panic(badStore)
 	}
-
-	rowsWork := n
+	checkMatrix(m, n, c, ldc)
+	if k < 0 {
+		panic(kLT0)
+	}
+	checkMatrix(k, k, t, ldt)
+	nv := m
+	nw := n
 	if side == blas.Right {
-		rowsWork = m
+		nv = n
+		nw = m
+	}
+	if store == lapack.ColumnWise {
+		checkMatrix(nv, k, v, ldv)
+	} else {
+		checkMatrix(k, nv, v, ldv)
 	}
 	// TODO(vladimir-ch): Replace the following two lines with
-	//  checkMatrix(rowsWork, k, work, ldwork)
+	//  checkMatrix(nw, k, work, ldwork)
 	// if and when the issue
 	//  https://github.com/Reference-LAPACK/lapack/issues/37
 	// has been resolved.
-	ldwork = rowsWork
+	ldwork = nw
 	work = make([]float64, ldwork*k)
 
 	lapacke.Dlarfb(side, trans, byte(direct), byte(store), m, n, k, v, ldv, t, ldt, c, ldc, work, ldwork)
@@ -330,7 +446,7 @@ func (Implementation) Dlarft(direct lapack.Direct, store lapack.StoreV, n, k int
 //  lapack.MaxAbs: the maximum absolute value of an element.
 //  lapack.MaxColumnSum: the maximum column sum of the absolute values of the entries.
 //  lapack.MaxRowSum: the maximum row sum of the absolute values of the entries.
-//  lapack.Frobenius: the square root of the sum of the squares of the entries.
+//  lapack.NormFrob: the square root of the sum of the squares of the entries.
 // If norm == lapack.MaxColumnSum, work must be of length n, and this function will panic otherwise.
 // There are no restrictions on work for the other matrix norms.
 func (impl Implementation) Dlange(norm lapack.MatrixNorm, m, n int, a []float64, lda int, work []float64) float64 {
@@ -470,12 +586,31 @@ func (impl Implementation) Dlasrt(s lapack.Sort, n int, d []float64) {
 	lapacke.Dlasrt(byte(s), n, d[:n])
 }
 
-// Dlaswp swaps the rows k1 to k2 of a according to the indices in ipiv.
-// a is a matrix with n columns and stride lda. incX is the increment for ipiv.
-// k1 and k2 are zero-indexed. If incX is negative, then loops from k2 to k1
+// Dlaswp swaps the rows k1 to k2 of a rectangular matrix A according to the
+// indices in ipiv so that row k is swapped with ipiv[k].
+//
+// n is the number of columns of A and incX is the increment for ipiv. If incX
+// is 1, the swaps are applied from k1 to k2. If incX is -1, the swaps are
+// applied in reverse order from k2 to k1. For other values of incX Dlaswp will
+// panic. ipiv must have length k2+1, otherwise Dlaswp will panic.
+//
+// The indices k1, k2, and the elements of ipiv are zero-based.
 //
 // Dlaswp is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dlaswp(n int, a []float64, lda, k1, k2 int, ipiv []int, incX int) {
+	switch {
+	case n < 0:
+		panic(nLT0)
+	case k2 < 0:
+		panic(badK2)
+	case k1 < 0 || k2 < k1:
+		panic(badK1)
+	case len(ipiv) != k2+1:
+		panic(badIpiv)
+	case incX != 1 && incX != -1:
+		panic(absIncNotOne)
+	}
+
 	ipiv32 := make([]int32, len(ipiv))
 	for i, v := range ipiv {
 		ipiv32[i] = int32(v + 1)
@@ -726,11 +861,13 @@ func (impl Implementation) Dbdsqr(uplo blas.Uplo, n, ncvt, nru, ncc int, d, e, v
 // d, tauQ, and tauP must all have length at least min(m,n), and e must have
 // length min(m,n) - 1.
 //
-// Work is temporary storage, and lwork specifies the usable memory length.
+// work is temporary storage, and lwork specifies the usable memory length.
 // At minimum, lwork >= max(m,n) and this function will panic otherwise.
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgebrd but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgebrd will panic.
+// Dgebrd is blocked decomposition, but the block size is limited
+// by the temporary space available. If lwork == -1, instead of performing Dgebrd,
+// the optimal work length will be stored into work[0].
+//
+// Dgebrd is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dgebrd(m, n int, a []float64, lda int, d, e, tauQ, tauP, work []float64, lwork int) {
 	checkMatrix(m, n, a, lda)
 	minmn := min(m, n)
@@ -831,9 +968,11 @@ func (impl Implementation) Dgelq2(m, n int, a []float64, lda int, tau, work []fl
 // algorithm. See the documentation for Dgelq2 for a description of the
 // parameters at entry and exit.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgelqf but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgelqf will panic.
+// work is temporary storage, and lwork specifies the usable memory length.
+// At minimum, lwork >= m, and this function will panic otherwise.
+// Dgelqf is a blocked LQ factorization, but the block size is limited
+// by the temporary space available. If lwork == -1, instead of performing Dgelqf,
+// the optimal work length will be stored into work[0].
 //
 // tau must have length at least min(m,n), and this function will panic otherwise.
 func (impl Implementation) Dgelqf(m, n int, a []float64, lda int, tau, work []float64, lwork int) {
@@ -892,20 +1031,23 @@ func (impl Implementation) Dgeqr2(m, n int, a []float64, lda int, tau, work []fl
 // algorithm. See the documentation for Dgeqr2 for a description of the
 // parameters at entry and exit.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgeqrf but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgeqrf will panic.
+// work is temporary storage, and lwork specifies the usable memory length.
+// The length of work must be at least max(1, lwork) and lwork must be -1
+// or at least n, otherwise this function will panic.
+// Dgeqrf is a blocked QR factorization, but the block size is limited
+// by the temporary space available. If lwork == -1, instead of performing Dgeqrf,
+// the optimal work length will be stored into work[0].
 //
 // tau must have length at least min(m,n), and this function will panic otherwise.
 func (impl Implementation) Dgeqrf(m, n int, a []float64, lda int, tau, work []float64, lwork int) {
+	if len(work) < max(1, lwork) {
+		panic(shortWork)
+	}
 	if lwork == -1 {
 		work[0] = float64(n)
 		return
 	}
 	checkMatrix(m, n, a, lda)
-	if len(work) < lwork {
-		panic(shortWork)
-	}
 	if lwork < n {
 		panic(badWork)
 	}
@@ -1015,9 +1157,11 @@ func (impl Implementation) Dgehrd(n, ilo, ihi int, a []float64, lda int, tau, wo
 // leading submatrix of b contains the solution vectors X. If trans == blas.NoTrans,
 // this submatrix is of size n×nrhs, and of size m×nrhs otherwise.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgels but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgels will panic.
+// work is temporary storage, and lwork specifies the usable memory length.
+// At minimum, lwork >= max(m,n) + max(m,n,nrhs), and this function will panic
+// otherwise. A longer work will enable blocked algorithms to be called.
+// In the special case that lwork == -1, work[0] will be set to the optimal working
+// length.
 func (impl Implementation) Dgels(trans blas.Transpose, m, n, nrhs int, a []float64, lda int, b []float64, ldb int, work []float64, lwork int) bool {
 	mn := min(m, n)
 	if lwork == -1 {
@@ -1072,9 +1216,11 @@ const noSVDO = "dgesvd: not coded for overwrite"
 // of size min(m,n)×n. If jobVT == lapack.SVDOverwrite or lapack.SVDNone, vt is
 // not used.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgesvd but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgesvd will panic.
+// work is a slice for storing temporary memory, and lwork is the usable size of
+// the slice. lwork must be at least max(5*min(m,n), 3*min(m,n)+max(m,n)).
+// If lwork == -1, instead of performing Dgesvd, the optimal work length will be
+// stored into work[0]. Dgesvd will panic if the working memory has insufficient
+// storage.
 //
 // Dgesvd returns whether the decomposition successfully completed.
 func (impl Implementation) Dgesvd(jobU, jobVT lapack.SVDJob, m, n int, a []float64, lda int, s, u []float64, ldu int, vt []float64, ldvt int, work []float64, lwork int) (ok bool) {
@@ -1178,12 +1324,14 @@ func (impl Implementation) Dgetrf(m, n int, a []float64, lda int, ipiv []int) (o
 // by Dgetrf. On entry, a contains the PLU decomposition of A as computed by
 // Dgetrf and on exit contains the reciprocal of the original matrix.
 //
-// Dtrtri will not perform the inversion if the matrix is singular, and returns
+// Dgetri will not perform the inversion if the matrix is singular, and returns
 // a boolean indicating whether the inversion was successful.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dgetri but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dgetri will panic.
+// work is temporary storage, and lwork specifies the usable memory length.
+// At minimum, lwork >= n and this function will panic otherwise.
+// Dgetri is a blocked inversion, but the block size is limited
+// by the temporary space available. If lwork == -1, instead of performing Dgetri,
+// the optimal work length will be stored into work[0].
 func (impl Implementation) Dgetri(n int, a []float64, lda int, ipiv []int, work []float64, lwork int) (ok bool) {
 	checkMatrix(n, n, a, lda)
 	if len(ipiv) < n {
@@ -1322,13 +1470,14 @@ func (impl Implementation) Dorghr(n, ilo, ihi int, a []float64, lda int, tau, wo
 //
 // len(tau) >= k, 0 <= k <= n, and 0 <= m <= n.
 //
-// Work is temporary storage, and lwork specifies the usable memory length.
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dorglq but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dorglq will panic, and at minimum
-// lwork >= m.
+// work is temporary storage, and lwork specifies the usable memory length. At minimum,
+// lwork >= m, and the amount of blocking is limited by the usable length.
+// If lwork == -1, instead of computing Dorglq the optimal work length is stored
+// into work[0].
 //
 // Dorglq will panic if the conditions on input values are not met.
+//
+// Dorglq is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dorglq(m, n, k int, a []float64, lda int, tau, work []float64, lwork int) {
 	if lwork == -1 {
 		work[0] = float64(m)
@@ -1409,15 +1558,17 @@ func (impl Implementation) Dorgql(m, n, k int, a []float64, lda int, tau, work [
 // as computed by Dgeqrf. Dorgqr is the blocked version of Dorg2r that makes
 // greater use of level-3 BLAS routines.
 //
-// len(tau) >= k, 0 <= k <= n, and 0 <= n <= m.
+// The length of tau must be at least k, and the length of work must be at least n.
+// It also must be that 0 <= k <= n and 0 <= n <= m.
 //
-// Work is temporary storage, and lwork specifies the usable memory length.
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dorgqr but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dorgqr will panic, and at minimum
-// lwork >= n.
+// work is temporary storage, and lwork specifies the usable memory length. At
+// minimum, lwork >= n, and the amount of blocking is limited by the usable
+// length. If lwork == -1, instead of computing Dorgqr the optimal work length
+// is stored into work[0].
 //
 // Dorgqr will panic if the conditions on input values are not met.
+//
+// Dorgqr is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dorgqr(m, n, k int, a []float64, lda int, tau, work []float64, lwork int) {
 	if lwork == -1 {
 		work[0] = float64(n)
@@ -1445,31 +1596,77 @@ func (impl Implementation) Dorgqr(m, n, k int, a []float64, lda int, tau, work [
 	lapacke.Dorgqr(m, n, k, a, lda, tau, work, lwork)
 }
 
+// Dorgtr generates a real orthogonal matrix Q which is defined as the product
+// of n-1 elementary reflectors of order n as returned by Dsytrd.
+//
+// The construction of Q depends on the value of uplo:
+//  Q = H_{n-1} * ... * H_1 * H_0  if uplo == blas.Upper
+//  Q = H_0 * H_1 * ... * H_{n-1}  if uplo == blas.Lower
+// where H_i is constructed from the elementary reflectors as computed by Dsytrd.
+// See the documentation for Dsytrd for more information.
+//
+// tau must have length at least n-1, and Dorgtr will panic otherwise.
+//
+// work is temporary storage, and lwork specifies the usable memory length. At
+// minimum, lwork >= max(1,n-1), and Dorgtr will panic otherwise. The amount of blocking
+// is limited by the usable length.
+// If lwork == -1, instead of computing Dorgtr the optimal work length is stored
+// into work[0].
+//
+// Dorgtr is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dorgtr(uplo blas.Uplo, n int, a []float64, lda int, tau, work []float64, lwork int) {
+	checkMatrix(n, n, a, lda)
+	if len(tau) < n-1 {
+		panic(badTau)
+	}
+	if len(work) < lwork {
+		panic(badWork)
+	}
+	if lwork < n-1 && lwork != -1 {
+		panic(badWork)
+	}
+	upper := uplo == blas.Upper
+	if !upper && uplo != blas.Lower {
+		panic(badUplo)
+	}
+	lapacke.Dorgtr(uplo, n, a, lda, tau, work, lwork)
+}
+
 // Dormbr applies a multiplicative update to the matrix C based on a
 // decomposition computed by Dgebrd.
 //
-// Dormbr computes
-//  Q * C if vect == lapack.ApplyQ, side == blas.Left, and trans == blas.NoTrans
-//  C * Q if vect == lapack.ApplyQ, side == blas.Right, and trans == blas.NoTrans
+// Dormbr overwrites the m×n matrix C with
+//  Q * C   if vect == lapack.ApplyQ, side == blas.Left, and trans == blas.NoTrans
+//  C * Q   if vect == lapack.ApplyQ, side == blas.Right, and trans == blas.NoTrans
 //  Q^T * C if vect == lapack.ApplyQ, side == blas.Left, and trans == blas.Trans
 //  C * Q^T if vect == lapack.ApplyQ, side == blas.Right, and trans == blas.Trans
 //
-//  P * C if vect == lapack.ApplyP, side == blas.Left, and trans == blas.NoTrans
-//  C * P if vect == lapack.ApplyP, side == blas.Left, and trans == blas.NoTrans
-//  P^T * C if vect == lapack.ApplyP, side == blas.Right, and trans == blas.Trans
+//  P * C   if vect == lapack.ApplyP, side == blas.Left, and trans == blas.NoTrans
+//  C * P   if vect == lapack.ApplyP, side == blas.Right, and trans == blas.NoTrans
+//  P^T * C if vect == lapack.ApplyP, side == blas.Left, and trans == blas.Trans
 //  C * P^T if vect == lapack.ApplyP, side == blas.Right, and trans == blas.Trans
-// where P and Q are the orthogonal matrices determined by Dgebrd, A = Q * B * P^T.
-// See Dgebrd for the definitions of Q and P.
+// where P and Q are the orthogonal matrices determined by Dgebrd when reducing
+// a matrix A to bidiagonal form: A = Q * B * P^T. See Dgebrd for the
+// definitions of Q and P.
 //
 // If vect == lapack.ApplyQ, A is assumed to have been an nq×k matrix, while if
 // vect == lapack.ApplyP, A is assumed to have been a k×nq matrix. nq = m if
 // side == blas.Left, while nq = n if side == blas.Right.
 //
-// C is an m×n matrix. On exit it is updated by the multiplication listed above.
-//
-// Tau must have length min(nq,k), and Dormbr will panic otherwise. Tau contains
+// tau must have length min(nq,k), and Dormbr will panic otherwise. tau contains
 // the elementary reflectors to construct Q or P depending on the value of
 // vect.
+//
+// work must have length at least max(1,lwork), and lwork must be either -1 or
+// at least max(1,n) if side == blas.Left, and at least max(1,m) if side ==
+// blas.Right. For optimum performance lwork should be at least n*nb if side ==
+// blas.Left, and at least m*nb if side == blas.Right, where nb is the optimal
+// block size. On return, work[0] will contain the optimal value of lwork.
+//
+// If lwork == -1, the function only calculates the optimal value of lwork and
+// returns it in work[0].
+//
+// Dormbr is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dormbr(vect lapack.DecompUpdate, side blas.Side, trans blas.Transpose, m, n, k int, a []float64, lda int, tau, c []float64, ldc int, work []float64, lwork int) {
 	if side != blas.Left && side != blas.Right {
 		panic(badSide)
@@ -1481,13 +1678,25 @@ func (impl Implementation) Dormbr(vect lapack.DecompUpdate, side blas.Side, tran
 		panic(badDecompUpdate)
 	}
 	nq := n
+	nw := m
 	if side == blas.Left {
 		nq = m
+		nw = n
 	}
 	if vect == lapack.ApplyQ {
 		checkMatrix(nq, min(nq, k), a, lda)
 	} else {
 		checkMatrix(min(nq, k), nq, a, lda)
+	}
+	if len(tau) < min(nq, k) {
+		panic(badTau)
+	}
+	checkMatrix(m, n, c, ldc)
+	if len(work) < lwork {
+		panic(shortWork)
+	}
+	if lwork < max(1, nw) && lwork != -1 {
+		panic(badWork)
 	}
 	lapacke.Dormbr(byte(vect), side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork)
 }
@@ -1607,23 +1816,17 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 	if len(tau) < k {
 		panic(badTau)
 	}
-	if lwork == -1 {
-		if left {
-			work[0] = float64(n)
-			return
-		}
-		work[0] = float64(m)
-		return
+	if len(work) < lwork {
+		panic(shortWork)
 	}
+	nw := m
 	if left {
-		if lwork < n {
-			panic(badWork)
-		}
-	} else {
-		if lwork < m {
-			panic(badWork)
-		}
+		nw = n
 	}
+	if lwork < max(1, nw) && lwork != -1 {
+		panic(badWork)
+	}
+
 	lapacke.Dormlq(side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork)
 }
 
@@ -1725,6 +1928,82 @@ func (impl Implementation) Dpocon(uplo blas.Uplo, n int, a []float64, lda int, a
 	return rcond[0]
 }
 
+// Dsteqr computes the eigenvalues and optionally the eigenvectors of a symmetric
+// tridiagonal matrix using the implicit QL or QR method. The eigenvectors of a
+// full or band symmetric matrix can also be found if Dsytrd, Dsptrd, or Dsbtrd
+// have been used to reduce this matrix to tridiagonal form.
+//
+// d, on entry, contains the diagonal elements of the tridiagonal matrix. On exit,
+// d contains the eigenvalues in ascending order. d must have length n and
+// Dsteqr will panic otherwise.
+//
+// e, on entry, contains the off-diagonal elements of the tridiagonal matrix on
+// entry, and is overwritten during the call to Dsteqr. e must have length n-1 and
+// Dsteqr will panic otherwise.
+//
+// z, on entry, contains the n×n orthogonal matrix used in the reduction to
+// tridiagonal form if compz == lapack.OriginalEV. On exit, if
+// compz == lapack.OriginalEV, z contains the orthonormal eigenvectors of the
+// original symmetric matrix, and if compz == lapack.TridiagEV, z contains the
+// orthonormal eigenvectors of the symmetric tridiagonal matrix. z is not used
+// if compz == lapack.None.
+//
+// work must have length at least max(1, 2*n-2) if the eigenvectors are computed,
+// and Dsteqr will panic otherwise.
+//
+// Dsteqr is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dsteqr(compz lapack.EVComp, n int, d, e, z []float64, ldz int, work []float64) (ok bool) {
+	if n < 0 {
+		panic(nLT0)
+	}
+	if len(d) < n {
+		panic(badD)
+	}
+	if len(e) < n-1 {
+		panic(badE)
+	}
+	if compz != lapack.None && compz != lapack.TridiagEV && compz != lapack.OriginalEV {
+		panic(badEVComp)
+	}
+	if compz != lapack.None {
+		if len(work) < max(1, 2*n-2) {
+			panic(badWork)
+		}
+		checkMatrix(n, n, z, ldz)
+	}
+
+	return lapacke.Dsteqr(lapack.Comp(compz), n, d, e, z, ldz, work)
+}
+
+// Dsterf computes all eigenvalues of a symmetric tridiagonal matrix using the
+// Pal-Walker-Kahan variant of the QL or QR algorithm.
+//
+// d contains the diagonal elements of the tridiagonal matrix on entry, and
+// contains the eigenvalues in ascending order on exit. d must have length at
+// least n, or Dsterf will panic.
+//
+// e contains the off-diagonal elements of the tridiagonal matrix on entry, and is
+// overwritten during the call to Dsterf. e must have length of at least n-1 or
+// Dsterf will panic.
+//
+// Dsterf is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dsterf(n int, d, e []float64) (ok bool) {
+	if n < 0 {
+		panic(nLT0)
+	}
+	if n == 0 {
+		return true
+	}
+	if len(d) < n {
+		panic(badD)
+	}
+	if len(e) < n-1 {
+		panic(badE)
+	}
+
+	return lapacke.Dsterf(n, d, e)
+}
+
 // Dsyev computes all eigenvalues and, optionally, the eigenvectors of a real
 // symmetric matrix A.
 //
@@ -1736,9 +2015,10 @@ func (impl Implementation) Dpocon(uplo blas.Uplo, n int, a []float64, lda int, a
 // orthonormal eigenvectors of A on exit, otherwise on exit the specified
 // triangular region is overwritten.
 //
-// The C interface does not support providing temporary storage. To provide compatibility
-// with native, lwork == -1 will not run Dsyev but will instead write the minimum
-// work necessary to work[0]. If len(work) < lwork, Dsyev will panic.
+// work is temporary storage, and lwork specifies the usable memory length. At minimum,
+// lwork >= 3*n-1, and Dsyev will panic otherwise. The amount of blocking is
+// limited by the usable length. If lwork == -1, instead of computing Dsyev the
+// optimal work length is stored into work[0].
 func (impl Implementation) Dsyev(jobz lapack.EVJob, uplo blas.Uplo, n int, a []float64, lda int, w, work []float64, lwork int) (ok bool) {
 	checkMatrix(n, n, a, lda)
 	if lwork == -1 {
@@ -1752,6 +2032,75 @@ func (impl Implementation) Dsyev(jobz lapack.EVJob, uplo blas.Uplo, n int, a []f
 		panic(badWork)
 	}
 	return lapacke.Dsyev(lapack.Job(jobz), uplo, n, a, lda, w, work, lwork)
+}
+
+// Dsytrd reduces a symmetric n×n matrix A to symmetric tridiagonal form by an
+// orthogonal similarity transformation
+//  Q^T * A * Q = T
+// where Q is an orthonormal matrix and T is symmetric and tridiagonal.
+//
+// On entry, a contains the elements of the input matrix in the triangle specified
+// by uplo. On exit, the diagonal and sub/super-diagonal are overwritten by the
+// corresponding elements of the tridiagonal matrix T. The remaining elements in
+// the triangle, along with the array tau, contain the data to construct Q as
+// the product of elementary reflectors.
+//
+// If uplo == blas.Upper, Q is constructed with
+//  Q = H_{n-2} * ... * H_1 * H_0
+// where
+//  H_i = I - tau_i * v * v^T
+// v is constructed as v[i+1:n] = 0, v[i] = 1, v[0:i-1] is stored in A[0:i-1, i+1].
+// The elements of A are
+//  [ d   e  v1  v2  v3]
+//  [     d   e  v2  v3]
+//  [         d   e  v3]
+//  [             d   e]
+//  [                 e]
+//
+// If uplo == blas.Lower, Q is constructed with
+//  Q = H_0 * H_1 * ... * H_{n-2}
+// where
+//  H_i = I - tau_i * v * v^T
+// v is constructed as v[0:i+1] = 0, v[i+1] = 1, v[i+2:n] is stored in A[i+2:n, i].
+// The elements of A are
+//  [ d                ]
+//  [ e   d            ]
+//  [v0   e   d        ]
+//  [v0  v1   e   d    ]
+//  [v0  v1  v2   e   d]
+//
+// d must have length n, and e and tau must have length n-1. Dsytrd will panic if
+// these conditions are not met.
+//
+// work is temporary storage, and lwork specifies the usable memory length. At minimum,
+// lwork >= 1, and Dsytrd will panic otherwise. The amount of blocking is
+// limited by the usable length.
+// If lwork == -1, instead of computing Dsytrd the optimal work length is stored
+// into work[0].
+//
+// Dsytrd is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dsytrd(uplo blas.Uplo, n int, a []float64, lda int, d, e, tau, work []float64, lwork int) {
+	checkMatrix(n, n, a, lda)
+	if len(d) < n {
+		panic(badD)
+	}
+	if len(e) < n-1 {
+		panic(badE)
+	}
+	if len(tau) < n-1 {
+		panic(badTau)
+	}
+	if len(work) < lwork {
+		panic(shortWork)
+	}
+	if lwork != -1 && lwork < 1 {
+		panic(badWork)
+	}
+	if uplo != blas.Upper && uplo != blas.Lower {
+		panic(badUplo)
+	}
+
+	lapacke.Dsytrd(uplo, n, a, lda, d, e, tau, work, lwork)
 }
 
 // Dtrcon estimates the reciprocal of the condition number of a triangular matrix A.
@@ -2147,4 +2496,195 @@ func (impl Implementation) Dgeev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 		work[0] = float64(minwrk)
 	}
 	return first
+}
+
+// Dtgsja computes the generalized singular value decomposition (GSVD)
+// of two real upper triangular or trapezoidal matrices A and B.
+//
+// A and B have the following forms, which may be obtained by the
+// preprocessing subroutine Dggsvp from a general m×n matrix A and p×n
+// matrix B:
+//
+//            n-k-l  k    l
+//  A =    k [  0   A12  A13 ] if m-k-l >= 0;
+//         l [  0    0   A23 ]
+//     m-k-l [  0    0    0  ]
+//
+//            n-k-l  k    l
+//  A =    k [  0   A12  A13 ] if m-k-l < 0;
+//       m-k [  0    0   A23 ]
+//
+//            n-k-l  k    l
+//  B =    l [  0    0   B13 ]
+//       p-l [  0    0    0  ]
+//
+// where the k×k matrix A12 and l×l matrix B13 are non-singular
+// upper triangular. A23 is l×l upper triangular if m-k-l >= 0,
+// otherwise A23 is (m-k)×l upper trapezoidal.
+//
+// On exit,
+//
+//  U^T*A*Q = D1*[ 0 R ], V^T*B*Q = D2*[ 0 R ],
+//
+// where U, V and Q are orthogonal matrices.
+// R is a non-singular upper triangular matrix, and D1 and D2 are
+// diagonal matrices, which are of the following structures:
+//
+// If m-k-l >= 0,
+//
+//                    k  l
+//       D1 =     k [ I  0 ]
+//                l [ 0  C ]
+//            m-k-l [ 0  0 ]
+//
+//                  k  l
+//       D2 = l   [ 0  S ]
+//            p-l [ 0  0 ]
+//
+//               n-k-l  k    l
+//  [ 0 R ] = k [  0   R11  R12 ] k
+//            l [  0    0   R22 ] l
+//
+// where
+//
+//  C = diag( alpha_k, ... , alpha_{k+l} ),
+//  S = diag( beta_k,  ... , beta_{k+l} ),
+//  C^2 + S^2 = I.
+//
+// R is stored in
+//  A[0:k+l, n-k-l:n]
+// on exit.
+//
+// If m-k-l < 0,
+//
+//                 k m-k k+l-m
+//      D1 =   k [ I  0    0  ]
+//           m-k [ 0  C    0  ]
+//
+//                   k m-k k+l-m
+//      D2 =   m-k [ 0  S    0  ]
+//           k+l-m [ 0  0    I  ]
+//             p-l [ 0  0    0  ]
+//
+//                 n-k-l  k   m-k  k+l-m
+//  [ 0 R ] =    k [ 0    R11  R12  R13 ]
+//             m-k [ 0     0   R22  R23 ]
+//           k+l-m [ 0     0    0   R33 ]
+//
+// where
+//  C = diag( alpha_k, ... , alpha_m ),
+//  S = diag( beta_k,  ... , beta_m ),
+//  C^2 + S^2 = I.
+//
+//  R = [ R11 R12 R13 ] is stored in A[1:m, n-k-l+1:n]
+//      [  0  R22 R23 ]
+// and R33 is stored in
+//  B[m-k:l, n+m-k-l:n] on exit.
+//
+// The computation of the orthogonal transformation matrices U, V or Q
+// is optional. These matrices may either be formed explicitly, or they
+// may be post-multiplied into input matrices U1, V1, or Q1.
+//
+// Dtgsja essentially uses a variant of Kogbetliantz algorithm to reduce
+// min(l,m-k)×l triangular or trapezoidal matrix A23 and l×l
+// matrix B13 to the form:
+//
+//  U1^T*A13*Q1 = C1*R1; V1^T*B13*Q1 = S1*R1,
+//
+// where U1, V1 and Q1 are orthogonal matrices. C1 and S1 are diagonal
+// matrices satisfying
+//
+//  C1^2 + S1^2 = I,
+//
+// and R1 is an l×l non-singular upper triangular matrix.
+//
+// jobU, jobV and jobQ are options for computing the orthogonal matrices. The behavior
+// is as follows
+//  jobU == lapack.GSVDU        Compute orthogonal matrix U
+//  jobU == lapack.GSVDUnit     Use unit-initialized matrix
+//  jobU == lapack.GSVDNone     Do not compute orthogonal matrix.
+// The behavior is the same for jobV and jobQ with the exception that instead of
+// lapack.GSVDU these accept lapack.GSVDV and lapack.GSVDQ respectively.
+// The matrices U, V and Q must be m×m, p×p and n×n respectively unless the
+// relevant job parameter is lapack.GSVDNone.
+//
+// k and l specify the sub-blocks in the input matrices A and B:
+//  A23 = A[k:min(k+l,m), n-l:n) and B13 = B[0:l, n-l:n]
+// of A and B, whose GSVD is going to be computed by Dtgsja.
+//
+// tola and tolb are the convergence criteria for the Jacobi-Kogbetliantz
+// iteration procedure. Generally, they are the same as used in the preprocessing
+// step, for example,
+//  tola = max(m, n)*norm(A)*eps,
+//  tolb = max(p, n)*norm(B)*eps,
+// where eps is the machine epsilon.
+//
+// work must have length at least 2*n, otherwise Dtgsja will panic.
+//
+// alpha and beta must have length n or Dtgsja will panic. On exit, alpha and
+// beta contain the generalized singular value pairs of A and B
+//   alpha[0:k] = 1,
+//   beta[0:k]  = 0,
+// if m-k-l >= 0,
+//   alpha[k:k+l] = diag(C),
+//   beta[k:k+l]  = diag(S),
+// if m-k-l < 0,
+//   alpha[k:m]= C, alpha[m:k+l]= 0
+//   beta[k:m] = S, beta[m:k+l] = 1.
+// if k+l < n,
+//   alpha[k+l:n] = 0 and
+//   beta[k+l:n]  = 0.
+//
+// On exit, A[n-k:n, 0:min(k+l,m)] contains the triangular matrix R or part of R
+// and if necessary, B[m-k:l, n+m-k-l:n] contains a part of R.
+//
+// Dtgsja returns whether the routine converged and the number of iteration cycles
+// that were run.
+//
+// Dtgsja is an internal routine. It is exported for testing purposes.
+func (impl Implementation) Dtgsja(jobU, jobV, jobQ lapack.GSVDJob, m, p, n, k, l int, a []float64, lda int, b []float64, ldb int, tola, tolb float64, alpha, beta, u []float64, ldu int, v []float64, ldv int, q []float64, ldq int, work []float64) (cycles int, ok bool) {
+	checkMatrix(m, n, a, lda)
+	checkMatrix(p, n, b, ldb)
+
+	if len(alpha) != n {
+		panic(badAlpha)
+	}
+	if len(beta) != n {
+		panic(badBeta)
+	}
+
+	initu := jobU == lapack.GSVDUnit
+	wantu := initu || jobU == lapack.GSVDU
+	if !initu && !wantu && jobU != lapack.GSVDNone {
+		panic(badGSVDJob + "U")
+	}
+	if jobU != lapack.GSVDNone {
+		checkMatrix(m, m, u, ldu)
+	}
+
+	initv := jobV == lapack.GSVDUnit
+	wantv := initv || jobV == lapack.GSVDV
+	if !initv && !wantv && jobV != lapack.GSVDNone {
+		panic(badGSVDJob + "V")
+	}
+	if jobV != lapack.GSVDNone {
+		checkMatrix(p, p, v, ldv)
+	}
+
+	initq := jobQ == lapack.GSVDUnit
+	wantq := initq || jobQ == lapack.GSVDQ
+	if !initq && !wantq && jobQ != lapack.GSVDNone {
+		panic(badGSVDJob + "Q")
+	}
+	if jobQ != lapack.GSVDNone {
+		checkMatrix(n, n, q, ldq)
+	}
+
+	if len(work) < 2*n {
+		panic(badWork)
+	}
+
+	ncycle := []int32{0}
+	ok = lapacke.Dtgsja(lapack.Job(jobU), lapack.Job(jobV), lapack.Job(jobQ), m, p, n, k, l, a, lda, b, ldb, tola, tolb, alpha, beta, u, ldu, v, ldv, q, ldq, work, ncycle)
+	return int(ncycle[0]), ok
 }

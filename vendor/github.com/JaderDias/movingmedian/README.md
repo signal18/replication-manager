@@ -2,7 +2,7 @@ movingmedian
 ==========
 
 [![GoDoc](https://godoc.org/github.com/JaderDias/movingmedian?status.svg)](https://godoc.org/github.com/JaderDias/movingmedian)
-[![Build Status](https://drone.io/github.com/JaderDias/movingmedian/status.png)](https://drone.io/github.com/JaderDias/movingmedian/latest)
+[![Build Status](https://travis-ci.org/JaderDias/movingmedian.svg?branch=master)](https://travis-ci.org/JaderDias/movingmedian)
 
 Description
 -----------

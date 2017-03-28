@@ -77,7 +77,8 @@ func TestRestore(t *testing.T) {
 
 		ch := make(chan *points.Points, 1024)
 
-		RestoreFromDir(root, func(p *points.Points) { ch <- p })
+		app := &App{}
+		app.RestoreFromDir(root, func(p *points.Points) { ch <- p })
 
 		close(ch)
 

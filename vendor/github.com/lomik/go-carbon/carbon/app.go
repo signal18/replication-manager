@@ -9,11 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/lomik/go-carbon/cache"
 	"github.com/lomik/go-carbon/carbonserver"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
+	"github.com/lomik/zapwriter"
 )
 
 type App struct {
@@ -45,8 +45,8 @@ func New(configFilename string) *App {
 func (app *App) configure() error {
 	var err error
 
-	cfg := NewConfig()
-	if err := ParseConfig(app.ConfigFilename, cfg); err != nil {
+	cfg, err := ReadConfig(app.ConfigFilename)
+	if err != nil {
 		return err
 	}
 
@@ -138,62 +138,66 @@ func (app *App) ReloadConfig() error {
 
 // Stop all socket listeners
 func (app *App) stopListeners() {
+	logger := zapwriter.Logger("app")
+
 	if app.TCP != nil {
 		app.TCP.Stop()
 		app.TCP = nil
-		logrus.Debug("[tcp] finished")
+		logger.Debug("tcp stopped")
 	}
 
 	if app.Pickle != nil {
 		app.Pickle.Stop()
 		app.Pickle = nil
-		logrus.Debug("[pickle] finished")
+		logger.Debug("pickle stopped")
 	}
 
 	if app.UDP != nil {
 		app.UDP.Stop()
 		app.UDP = nil
-		logrus.Debug("[udp] finished")
+		logger.Debug("udp stopped")
 	}
 
 	if app.CarbonLink != nil {
 		app.CarbonLink.Stop()
 		app.CarbonLink = nil
-		logrus.Debug("[carbonlink] finished")
+		logger.Debug("carbonlink stopped")
 	}
 
 	if app.Carbonserver != nil {
 		app.Carbonserver.Stop()
 		app.Carbonserver = nil
-		logrus.Debug("[carbonserver] finished")
+		logger.Debug("carbonserver stopped")
 	}
 }
 
 func (app *App) stopAll() {
 	app.stopListeners()
 
+	logger := zapwriter.Logger("app")
+
 	if app.Persister != nil {
 		app.Persister.Stop()
 		app.Persister = nil
-		logrus.Debug("[persister] finished")
+		logger.Debug("persister stopped")
 	}
 
 	if app.Cache != nil {
 		app.Cache.Stop()
 		app.Cache = nil
-		logrus.Debug("[cache] finished")
+		logger.Debug("cache stopped")
 	}
 
 	if app.Collector != nil {
 		app.Collector.Stop()
 		app.Collector = nil
-		logrus.Debug("[stat] finished")
+		logger.Debug("collector stopped")
 	}
 
 	if app.exit != nil {
 		close(app.exit)
 		app.exit = nil
-		logrus.Debug("[app] close(exit)")
+		logger.Debug("close(exit)")
 	}
 }
 
@@ -305,7 +309,11 @@ func (app *App) Start() (err error) {
 		carbonserver.SetMetricsAsCounters(conf.Carbonserver.MetricsAsCounters)
 		carbonserver.SetScanFrequency(conf.Carbonserver.ScanFrequency.Value())
 		carbonserver.SetReadTimeout(conf.Carbonserver.ReadTimeout.Value())
+		carbonserver.SetIdleTimeout(conf.Carbonserver.IdleTimeout.Value())
 		carbonserver.SetWriteTimeout(conf.Carbonserver.WriteTimeout.Value())
+		carbonserver.SetQueryCacheEnabled(conf.Carbonserver.QueryCacheEnabled)
+		carbonserver.SetFindCacheEnabled(conf.Carbonserver.FindCacheEnabled)
+		carbonserver.SetQueryCacheSizeMB(conf.Carbonserver.QueryCacheSizeMB)
 		// carbonserver.SetQueryTimeout(conf.Carbonserver.QueryTimeout.Value())
 
 		if err = carbonserver.Listen(conf.Carbonserver.Listen); err != nil {

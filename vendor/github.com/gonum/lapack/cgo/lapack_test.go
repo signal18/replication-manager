@@ -44,6 +44,10 @@ func (bl blockedTranslate) Dorgl2(m, n, k int, a []float64, lda int, tau, work [
 	impl.Dorglq(m, n, k, a, lda, tau, work, len(work))
 }
 
+func TestDgeqp3(t *testing.T) {
+	testlapack.Dgeqp3Test(t, impl)
+}
+
 func TestDlacn2(t *testing.T) {
 	testlapack.Dlacn2Test(t, impl)
 }
@@ -76,6 +80,10 @@ func TestDlantr(t *testing.T) {
 	testlapack.DlantrTest(t, impl)
 }
 
+func TestDlapmt(t *testing.T) {
+	testlapack.DlapmtTest(t, impl)
+}
+
 func TestDlapy2(t *testing.T) {
 	testlapack.Dlapy2Test(t, impl)
 }
@@ -90,6 +98,10 @@ func TestDlaset(t *testing.T) {
 
 func TestDlasrt(t *testing.T) {
 	testlapack.DlasrtTest(t, impl)
+}
+
+func TestDlaswp(t *testing.T) {
+	testlapack.DlaswpTest(t, impl)
 }
 
 func TestDpotrf(t *testing.T) {
@@ -176,6 +188,10 @@ func TestDorgqr(t *testing.T) {
 	testlapack.DorgqrTest(t, blockedTranslate{impl})
 }
 
+func TestDorgtr(t *testing.T) {
+	testlapack.DorgtrTest(t, impl)
+}
+
 func TestDorgl2(t *testing.T) {
 	testlapack.Dorgl2Test(t, blockedTranslate{impl})
 }
@@ -184,16 +200,9 @@ func TestDorg2r(t *testing.T) {
 	testlapack.Dorg2rTest(t, blockedTranslate{impl})
 }
 
-/*
-// Test disabled because of bug in c interface. Leaving stub for easy reproducer.
-//
-// Bug at: https://github.com/xianyi/OpenBLAS/issues/712
-// Fix at: https://github.com/xianyi/OpenBLAS/pull/713
-// Easily copiable fix: https://github.com/gonum/lapack/pull/74#issuecomment-163142140
 func TestDormbr(t *testing.T) {
 	testlapack.DormbrTest(t, blockedTranslate{impl})
 }
-*/
 
 func TestDormhr(t *testing.T) {
 	testlapack.DormhrTest(t, impl)
@@ -211,23 +220,32 @@ func TestDormqr(t *testing.T) {
 	testlapack.Dorm2rTest(t, blockedTranslate{impl})
 }
 
-/*
-// Test disabled because of bug in c interface. Leaving stub for easy reproducer.
-//
-// Bug at: https://github.com/xianyi/OpenBLAS/issues/615
-// Fix at: https://github.com/xianyi/OpenBLAS/pull/711
-// Easily copiable fix: https://github.com/gonum/lapack/pull/74#issuecomment-163110751
 func TestDormlq(t *testing.T) {
 	testlapack.Dorml2Test(t, blockedTranslate{impl})
 }
-*/
 
 func TestDpocon(t *testing.T) {
 	testlapack.DpoconTest(t, impl)
 }
 
+func TestDsteqr(t *testing.T) {
+	testlapack.DsteqrTest(t, impl)
+}
+
+func TestDsterf(t *testing.T) {
+	testlapack.DsterfTest(t, impl)
+}
+
 func TestDsyev(t *testing.T) {
 	testlapack.DsyevTest(t, impl)
+}
+
+func TestDsytrd(t *testing.T) {
+	testlapack.DsytrdTest(t, impl)
+}
+
+func TestDtgsja(t *testing.T) {
+	testlapack.DtgsjaTest(t, impl)
 }
 
 func TestDtrexc(t *testing.T) {

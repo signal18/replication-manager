@@ -208,6 +208,16 @@ func TestDecode_interface(t *testing.T) {
 			},
 		},
 		{
+			"list_of_lists.hcl",
+			false,
+			map[string]interface{}{
+				"foo": []interface{}{
+					[]interface{}{"foo"},
+					[]interface{}{"bar"},
+				},
+			},
+		},
+		{
 			"list_of_maps.hcl",
 			false,
 			map[string]interface{}{
@@ -390,6 +400,23 @@ func TestDecode_interface(t *testing.T) {
 			"git_crypt.hcl",
 			true,
 			nil,
+		},
+
+		{
+			"object_with_bool.hcl",
+			false,
+			map[string]interface{}{
+				"path": []map[string]interface{}{
+					map[string]interface{}{
+						"policy": "write",
+						"permissions": []map[string]interface{}{
+							map[string]interface{}{
+								"bool": []interface{}{false},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 

@@ -1,38 +1,38 @@
 hash: fb1276f725f7dba031ac0efc83fa19ba12c5afa0ec7d166f80271183939c4338
-updated: 2017-03-28T10:41:34.168480466+08:00
+updated: 2017-03-28T07:03:58.256612032+02:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
 - name: github.com/aclements/go-moremath
-  version: 0ff62e0875ff52f29a54f430cefa15e4775c99b2
+  version: 033754ab1fee508c9f98f2785eec2365964e0b05
   subpackages:
   - mathx
 - name: github.com/alyu/configparser
   version: 26b2fe18bee125de2a3090d6fadb7e280e63eba6
 - name: github.com/asaskevich/govalidator
-  version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
+  version: 872bb01704d183fe276bce6fa429408a87661998
 - name: github.com/bradfitz/gomemcache
-  version: 2fafb84a66c4911e11a8f50955b01e74fe3ab9c5
+  version: 1952afaa557dc08e8e0d89eafab110fb501c1a2b
   subpackages:
   - memcache
 - name: github.com/BurntSushi/toml
-  version: bbd5bb678321a0d6e58f1099321dfa73391c1b6f
+  version: d94612f9fc140360834f9742158c70b5c5b5535b
 - name: github.com/dgryski/carbonzipper
-  version: 66eb53c10d8a4725b4476b3ca592d276d6e1a76d
+  version: 97f97e6bfa7b70dd3fcc7815436c8ef1485680ec
   subpackages:
   - carbonzipperpb
   - mlog
   - mstats
 - name: github.com/dgryski/go-expirecache
-  version: 310e3fa1f3caab1e6b9f8b354ce67fa10bfef2bd
+  version: 743ef98b2adb7d72da5dff5df7d7a82f1a66c63e
 - name: github.com/dgryski/go-onlinestats
-  version: 5ff69410145cd15bd908cc2ea44c25d061ff4ad8
+  version: 91a8fc22ba247b57c243ab90b49049fb734c47c3
 - name: github.com/dgryski/go-trigram
   version: 79ec494e1ad015aca936154d0eacd715623c1b40
 - name: github.com/dgryski/httputil
   version: 189c2918cd08517364b3ede5417684ca7a7341fe
 - name: github.com/dustin/go-humanize
-  version: 7a41df006ff9af79a29f0ffa9c5f21fbe6314a2d
+  version: 259d2a102b871d17f30e3cd9881a642961a1e486
 - name: github.com/evmar/gocairo
   version: ddd30f837497f6fcfe5e3c3665b97d7c17d381fe
   subpackages:
@@ -42,7 +42,7 @@ imports:
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/facebookgo/grace
-  version: 5729e484473f52048578af1b80d0008c7024089b
+  version: 4afe952a37a495ae4ac0c1d4ce5f66e91058d149
   subpackages:
   - gracehttp
   - gracenet
@@ -53,47 +53,47 @@ imports:
 - name: github.com/facebookgo/stats
   version: 1b76add642e42c6ffba7211ad7b3939ce654526e
 - name: github.com/fsnotify/fsnotify
-  version: fd9ec7deca8bf46ecd2a795baaacf2b3a9be1197
+  version: ff7bc41d4007f67e5456703c34342df4e0113f64
 - name: github.com/go-sql-driver/mysql
   version: a0583e0143b1624142adab07e0e97fe106d99561
 - name: github.com/gogo/protobuf
-  version: 909568be09de550ed094403c2bf8a261b5bb730a
+  version: 100ba4e885062801d56799d78530b73b178a78f3
   subpackages:
   - proto
 - name: github.com/gonum/blas
-  version: 34a5cb24f900bb4f059b51aa300aed4da4437d0c
+  version: 0285886d824b705f344567a692d06cf96179ad67
   subpackages:
   - blas64
   - native
   - native/internal/math32
 - name: github.com/gonum/floats
-  version: b87c65fd450a3f7a8875a16e4b2dbf5556ede4f1
+  version: a2cbc5c70616cd18491ef2843231f6ce28b2cb02
 - name: github.com/gonum/internal
   version: aa14b654e75da6e47f3c563fbda889112fe5ac94
   subpackages:
   - asm/f32
   - asm/f64
 - name: github.com/gonum/lapack
-  version: bf35376ccb9855357148de9f033bcdfa7f834e56
+  version: dd1d1b89d867c2731624a702177eec196ece1166
   subpackages:
   - lapack64
   - native
 - name: github.com/gonum/matrix
-  version: 2eae4658bc15c15b7f0ba04da7a83a5f5a5aee93
+  version: 1b010f5792b7006e929e4833b43628e6115c8988
   subpackages:
   - mat64
 - name: github.com/gorilla/context
   version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
 - name: github.com/gorilla/handlers
-  version: 3a5767ca75ece5f7f1440b1d16975247f8d8b221
+  version: 13d73096a474cac93275c679c7b8a2dc17ddba82
 - name: github.com/gorilla/mux
-  version: 757bef944d0f21880861c2dd9c871ca543023cba
+  version: 599cba5e7b6137d46ddf58fb1765f5d928e69604
 - name: github.com/gorilla/securecookie
-  version: fa5329f913702981df43dcb2a380bac429c810b5
+  version: e59506cc896acb7f7bf732d4fdf5e25f7ccd8983
 - name: github.com/gorilla/sessions
-  version: 52389059572b4736b2b7d899b0242ecc449c8779
+  version: ba78acc856fe7c79891d516131b3d903cc8d9367
 - name: github.com/hashicorp/hcl
-  version: 37ab263305aaeb501a60eb16863e808d426e37f2
+  version: 630949a3c5fa3c613328e1b8256052cbc2327c9b
   subpackages:
   - hcl/ast
   - hcl/parser
@@ -114,86 +114,86 @@ imports:
   subpackages:
   - authguard
 - name: github.com/JaderDias/movingmedian
-  version: 95dc1d1e9d582ba8548e8460a7ae21193be75483
+  version: 12339a7f3e62ee09ab07cd1b26cd35b36f5efa56
 - name: github.com/jmoiron/sqlx
-  version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
+  version: 8ed836a8adb659e8492bcaa49e0880bb84075fe2
   subpackages:
   - reflectx
 - name: github.com/jordan-wright/email
   version: a62870b0c368c3c29de27027be67d855e308cc37
 - name: github.com/kisielk/og-rek
-  version: 28bae785206e71d70d9c770903d06abb87547734
+  version: 661228609bd14f4656ba43558b2b0dd99b03296f
 - name: github.com/lestrrat/go-file-rotatelogs
   version: 505c036604b3326a96097ca91865df30043093a5
 - name: github.com/lestrrat/go-strftime
   version: 04ef93e285313c8978cbc7cad26d2aa7a9927451
 - name: github.com/magiconair/properties
-  version: 9c47895dc1ce54302908ab8a43385d1f5df2c11c
+  version: 51463bfca2576e06c62a8504b5c0f06d61312647
 - name: github.com/mattn/go-runewidth
-  version: 737072b4e32b7a5018b4a7125da8d12de90e8045
+  version: 14207d285c6c197daabb5c9793d63e7af9ab2d50
 - name: github.com/mattn/go-sqlite3
   version: b2e464529e88db676302aa63a4ce36711633950e
 - name: github.com/mitchellh/mapstructure
-  version: bfdb1a85537d60bc7e954e600c250219ea497417
+  version: 53818660ed4955e899c0bcafa97299a388bd7c8e
 - name: github.com/mjibson/go-dsp
   version: 49dba83727078f13a0e99553e0f8140990115ac9
   subpackages:
   - dsputils
   - fft
 - name: github.com/nsf/termbox-go
-  version: abe82ce5fb7a42fbd6784a5ceb71aff977e09ed8
+  version: 7994c181db7761ca3c67a217068cf31826113f5f
 - name: github.com/NYTimes/gziphandler
-  version: 6710af535839f57c687b62c4c23d649f9545d885
+  version: d8206bba2a6097c0d75f4ac204a4814e47125cdd
 - name: github.com/pelletier/go-buffruneio
-  version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
+  version: c37440a7cf42ac63b919c752ca73a85067e05992
 - name: github.com/pelletier/go-toml
-  version: 017119f7a78a0b5fc0ea39ef6be09f03acf3345d
+  version: f6e7596e8daafd44dc9e5c208dc73035020c8481
 - name: github.com/peterbourgon/g2g
   version: 0c2bab2b173d2cd9385ea6da5cec7b14b5019f11
 - name: github.com/pkg/errors
-  version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
+  version: ff09b135c25aae272398c51a07235b90a75aa4f0
 - name: github.com/satori/go.uuid
-  version: b061729afc07e77a8aa4fad0a2fd840958f1942a
+  version: 5bf94b69c6b68ee1b541973bb8e1144db23a194b
 - name: github.com/Sirupsen/logrus
-  version: 61e43dc76f7ee59a82bdf3d71033dc12bea4c77d
+  version: 10f801ebc38b33738c9d17d50860f484a0988ff5
 - name: github.com/spf13/afero
-  version: 2f30b2a92c0e5700bcfe4715891adb1f2a7a406d
+  version: 9be650865eab0c12963d8753212f4f9c66cdcf12
   subpackages:
   - mem
 - name: github.com/spf13/cast
-  version: 24b6558033ffe202bf42f0f3b870dcc798dd2ba8
+  version: ce135a4ebeee6cfe9a26c93ee0d37825f26113c7
 - name: github.com/spf13/cobra
-  version: b62566898a99f2db9c68ed0026aa0a052e59678d
+  version: 7be4beda01ec05d0b93d80b3facd2b6f44080d94
 - name: github.com/spf13/jwalterweatherman
-  version: 33c24e77fb80341fe7130ee7c594256ff08ccc46
+  version: fa7ca7e836cf3a8bb4ebf799f472c12d7e903d66
 - name: github.com/spf13/pflag
-  version: 08b1a584251b5b62f458943640fc8ebd4d50aaa5
+  version: d16db1e50e33dff1b6cdf37596cef36742128670
 - name: github.com/spf13/viper
-  version: 5ed0fc31f7f453625df314d8e66b9791e8d13003
+  version: 84f94806c67f59dd7ae87bc5351f7a9c94a4558d
 - name: github.com/wangjohn/quickselect
   version: ed8402a42d5f52ff8d3369f179e12243906f298a
 - name: golang.org/x/net
-  version: f2499483f923065a842d38eb4c7f1927e6fc6e6d
+  version: 6c23252515492caf9b228a9d5cabcdbde29f7f82
   subpackages:
   - context
 - name: golang.org/x/sys
-  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
+  version: afadfcc7779c1f4db0f6f6438afcb108d9c9c7cd
   subpackages:
   - unix
 - name: golang.org/x/text
-  version: 47a200a05c8b3fd1b698571caecbb68beb2611ec
+  version: fc7fa097411d30e6708badff276c4c164425590c
   subpackages:
   - transform
   - unicode/norm
 - name: gopkg.in/yaml.v2
-  version: 53feefa2559fb8dfa8d81baad31be332c97d6c77
+  version: a3f3340b5840cee44f372bddb5880fcbc419b46a
 testImports:
 - name: github.com/davecgh/go-spew
-  version: 04cdfd42973bb9c8589fd6a731800cf222fde1a9
+  version: 346938d642f2ec3594ed81d874461961cd0faa76
   subpackages:
   - spew
 - name: github.com/lomik/go-carbon
-  version: 1deb088df7a6250821530480d3440fd6aa583a1f
+  version: 63a0c547873dc89100eae414b65079d7b3f0566b
   subpackages:
   - helper/framing
   - points
@@ -202,10 +202,10 @@ testImports:
   subpackages:
   - helpers
 - name: github.com/pmezard/go-difflib
-  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
   subpackages:
   - difflib
 - name: github.com/stretchr/testify
-  version: 2402e8e7a02fc811447d11f881aa9746cdc57983
+  version: 4d4bfba8f1d1027c4fdbe371823030df51419987
   subpackages:
   - assert

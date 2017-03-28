@@ -13,16 +13,17 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
-	"github.com/lomik/go-carbon/carbon"
-	"github.com/lomik/go-carbon/logging"
+	"github.com/lomik/zapwriter"
 	daemon "github.com/sevlyar/go-daemon"
+	"go.uber.org/zap"
+
+	"github.com/lomik/go-carbon/carbon"
+
+	_ "net/http/pprof"
 )
 
-import _ "net/http/pprof"
-
 // Version of go-carbon
-const Version = "0.9.0"
+const Version = "0.9.1"
 
 func httpServe(addr string) (func(), error) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
@@ -56,12 +57,12 @@ func main() {
 	flag.Parse()
 
 	if *printVersion {
-		fmt.Print(Version)
+		fmt.Println(Version)
 		return
 	}
 
 	if *printDefaultConfig {
-		if err = carbon.PrintConfig(carbon.NewConfig()); err != nil {
+		if err = carbon.PrintDefaultConfig(); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -83,22 +84,22 @@ func main() {
 		}
 	}
 
-	if err := logging.SetLevel(cfg.Common.LogLevel); err != nil {
-		log.Fatal(err)
-	}
-
 	// config parsed successfully. Exit in check-only mode
 	if *checkConfig {
 		return
 	}
 
-	if err := logging.PrepareFile(cfg.Common.Logfile, runAsUser); err != nil {
-		logrus.Fatal(err)
+	for i := 0; i < len(cfg.Logging); i++ {
+		if err := zapwriter.PrepareFileForUser(cfg.Logging[i].File, runAsUser); err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	if err := logging.SetFile(cfg.Common.Logfile); err != nil {
-		logrus.Fatal(err)
+	if err = zapwriter.ApplyConfig(cfg.Logging); err != nil {
+		log.Fatal(err)
 	}
+
+	mainLogger := zapwriter.Logger("main")
 
 	if *isDaemon {
 		runtime.LockOSThread()
@@ -112,12 +113,12 @@ func main() {
 		if runAsUser != nil {
 			uid, err := strconv.ParseInt(runAsUser.Uid, 10, 0)
 			if err != nil {
-				log.Fatal(err)
+				mainLogger.Fatal(err.Error())
 			}
 
 			gid, err := strconv.ParseInt(runAsUser.Gid, 10, 0)
 			if err != nil {
-				log.Fatal(err)
+				mainLogger.Fatal(err.Error())
 			}
 
 			context.Credential = &syscall.Credential{
@@ -142,14 +143,14 @@ func main() {
 	if cfg.Pprof.Enabled {
 		_, err = httpServe(cfg.Pprof.Listen)
 		if err != nil {
-			logrus.Fatal(err)
+			mainLogger.Fatal(err.Error())
 		}
 	}
 
 	if err = app.Start(); err != nil {
-		logrus.Fatal(err)
+		mainLogger.Fatal(err.Error())
 	} else {
-		logrus.Info("started")
+		mainLogger.Info("started")
 	}
 
 	go func() {
@@ -158,6 +159,7 @@ func main() {
 		for {
 			<-c
 			app.DumpStop()
+			os.Exit(1)
 		}
 	}()
 
@@ -166,16 +168,16 @@ func main() {
 		signal.Notify(c, syscall.SIGHUP)
 		for {
 			<-c
-			logrus.Info("HUP received. Reload config")
+			mainLogger.Info("HUP received. Reload config")
 			if err := app.ReloadConfig(); err != nil {
-				logrus.Errorf("Config reload failed: %s", err.Error())
+				mainLogger.Error("config reload failed", zap.Error(err))
 			} else {
-				logrus.Info("Config successfully reloaded")
+				mainLogger.Info("config successfully reloaded")
 			}
 		}
 	}()
 
 	app.Loop()
 
-	logrus.Info("stopped")
+	mainLogger.Info("stopped")
 }

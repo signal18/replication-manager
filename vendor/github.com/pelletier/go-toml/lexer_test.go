@@ -264,6 +264,24 @@ func TestMultilineArrayComments(t *testing.T) {
 	})
 }
 
+func TestNestedArraysComment(t *testing.T) {
+	toml := `
+someArray = [
+# does not work
+["entry1"]
+]`
+	testFlow(t, toml, []token{
+		{Position{2, 1}, tokenKey, "someArray"},
+		{Position{2, 11}, tokenEqual, "="},
+		{Position{2, 13}, tokenLeftBracket, "["},
+		{Position{4, 1}, tokenLeftBracket, "["},
+		{Position{4, 3}, tokenString, "entry1"},
+		{Position{4, 10}, tokenRightBracket, "]"},
+		{Position{5, 1}, tokenRightBracket, "]"},
+		{Position{5, 2}, tokenEOF, ""},
+	})
+}
+
 func TestKeyEqualArrayBools(t *testing.T) {
 	testFlow(t, "foo = [true, false, true]", []token{
 		{Position{1, 1}, tokenKey, "foo"},
@@ -512,6 +530,30 @@ func TestKeyEqualStringUnicodeEscape(t *testing.T) {
 		{Position{1, 5}, tokenEqual, "="},
 		{Position{1, 8}, tokenString, "hello δ"},
 		{Position{1, 25}, tokenEOF, ""},
+	})
+	testFlow(t, `foo = "\uabcd"`, []token{
+		{Position{1, 1}, tokenKey, "foo"},
+		{Position{1, 5}, tokenEqual, "="},
+		{Position{1, 8}, tokenString, "\uabcd"},
+		{Position{1, 15}, tokenEOF, ""},
+	})
+	testFlow(t, `foo = "\uABCD"`, []token{
+		{Position{1, 1}, tokenKey, "foo"},
+		{Position{1, 5}, tokenEqual, "="},
+		{Position{1, 8}, tokenString, "\uABCD"},
+		{Position{1, 15}, tokenEOF, ""},
+	})
+	testFlow(t, `foo = "\U000bcdef"`, []token{
+		{Position{1, 1}, tokenKey, "foo"},
+		{Position{1, 5}, tokenEqual, "="},
+		{Position{1, 8}, tokenString, "\U000bcdef"},
+		{Position{1, 19}, tokenEOF, ""},
+	})
+	testFlow(t, `foo = "\U000BCDEF"`, []token{
+		{Position{1, 1}, tokenKey, "foo"},
+		{Position{1, 5}, tokenEqual, "="},
+		{Position{1, 8}, tokenString, "\U000BCDEF"},
+		{Position{1, 19}, tokenEOF, ""},
 	})
 	testFlow(t, `foo = "\u2"`, []token{
 		{Position{1, 1}, tokenKey, "foo"},

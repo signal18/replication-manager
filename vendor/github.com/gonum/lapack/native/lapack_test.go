@@ -68,6 +68,10 @@ func TestDgels(t *testing.T) {
 	testlapack.DgelsTest(t, impl)
 }
 
+func TestDgeqp3(t *testing.T) {
+	testlapack.Dgeqp3Test(t, impl)
+}
+
 func TestDgeqr2(t *testing.T) {
 	testlapack.Dgeqr2Test(t, impl)
 }
@@ -120,6 +124,10 @@ func TestDlaexc(t *testing.T) {
 	testlapack.DlaexcTest(t, impl)
 }
 
+func TestDlags2(t *testing.T) {
+	testlapack.Dlags2Test(t, impl)
+}
+
 func TestDlahqr(t *testing.T) {
 	testlapack.DlahqrTest(t, impl)
 }
@@ -140,6 +148,14 @@ func TestDlapy2(t *testing.T) {
 	testlapack.Dlapy2Test(t, impl)
 }
 
+func TestDlapll(t *testing.T) {
+	testlapack.DlapllTest(t, impl)
+}
+
+func TestDlapmt(t *testing.T) {
+	testlapack.DlapmtTest(t, impl)
+}
+
 func TestDlas2(t *testing.T) {
 	testlapack.Dlas2Test(t, impl)
 }
@@ -154,6 +170,10 @@ func TestDlaset(t *testing.T) {
 
 func TestDlasrt(t *testing.T) {
 	testlapack.DlasrtTest(t, impl)
+}
+
+func TestDlaswp(t *testing.T) {
+	testlapack.DlaswpTest(t, impl)
 }
 
 func TestDlasy2(t *testing.T) {
@@ -178,6 +198,14 @@ func TestDlanv2(t *testing.T) {
 
 func TestDlaqr04(t *testing.T) {
 	testlapack.Dlaqr04Test(t, impl)
+}
+
+func TestDlaqp2(t *testing.T) {
+	testlapack.Dlaqp2Test(t, impl)
+}
+
+func TestDlaqps(t *testing.T) {
+	testlapack.DlaqpsTest(t, impl)
 }
 
 func TestDlaqr1(t *testing.T) {
@@ -342,6 +370,10 @@ func TestDsytd2(t *testing.T) {
 
 func TestDsytrd(t *testing.T) {
 	testlapack.DsytrdTest(t, impl)
+}
+
+func TestDtgsja(t *testing.T) {
+	testlapack.DtgsjaTest(t, impl)
 }
 
 func TestDtrcon(t *testing.T) {

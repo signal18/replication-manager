@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 )
 
@@ -86,6 +87,7 @@ const (
 var errNotImplemented = errors.New("unimplemented opcode")
 var ErrInvalidPickleVersion = errors.New("invalid pickle version")
 var errNoMarker = errors.New("no marker in stack")
+var errStackUnderflow = errors.New("pickle: stack underflow")
 
 type OpcodeError struct {
 	Key byte
@@ -102,43 +104,53 @@ type mark struct{}
 // None is a representation of Python's None.
 type None struct{}
 
+// Tuple is a representation of Python's tuple.
+type Tuple []interface{}
+
 // Decoder is a decoder for pickle streams.
 type Decoder struct {
 	r     *bufio.Reader
 	stack []interface{}
 	memo  map[string]interface{}
+
+	// a reusable buffer that can be used by the various decoding functions
+	// functions using this should call buf.Reset to clear the old contents
+	buf bytes.Buffer
 }
 
 // NewDecoder constructs a new Decoder which will decode the pickle stream in r.
 func NewDecoder(r io.Reader) Decoder {
 	reader := bufio.NewReader(r)
-	return Decoder{reader, make([]interface{}, 0), make(map[string]interface{})}
+	return Decoder{r: reader, stack: make([]interface{}, 0), memo: make(map[string]interface{})}
 }
 
 // Decode decodes the pickle stream and returns the result or an error.
 func (d Decoder) Decode() (interface{}, error) {
 
 	insn := 0
+loop:
 	for {
-		insn++
 		key, err := d.r.ReadByte()
-		if err == io.EOF {
-			break
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF && insn != 0 {
+				err = io.ErrUnexpectedEOF
+			}
 			return nil, err
 		}
+
+		insn++
 
 		switch key {
 		case opMark:
 			d.mark()
 		case opStop:
-			break
+			break loop
 		case opPop:
-			d.pop()
+			_, err = d.pop()
 		case opPopMark:
 			d.popMark()
 		case opDup:
-			d.dup()
+			err = d.dup()
 		case opFloat:
 			err = d.loadFloat()
 		case opInt:
@@ -218,7 +230,7 @@ func (d Decoder) Decode() (interface{}, error) {
 		case opTuple3:
 			err = d.loadTuple3()
 		case opEmptyTuple:
-			d.push([]interface{}{})
+			d.push(Tuple{})
 		case opSetitems:
 			err = d.loadSetItems()
 		case opBinfloat:
@@ -243,10 +255,14 @@ func (d Decoder) Decode() (interface{}, error) {
 			if err == errNotImplemented {
 				return nil, OpcodeError{key, insn}
 			}
+			// EOF from individual opcode decoder is unexpected end of stream
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
 			return nil, err
 		}
 	}
-	return d.pop(), nil
+	return d.pop()
 }
 
 func (d *Decoder) readLine() ([]byte, error) {
@@ -274,11 +290,10 @@ func (d *Decoder) mark() {
 // Return the position of the topmost marker
 func (d *Decoder) marker() (int, error) {
 	m := mark{}
-	var k int
-	for k = len(d.stack) - 1; d.stack[k] != m && k > 0; k-- {
-	}
-	if k >= 0 {
-		return k, nil
+	for k := len(d.stack) - 1; k >= 0; k-- {
+		if d.stack[k] == m {
+			return k, nil
+		}
 	}
 	return 0, errNoMarker
 }
@@ -289,10 +304,23 @@ func (d *Decoder) push(v interface{}) {
 }
 
 // Pop a value
-func (d *Decoder) pop() interface{} {
+// The returned error is errStackUnderflow if decoder stack is empty
+func (d *Decoder) pop() (interface{}, error) {
 	ln := len(d.stack) - 1
+	if ln < 0 {
+		return nil, errStackUnderflow
+	}
 	v := d.stack[ln]
 	d.stack = d.stack[:ln]
+	return v, nil
+}
+
+// Pop a value (when you know for sure decoder stack is not empty)
+func (d *Decoder) xpop() interface{} {
+	v, err := d.pop()
+	if err != nil {
+		panic(err)
+	}
 	return v
 }
 
@@ -302,8 +330,12 @@ func (d *Decoder) popMark() error {
 }
 
 // Duplicate the top stack item
-func (d *Decoder) dup() {
+func (d *Decoder) dup() error {
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	d.stack = append(d.stack, d.stack[len(d.stack)-1])
+	return nil
 }
 
 // Push a float
@@ -374,8 +406,15 @@ func (d *Decoder) loadLong() error {
 	if err != nil {
 		return err
 	}
+	l := len(line)
+	if l < 1 || line[l-1] != 'L' {
+		return io.ErrUnexpectedEOF
+	}
 	v := new(big.Int)
-	v.SetString(string(line[:len(line)-1]), 10)
+	_, ok := v.SetString(string(line[:l-1]), 10)
+	if !ok {
+		return fmt.Errorf("pickle: loadLong: invalid string")
+	}
 	d.push(v)
 	return nil
 }
@@ -433,12 +472,23 @@ func (d *Decoder) loadBinPersid() error {
 
 type Call struct {
 	Callable Class
-	Args     []interface{}
+	Args     Tuple
 }
 
 func (d *Decoder) reduce() error {
-	args := d.pop().([]interface{})
-	class := d.pop().(Class)
+	if len(d.stack) < 2 {
+		return errStackUnderflow
+	}
+	xargs := d.xpop()
+	xclass := d.xpop()
+	args, ok := xargs.(Tuple)
+	if !ok {
+		return fmt.Errorf("pickle: reduce: invalid args: %T", xargs)
+	}
+	class, ok := xclass.(Class)
+	if !ok {
+		return fmt.Errorf("pickle: reduce: invalid class: %T", xclass)
+	}
 	d.stack = append(d.stack, Call{Callable: class, Args: args})
 	return nil
 }
@@ -455,6 +505,10 @@ func (d *Decoder) loadString() error {
 		return err
 	}
 
+	if len(line) < 2 {
+		return io.ErrUnexpectedEOF
+	}
+
 	var delim byte
 	switch line[0] {
 	case '\'':
@@ -466,7 +520,7 @@ func (d *Decoder) loadString() error {
 	}
 
 	if line[len(line)-1] != delim {
-		return fmt.Errorf("insecure string")
+		return io.ErrUnexpectedEOF
 	}
 
 	d.push(decodeStringEscape(line[1 : len(line)-1]))
@@ -480,12 +534,13 @@ func (d *Decoder) loadBinString() error {
 		return err
 	}
 	v := binary.LittleEndian.Uint32(b[:])
-	s := make([]byte, v)
-	_, err = io.ReadFull(d.r, s)
+
+	d.buf.Reset()
+	_, err = io.CopyN(&d.buf, d.r, int64(v))
 	if err != nil {
 		return err
 	}
-	d.push(string(s))
+	d.push(d.buf.String())
 	return nil
 }
 
@@ -495,12 +550,12 @@ func (d *Decoder) loadShortBinString() error {
 		return err
 	}
 
-	s := make([]byte, b)
-	_, err = io.ReadFull(d.r, s)
+	d.buf.Reset()
+	_, err = io.CopyN(&d.buf, d.r, int64(b))
 	if err != nil {
 		return err
 	}
-	d.push(string(s))
+	d.push(d.buf.String())
 	return nil
 }
 
@@ -512,13 +567,13 @@ func (d *Decoder) loadUnicode() error {
 	}
 	sline := string(line)
 
-	buf := bytes.Buffer{}
+	d.buf.Reset()
 
 	for len(sline) > 0 {
 		var r rune
 		var err error
 		for len(sline) > 0 && sline[0] == '\'' {
-			buf.WriteByte(sline[0])
+			d.buf.WriteByte(sline[0])
 			sline = sline[1:]
 		}
 		if len(sline) == 0 {
@@ -528,16 +583,13 @@ func (d *Decoder) loadUnicode() error {
 		if err != nil {
 			return err
 		}
-		_, err = buf.WriteRune(r)
-		if err != nil {
-			return err
-		}
+		d.buf.WriteRune(r)
 	}
 	if len(sline) > 0 {
 		return fmt.Errorf("characters remaining after loadUnicode operation: %s", sline)
 	}
 
-	d.push(buf.String())
+	d.push(d.buf.String())
 	return nil
 }
 
@@ -563,14 +615,17 @@ func (d *Decoder) loadBinUnicode() error {
 }
 
 func (d *Decoder) loadAppend() error {
-	v := d.pop()
+	if len(d.stack) < 2 {
+		return errStackUnderflow
+	}
+	v := d.xpop()
 	l := d.stack[len(d.stack)-1]
 	switch l.(type) {
 	case []interface{}:
 		l := l.([]interface{})
 		d.stack[len(d.stack)-1] = append(l, v)
 	default:
-		return fmt.Errorf("loadAppend expected a list, got %t", l)
+		return fmt.Errorf("pickle: loadAppend: expected a list, got %T", l)
 	}
 	return nil
 }
@@ -604,8 +659,15 @@ func (d *Decoder) loadDict() error {
 
 	m := make(map[interface{}]interface{}, 0)
 	items := d.stack[k+1:]
+	if len(items) % 2 != 0 {
+		return fmt.Errorf("pickle: loadDict: odd # of elements")
+	}
 	for i := 0; i < len(items); i += 2 {
-		m[items[i]] = items[i+1]
+		key := items[i]
+		if !reflect.TypeOf(key).Comparable() {
+			return fmt.Errorf("pickle: loadDict: invalid key type %T", key)
+		}
+		m[key] = items[i+1]
 	}
 	d.stack = append(d.stack[:k], m)
 	return nil
@@ -622,6 +684,9 @@ func (d *Decoder) loadAppends() error {
 	if err != nil {
 		return err
 	}
+	if k < 1 {
+		return errStackUnderflow
+	}
 
 	l := d.stack[k-1]
 	switch l.(type) {
@@ -632,7 +697,7 @@ func (d *Decoder) loadAppends() error {
 		}
 		d.stack = append(d.stack[:k-1], l)
 	default:
-		return fmt.Errorf("loadAppends expected a list, got %t", l)
+		return fmt.Errorf("pickle: loadAppends: expected a list, got %T", l)
 	}
 	return nil
 }
@@ -642,7 +707,11 @@ func (d *Decoder) get() error {
 	if err != nil {
 		return err
 	}
-	d.push(d.memo[string(line)])
+	v, ok := d.memo[string(line)]
+	if !ok {
+		return fmt.Errorf("pickle: memo: key error %q", line)
+	}
+	d.push(v)
 	return nil
 }
 
@@ -652,7 +721,11 @@ func (d *Decoder) binGet() error {
 		return err
 	}
 
-	d.push(d.memo[strconv.Itoa(int(b))])
+	v, ok := d.memo[strconv.Itoa(int(b))]
+	if !ok {
+		return fmt.Errorf("pickle: memo: key error %d", b)
+	}
+	d.push(v)
 	return nil
 }
 
@@ -667,7 +740,11 @@ func (d *Decoder) longBinGet() error {
 		return err
 	}
 	v := binary.LittleEndian.Uint32(b[:])
-	d.push(d.memo[strconv.Itoa(int(v))])
+	vv, ok := d.memo[strconv.Itoa(int(v))]
+	if !ok {
+		return fmt.Errorf("pickle: memo: key error %d", v)
+	}
+	d.push(vv)
 	return nil
 }
 
@@ -693,28 +770,37 @@ func (d *Decoder) loadTuple() error {
 		return err
 	}
 
-	v := append([]interface{}{}, d.stack[k+1:]...)
+	v := append(Tuple{}, d.stack[k+1:]...)
 	d.stack = append(d.stack[:k], v)
 	return nil
 }
 
 func (d *Decoder) loadTuple1() error {
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	k := len(d.stack) - 1
-	v := append([]interface{}{}, d.stack[k:]...)
+	v := append(Tuple{}, d.stack[k:]...)
 	d.stack = append(d.stack[:k], v)
 	return nil
 }
 
 func (d *Decoder) loadTuple2() error {
+	if len(d.stack) < 2 {
+		return errStackUnderflow
+	}
 	k := len(d.stack) - 2
-	v := append([]interface{}{}, d.stack[k:]...)
+	v := append(Tuple{}, d.stack[k:]...)
 	d.stack = append(d.stack[:k], v)
 	return nil
 }
 
 func (d *Decoder) loadTuple3() error {
+	if len(d.stack) < 3 {
+		return errStackUnderflow
+	}
 	k := len(d.stack) - 3
-	v := append([]interface{}{}, d.stack[k:]...)
+	v := append(Tuple{}, d.stack[k:]...)
 	d.stack = append(d.stack[:k], v)
 	return nil
 }
@@ -728,11 +814,17 @@ func (d *Decoder) loadPut() error {
 	if err != nil {
 		return err
 	}
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	d.memo[string(line)] = d.stack[len(d.stack)-1]
 	return nil
 }
 
 func (d *Decoder) binPut() error {
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	b, err := d.r.ReadByte()
 	if err != nil {
 		return err
@@ -743,6 +835,9 @@ func (d *Decoder) binPut() error {
 }
 
 func (d *Decoder) longBinPut() error {
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	var b [4]byte
 	_, err := io.ReadFull(d.r, b[:])
 	if err != nil {
@@ -754,15 +849,20 @@ func (d *Decoder) longBinPut() error {
 }
 
 func (d *Decoder) loadSetItem() error {
-	v := d.pop()
-	k := d.pop()
+	if len(d.stack) < 3 {
+		return errStackUnderflow
+	}
+	v := d.xpop()
+	k := d.xpop()
 	m := d.stack[len(d.stack)-1]
-	switch m.(type) {
+	switch m := m.(type) {
 	case map[interface{}]interface{}:
-		m := m.(map[interface{}]interface{})
+		if !reflect.TypeOf(k).Comparable() {
+			return fmt.Errorf("pickle: loadSetItem: invalid key type %T", k)
+		}
 		m[k] = v
 	default:
-		return fmt.Errorf("loadSetItem expected a map, got %t", m)
+		return fmt.Errorf("pickle: loadSetItem: expected a map, got %T", m)
 	}
 	return nil
 }
@@ -772,16 +872,26 @@ func (d *Decoder) loadSetItems() error {
 	if err != nil {
 		return err
 	}
+	if k < 1 {
+		return errStackUnderflow
+	}
 
 	l := d.stack[k-1]
 	switch m := l.(type) {
 	case map[interface{}]interface{}:
+		if (len(d.stack) - (k + 1)) % 2 != 0 {
+			return fmt.Errorf("pickle: loadSetItems: odd # of elements")
+		}
 		for i := k + 1; i < len(d.stack); i += 2 {
+			key := d.stack[i]
+			if !reflect.TypeOf(key).Comparable() {
+				return fmt.Errorf("pickle: loadSetItems: invalid key type %T", key)
+			}
 			m[d.stack[i]] = d.stack[i+1]
 		}
 		d.stack = append(d.stack[:k-1], m)
 	default:
-		return fmt.Errorf("loadSetItems expected a map, got %t", m)
+		return fmt.Errorf("pickle: loadSetItems: expected a map, got %T", m)
 	}
 	return nil
 }
@@ -814,16 +924,19 @@ func (d *Decoder) loadShortBinUnicode() error {
 		return err
 	}
 
-	s := make([]byte, b)
-	_, err = io.ReadFull(d.r, s)
+	d.buf.Reset()
+	_, err = io.CopyN(&d.buf, d.r, int64(b))
 	if err != nil {
 		return err
 	}
-	d.push(string(s))
+	d.push(d.buf.String())
 	return nil
 }
 
 func (d *Decoder) loadMemoize() error {
+	if len(d.stack) < 1 {
+		return errStackUnderflow
+	}
 	d.memo[strconv.Itoa(len(d.memo))] = d.stack[len(d.stack)-1]
 	return nil
 }

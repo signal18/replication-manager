@@ -59,9 +59,27 @@ func (ec *Cache) Get(k string) (item interface{}, ok bool) {
 	return v.data, ok
 }
 
+// GetOrSet returns the item from the cache or sets a new variable if it doesn't exist
+func (ec *Cache) GetOrSet(k string, newValue interface{}, size uint64, expire int32) (item interface{}) {
+	ec.Lock()
+	v, ok := ec.cache[k]
+	if !ok || v.validUntil.Before(timeNow()) {
+		ec.actualSet(k, newValue, size, expire)
+		ec.Unlock()
+		return newValue
+	}
+	ec.Unlock()
+	return v.data
+}
+
 // Set adds an item to the cache, with an estimated size and expiration time in seconds.
 func (ec *Cache) Set(k string, v interface{}, size uint64, expire int32) {
 	ec.Lock()
+	ec.actualSet(k, v, size, expire)
+	ec.Unlock()
+}
+
+func (ec *Cache) actualSet(k string, v interface{}, size uint64, expire int32) {
 	oldv, ok := ec.cache[k]
 	if !ok {
 		ec.keys = append(ec.keys, k)
@@ -75,8 +93,6 @@ func (ec *Cache) Set(k string, v interface{}, size uint64, expire int32) {
 	for ec.maxSize > 0 && ec.totalSize > ec.maxSize {
 		ec.randomEvict()
 	}
-
-	ec.Unlock()
 }
 
 func (ec *Cache) randomEvict() {
@@ -123,46 +139,65 @@ func (ec *Cache) Cleaner(d time.Duration) {
 	}
 }
 
+func (ec *Cache) StoppableApproximateCleaner(d time.Duration, exit <-chan struct{}) {
+	for {
+		select {
+		case <-exit:
+			return
+		default:
+		}
+
+		cleanerSleep(d)
+
+		ec.clean(timeNow())
+
+		cleanerDone()
+	}
+
+}
+
 // ApproximateCleaner starts a goroutine which wakes up periodically and removes a sample of expired items from the cache.
 func (ec *Cache) ApproximateCleaner(d time.Duration) {
+	for {
+		cleanerSleep(d)
 
+		ec.clean(timeNow())
+
+		cleanerDone()
+	}
+}
+
+func (ec *Cache) clean(now time.Time) {
 	// every iteration, sample and clean this many items
 	const sampleSize = 20
 	// if we cleaned at least this many, run the loop again
 	const rerunCount = 5
 
+
 	for {
-		cleanerSleep(d)
+		var cleaned int
+		// by doing short iterations and releasing the lock in between, we don't block other requests from progressing.
+		ec.Lock()
+		for i := 0; len(ec.keys) > 0 && i < sampleSize; i++ {
+			idx := rand.Intn(len(ec.keys))
+			k := ec.keys[idx]
+			v := ec.cache[k]
+			if v.validUntil.Before(now) {
+				ec.totalSize -= v.size
+				delete(ec.cache, k)
 
-		now := timeNow()
-
-		// probabilistic expiration algorithm from redis
-		for {
-			var cleaned int
-			// by doing short iterations and releasing the lock in between, we don't block other requests from progressing.
-			ec.Lock()
-			for i := 0; len(ec.keys) > 0 && i < sampleSize; i++ {
-				idx := rand.Intn(len(ec.keys))
-				k := ec.keys[idx]
-				v := ec.cache[k]
-				if v.validUntil.Before(now) {
-					ec.totalSize -= v.size
-					delete(ec.cache, k)
-
-					ec.keys[idx] = ec.keys[len(ec.keys)-1]
-					ec.keys = ec.keys[:len(ec.keys)-1]
-					cleaned++
-				}
-			}
-			ec.Unlock()
-			if cleaned < rerunCount {
-				// "clean enough"
-				break
+				ec.keys[idx] = ec.keys[len(ec.keys)-1]
+				ec.keys = ec.keys[:len(ec.keys)-1]
+				cleaned++
 			}
 		}
-
-		cleanerDone()
+		ec.Unlock()
+		if cleaned < rerunCount {
+			// "clean enough"
+			return
+		}
 	}
+	return
 }
 
 var (
