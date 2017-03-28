@@ -418,44 +418,40 @@ func ForgetArbitration(db *sqlx.DB, secret string) error {
 
 func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) bool {
 	var count int
-	stmt := "START TRANSACTION"
-	_, err := db.Exec(stmt)
+	tx, err := db.Beginx()
 	if err != nil {
 		return false
 	}
 	// count the number of replication manager Elected that is not me for this cluster
-	stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uid<>" + strconv.Itoa(uid) + " FOR UPDATE "
-	err = db.QueryRowx(stmt).Scan(&count)
+	stmt := "SELECT count(*) FROM heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E') and uid<>" + strconv.Itoa(uid) + " FOR UPDATE "
+	err = tx.QueryRowx(stmt).Scan(&count)
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
 		// A non elected replication-manager may see more nodes than me than in this case lose the election
-		stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('U') and uid<>" + strconv.Itoa(uid) + "  and failed <" + strconv.Itoa(failed) + " FOR UPDATE "
-		err = db.QueryRowx(stmt).Scan(&count)
+		stmt = "SELECT count(*) FROM heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('U') and uid<>" + strconv.Itoa(uid) + "  and failed <" + strconv.Itoa(failed) + " FOR UPDATE "
+		err = tx.QueryRowx(stmt).Scan(&count)
 		if err == nil && count == 0 {
-			stmt = "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(), NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + ") ON DUPLICATE KEY UPDATE arbitration_date=NOW(),date=NOW(),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
-			_, err = db.Exec(stmt)
+			stmt = "INSERT INTO heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(), NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + ") ON DUPLICATE KEY UPDATE arbitration_date=NOW(),date=NOW(),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
+			_, err = tx.Exec(stmt)
 			if err != nil {
-				stmt = "COMMIT"
-				_, err = db.Exec(stmt)
+				err = tx.Commit()
 				if err != nil {
 					return false
 				}
 			}
-			stmt = "COMMIT"
-			_, err = db.Exec(stmt)
+			err = tx.Commit()
 			if err != nil {
 				return false
 			}
 			return true
-		} else {
+		}
 
-			stmt = "COMMIT"
-			_, err = db.Exec(stmt)
-			if err != nil {
-				return false
-			}
+		err := tx.Commit()
+		if err != nil {
 			return false
 		}
+		return false
+
 	}
 	return false
 }
@@ -463,7 +459,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 	var master string
 	// count the number of replication manager Elected that is not me for this cluster
-	stmt := "SELECT master FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E')  FOR UPDATE "
+	stmt := "SELECT master FROM heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "'  AND status IN ('E')  FOR UPDATE "
 	err := db.QueryRowx(stmt).Scan(&master)
 	if err == nil {
 		return master
@@ -474,7 +470,7 @@ func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 // SetStatusActiveHeartbeat abitrator can set or remove electetion flag "E"
 func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string, uid int) error {
 
-	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uid,master,date ) VALUES('" + secret + "','" + strconv.Itoa(uid) + "', NOW()) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "', status='" + status + "' "
+	stmt := "INSERT INTO heartbeat(secret,uid,master,date ) VALUES('" + secret + "','" + strconv.Itoa(uid) + "', NOW()) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "', status='" + status + "' "
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
