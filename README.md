@@ -283,8 +283,12 @@ https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/
 ```
 detect_stale_master
 ```
-In Maxscale 2.2
+In Maxscale 2.1
 Failover to last node have been introduce so that transparent support of 2 nodes cluster is transaparent [![Doc]](https://github.com/mariadb-corporation/MaxScale/blob/2.1/Documentation/Monitors/MySQL-Monitor.md#failover)
+
+```
+detect_stale_slave=true
+```
 
 Use the following example grant for your MaxScale user:
 

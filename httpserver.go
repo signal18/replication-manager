@@ -259,6 +259,7 @@ func handlerJS(w http.ResponseWriter, r *http.Request) {
 func handlerServers(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
+
 	err := e.Encode(currentCluster.GetServers())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
