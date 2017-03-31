@@ -623,7 +623,9 @@ func ResetAllSlaves(db *sqlx.DB) error {
 func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 	db.MapperFunc(strings.Title)
 	ms := MasterStatus{}
-	err := db.Get(&ms, "SHOW MASTER STATUS")
+	udb := db.Unsafe()
+	err := udb.Get(&ms, "SHOW MASTER STATUS")
+	log.Println(err)
 	return ms, err
 }
 
