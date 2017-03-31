@@ -184,6 +184,7 @@ type ChangeMasterOpt struct {
 }
 
 func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
+	myver, _ := GetDBVersion(db)
 	cm := "CHANGE MASTER TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
 	switch opt.Mode {
 	case "SLAVE_POS":
@@ -193,13 +194,19 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	case "MXS":
 		cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
 	case "POSITIONAL":
-		cm += ", MASTER_USE_GTID=NO , master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+		cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+		if myver.IsMariaDB() {
+			cm += ", MASTER_USE_GTID=NO"
+		}
 	}
 	if opt.SSL {
 		cm += ", MASTER_USE_SSL=1"
 	}
 	_, err := db.Exec(cm)
-	return err
+	if err != nil {
+		return fmt.Errorf("Change master statement %s failed, reason: %s", cm, err)
+	}
+	return nil
 }
 
 /* func ChangeMasterGtidCurrentPos(db *sqlx.DB, host string, port string, user string, password string, retry string, hearbeat string) error {
@@ -625,7 +632,6 @@ func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 	ms := MasterStatus{}
 	udb := db.Unsafe()
 	err := udb.Get(&ms, "SHOW MASTER STATUS")
-	log.Println(err)
 	return ms, err
 }
 

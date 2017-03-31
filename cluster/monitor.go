@@ -72,6 +72,8 @@ type ServerMonitor struct {
 	MasterLogPos                string
 	MasterHeartbeatPeriod       float64
 	MasterUseGtid               string
+	BinaryLogFile               string
+	BinaryLogPos                string
 	FailoverMasterLogFile       string
 	FailoverMasterLogPos        string
 	FailoverSemiSyncSlaveStatus bool
@@ -397,6 +399,15 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsMaxscale = false
 
 	}
+
+	masterStatus, err := dbhelper.GetMasterStatus(server.Conn)
+	if err != nil {
+		// binary log might be closed for that server
+	} else {
+		server.BinaryLogFile = masterStatus.File
+		server.BinaryLogPos = strconv.FormatUint(uint64(masterStatus.Position), 10)
+	}
+
 	server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	if err != nil {
 		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show all slaves status on %s", server.DSN)

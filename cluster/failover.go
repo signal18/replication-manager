@@ -124,7 +124,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
-	if fail == false && cluster.conf.MxsBinlogOn == false {
+	if fail == false && cluster.conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
 		cluster.LogPrint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.Refresh()
 		if cluster.conf.LogLevel > 2 {
@@ -136,7 +136,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrint("DEBUG: MASTER_POS_WAIT executed.")
 			cluster.master.log()
 		}
-
 	} else {
 		cluster.LogPrint("INFO : Waiting for candidate Master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
@@ -246,7 +245,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// Insert a bogus transaction in order to have a new GTID pos on master
 		err = dbhelper.FlushTables(cluster.master.Conn)
 		if err != nil {
-			cluster.LogPrint("WARN : Could not flush tables on new cluster.master", err)
+			cluster.LogPrint("WARN : Could not flush tables on new master", err)
 		}
 		// Phase 4: Demote old master to slave
 		cluster.LogPrint("INFO : Switching old master as a slave")
@@ -258,11 +257,33 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if cluster.conf.FailForceGtid {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.BinlogPos.Sprint() + "'")
 			if err != nil {
-				cluster.LogPrint("WARN : Could not set gtid_slave_pos on old master", err)
+				cluster.LogPrint("WARN : Could not set gtid_slave_pos on old master, reason: ", err)
 			}
 		}
-		if cluster.conf.MxsBinlogOn == false {
-			err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+		var changeMasterErr error
+		if cluster.master.DBVersion.IsMariaDB() == false {
+			cluster.LogPrint("DEBUG : Doing positional switch")
+			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+				Host:      cluster.master.IP,
+				Port:      cluster.master.Port,
+				User:      cluster.rplUser,
+				Password:  cluster.rplPass,
+				Logfile:   cluster.master.BinaryLogFile,
+				Logpos:    cluster.master.BinaryLogPos,
+				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Mode:      "POSITIONAL",
+			})
+			if changeMasterErr != nil {
+				cluster.LogPrint("ERROR: Change master failed on old master, reason: ", changeMasterErr)
+			}
+			err = dbhelper.StartSlave(oldMaster.Conn)
+			if err != nil {
+				cluster.LogPrint("ERROR: Start slave failed on old master, reason: ", err)
+			}
+		} else if cluster.conf.MxsBinlogOn == false {
+			cluster.LogPrint("INFO : Doing GTID switch")
+			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.IP,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
@@ -271,8 +292,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
 			})
-			if err != nil {
-				cluster.LogPrint("WARN : Change master failed on old master", err)
+			if changeMasterErr != nil {
+				cluster.LogPrint("WARN : Change master failed on old master", changeMasterErr)
 			}
 			err = dbhelper.StartSlave(oldMaster.Conn)
 			if err != nil {
@@ -353,9 +374,21 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
-
-		if cluster.conf.MxsBinlogOn == false {
-			err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+		var changeMasterErr error
+		if sl.DBVersion.IsMariaDB() == false {
+			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+				Host:      cluster.master.IP,
+				Port:      cluster.master.Port,
+				User:      cluster.rplUser,
+				Password:  cluster.rplPass,
+				Logfile:   cluster.master.FailoverMasterLogFile,
+				Logpos:    cluster.master.FailoverMasterLogPos,
+				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Mode:      "POSITIONAL",
+			})
+		} else if cluster.conf.MxsBinlogOn == false {
+			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.IP,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
@@ -367,7 +400,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		} else {
 			cluster.LogPrintf("INFO : Pointing relay to the new master: %s:%s", cluster.master.IP, cluster.master.Port)
 			if sl.MxsHaveGtid {
-				err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.IP,
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
@@ -377,7 +410,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:      "SLAVE_POS",
 				})
 			} else {
-				err = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.IP,
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
@@ -388,7 +421,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				})
 			}
 		}
-		if err != nil {
+		if changeMasterErr != nil {
 			cluster.LogPrintf("ERROR : Change master failed on slave %s, %s", sl.URL, err)
 		}
 		err = dbhelper.StartSlave(sl.Conn)
