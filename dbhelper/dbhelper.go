@@ -242,6 +242,22 @@ func MariaDBVersion(server string) int {
 	//return ((versionSplit[0]*10000+versionSplit[1])*100 + versionSplit[2])
 }
 
+func GetDBVersion(db *sqlx.DB) (*MySQLVersion, error) {
+	stmt := "SELECT @@version"
+	var version string
+	var versionComment string
+	err := db.QueryRowx(stmt).Scan(&version)
+	if err != nil {
+		return &MySQLVersion{}, err
+	}
+	stmt = "SELECT @@version_comment"
+	err = db.QueryRowx(stmt).Scan(&versionComment)
+	if err != nil {
+		return &MySQLVersion{}, err
+	}
+	return NewMySQLVersion(version, versionComment), nil
+}
+
 func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	pl := []Processlist{}
 	pl, err := GetProcesslist(db)
@@ -259,7 +275,6 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 func GetHostFromConnection(db *sqlx.DB, user string) string {
 
 	var value string
-	value = ""
 	err := db.QueryRowx("select user()").Scan(&value)
 	if err != nil {
 		log.Println("ERROR: Could not get spider shards", err)
