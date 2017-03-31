@@ -97,6 +97,7 @@ type ServerMonitor struct {
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
+	DBVersion                   *dbhelper.MySQLVersion
 }
 
 type serverList []*ServerMonitor
@@ -447,7 +448,11 @@ func (server *ServerMonitor) Refresh() error {
 	if err != nil {
 		return err
 	}
-	server.Version = dbhelper.MariaDBVersion(sv["VERSION"])
+	server.Version = dbhelper.MariaDBVersion(sv["VERSION"]) // Deprecated
+	server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
+	if err != nil {
+		server.ClusterGroup.LogPrintf("ERROR: Could not get Database Version")
+	}
 
 	if sv["EVENT_SCHEDULER"] != "ON" {
 		server.EventScheduler = false
