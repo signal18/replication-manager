@@ -1,0 +1,33 @@
+version: '2'
+services:
+  mysql1:
+    image: mysql:5.7
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=1
+    volumes:
+      - ./mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.10
+  mysql2:
+    image: mysql:5.7
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=2
+    volumes:
+      - ./mysql.cnf:/etc/mysql/conf.d/mysql.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.11
+
+networks:
+  nw1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv4: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.1.0/24
+          gateway: 172.16.1.254
