@@ -400,17 +400,17 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) error {
 
-	stmt := "INSERT INTO replication_manager_schema.heartbeat(secret,uuid,uid,master,date,cluster, hosts , failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + " ) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
+	stmt := "INSERT INTO heartbeat(secret,uuid,uid,master,date,cluster, hosts , failed ) VALUES('" + secret + "','" + uuid + "'," + strconv.Itoa(uid) + ",'" + master + "', NOW(),'" + cluster + "'," + strconv.Itoa(hosts) + "," + strconv.Itoa(failed) + " ) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=NOW(),master='" + master + "',hosts=" + strconv.Itoa(hosts) + ",failed=" + strconv.Itoa(failed)
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
 	}
 
 	var count int
-	stmt = "SELECT count(distinct master) FROM replication_manager_schema.heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "' AND date > NOW()-interval 10 second"
+	stmt = "SELECT count(distinct master) FROM heartbeat WHERE cluster='" + cluster + "' AND secret='" + secret + "' AND date > NOW()-interval 10 second"
 	err = db.QueryRowx(stmt).Scan(&count)
 	if err == nil && count == 1 {
-		stmt = "UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster='" + cluster + "' AND secret='" + secret + "'"
+		stmt = "UPDATE heartbeat set status='U' WHERE status='E' AND cluster='" + cluster + "' AND secret='" + secret + "'"
 		_, err = db.Exec(stmt)
 		if err != nil {
 			return err
@@ -422,7 +422,7 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 
 func ForgetArbitration(db *sqlx.DB, secret string) error {
 
-	stmt := "DELETE FROM replication_manager_schema.heartbeat WHERE secret='" + secret + "'"
+	stmt := "DELETE FROM heartbeat WHERE secret='" + secret + "'"
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return err
