@@ -127,7 +127,7 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 
 	if cluster.conf.LogFile != "" {
-		s := fmt.Sprint(stamp, "[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		s := fmt.Sprint(stamp, " [", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
 		io.WriteString(cluster.logPtr, fmt.Sprintln(s))
 	}
 	if cluster.tlog.Len > 0 {
