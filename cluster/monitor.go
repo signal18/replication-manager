@@ -497,8 +497,10 @@ func (server *ServerMonitor) Refresh() error {
 	server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
 	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
-	sid, _ := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
-
+	sid, err := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+	if err != nil {
+		server.ClusterGroup.LogPrint("ERROR: Could not parse server_id, reason: ", err)
+	}
 	server.ServerID = uint(sid)
 	err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
 	if err != nil {

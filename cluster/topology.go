@@ -176,13 +176,13 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG: Server %s is cluster.configured as a slave", sv.URL)
+				cluster.LogPrintf("DEBUG: Server %s is configured as a slave", sv.URL)
 			}
 			sv.replicationCheck()
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			var n int
-			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='binlog dump'")
+			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 			if err != nil {
 				cluster.sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting binlog dump count on server %s: %s", sv.URL, err), ErrFrom: "CONF"})
 				if cluster.conf.LogLevel > 2 {
@@ -429,8 +429,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
-					if dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port) == false {
-						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s", sl.URL, cluster.master.URL), ErrFrom: "TOPO"})
+					is, err := dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port)
+					if !is {
+						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, reason: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
 					}
 					if sl.LogBin == "OFF" {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})

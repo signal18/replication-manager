@@ -706,7 +706,7 @@ func GetStatus(db *sqlx.DB) (map[string]string, error) {
 	}
 	source := GetVariableSource(db)
 	vars := make(map[string]string)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_status")
+	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status")
 	if err != nil {
 		return nil, errors.New("Could not get status variables")
 	}
@@ -728,7 +728,7 @@ func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 	}
 	vars := make(map[string]int64)
 	source := GetVariableSource(db)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_status")
+	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status")
 	if err != nil {
 		return nil, errors.New("Could not get status variables as integers")
 	}
@@ -747,7 +747,7 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 	}
 	source := GetVariableSource(db)
 	vars := make(map[string]string)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_variables")
+	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables")
 	if err != nil {
 		return vars, err
 	}
@@ -765,7 +765,7 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 	var value string
 	source := GetVariableSource(db)
-	err := db.QueryRowx("SELECT Variable_Value AS Value FROM "+source+".global_variables WHERE Variable_Name = ?", name).Scan(&value)
+	err := db.QueryRowx("SELECT UPPER(Variable_Value) AS Value FROM "+source+".global_variables WHERE Variable_Name = ?", name).Scan(&value)
 	if err != nil {
 		return "", errors.New("Could not get variable by name")
 	}
@@ -887,25 +887,22 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
 }
 
 /* Check if server is connected to declared master */
-func IsSlaveof(db *sqlx.DB, s string, m string, p string) bool {
+func IsSlaveof(db *sqlx.DB, s string, m string, p string) (bool, error) {
 	ss, err := GetSlaveStatus(db)
 	if err != nil {
-		// log.Printf("WARN : Server %s is not a slave. Skipping", s)
-		return false
+		return false, errors.New("Cannot get SHOW SLAVE STATUS")
 	}
 	masterHost, err := CheckHostAddr(ss.Master_Host)
 	if err != nil {
-		// log.Println("ERROR: Could not resolve master hostname", ss.Master_Host)
+		// Could not resolve master hostname
 	}
 	if masterHost != m {
-		// log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
-		return false
+		return false, fmt.Errorf("Hosts not identical (%s:%s)", masterHost, m)
 	}
 	if strconv.FormatUint(uint64(ss.Master_Port), 10) != p {
-		// log.Printf("WARN : Slave %s is not connected to the current master %s (master_host=%s). Skipping", s, m, masterHost)
-		return false
+		return false, errors.New("Master port differs")
 	}
-	return true
+	return true, nil
 }
 
 func GetEventScheduler(dbM *sqlx.DB) bool {
