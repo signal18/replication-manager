@@ -36,6 +36,7 @@
 
 	<script src="/static/angular.min.js"></script>
 	<script src="/static/angular-resource.min.js"></script>
+	<script src="/static/svg-assets-cache.js"></script>
 	<script src="/static/angular-animate.min.js"></script>
   <script src="/static/angular-aria.min.js"></script>
   <script src="/static/angular-messages.min.js"></script>
@@ -49,6 +50,12 @@
 td {
     white-space: nowrap;
 }
+
+.menudemoBasicUsage .md-menu-demo {
+  padding: 24px; }
+
+.menudemoBasicUsage .menu-demo-container {
+  min-height: 200px; }
 .sectionheader {
   font-size: 12px;
   font-weight: 700;
@@ -98,7 +105,7 @@ td {
    </form>
  </td></tr></table>
   <md-content>
-    <md-tabs class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
+    <md-tabs  class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
       <md-tab label="DASHBOARD">
         <md-content class="md-padding">
 
@@ -153,8 +160,26 @@ td {
 						</tr>
 						<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
 
-							<td><button width=10 height=10 lass="btn btn-default"
-	          context-menu="otherMenuOptions" model="'Red'"><img width=12 src="/static/settings.png"></button>
+							<td>
+
+
+
+					 <md-menu>
+					          <md-button aria-label="Open menu " class="md-icon-button" ng-mouseenter="$mdMenu.open()">
+					        <md-icon width=12 src="/static/settings.png"></md-icon>
+					      </md-button>
+					      <md-menu-content width="4" ng-mouseleave="$mdMenu.close()">
+					        <md-menu-item ng-repeat="item in [1, 2, 3]">
+					          <md-button>
+					            Option {{item}}
+					          </md-button>
+					        </md-menu-item>
+					    </md-menu-content></md-menu>
+
+
+
+
+
 					</td><td>{{server.Host}}</td>
 							<td>{{server.Port}}</td>
 							<td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>

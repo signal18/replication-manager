@@ -1,4 +1,4 @@
-var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute']).config(function($routeProvider){
+var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute','ngMessages', 'material.svgAssetsCache']).config(function($routeProvider){
 
         routeProvider = $routeProvider;
         $routeProvider
@@ -9,6 +9,13 @@ var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','
 });
 
 
+app.controller('PositionDemoCtrl', function DemoCtrl($mdDialog) {
+    var originatorEv;
+
+    this.menuHref = "http://www.google.com/design/spec/components/menus.html#menus-specs";
+
+
+});
 
 app.factory('Servers', function($resource) {
   return $resource('/servers');
@@ -31,7 +38,7 @@ app.factory('Alerts', function($resource) {
   return $resource(
   '/alerts' ,
   '',
-  { 'query':  {method:'GET', isArray:false} } 
+  { 'query':  {method:'GET', isArray:false} }
 );
 });
 
@@ -82,6 +89,23 @@ app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$h
    if (timeFrame=="") {
      timeFrame="10m"
     }
+
+    this.openMenu = function($mdMenu, ev) {
+      originatorEv = ev;
+      $mdMenu.open(ev);
+    };
+
+    this.announceClick = function(index) {
+      $mdDialog.show(
+        $mdDialog.alert()
+          .title('You clicked!')
+          .textContent('You clicked the menu item at index ' + index)
+          .ok('Nice')
+          .targetEvent(originatorEv)
+      );
+      originatorEv = null;
+    };
+
   $interval(function(){
   Servers.query({}, function(data) {
     $scope.servers = data;
