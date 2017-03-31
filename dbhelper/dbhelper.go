@@ -688,13 +688,25 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
 	return nil
 }
 
+func GetVariableSource(db *sqlx.DB) string {
+	myver, _ := GetDBVersion(db)
+	var source string
+	if !myver.IsMariaDB() && myver.Major >= 5 && myver.Minor >= 7 {
+		source = "performance_schema"
+	} else {
+		source = "information_schema"
+	}
+	return source
+}
+
 func GetStatus(db *sqlx.DB) (map[string]string, error) {
 	type Variable struct {
 		Variable_name string
 		Value         string
 	}
+	source := GetVariableSource(db)
 	vars := make(map[string]string)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM information_schema.global_status")
+	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_status")
 	if err != nil {
 		return nil, errors.New("Could not get status variables")
 	}
@@ -715,7 +727,8 @@ func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 		Value         int64
 	}
 	vars := make(map[string]int64)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM information_schema.global_status")
+	source := GetVariableSource(db)
+	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_status")
 	if err != nil {
 		return nil, errors.New("Could not get status variables as integers")
 	}
@@ -732,8 +745,9 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 		Variable_name string
 		Value         string
 	}
+	source := GetVariableSource(db)
 	vars := make(map[string]string)
-	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM information_schema.global_variables")
+	rows, err := db.Queryx("SELECT Variable_name AS variable_name, Variable_Value AS value FROM " + source + ".global_variables")
 	if err != nil {
 		return vars, err
 	}
@@ -750,7 +764,8 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 
 func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 	var value string
-	err := db.QueryRowx("SELECT Variable_Value AS Value FROM information_schema.global_variables WHERE Variable_Name = ?", name).Scan(&value)
+	source := GetVariableSource(db)
+	err := db.QueryRowx("SELECT Variable_Value AS Value FROM "+source+".global_variables WHERE Variable_Name = ?", name).Scan(&value)
 	if err != nil {
 		return "", errors.New("Could not get variable by name")
 	}
