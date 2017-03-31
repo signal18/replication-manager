@@ -827,9 +827,14 @@ func ResetMaster(db *sqlx.DB) error {
 }
 
 func SetDefaultMasterConn(db *sqlx.DB, dmc string) error {
-	stmt := "SET default_master_connection='" + dmc + "'"
-	_, err := db.Exec(stmt)
-	return err
+	myver, _ := GetDBVersion(db)
+	if myver.IsMariaDB() {
+		stmt := "SET default_master_connection='" + dmc + "'"
+		_, err := db.Exec(stmt)
+		return err
+	}
+	// MySQL replication channels are not supported at the moment
+	return nil
 }
 
 /* Check for a list of slave prerequisites.
