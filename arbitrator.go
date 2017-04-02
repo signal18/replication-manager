@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/jmoiron/sqlx"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -29,8 +28,6 @@ type route struct {
 }
 
 type routes []route
-
-var db *sqlx.DB
 
 func newRouter() *mux.Router {
 
@@ -99,7 +96,7 @@ var arbitratorCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
 		var err error
-		db, err = currentCluster.InitAgent(confs["arbitrator"])
+		db, err := currentCluster.InitAgent(confs["arbitrator"])
 		if err != nil {
 			panic(err)
 		}
@@ -109,7 +106,6 @@ var arbitratorCmd = &cobra.Command{
 		if err != nil {
 			log.WithError(err).Error("Error creating tables")
 		}
-		db.Close()
 		//http.HandleFunc("/heartbeat/", handlerHeartbeat)
 		//	http.HandleFunc("/abritrator/", handlerArbitrator)
 		router := newRouter()
@@ -136,9 +132,10 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	}
 	var send response
 	currentCluster = new(cluster.Cluster)
+	db, err := dbhelper.MemDBConnect()
+	defer db.Close()
 	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
-	db.Close()
 	if res {
 		send.Arbitration = "winner"
 		send.ElectedMaster = electedmaster
@@ -176,11 +173,13 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	currentCluster = new(cluster.Cluster)
 	var send string
+	db, err := dbhelper.MemDBConnect()
+	defer db.Close()
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
-	db.Close()
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
 	} else {
+		log.Error("Error writing heartbeat, reason: ", res)
 		send = `{"heartbeat":"failed"}`
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -213,6 +212,8 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 	currentCluster = new(cluster.Cluster)
 	var send string
+	db, err := dbhelper.MemDBConnect()
+	defer db.Close()
 	res := dbhelper.ForgetArbitration(db, h.Secret)
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
