@@ -40,7 +40,7 @@ type ServerMonitor struct {
 	Host                        string
 	Port                        string
 	IP                          string
-	BinlogPos                   *gtid.List
+	GTIDBinlogPos               *gtid.List
 	Strict                      string
 	ServerID                    uint
 	MasterServerID              uint
@@ -470,7 +470,7 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.EventScheduler = true
 	}
-	server.BinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
+	server.GTIDBinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
 	server.ReadOnly = sv["READ_ONLY"]
@@ -732,7 +732,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 func (server *ServerMonitor) log() {
 	server.Refresh()
-	server.ClusterGroup.LogPrintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.BinlogPos.Sprint())
+	server.ClusterGroup.LogPrintf("DEBUG: Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
 	return
 }
 
@@ -747,7 +747,7 @@ func (server *ServerMonitor) writeState() error {
 	if err != nil {
 		return err
 	}
-	_, err = f.WriteString(server.BinlogPos.Sprint())
+	_, err = f.WriteString(server.GTIDBinlogPos.Sprint())
 	if err != nil {
 		return err
 	}

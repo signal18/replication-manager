@@ -648,6 +648,11 @@ func StopSlave(db *sqlx.DB) error {
 	return err
 }
 
+func StopSlaveIOThread(db *sqlx.DB) error {
+	_, err := db.Exec("STOP SLAVE IO_THREAD")
+	return err
+}
+
 func StopAllSlaves(db *sqlx.DB) error {
 	_, err := db.Exec("STOP ALL SLAVES")
 	return err
@@ -838,8 +843,13 @@ func CheckSlaveSemiSync(dbS *sqlx.DB) bool {
 	}
 }
 
-func MasterPosWait(db *sqlx.DB, gtid string, timeout int) error {
+func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) error {
 	_, err := db.Exec("SELECT MASTER_GTID_WAIT(?, ?)", gtid, timeout)
+	return err
+}
+
+func MasterPosWait(db *sqlx.DB, log string, pos string, timeout int) error {
+	_, err := db.Exec("SELECT MASTER_POS_WAIT(?, ?, ?)", log, pos, timeout)
 	return err
 }
 
