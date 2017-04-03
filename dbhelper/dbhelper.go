@@ -776,18 +776,16 @@ func SetEventScheduler(db *sqlx.DB, state bool) error {
 func SetSlaveHeartbeat(db *sqlx.DB, interval string) error {
 	var err error
 
-	stmt := "Stop Slave"
+	err = StopSlave(db)
+	if err != nil {
+		return err
+	}
+	stmt := "change master to MASTER_HEARTBEAT_PERIOD=" + interval
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
 	}
-	stmt = "change master to MASTER_HEARTBEAT_PERIOD=" + interval
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
-	}
-	stmt = "Start Slave"
-	_, err = db.Exec(stmt)
+	err = StartSlave(db)
 	if err != nil {
 		return err
 	}
@@ -797,18 +795,16 @@ func SetSlaveHeartbeat(db *sqlx.DB, interval string) error {
 func SetSlaveGTIDMode(db *sqlx.DB, mode string) error {
 	var err error
 
-	stmt := "Stop Slave"
+	err = StopSlave(db)
+	if err != nil {
+		return err
+	}
+	stmt := "change master to master_use_gtid=" + mode
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return err
 	}
-	stmt = "change master to master_use_gtid=" + mode
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
-	}
-	stmt = "Start Slave"
-	_, err = db.Exec(stmt)
+	err = StartSlave(db)
 	if err != nil {
 		return err
 	}
@@ -879,14 +875,12 @@ func CheckHostAddr(h string) (string, error) {
 	var err error
 	if net.ParseIP(h) != nil {
 		return h, err
-	} else {
-		ha, err := net.LookupHost(h)
-		if err != nil {
-			return "", err
-		} else {
-			return ha[0], err
-		}
 	}
+	ha, err := net.LookupHost(h)
+	if err != nil {
+		return "", err
+	}
+	return ha[0], err
 }
 
 func GetSpiderShardUrl(db *sqlx.DB) (string, error) {
