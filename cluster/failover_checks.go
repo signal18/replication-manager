@@ -134,7 +134,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 		} else {
 			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrint("INFO: Getting Maxscale monitor via maxadmin")
+				cluster.LogPrint("INFO : Getting Maxscale monitor via maxadmin")
 			}
 			_, err := m.ListMonitors()
 			if err != nil {
@@ -145,14 +145,14 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		}
 		if monitor != "" {
 			cmd := "Restart monitor \"" + monitor + "\""
-			cluster.LogPrintf("INFO: %s", cmd)
+			cluster.LogPrintf("INFO : %s", cmd)
 			err = m.RestartMonitor(monitor)
 			if err != nil {
 				cluster.LogPrint("ERROR: MaxScale client could not startup monitor:%s", err)
 				return false
 			}
 		} else {
-			cluster.LogPrint("INFO: MaxScale Monitor not found")
+			cluster.LogPrint("INFO : MaxScale Monitor not found")
 			return false
 		}
 	}
@@ -170,7 +170,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if cluster.conf.Arbitration == false {
 		return true
 	}
-	cluster.LogPrintf("CHECK: Failover External Abitration")
+	cluster.LogPrintf("CHECK: Failover External Arbitration")
 
 	url := "http://" + cluster.conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
@@ -198,14 +198,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf("ERROR:arbitrator says invalid JSON")
+		cluster.LogPrintf("ERROR: arbitrator says invalid JSON")
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogPrintf("INFO :Arbitrator say :winner")
+		cluster.LogPrintf("INFO :Arbitrator says: winner")
 		return true
 	}
-	cluster.LogPrintf("INFO :Arbitrator say :looser")
+	cluster.LogPrintf("INFO : Arbitrator says: loser")
 	return false
 }
 
