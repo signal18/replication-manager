@@ -36,7 +36,7 @@ import (
 type ServerMonitor struct {
 	Conn                        *sqlx.DB
 	URL                         string
-	DSN                         string
+	DSN                         string `json:"-"`
 	Host                        string
 	Port                        string
 	IP                          string
