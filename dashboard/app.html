@@ -112,7 +112,7 @@ td {
 			    	<tr><td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-warning">{{settings.confgroup}}</span></td><td><span  class="label label-warning">{{settings.topology}}</span></td></tr>
 		     	  </table>
 
-					
+
 			    </div>
 					<div  flex-gt-xs="10" ></div>
 					 <div  flex-gt-xs="60" class="col-lg-66">
@@ -136,10 +136,12 @@ td {
 						<tr>
 							<th>Host</th>
 							<th>Port</th>
+							<th>Version</th>
 							<th>Status</th>
-							<th>Using GTID</th>
-							<th>Current GTID</th>
-							<th>Slave GTID Pos</th>
+							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Using GTID</th>
+							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Current GTID</th>
+							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Slave GTID Pos</th>
+							<th ng-if="server.DBVersion.Flavor!='MariaDB'">Executed GTID Set</th>
 							<th>IO Thread</th>
 							<th>SQL Thread</th>
 							<th>Delay</th>
@@ -152,12 +154,14 @@ td {
 						<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
 							<td>{{server.Host}}</td>
 							<td>{{server.Port}}</td>
+							<td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
 							<td>{{server.State}}</td>
-							<td>{{server.UsingGtid}}</td>
-							<td>{{gtidstring(server.CurrentGtid)}}</td>
-							<td>{{gtidstring(server.SlaveGtid)}}</td>
+							<td ng-if="server.DBVersion.Flavor=='MariaDB'">{{server.UsingGtid}}</td>
+							<td ng-if="server.DBVersion.Flavor=='MariaDB'">{{gtidstring(server.CurrentGtid)}}</td>
+							<td ng-if="server.DBVersion.Flavor=='MariaDB'">{{gtidstring(server.SlaveGtid)}}</td>
+							<td ng-if="server.DBVersion.Flavor!='MariaDB'">{{server.GTIDExecuted}}</td>
 							<td>{{server.IOThread}}</td>
-							<td>{{server.SQLThread	}}</td>
+							<td>{{server.SQLThread}}</td>
 							<td>{{server.Delay.Int64}}</td>
 							<td>{{server.ReadOnly}}</td>
 							<td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
