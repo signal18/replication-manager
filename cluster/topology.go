@@ -486,7 +486,7 @@ func (cluster *Cluster) PrintTopology() {
 func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Server %s was lookup if prefered master: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf("DEBUG: Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.URL == cluster.conf.PrefMaster {
 			return server
@@ -498,7 +498,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Server %s was lookup if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf("DEBUG: Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.IsRelay {
 			return server
