@@ -100,6 +100,7 @@ type ServerMonitor struct {
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
 	DBVersion                   *dbhelper.MySQLVersion
+	GTIDExecuted                string
 }
 
 type serverList []*ServerMonitor
@@ -373,7 +374,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 }
 
-/* Refresh a server object */
+// Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 
 	if server.Conn.Unsafe() == nil {
@@ -471,6 +472,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.EventScheduler = true
 	}
 	server.GTIDBinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
+	server.GTIDExecuted = sv["GTID_EXECUTED"]
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
 	server.ReadOnly = sv["READ_ONLY"]
