@@ -215,9 +215,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	if cluster.conf.MultiMaster == false {
 		cluster.LogPrint("INFO : Resetting slave on new master and set read/write mode on")
+		if cluster.master.DBVersion.IsMySQL57() {
+			// Need to stop all threads to reset on 57
+			dbhelper.StopSlave(cluster.master.Conn)
+		}
 		err = dbhelper.ResetSlave(cluster.master.Conn, true)
 		if err != nil {
-			cluster.LogPrint("WARN : Reset slave failed on new master")
+			cluster.LogPrint("WARN : Reset slave failed on new master, reason: ", err)
 		}
 	}
 	err = dbhelper.SetReadOnly(cluster.master.Conn, false)
