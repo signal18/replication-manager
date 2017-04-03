@@ -21,7 +21,7 @@ func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Clu
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -41,7 +41,7 @@ func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Clu
 	cluster.LogPrintf("INFO : New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

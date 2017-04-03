@@ -19,7 +19,7 @@ func testSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, 
 	cluster.SetRplMaxDelay(2)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -31,7 +31,7 @@ func testSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, 
 	sla2 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

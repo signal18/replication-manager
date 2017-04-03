@@ -19,13 +19,13 @@ func testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cluster *cluster.Cluster, c
 	cluster.SetRplChecks(false)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	err = cluster.StopSlaves()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

@@ -172,7 +172,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("ERROR : Insert some events %s %s", err.Error(), result)
+		cluster.LogPrintf("ERROR: Insert some events %s %s", err.Error(), result)
 		cluster.ShutdownClusterSemiSync()
 	}
 	time.Sleep(2 * time.Second)

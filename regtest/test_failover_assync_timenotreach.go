@@ -29,7 +29,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test string
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -45,7 +45,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test string
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

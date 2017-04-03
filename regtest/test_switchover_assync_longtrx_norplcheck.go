@@ -20,7 +20,7 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 	cluster.SetRplChecks(false)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -29,14 +29,14 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 
 	db, err := cluster.GetClusterProxyConn()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
 	err = dbhelper.InjectTrxWithoutCommit(db, 20)
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -49,7 +49,7 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 	cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

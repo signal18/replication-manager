@@ -20,7 +20,7 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -29,7 +29,7 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	for i := 0; i < 2; i++ {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf("ERROR : %s %s", err.Error(), result)
+			cluster.LogPrintf("ERROR: %s %s", err.Error(), result)
 		}
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
 		SaveMasterURL := cluster.GetMaster().URL
@@ -37,7 +37,7 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 		cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
 
 		if SaveMasterURL == cluster.GetMaster().URL {
-			cluster.LogPrintf("ERROR : same server URL after switchover")
+			cluster.LogPrintf("ERROR: same server URL after switchover")
 			cluster.CloseTestCluster(conf, test)
 			return false
 		}
@@ -45,12 +45,12 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("ERROR : Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.LogPrintf("ERROR: Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
 			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 		if s.MasterServerID != cluster.GetMaster().ServerID {
-			cluster.LogPrintf("ERROR :  Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
+			cluster.LogPrintf("ERROR:  Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
 			cluster.CloseTestCluster(conf, test)
 			return false
 		}

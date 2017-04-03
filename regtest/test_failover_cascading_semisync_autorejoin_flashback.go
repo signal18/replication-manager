@@ -60,7 +60,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("ERROR : Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.LogPrintf("ERROR: Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
 			cluster.CloseTestCluster(conf, test)
 			return false
 		}

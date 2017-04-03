@@ -185,7 +185,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		cluster.LogPrintf("ERROR :%s", err.Error())
+		cluster.LogPrintf("ERROR: %s", err.Error())
 		return false
 	}
 	defer resp.Body.Close()
@@ -198,7 +198,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf("ERROR :abitrator says invalid JSON")
+		cluster.LogPrintf("ERROR:arbitrator says invalid JSON")
 		return false
 	}
 	if r.Arbitration == "winner" {

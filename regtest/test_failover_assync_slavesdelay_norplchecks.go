@@ -20,7 +20,7 @@ func testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cluster *cluster.Cluster, c
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

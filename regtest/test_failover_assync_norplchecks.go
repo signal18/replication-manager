@@ -15,7 +15,7 @@ func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, te
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -42,7 +42,7 @@ func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, te
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

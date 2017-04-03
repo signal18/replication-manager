@@ -255,7 +255,7 @@ func fHeartbeat() {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR :%s", err)
+				currentCluster.LogPrintf("ERROR:%s", err)
 			}
 			continue
 
@@ -263,7 +263,7 @@ func fHeartbeat() {
 		resp, err := client.Do(req)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR :%s", err)
+				currentCluster.LogPrintf("ERROR:%s", err)
 			}
 			continue
 		}
@@ -274,12 +274,12 @@ func fHeartbeat() {
 		defer resp.Body.Close()
 		monjson, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			currentCluster.LogPrintf("ERROR :%s", err)
+			currentCluster.LogPrintf("ERROR:%s", err)
 		}
 		// Use json.Decode for reading streams of JSON data
 		var h heartbeat
 		if err := json.Unmarshal(monjson, &h); err != nil {
-			currentCluster.LogPrintf("ERROR :%s", err)
+			currentCluster.LogPrintf("ERROR:%s", err)
 		} else {
 			splitBrain = false
 			if conf.LogLevel > 3 {
@@ -318,7 +318,7 @@ func fHeartbeat() {
 			client := &http.Client{Timeout: timeout}
 			resp, err := client.Do(req)
 			if err != nil {
-				cl.LogPrintf("ERROR :%s", err.Error())
+				cl.LogPrintf("ERROR:%s", err.Error())
 				cl.SetActiveStatus("S")
 				runStatus = "S"
 				return
@@ -349,7 +349,7 @@ func fHeartbeat() {
 			client := &http.Client{Timeout: timeout}
 			resp, err := client.Do(req)
 			if err != nil {
-				cl.LogPrintf("ERROR :%s", err.Error())
+				cl.LogPrintf("ERROR:%s", err.Error())
 				cl.SetActiveStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"

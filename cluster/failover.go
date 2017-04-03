@@ -176,7 +176,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			//strconv.FormatUint(uint64(ms.Position), 10)
 			cluster.LogPrintf("INFO : Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
 		} else {
-			cluster.LogPrintf("ERROR : No relay server found")
+			cluster.LogPrintf("ERROR: No relay server found")
 		}
 	}
 	// Phase 3: Prepare new master
@@ -470,7 +470,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 		if changeMasterErr != nil {
-			cluster.LogPrintf("ERROR : Change master failed on slave %s, %s", sl.URL, err)
+			cluster.LogPrintf("ERROR: Change master failed on slave %s, %s", sl.URL, err)
 		}
 		err = dbhelper.StartSlave(sl.Conn)
 		if err != nil {

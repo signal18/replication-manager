@@ -21,7 +21,7 @@ func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf 
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -36,7 +36,7 @@ func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf 
 	time.Sleep(20 * time.Second)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

@@ -14,7 +14,7 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -41,7 +41,7 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR : %s", err)
+		cluster.LogPrintf("ERROR: %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
