@@ -132,7 +132,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			oldMaster.log()
 		}
 		dbhelper.MasterWaitGTID(cluster.master.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
-	} else {
+	} else if !cluster.master.DBVersion.IsMySQL57() {
 		cluster.LogPrint("INFO : Waiting for candidate Master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
