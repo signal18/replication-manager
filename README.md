@@ -1,6 +1,6 @@
 ## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager) [![Stories in Ready](https://badge.waffle.io/tanji/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/tanji/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
 
-__replication-manager__ is an high availability solution to manage MariaDB 10.x GTID replication.  
+__replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL / Percona Server 5.7 GTID replication topologies.  
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
@@ -21,6 +21,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Using external scripts](#using-external-scripts)
 - [Using Maxscale](#using-maxscale)
 - [Using Haproxy](#using-haproxy)
+- [Using ProxySQL](#using-proxysql)
 - [Using Multi Master](#using-multi-master)
 - [Using Multi Tier Slave](#using-multi-tier-slave)
 - [Force best practices](#force-best-practices)
@@ -372,6 +373,10 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 haproxy-write-port = 3306
 haproxy-read-port = 3307
 ```
+
+## Using ProxySQL
+
+Replication-Manager supports ProxySQL out of the box. As ProxySQL detects topologies based on the state of the read-only flag, it will pick up changes automatically and change hostgroups accordingly.
 
 ## Usage
 
@@ -743,7 +748,7 @@ Stephane Varoqui <stephane@mariadb.com>
 
 ### Special Thanks
 
-Thanks to Markus Mäkelä from the MaxScale team for his valuable time contributions, Willy Tarreau from HaProxy, The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Orchestrator, Yoshinori Matsunobu for MHA, Johan Anderson for S9 Cluster Control.
+Thanks to Markus Mäkelä from the MaxScale team for his valuable time contributions, Willy Tarreau from HaProxy, René Cannao from ProxySQL. The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Orchestrator, Yoshinori Matsunobu for MHA, Johan Anderson for S9 Cluster Control.
 
 ### License
 
