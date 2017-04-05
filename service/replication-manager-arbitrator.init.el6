@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# replication-manager       Replication HA Management for MariaDB 10.x
+# replication-manager-arbitrator       Replication HA Management for MariaDB 10.x (Arbitrator)
 #
 # chkconfig: - 90 10
-# description: replication-manager
+# description: replication-manager-arbitrator
 # processname: replication-manager
 # config: /etc/replication-manager/config.toml
 
@@ -16,8 +16,8 @@ PROCNAME=replication-manager
 # See how we were called.
 case "$1" in
   start)
-        echo -n "Starting replication-manager: "
-        /usr/bin/replication-manager monitor --daemon > /dev/null 2>&1 &
+        echo -n "Starting replication-manager-arbitrator: "
+        /usr/bin/replication-manager arbitrator > /dev/null 2>&1 &
         sleep 1
         pkill -0 $PROCNAME
         RETVAL=$?
@@ -31,7 +31,7 @@ case "$1" in
         echo
         ;;
   stop)
-        echo -n "Stopping replication-manager: "
+        echo -n "Stopping replication-manager-arbitrator: "
         kill $(pidof replication-manager)
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
@@ -53,7 +53,7 @@ case "$1" in
         RETVAL=$?
         ;;
   *)
-        echo "Usage: replication-manager {start|stop|status|restart}"
+        echo "Usage: replication-manager-arbitrator {start|stop|status|restart}"
         exit 1
 esac
 

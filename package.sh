@@ -27,6 +27,7 @@ cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp -r share/* build/usr/share/replication-manager/
 cp service/replication-manager.service build/etc/systemd/system
 cp service/replication-manager.init.el6 build/etc/init.d/replication-manager
+cp service/replication-manager-arbitrator.init.el6 build/etc/init.d/replication-manager-arbitrator
 echo "# Building packages"
 fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager .
 fpm --package replication-manager-$version-$head.tar -C build -s dir -t tar -n replication-manager .
