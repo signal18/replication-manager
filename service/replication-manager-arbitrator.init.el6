@@ -19,7 +19,7 @@ case "$1" in
         echo -n "Starting replication-manager-arbitrator: "
         /usr/bin/replication-manager arbitrator > /dev/null 2>&1 &
         sleep 1
-        pkill -0 $PROCNAME
+        pkill -0 -f "/usr/bin/replication-manager arbitrator"
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
