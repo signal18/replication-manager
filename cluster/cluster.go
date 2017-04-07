@@ -106,7 +106,6 @@ func (cluster *Cluster) Stop() {
 	cluster.exit = true
 }
 func (cluster *Cluster) Run() {
-
 	/*	cluster.mxs = maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 		if cluster.conf.MxsOn {
 			err := cluster.mxs.Connect()
@@ -180,16 +179,19 @@ func (cluster *Cluster) Run() {
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
-				cluster.CheckFailed()
-				select {
-				case sig := <-cluster.switchoverChan:
-					if sig {
-						cluster.MasterFailover(false)
-						cluster.switchoverCond.Send <- true
-					}
+				if cluster.runStatus == "A" && cluster.conf.Arbitration {
+					// switchover / failover only on Active
+					cluster.CheckFailed()
+					select {
+					case sig := <-cluster.switchoverChan:
+						if sig {
+							cluster.MasterFailover(false)
+							cluster.switchoverCond.Send <- true
+						}
 
-				default:
-					//do nothing
+					default:
+						//do nothing
+					}
 				}
 			}
 			if !cluster.sme.IsInFailover() {

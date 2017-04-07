@@ -21,7 +21,7 @@ import (
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("DEBUG: In Failover skip checking failed master")
+		cluster.LogPrintf("INFO : In Failover, skip checking failed master")
 		return
 	}
 	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
