@@ -169,6 +169,7 @@ mail-to = "mrm@mariadb.com"
 
 pre-failover-script = ""
 post-failover-script = ""
+rejoin-script = ""
 
 
 # Timeout in seconds between consecutive monitoring

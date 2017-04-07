@@ -975,6 +975,15 @@ func (server *ServerMonitor) rejoin() error {
 			}
 			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
 			server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")
+			if server.ClusterGroup.conf.RejoinScript != "" {
+				server.ClusterGroup.LogPrintf("INFO : Calling rejoin script")
+				var out []byte
+				out, err := exec.Command(server.ClusterGroup.conf.RejoinScript, server.Host, server.ClusterGroup.master.Host).CombinedOutput()
+				if err != nil {
+					server.ClusterGroup.LogPrint("ERROR:", err)
+				}
+				server.ClusterGroup.LogPrint("INFO : Rejoin script complete", string(out))
+			}
 		}
 
 		//}

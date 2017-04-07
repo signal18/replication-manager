@@ -19,6 +19,7 @@ type Config struct {
 	Verbose                            bool   `mapstructure:"verbose"`
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
+	RejoinScript                       string `mapstructure:"rejoin-script"`
 	PrefMaster                         string `mapstructure:"prefmaster"`
 	IgnoreSrv                          string `mapstructure:"ignore-servers"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`

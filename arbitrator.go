@@ -298,7 +298,7 @@ func fHeartbeat() {
 			currentCluster.LogPrintf("INFO : Splitbrain")
 		}
 
-		// report arbitrator
+		// report to arbitrator
 		for _, cl := range clusters {
 			if cl.LostMajority() {
 				if bcksplitbrain != splitBrain {
