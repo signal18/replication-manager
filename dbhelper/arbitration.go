@@ -1,6 +1,7 @@
 package dbhelper
 
 import "github.com/jmoiron/sqlx"
+import log "github.com/Sirupsen/logrus"
 
 func SetHeartbeatTable(db *sqlx.DB) error {
 
@@ -82,44 +83,53 @@ func ForgetArbitration(db *sqlx.DB, secret string) error {
 }
 
 func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) bool {
+	log.SetLevel(log.DebugLevel)
 	var count int
 	tx, err := db.Beginx()
 	if err != nil {
+		log.Error(err)
 		return false
 	}
 	// count the number of replication manager Elected that is not me for this cluster
 	stmt := "SELECT count(*) FROM heartbeat WHERE cluster=? AND secret=? AND status='E' and uid<>?"
-	err = tx.QueryRowx(stmt).Scan(&count, cluster, secret, uid)
+	err = tx.QueryRowx(stmt, cluster, secret, uid).Scan(&count)
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
+		log.Info("No elected managers found for this cluster")
 		// A non elected replication-manager may see more nodes than me than in this case lose the election
 		stmt = "SELECT count(*) FROM heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?"
-		err = tx.QueryRowx(stmt).Scan(&count, cluster, secret, uid, failed)
+		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
 		if err == nil && count == 0 {
+			log.Info("Node won election")
 			// stmt = "INSERT INTO heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + uid + ",'" + master + "', DATETIME('now'), DATETIME('now'),'" + cluster + "'," + hosts + "," + failed + ") ON DUPLICATE KEY UPDATE arbitration_date=DATETIME('now'),date=DATETIME('now'),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + hosts + ",failed=" + failed
-			stmt = `INSERT OR REPLACE INTO heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed, status)
-      VALUES(?,?,?,?,DATETIME('now'),DATETIME('now'),?,?,?,COALESCE((SELECT status FROM heartbeat WHERE secret=?,?,?), 'E'))`
+			stmt = `INSERT OR REPLACE INTO heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status)
+      VALUES(?,?,?,?,DATETIME('now'),DATETIME('now'),?,?,?,'E')`
 			_, err = tx.Exec(stmt, secret, uuid, uid, master, cluster, hosts, failed, secret, cluster, uid)
 			if err != nil {
+				log.Error(err)
 				err = tx.Commit()
 				if err != nil {
+					log.Error(err)
 					return false
 				}
 			}
 			err = tx.Commit()
 			if err != nil {
+				log.Error(err)
 				return false
 			}
 			return true
 		}
-
-		err := tx.Commit()
+		log.Error(err)
+		err = tx.Commit()
 		if err != nil {
+			log.Error(err)
 			return false
 		}
 		return false
 
 	}
+	log.Error(err)
 	return false
 }
 
@@ -127,7 +137,7 @@ func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 	var master string
 	// count the number of replication manager Elected that is not me for this cluster
 	stmt := "SELECT master FROM heartbeat WHERE cluster=? AND secret=?  AND status IN ('E')"
-	err := db.QueryRowx(stmt).Scan(&master)
+	err := db.QueryRowx(stmt, cluster, secret).Scan(&master)
 	if err == nil {
 		return master
 	}
