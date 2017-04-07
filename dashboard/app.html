@@ -138,10 +138,10 @@ td {
 							<th>Port</th>
 							<th>Version</th>
 							<th>Status</th>
-							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Using GTID</th>
-							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Current GTID</th>
-							<th ng-if="server.DBVersion.Flavor=='MariaDB'">Slave GTID Pos</th>
-							<th ng-if="server.DBVersion.Flavor!='MariaDB'">Executed GTID Set</th>
+							<th ng-if="servers[0].DBVersion.Flavor=='MariaDB'">Using GTID</th>
+							<th ng-if="servers[0].DBVersion.Flavor=='MariaDB'">Current GTID</th>
+							<th ng-if="servers[0].DBVersion.Flavor=='MariaDB'">Slave GTID Pos</th>
+							<th ng-if="servers[0].DBVersion.Flavor!='MariaDB'">Executed GTID Set</th>
 							<th>IO Thread</th>
 							<th>SQL Thread</th>
 							<th>Delay</th>
