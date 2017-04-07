@@ -1,4 +1,4 @@
-// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <stephane.varoqui@mariadb.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -170,8 +170,8 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "replication-manager",
-	Short: "MariaDB Replication Manager Utility",
-	Long: `replication-manager allows users to monitor interactively MariaDB 10.x GTID replication health
+	Short: "Replication Manager tool for MariaDB and MySQL",
+	Long: `replication-manager allows users to monitor interactively MariaDB 10.x and MySQL GTID replication health
 and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Usage()
@@ -183,7 +183,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the replication manager version number",
 	Long:  `All software has versions. This is ours`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Replication Manager " + Version + " for MariaDB 10.x Series")
+		fmt.Println("Replication Manager " + Version + " for MariaDB 10.x and MySQL 5.7 Series")
 		fmt.Println("Full Version: ", FullVersion)
 		fmt.Println("Build Time: ", Build)
 	},

@@ -1,4 +1,4 @@
-// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <stephane.varoqui@mariadb.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -29,9 +29,9 @@ func (a *Alert) Email() error {
 	e := email.NewEmail()
 	e.From = a.From
 	e.To = strings.Split(a.To, ",")
-	subj := fmt.Sprintf("MRM alert - State change detected on host %s", a.Origin)
+	subj := fmt.Sprintf("R3M alert - State change detected on host %s", a.Origin)
 	e.Subject = subj
-	text := fmt.Sprintf(`MariaDB Replication manager has detected a change of state for host %s.
+	text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
 New server state is %s.`, a.Origin, a.Type)
 	e.Text = []byte(text)
 	err := e.Send(a.Destination, nil)

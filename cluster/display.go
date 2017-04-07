@@ -1,4 +1,4 @@
-// replication-manager - Replication Manager Monitoring and CLI for MariaDB
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <stephane.varoqui@mariadb.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -24,7 +24,7 @@ func (cluster *Cluster) display() {
 		return
 	}
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" Replication Monitor and Health Checker for MariaDB version %s ", cluster.repmgrVersion)
+	headstr := fmt.Sprintf(" Replication Monitor and Health Checker for MariaDB and MySQL version %s ", cluster.repmgrVersion)
 	if cluster.cfgGroup != "" {
 		headstr += fmt.Sprintf("| Group: %s", cluster.cfgGroup)
 	}
