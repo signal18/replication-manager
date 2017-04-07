@@ -246,6 +246,14 @@ autorejoin-flashback = true
 autorejoin-mysqldump = false
 ```
 
+If none of above method is set or available replication-manager will call external scripts
+
+```
+rejoin-script = ""
+```
+
+It is passing the server to rejoin as first argument and the new topology master.
+
 ## Using Maxscale
 
 Replication-Manager can operate with MaxScale in 3 modes,  
