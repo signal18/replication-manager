@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -45,6 +46,90 @@ func (cluster *Cluster) newServerList() error {
 	// Spider shard discover
 	if cluster.conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
+	}
+	err := cluster.newProxyList()
+	if err != nil {
+		cluster.LogPrintf("ERROR: Could not set proxy list %s", err)
+	}
+	return nil
+}
+
+func (cluster *Cluster) newProxyList() error {
+	nbproxies := 0
+	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
+		nbproxies += len(strings.Split(cluster.conf.MxsHost, ","))
+	}
+	if cluster.conf.HaproxyOn {
+		nbproxies++
+	}
+	if cluster.conf.MdbProxyHosts != "" && cluster.conf.MdbProxyOn {
+		nbproxies += len(strings.Split(cluster.conf.MdbProxyHosts, ","))
+	}
+
+	cluster.proxies = make([]*Proxy, nbproxies)
+	var ctproxy = 0
+	var err error
+	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
+		for _, proxyHost := range strings.Split(cluster.conf.MxsHost, ",") {
+
+			prx := new(Proxy)
+			prx.Name = "maxscale"
+			prx.Host = proxyHost
+			prx.Port = cluster.conf.MxsPort
+			prx.User = cluster.conf.MxsUser
+			prx.Pass = cluster.conf.MxsPass
+			prx.ReadPort = cluster.conf.MxsReadPort
+			prx.WritePort = cluster.conf.MxsWritePort
+
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+			if cluster.conf.Verbose {
+				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
+			}
+			ctproxy++
+		}
+	}
+	if cluster.conf.HaproxyOn {
+		prx := new(Proxy)
+		prx.Name = "haproxy"
+		prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
+		prx.Host = cluster.conf.HaproxyWriteBindIp
+		//prx.User = cluster.conf
+		//prx.Pass = cluster.conf.MdbProxyPass
+		prx.ReadPort = cluster.conf.HaproxyReadPort
+		prx.WritePort = cluster.conf.HaproxyWritePort
+		prx.ReadWritePort = cluster.conf.HaproxyWritePort
+		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+		if err != nil {
+			cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+		}
+		if cluster.conf.Verbose {
+			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
+		}
+		ctproxy++
+	}
+	if cluster.conf.MdbProxyHosts != "" && cluster.conf.MdbProxyOn {
+		for _, proxyHost := range strings.Split(cluster.conf.MdbProxyHosts, ",") {
+			prx := new(Proxy)
+			prx.Name = "mdbproxy"
+			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
+			prx.User = cluster.conf.MdbProxyUser
+			prx.Pass = cluster.conf.MdbProxyPass
+
+			prx.ReadPort, _ = strconv.Atoi(prx.Port)
+			prx.WritePort, _ = strconv.Atoi(prx.Port)
+			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+			if cluster.conf.Verbose {
+				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
+			}
+			ctproxy++
+		}
 	}
 	return nil
 }
@@ -511,6 +596,15 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 			cluster.LogPrintf("DEBUG: Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.IsRelay {
+			return server
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
+	for _, server := range cluster.servers {
+		if server.ServerID == serverid {
 			return server
 		}
 	}

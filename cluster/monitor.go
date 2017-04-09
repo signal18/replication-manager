@@ -96,6 +96,7 @@ type ServerMonitor struct {
 	IsMaxscale                  bool
 	IsRelay                     bool
 	IsSlave                     bool
+	IsMaintenance               bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64

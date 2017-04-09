@@ -29,8 +29,10 @@ import (
 
 type Cluster struct {
 	hostList             []string
+	proxyList            []string
 	servers              serverList
 	slaves               serverList
+	proxies              proxyList
 	master               *ServerMonitor
 	mxs                  *maxscale.MaxScale
 	dbUser               string
@@ -310,6 +312,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		cluster.LogPrint("ERROR: No hosts list specified")
 		return errors.New("ERROR: No hosts list specified")
 	}
+
 	// validate users
 	if cluster.conf.User == "" {
 		cluster.LogPrint("ERROR: No master user/pair specified")
