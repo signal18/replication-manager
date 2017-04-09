@@ -140,12 +140,14 @@ force-slave-readonly = false
 force-binlog-row = false
 force-binlog-annotate = false
 force-binlog-slowqueries = false
+force-binlog-compress = false
+force-binlog-checksum = false
 force-inmemory-binlog-cache-size = false
 force-disk-relaylog-size-limit = false
 force-disk-relaylog-size-limit-size = 1000000000
 force-sync-binlog = false
 force-sync-innodb = false
-force-binlog-checksum = false
+
 
 # HTTP
 # ----
