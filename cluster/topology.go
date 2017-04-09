@@ -296,6 +296,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
 					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
 				}
+				if cluster.conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
+					dbhelper.SetBinlogCompress(sl.Conn)
+					cluster.LogPrintf("DEBUG: Enforce binlog compression on slave %s", sl.DSN)
+				}
 				/* Disable because read-only variable
 				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
@@ -421,7 +425,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 			dbhelper.SetBinlogChecksum(cluster.master.Conn)
 			cluster.LogPrintf("DEBUG: Enforce ckecsum annotate on master %s", cluster.master.DSN)
 		}
-
+		if cluster.conf.ForceBinlogCompress && cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
+			dbhelper.SetBinlogCompress(cluster.master.Conn)
+			cluster.LogPrintf("DEBUG: Enforce binlog compression on master %s", cluster.master.DSN)
+		}
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
 			for _, sl := range cluster.slaves {

@@ -412,6 +412,8 @@ func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
 	}
 	return nil
 }
+
+// SetBinlogSlowqueries Enable queries in replication to be reported in slow queries
 func SetBinlogSlowqueries(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL log_slow_slave_statements=ON")
 	if err != nil {
@@ -420,6 +422,7 @@ func SetBinlogSlowqueries(db *sqlx.DB) error {
 	return nil
 }
 
+// SetSyncBinlog Enable Binlog Durability
 func SetSyncBinlog(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL sync_binlog=1")
 	if err != nil {
@@ -427,6 +430,8 @@ func SetSyncBinlog(db *sqlx.DB) error {
 	}
 	return nil
 }
+
+// SetSyncInnodb Enable InnoDB Durability
 func SetSyncInnodb(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL innodb_flush_log_at_trx_commit=1")
 	if err != nil {
@@ -435,12 +440,22 @@ func SetSyncInnodb(db *sqlx.DB) error {
 	return nil
 }
 
+// SetBinlogChecksum Enable binlog checksum and check on master
 func SetBinlogChecksum(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL binlog_checksum=1")
 	if err != nil {
 		return err
 	}
 	_, err = db.Exec("SET GLOBAL master_verify_checksum=1")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetBinlogCompress Enable MaraiDB 10.2 binlog compression
+func SetBinlogCompress(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL log_bin_compress=1")
 	if err != nil {
 		return err
 	}

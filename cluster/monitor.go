@@ -91,6 +91,7 @@ type ServerMonitor struct {
 	HaveBinlogRow               bool
 	HaveBinlogAnnotate          bool
 	HaveBinlogSlowqueries       bool
+	HaveBinlogCompress          bool
 	Version                     int
 	IsMaxscale                  bool
 	IsRelay                     bool
@@ -133,6 +134,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.HaveChecksum = true
 	server.HaveBinlogRow = true
 	server.HaveBinlogAnnotate = true
+	server.HaveBinlogCompress = true
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
 	// consider all nodes are maxscale to avoid sending command until discoverd
@@ -476,6 +478,11 @@ func (server *ServerMonitor) Refresh() error {
 	server.Strict = sv["GTID_STRICT_MODE"]
 	server.LogBin = sv["LOG_BIN"]
 	server.ReadOnly = sv["READ_ONLY"]
+	if sv["lOG_BIN_COMPRESS"] != "ON" {
+		server.HaveBinlogCompress = false
+	} else {
+		server.HaveBinlogCompress = true
+	}
 	if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
 		server.HaveInnodbTrxCommit = false
 	} else {

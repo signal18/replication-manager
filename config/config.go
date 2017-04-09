@@ -49,13 +49,14 @@ type Config struct {
 	ForceSlaveReadOnly                 bool   `mapstructure:"force-slave-readonly"`
 	ForceBinlogRow                     bool   `mapstructure:"force-binlog-row"`
 	ForceBinlogAnnotate                bool   `mapstructure:"force-binlog-annotate"`
+	ForceBinlogCompress                bool   `mapstructure:"force-binlog-compress"`
 	ForceBinlogSlowqueries             bool   `mapstructure:"force-binlog-slowqueries"`
+	ForceBinlogChecksum                bool   `mapstructure:"force-binlog-checksum"`
 	ForceInmemoryBinlogCacheSize       bool   `mapstructure:"force-inmemory-binlog-cache-size"`
 	ForceDiskRelayLogSizeLimit         bool   `mapstructure:"force-disk-relaylog-size-limit"`
 	ForceDiskRelayLogSizeLimitSize     uint64 `mapstructure:"force-disk-relaylog-size-limit-size"`
 	ForceSyncBinlog                    bool   `mapstructure:"force-sync-binlog"`
 	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
-	ForceBinlogChecksum                bool   `mapstructure:"force-binlog-checksum"`
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
 	RplChecks                          bool
 	MasterConn                         string `mapstructure:"master-connection"`
