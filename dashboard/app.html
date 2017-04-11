@@ -159,28 +159,10 @@ td {
 							<th>Slave Sync</th>
 						</tr>
 						<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-
 							<td>
-
-
-
-					 <md-menu>
-					          <md-button aria-label="Open menu " class="md-icon-button" ng-mouseenter="$mdMenu.open()">
-					        <md-icon width=12 src="/static/settings.png"></md-icon>
-					      </md-button>
-					      <md-menu-content width="4" ng-mouseleave="$mdMenu.close()">
-					        <md-menu-item ng-repeat="item in [1, 2, 3]">
-					          <md-button>
-					            Option {{item}}
-					          </md-button>
-					        </md-menu-item>
-					    </md-menu-content></md-menu>
-
-
-
-
-
-					</td><td>{{server.Host}}</td>
+					        <md-image width=12 src="/static/settings.png"></md-image>
+					   </td>
+					    <td>{{server.Host}}</td>
 							<td>{{server.Port}}</td>
 							<td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
 							<td>{{server.State}}</td>
