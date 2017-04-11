@@ -143,6 +143,8 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
+	monitorCmd.Flags().MarkDeprecated("mariadb-binary-path", "mariadb-binary-path is deprecated, please replace by mariadb-mysqlbinlog-path")
+	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-mysqlbinlog-path", "/usr/share/replication-manager/", "Path to MariaDB 10.2 mysqlbinlog for binary logs trx ahead backup")
 	monitorCmd.Flags().BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
 	monitorCmd.Flags().BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
 	monitorCmd.Flags().StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "")
@@ -151,6 +153,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10002", "replication-manager hosts http port")
 
 	viper.BindPFlags(monitorCmd.Flags())
+
+	viper.RegisterAlias("mariadb-binary-path", "mariadb-mysqlbinlog-path")
 
 	var err error
 	repmgrHostname, err = os.Hostname()
