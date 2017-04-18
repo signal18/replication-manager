@@ -286,7 +286,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 							cmdrunErr := cmdrun.Run()
 							if cmdrunErr != nil {
-								server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s", server.URL)
+								server.ClusterGroup.LogPrintf("ERROR: Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
+								server.ClusterGroup.LogPrintf("ERROR: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog ", cmdrun.Args)
 								server.ClusterGroup.canFlashBack = false
 							}
 						}

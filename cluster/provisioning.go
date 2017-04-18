@@ -98,6 +98,9 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 }
 
 func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf string) error {
+	if server.Host != "127.0.0.1" {
+		cluster.LogPrintf("ERROR : Starting remote DB server will be Replication Manager Enterprise feature")
+	}
 	server.Name = name
 	server.Conf = conf
 	path := cluster.conf.WorkingDir + "/" + name
@@ -124,6 +127,10 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 }
 
 func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
+
+	if server.Host != "127.0.0.1" {
+		cluster.LogPrintf("ERROR : Killing remote DB server will be Replication Manager Enterprise feature")
+	}
 
 	cluster.LogPrintf("TEST : Killing MariaDB %s %d", server.Name, server.Process.Pid)
 

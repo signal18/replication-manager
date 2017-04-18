@@ -140,9 +140,9 @@ $scope.switch = function(fail) {
 };
 
 $scope.maintenance = function(server) {
-  var r = confirm("Confirm maintenance for "+server);
+  var r = confirm("Confirm maintenance for server-id: "+server);
   if (r == true) {
-    var response = $http.get('/maintenance/servers/'+server);
+    var response = $http.get('/maintenance?server='+server);
     response.success(function(data, status, headers, config) {
         console.log("Ok.");
     });
@@ -152,10 +152,28 @@ $scope.maintenance = function(server) {
   }
 };
 $scope.start = function(server) {
-
+  var r = confirm("Confirm start for server-id: "+server);
+  if (r == true) {
+    var response = $http.get('/start?server='+server);
+    response.success(function(data, status, headers, config) {
+        console.log("Ok.");
+    });
+    response.error(function(data, status, headers, config) {
+        console.log("Error.");
+    });
+  }
 };
 $scope.stop = function(server) {
-
+  var r = confirm("Confirm stop for server-id: "+server);
+  if (r == true) {
+    var response = $http.get('/stop?server='+server);
+    response.success(function(data, status, headers, config) {
+        console.log("Ok.");
+    });
+    response.error(function(data, status, headers, config) {
+        console.log("Error.");
+    });
+  }
 };
 
 

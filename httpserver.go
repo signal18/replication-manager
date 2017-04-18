@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -140,12 +141,13 @@ func httpserver() {
 
 		// get Gelada
 		g, err := gelada.New(options)
+
 		if err != nil {
 			log.Printf("gelada init error: %v\n", err)
 			return
 		}
 
-		// create hand ler manager
+		// create handler manager
 		hm := &HandlerManager{
 			Gelada:    g,
 			AuthGuard: ag,
@@ -167,6 +169,8 @@ func httpserver() {
 		//http.HandleFunc("/", handlerApp)
 		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
 		router.HandleFunc("/servers", handlerServers)
+		router.HandleFunc("/stop", handlerStopServer)
+		router.HandleFunc("/start", handlerStartServer)
 		router.HandleFunc("/setcluster", handlerSetCluster)
 		router.HandleFunc("/runonetest", handlerSetOneTest)
 		router.HandleFunc("/master", handlerMaster)
@@ -200,6 +204,8 @@ func httpserver() {
 		http.HandleFunc("/", handlerApp)
 		http.HandleFunc("/stats", handlerStats)
 		http.HandleFunc("/servers", handlerServers)
+		http.HandleFunc("/stop", handlerStopServer)
+		http.HandleFunc("/start", handlerStartServer)
 		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/runonetest", handlerSetOneTest)
 		http.HandleFunc("/master", handlerMaster)
@@ -259,7 +265,6 @@ func handlerJS(w http.ResponseWriter, r *http.Request) {
 func handlerServers(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
-
 	err := e.Encode(currentCluster.GetServers())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -267,6 +272,29 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func handlerStopServer(w http.ResponseWriter, r *http.Request) {
+	currentCluster.LogPrintf("INFO: Rest API request stop server-id: %s", r.URL.Query().Get("server"))
+	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		return
+	}
+	node := currentCluster.GetServerFromId(uint(intsrvid))
+	currentCluster.KillMariaDB(node)
+}
+
+func handlerStartServer(w http.ResponseWriter, r *http.Request) {
+	currentCluster.LogPrintf("INFO: Rest API request start server-id: %s", r.URL.Query().Get("server"))
+	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		return
+	}
+	node := currentCluster.GetServerFromId(uint(intsrvid))
+	currentCluster.StartMariaDB(node)
+}
+
 func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	err := e.Encode(currentCluster.GetSlaves())
