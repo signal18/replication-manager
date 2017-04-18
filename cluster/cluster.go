@@ -89,6 +89,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
 	cluster.sme = new(state.StateMachine)
+	cluster.runStatus = "A"
 	cluster.sme.Init()
 	err := cluster.repmgrFlagCheck()
 	if err != nil {
@@ -181,20 +182,25 @@ func (cluster *Cluster) Run() {
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
-				if cluster.runStatus == "A" && cluster.conf.Arbitration {
-					// switchover / failover only on Active
-					cluster.CheckFailed()
-					select {
-					case sig := <-cluster.switchoverChan:
-						if sig {
+
+				// switchover / failover only on Active
+				cluster.CheckFailed()
+				select {
+				case sig := <-cluster.switchoverChan:
+					if sig {
+						if cluster.runStatus == "A" {
+							cluster.LogPrint("Signaling Switchover..")
 							cluster.MasterFailover(false)
 							cluster.switchoverCond.Send <- true
+						} else {
+							cluster.LogPrintf("INFO : Not in mode active cancel switchover %s", cluster.runStatus)
 						}
-
-					default:
-						//do nothing
 					}
+
+				default:
+					//do nothing
 				}
+
 			}
 			if !cluster.sme.IsInFailover() {
 				cluster.sme.ClearState()

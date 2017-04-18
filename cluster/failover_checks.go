@@ -24,16 +24,20 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.LogPrintf("INFO : In Failover, skip checking failed master")
 		return
 	}
-	//  LogPrintf("WARN : Constraint is blocking master state %s stateFailed %s conf.Interactive %b cluster.master.FailCount %d >= maxfail %d" ,cluster.master.State,stateFailed,interactive, master.FailCount , maxfail )
 	if cluster.master != nil {
-		if cluster.master.State == stateFailed && cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
-			if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
-				cluster.MasterFailover(true)
-				cluster.failoverCond.Send <- true
+		if cluster.master.State == stateFailed {
+			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
+				if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
+					cluster.MasterFailover(true)
+					cluster.failoverCond.Send <- true
+				} else {
+					cluster.LogPrintf("WARN : Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning())
+				}
 			} else {
-				cluster.LogPrintf("WARN : Constraint is blocking for failover")
+				cluster.LogPrintf("WARN : Constraint is blocking m, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach)
 			}
 		}
+
 	} else {
 		if cluster.conf.LogLevel > 1 {
 			cluster.LogPrintf("WARN : No master skip failover check")

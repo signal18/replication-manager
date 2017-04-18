@@ -1,5 +1,4 @@
-var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute','ngMessages', 'material.svgAssetsCache']).config(function($routeProvider){
-
+var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute']).config(function($routeProvider){
         routeProvider = $routeProvider;
         $routeProvider
             .when('/:timeFrame', {templateUrl: '/', controller: 'DashboardController'})
@@ -8,14 +7,6 @@ var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','
 
 });
 
-
-app.controller('PositionDemoCtrl', function DemoCtrl($mdDialog) {
-    var originatorEv;
-
-    this.menuHref = "http://www.google.com/design/spec/components/menus.html#menus-specs";
-
-
-});
 
 app.factory('Servers', function($resource) {
   return $resource('/servers');
@@ -90,22 +81,6 @@ app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$h
      timeFrame="10m"
     }
 
-    this.openMenu = function($mdMenu, ev) {
-      originatorEv = ev;
-      $mdMenu.open(ev);
-    };
-
-    this.announceClick = function(index) {
-      $mdDialog.show(
-        $mdDialog.alert()
-          .title('You clicked!')
-          .textContent('You clicked the menu item at index ' + index)
-          .ok('Nice')
-          .targetEvent(originatorEv)
-      );
-      originatorEv = null;
-    };
-
   $interval(function(){
   Servers.query({}, function(data) {
     $scope.servers = data;
@@ -163,6 +138,26 @@ $scope.switch = function(fail) {
     }
   }
 };
+
+$scope.maintenance = function(server) {
+  var r = confirm("Confirm maintenance for "+server);
+  if (r == true) {
+    var response = $http.get('/maintenance/servers/'+server);
+    response.success(function(data, status, headers, config) {
+        console.log("Ok.");
+    });
+    response.error(function(data, status, headers, config) {
+        console.log("Error.");
+    });
+  }
+};
+$scope.start = function(server) {
+
+};
+$scope.stop = function(server) {
+
+};
+
 
 $scope.inttoggle = function() {
 var r = confirm("Confirm Mode Change");

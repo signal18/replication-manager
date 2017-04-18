@@ -376,6 +376,7 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
+	currentCluster.LogPrint("INFO: Rest API receive Switchover request")
 	currentCluster.SwitchOver()
 	return
 }

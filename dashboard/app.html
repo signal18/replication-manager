@@ -160,7 +160,8 @@ td {
 						</tr>
 						<tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
 							<td>
-					        <md-image width=12 src="/static/settings.png"></md-image>
+								<button width=15 height=15	type="button"  ng-click="maintenance(server.ServerID)">
+					        <img width=15 height=15 src="/static/settings.png"></button>
 					   </td>
 					    <td>{{server.Host}}</td>
 							<td>{{server.Port}}</td>

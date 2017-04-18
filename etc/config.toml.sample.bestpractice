@@ -261,6 +261,13 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 haproxy-write-port = 3306
 haproxy-read-port = 3307
 
+# SPIDER PROXY
+# ------------
+
+mdbproxy = true
+mdbproxy-hosts = "127.0.0.1:4044,127.0.0.1:4045,127.0.0.1:4046"
+
+
 # STATS
 # -----
 
@@ -284,10 +291,10 @@ sysbench-threads = 4
 sysbench-time = 60
 
 
-# MARIADB >= 10.2
-# ---------------
+  # MARIADB >= 10.2
+  # ---------------
 
-mariadb-binary-path = "/usr/sbin"
+  mariadb-binary-path = "/usr/sbin"
 
 # REJOIN
 # --------
