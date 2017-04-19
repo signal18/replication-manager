@@ -60,14 +60,14 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 			if server.Name == "" {
 				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
 				pid, _ := readPidFromFile(pidfile)
-				server.Name = cluster.cfgGroup + strconv.Itoa(k)
 				pidint, _ := strconv.Atoi(pid)
 				server.Process, _ = os.FindProcess(pidint)
 			}
 
 			cluster.KillMariaDB(server)
 		}
-		cluster.InitMariaDB(server, cluster.cfgGroup+strconv.Itoa(k), "semisync.cnf")
+
+		cluster.InitMariaDB(server, server.Name, "semisync.cnf")
 	}
 	cluster.sme.RemoveFailoverState()
 
@@ -142,8 +142,22 @@ func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 	return nil
 }
 
+func (cluster *Cluster) ShutdownMariaDB(server *ServerMonitor) error {
+	_, _ = server.Conn.Exec("SHUTDOWN")
+	return nil
+}
+
 func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
+
 	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
+	if server.Name == "" {
+
+		_, err := os.Stat(server.Name)
+		if err != nil {
+			cluster.LogPrintf("TEST : Starting MariaDB need bootstrap")
+		}
+
+	}
 	path := cluster.conf.WorkingDir + "/" + server.Name
 	err := os.RemoveAll(path + "/" + server.Name + ".pid")
 	if err != nil {

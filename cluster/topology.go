@@ -342,7 +342,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if sl.IsRelay == false {
+			if sl.IsRelay == false && sl.State != stateFailed {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
 					cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
 					dbhelper.InstallSemiSync(sl.Conn)
@@ -395,9 +395,13 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.conf.MultiMaster = true
 				}
 			}
-			if cluster.conf.MultiMaster == false && sl.HasSlaves(cluster.slaves) == true && sl.IsMaxscale == false {
-				sl.IsRelay = true
-				sl.State = stateRelay
+			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
+				if sl.HasSlaves(cluster.slaves) == true {
+					sl.IsRelay = true
+					sl.State = stateRelay
+				} else if sl.IsSlave {
+					sl.IsRelay = false
+				}
 			}
 
 		}
@@ -486,33 +490,35 @@ func (cluster *Cluster) TopologyDiscover() error {
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
-		if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
-			cluster.LogPrintf("DEBUG: Enforce semisync on Master %s", cluster.master.DSN)
-			dbhelper.InstallSemiSync(cluster.master.Conn)
-		}
-		if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {
-			dbhelper.SetBinlogFormat(cluster.master.Conn, "ROW")
-			cluster.LogPrintf("DEBUG: Enforce binlog format ROW on Master %s", cluster.master.DSN)
-		}
-		if cluster.conf.ForceSyncBinlog && cluster.master.HaveSyncBinLog == false {
-			dbhelper.SetSyncBinlog(cluster.master.Conn)
-			cluster.LogPrintf("DEBUG: Enforce sync binlog on Master %s", cluster.master.DSN)
-		}
-		if cluster.conf.ForceSyncInnoDB && cluster.master.HaveSyncBinLog == false {
-			dbhelper.SetSyncInnodb(cluster.master.Conn)
-			cluster.LogPrintf("DEBUG: Enforce innodb sync on Master %s", cluster.master.DSN)
-		}
-		if cluster.conf.ForceBinlogAnnotate && cluster.master.HaveBinlogAnnotate == false {
-			dbhelper.SetBinlogAnnotate(cluster.master.Conn)
-			cluster.LogPrintf("DEBUG: Enforce binlog annotate on master %s", cluster.master.DSN)
-		}
-		if cluster.conf.ForceBinlogChecksum && cluster.master.HaveChecksum == false {
-			dbhelper.SetBinlogChecksum(cluster.master.Conn)
-			cluster.LogPrintf("DEBUG: Enforce ckecsum annotate on master %s", cluster.master.DSN)
-		}
-		if cluster.conf.ForceBinlogCompress && cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
-			dbhelper.SetBinlogCompress(cluster.master.Conn)
-			cluster.LogPrintf("DEBUG: Enforce binlog compression on master %s", cluster.master.DSN)
+		if cluster.master.State != stateFailed {
+			if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
+				cluster.LogPrintf("DEBUG: Enforce semisync on Master %s", cluster.master.DSN)
+				dbhelper.InstallSemiSync(cluster.master.Conn)
+			}
+			if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {
+				dbhelper.SetBinlogFormat(cluster.master.Conn, "ROW")
+				cluster.LogPrintf("DEBUG: Enforce binlog format ROW on Master %s", cluster.master.DSN)
+			}
+			if cluster.conf.ForceSyncBinlog && cluster.master.HaveSyncBinLog == false {
+				dbhelper.SetSyncBinlog(cluster.master.Conn)
+				cluster.LogPrintf("DEBUG: Enforce sync binlog on Master %s", cluster.master.DSN)
+			}
+			if cluster.conf.ForceSyncInnoDB && cluster.master.HaveSyncBinLog == false {
+				dbhelper.SetSyncInnodb(cluster.master.Conn)
+				cluster.LogPrintf("DEBUG: Enforce innodb sync on Master %s", cluster.master.DSN)
+			}
+			if cluster.conf.ForceBinlogAnnotate && cluster.master.HaveBinlogAnnotate == false {
+				dbhelper.SetBinlogAnnotate(cluster.master.Conn)
+				cluster.LogPrintf("DEBUG: Enforce binlog annotate on master %s", cluster.master.DSN)
+			}
+			if cluster.conf.ForceBinlogChecksum && cluster.master.HaveChecksum == false {
+				dbhelper.SetBinlogChecksum(cluster.master.Conn)
+				cluster.LogPrintf("DEBUG: Enforce ckecsum annotate on master %s", cluster.master.DSN)
+			}
+			if cluster.conf.ForceBinlogCompress && cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
+				dbhelper.SetBinlogCompress(cluster.master.Conn)
+				cluster.LogPrintf("DEBUG: Enforce binlog compression on master %s", cluster.master.DSN)
+			}
 		}
 		// Replication checks
 		if cluster.conf.MultiMaster == false {

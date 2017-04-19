@@ -10,7 +10,9 @@ package cluster
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -144,6 +146,9 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
+	servertohash := sha1.Sum([]byte(server.URL))
+	server.Name = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
+
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
@@ -197,7 +202,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG: Failure detection handling for server %s", server.URL)
 		}
-		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect) {
+		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect || server.State == stateFailed) {
 			server.FailCount++
 			server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 			if server.ClusterGroup.master != nil {
@@ -605,7 +610,6 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
 	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed || server.IsSlave == false {
-
 		return "Master OK"
 	}
 
@@ -619,6 +623,7 @@ func (server *ServerMonitor) replicationCheck() string {
 
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 
+			//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateSlaveErr
 				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
@@ -777,7 +782,7 @@ func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 
 func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
 	for _, sl := range sib {
-		if server.ServerID == sl.MasterServerID {
+		if server.ServerID == sl.MasterServerID && sl.ServerID != server.ServerID {
 			return true
 		}
 	}
@@ -817,6 +822,10 @@ func (server *ServerMonitor) UsedGtidAtElection() bool {
 		server.ClusterGroup.LogPrintf("DEBUG: Rejoin Server use gtid %s", server.UsingGtid)
 	}
 	// An old master  master do no have replication
+	if server.ClusterGroup.master.FailoverIOGtid == nil {
+		server.ClusterGroup.LogPrintf("DEBUG: Rejoin server does not found a saved master election GTID")
+		return false
+	}
 	if len(server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()) > 0 {
 		return true
 	} else {
@@ -826,7 +835,16 @@ func (server *ServerMonitor) UsedGtidAtElection() bool {
 
 func (server *ServerMonitor) isReplicationAheadOfMasterElection() bool {
 	if server.UsedGtidAtElection() {
+
+		// CurrentGtid fetch from show global variables GTID_CURRENT_POS
+		// FailoverIOGtid is fetch at failover from show slave status of the new master
+		// If server-id can't be found in FailoverIOGtid can state cascading master failover
+		if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+			server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we are ahead to force dump")
+			return true
+		}
 		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
+			server.ClusterGroup.LogPrintf("DEBUG: rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 			return true
 		}
 		return false
@@ -841,17 +859,17 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection() bool {
 func (server *ServerMonitor) rejoin() error {
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
-		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on  rejoined %s", server.URL)
+		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on rejoined %s", server.URL)
 	}
 
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-
-	server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-	server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-
+	if server.ClusterGroup.master.FailoverIOGtid != nil {
+		server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+		server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+	}
 	if server.isReplicationAheadOfMasterElection() == false || server.ClusterGroup.conf.MxsBinlogOn {
 		server.ClusterGroup.LogPrintf("INFO : Found same or lower  GTID %s  and new elected master was %s ", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint())
 		var err error
@@ -881,8 +899,16 @@ func (server *ServerMonitor) rejoin() error {
 		dbhelper.StartSlave(server.Conn)
 		return err
 	} else {
-		server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
-		if server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+		if server.ClusterGroup.master.FailoverIOGtid != nil {
+			if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+				server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we can not flashback")
+			} else {
+				server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+			}
+		} else {
+			server.ClusterGroup.LogPrintf("INFO : Found none old server GTID for fashback")
+		}
+		if server.ClusterGroup.master.FailoverIOGtid != nil && server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
 			//		server.ClusterGroup.LogPrintf("INFO :  SYNC using semisync, searching for a rejoin method")
 
 			// Flashback here
@@ -947,7 +973,7 @@ func (server *ServerMonitor) rejoin() error {
 			}
 			return nil
 		} else {
-			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed or wrong version %d , autorejoin-flashback %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback)
+			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed, can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
 			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
 				var err3 error
 				// done change master just to set the host and port before dump

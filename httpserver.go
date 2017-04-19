@@ -281,7 +281,7 @@ func handlerStopServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node := currentCluster.GetServerFromId(uint(intsrvid))
-	currentCluster.KillMariaDB(node)
+	currentCluster.ShutdownMariaDB(node)
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +292,7 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node := currentCluster.GetServerFromId(uint(intsrvid))
+	node.Conf = "semisync.cnf"
 	currentCluster.StartMariaDB(node)
 }
 

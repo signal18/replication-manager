@@ -26,7 +26,7 @@ func (cluster *Cluster) CheckFailed() {
 	}
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed {
-			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() {
+			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
 				if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
 					cluster.MasterFailover(true)
 					cluster.failoverCond.Send <- true
@@ -34,7 +34,7 @@ func (cluster *Cluster) CheckFailed() {
 					cluster.LogPrintf("WARN : Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning())
 				}
 			} else {
-				cluster.LogPrintf("WARN : Constraint is blocking m, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach)
+				cluster.LogPrintf("WARN : Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach())
 			}
 		}
 
@@ -45,8 +45,10 @@ func (cluster *Cluster) CheckFailed() {
 	}
 }
 
+// isMaxMasterFailedCountReach test tentative to connect
 func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
-	// illimited failed count
+	// no illimited failed count
+
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
 		cluster.LogPrintf("DEBUG: Need failover, maximum number of master failure detection reached")
 		return true
