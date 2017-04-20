@@ -276,20 +276,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 			server.FailCount = 0
 			if server.ClusterGroup.conf.Autorejoin {
-				// Check if master exists in topology before rejoining.
-				if server.ClusterGroup.master != nil {
-					if server.URL != server.ClusterGroup.master.URL {
-						server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
-						if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
-							server.backupBinlog()
-						}
-						err = server.rejoinOldMaster()
-						if err != nil {
-							server.ClusterGroup.LogPrintf("ERROR: Failed to autojoin previously failed master %s", server.URL)
-						}
-						server.ClusterGroup.rejoinCond.Send <- true
-					}
-				}
+				server.Rejoin()
 			} else {
 				server.ClusterGroup.LogPrintf("DEBUG: Auto Rejoin is disable")
 			}
@@ -466,8 +453,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.ClusterGroup.LogPrintf("ERROR: Could not get events")
 	}
 	su, _ := dbhelper.GetStatus(server.Conn)
+	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
 		server.HaveSemiSync = false
+	} else {
+		server.HaveSemiSync = true
 	}
 	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
@@ -742,44 +732,4 @@ func (server *ServerMonitor) delete(sl *serverList) {
 		}
 	}
 	*sl = lsm
-}
-
-// UseGtid  check is replication use gtid
-func (server *ServerMonitor) UsedGtidAtElection() bool {
-	if server.ClusterGroup.conf.LogLevel > 1 {
-		server.ClusterGroup.LogPrintf("DEBUG: Rejoin Server use gtid %s", server.UsingGtid)
-	}
-	// An old master  master do no have replication
-	if server.ClusterGroup.master.FailoverIOGtid == nil {
-		server.ClusterGroup.LogPrintf("DEBUG: Rejoin server does not found a saved master election GTID")
-		return false
-	}
-	if len(server.ClusterGroup.master.FailoverIOGtid.GetSeqNos()) > 0 {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (server *ServerMonitor) isReplicationAheadOfMasterElection() bool {
-	if server.UsedGtidAtElection() {
-
-		// CurrentGtid fetch from show global variables GTID_CURRENT_POS
-		// FailoverIOGtid is fetch at failover from show slave status of the new master
-		// If server-id can't be found in FailoverIOGtid can state cascading master failover
-		if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
-			server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we are ahead to force dump")
-			return true
-		}
-		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
-			server.ClusterGroup.LogPrintf("DEBUG: rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-			return true
-		}
-		return false
-	} else {
-		if server.ClusterGroup.master.FailoverMasterLogFile == server.MasterLogFile && server.MasterLogPos == server.ClusterGroup.master.FailoverMasterLogPos {
-			return false
-		}
-		return true
-	}
 }

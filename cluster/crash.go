@@ -26,3 +26,21 @@ func (cluster *Cluster) getCrash(URL string) *Crash {
 	}
 	return nil
 }
+
+// GetCrashes return crashes
+func (cluster *Cluster) GetCrashes() crashList {
+	return cluster.crashes
+}
+
+func (crash *Crash) delete(cl *crashList) {
+	lsm := *cl
+	for k, s := range lsm {
+		if crash.URL == s.URL {
+			lsm[k] = lsm[len(lsm)-1]
+			lsm[len(lsm)-1] = nil
+			lsm = lsm[:len(lsm)-1]
+			break
+		}
+	}
+	*cl = lsm
+}
