@@ -33,6 +33,7 @@ type Cluster struct {
 	servers              serverList
 	slaves               serverList
 	proxies              proxyList
+	crashes              crashList
 	master               *ServerMonitor
 	mxs                  *maxscale.MaxScale
 	dbUser               string
@@ -462,6 +463,7 @@ func (cluster *Cluster) SetReadOnly(check bool) {
 func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
 }
+
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
 	cluster.conf.SwitchMaxDelay = delay
 }

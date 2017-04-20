@@ -25,6 +25,7 @@ cp replication-manager build/usr/bin/
 cp etc/* build/etc/replication-manager/
 cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp -r share/* build/usr/share/replication-manager/
+rm -rf build/usr/share/replication-manager/opensvc
 cp service/replication-manager.service build/etc/systemd/system
 cp service/replication-manager.init.el6 build/etc/init.d/replication-manager
 echo "# Building packages"

@@ -124,6 +124,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
+	crash := new(Crash)
+	crash.URL = oldMaster.URL
+	crash.ElectedMasterURL = cluster.master.URL
+
 	if fail == false && cluster.conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
 		cluster.LogPrint("INFO : Waiting for candidate Master to synchronize")
 		oldMaster.Refresh()
@@ -144,12 +148,17 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO : Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+		crash.FailoverMasterLogFile = cluster.master.MasterLogFile
+		crash.FailoverMasterLogPos = cluster.master.MasterLogPos
 		if cluster.conf.MxsBinlogOn {
 			cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
+			crash.FailoverIOGtid = cluster.master.CurrentGtid
 		} else {
 			cluster.master.FailoverIOGtid = cluster.master.IOGtid
+			crash.FailoverIOGtid = cluster.master.IOGtid
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	}
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
@@ -173,6 +182,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn)
 			cluster.master.FailoverMasterLogFile = ms.File
 			cluster.master.FailoverMasterLogPos = "4"
+			crash.FailoverMasterLogFile = ms.File
+			crash.FailoverMasterLogPos = "4"
+
 			//strconv.FormatUint(uint64(ms.Position), 10)
 			cluster.LogPrintf("INFO : Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
 		} else {
@@ -195,7 +207,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
-
+	cluster.crashes = append(cluster.crashes, crash)
 	// Call post-failover script before unlocking the old master.
 	if cluster.conf.PostScript != "" {
 		cluster.LogPrintf("INFO : Calling post-failover script")
