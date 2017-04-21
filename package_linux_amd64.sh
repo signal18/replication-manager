@@ -29,7 +29,7 @@ rm -rf build/usr/share/replication-manager/opensvc
 cp service/replication-manager.service build/etc/systemd/system
 cp service/replication-manager.init.el6 build/etc/init.d/replication-manager
 echo "# Building packages"
-fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager .
+fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager .
 fpm --package replication-manager-$version-$head.tar -C build -s dir -t tar -n replication-manager .
 gzip replication-manager-$version-$head.tar
 cp service/replication-manager.init.deb7 build/etc/init.d/replication-manager

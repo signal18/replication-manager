@@ -221,6 +221,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		} else {
 			if server.State != stateMaster && server.State != stateFailed {
 				server.FailCount++
+				if server.ClusterGroup.conf.LogLevel > 2 {
+					server.ClusterGroup.LogPrintf("DEBUG: Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.conf.MaxFail)
+				}
 				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.conf.MaxFail {
 						server.ClusterGroup.LogPrintf("WARN : Declaring server %s as failed", server.URL)

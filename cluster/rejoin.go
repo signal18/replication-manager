@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tanji/replication-manager/dbhelper"
@@ -37,11 +39,24 @@ func (server *ServerMonitor) Rejoin() error {
 	return nil
 }
 
+func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) (e error) {
+
+	// check each file if starts with the word "dumb_"
+	if strings.HasPrefix(f.Name(), server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-") {
+		os.Remove(path)
+	}
+	return
+
+}
+
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
 	var cmdrun *exec.Cmd
 	server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
+	filepath.Walk(server.ClusterGroup.conf.WorkingDir+"/", server.deletefiles)
 	cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
+	server.ClusterGroup.LogPrintf("INFO : Backup %s %s ", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", cmdrun.Args)
+
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
 
