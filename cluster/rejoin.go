@@ -120,7 +120,13 @@ func (server *ServerMonitor) rejoinOldMasterFashBack(crash *Crash) error {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
 	//		server.ClusterGroup.LogPrintf("INFO :  SYNC using semisync, searching for a rejoin method")
+
 	// Flashback here
+	if _, err := os.Stat(server.ClusterGroup.conf.MariaDBBinaryPath + "/mysqlbinlog"); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("File does not exist %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+		return err
+	}
+
 	binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 	clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 	server.ClusterGroup.LogPrintf("FlashBack: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", binlogCmd.Args)
