@@ -123,7 +123,7 @@ func (cluster *Cluster) Run() {
 
 		select {
 		case <-ticker.C:
-			if cluster.sme.IsDiscovered() == false {
+			/*	if cluster.sme.IsDiscovered() == false {
 				if cluster.conf.LogLevel > 2 {
 					cluster.LogPrint("DEBUG: Discovering topology loop")
 				}
@@ -133,79 +133,80 @@ func (cluster *Cluster) Run() {
 				for i := range states {
 					cluster.LogPrint(states[i])
 				}
-			}
+			} */
 			cluster.display()
-			if cluster.sme.CanMonitor() {
-				/* run once */
-				if cluster.runOnceAfterTopology {
-					if cluster.master != nil {
-						if cluster.conf.HaproxyOn {
-							cluster.initHaproxy()
-						}
-						if cluster.conf.MxsOn {
-							cluster.initMaxscale(nil)
-						}
-						cluster.runOnceAfterTopology = false
+			//	if cluster.sme.CanMonitor() {
+			// run once
+			if cluster.runOnceAfterTopology {
+				if cluster.master != nil {
+					if cluster.conf.HaproxyOn {
+						cluster.initHaproxy()
 					}
+					if cluster.conf.MxsOn {
+						cluster.initMaxscale(nil)
+					}
+					cluster.runOnceAfterTopology = false
 				}
+			}
 
-				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrint("DEBUG: Monitoring server loop")
-					for k, v := range cluster.servers {
-						cluster.LogPrintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-					}
-					if cluster.master != nil {
-						cluster.LogPrintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
-						for k, v := range cluster.slaves {
-							cluster.LogPrintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-						}
+			if cluster.conf.LogLevel > 2 {
+				cluster.LogPrint("DEBUG: Monitoring server loop")
+				for k, v := range cluster.servers {
+					cluster.LogPrintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+				}
+				if cluster.master != nil {
+					cluster.LogPrintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+					for k, v := range cluster.slaves {
+						cluster.LogPrintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
-				wg := new(sync.WaitGroup)
+			}
+			wg := new(sync.WaitGroup)
+			for _, server := range cluster.servers {
+				wg.Add(1)
+				go server.check(wg)
+			}
+			wg.Wait()
+
+			if cluster.conf.MxsOn {
 				for _, server := range cluster.servers {
-					wg.Add(1)
-					go server.check(wg)
-				}
-				wg.Wait()
-
-				if cluster.conf.MxsOn {
-					for _, server := range cluster.servers {
-						if server.PrevState != server.State {
-							cluster.initMaxscale(nil)
-							break
-						}
+					if server.PrevState != server.State {
+						cluster.initMaxscale(nil)
+						break
 					}
 				}
+			}
 
-				cluster.pingServerList()
-				cluster.TopologyDiscover()
-				states := cluster.sme.GetStates()
-				for i := range states {
-					cluster.LogPrint(states[i])
-				}
-
-				// switchover / failover only on Active
-				cluster.CheckFailed()
-				select {
-				case sig := <-cluster.switchoverChan:
-					if sig {
-						if cluster.runStatus == "A" {
-							cluster.LogPrint("Signaling Switchover..")
-							cluster.MasterFailover(false)
-							cluster.switchoverCond.Send <- true
-						} else {
-							cluster.LogPrintf("INFO : Not in mode active cancel switchover %s", cluster.runStatus)
-						}
-					}
-
-				default:
-					//do nothing
-				}
-
+			cluster.pingServerList()
+			cluster.TopologyDiscover()
+			// switchover / failover only on Active
+			cluster.CheckFailed()
+			states := cluster.sme.GetStates()
+			for i := range states {
+				cluster.LogPrint(states[i])
 			}
 			if !cluster.sme.IsInFailover() {
 				cluster.sme.ClearState()
 			}
+
+			select {
+			case sig := <-cluster.switchoverChan:
+				if sig {
+					if cluster.runStatus == "A" {
+						cluster.LogPrint("Signaling Switchover..")
+						cluster.MasterFailover(false)
+						cluster.switchoverCond.Send <- true
+					} else {
+						cluster.LogPrintf("INFO : Not in mode active cancel switchover %s", cluster.runStatus)
+					}
+				}
+
+			default:
+				//do nothing
+			}
+
+			//	}
+
 		}
 	}
 }

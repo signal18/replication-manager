@@ -283,7 +283,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.LogPrintf("DEBUG: Server %s has no slaves connected", sv.URL)
 				}
 			} else {
-				cluster.LogPrintf("DEBUG: Server %s was selected as master because last non slave", sv.URL)
+				if cluster.conf.LogLevel > 2 {
+					cluster.LogPrintf("DEBUG: Server %s was set mastrer as last non slave", sv.URL)
+				}
 				cluster.master = cluster.servers[k]
 				cluster.master.State = stateMaster
 			}
@@ -292,7 +294,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG: Privilege check on %s", sv.URL)
 		}
-		if sv.State != stateFailed && sv.IsRelay == false {
+		if sv.State != "" && sv.State != stateFailed && sv.IsRelay == false {
 			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
@@ -317,7 +319,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			// Check replication user has correct privs.
 			for _, sv2 := range cluster.servers {
-				if sv2.URL != sv.URL && sv2.IsRelay == false {
+				if sv2.URL != sv.URL && sv2.IsRelay == false && sv2.State != stateFailed {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {

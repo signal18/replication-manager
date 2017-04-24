@@ -217,6 +217,7 @@ func (SM *StateMachine) IsDiscovered() bool {
 func (SM *StateMachine) GetStates() []string {
 	var log []string
 	SM.Lock()
+	//every thing in  OldState that can't be found in curstate
 	for key2, value2 := range *SM.OldState {
 		if SM.CurState.Search(key2) == false {
 			log = append(log, fmt.Sprintf("%-5s: %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
@@ -226,7 +227,6 @@ func (SM *StateMachine) GetStates() []string {
 	for key, value := range *SM.CurState {
 		if SM.OldState.Search(key) == false {
 			log = append(log, fmt.Sprintf("%-5s: %s %s", value.ErrType, key, value.ErrDesc))
-
 		}
 	}
 	SM.Unlock()

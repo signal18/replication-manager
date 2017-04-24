@@ -33,10 +33,10 @@ func (cluster *Cluster) CheckFailed() {
 					cluster.MasterFailover(true)
 					cluster.failoverCond.Send <- true
 				} else {
-					cluster.sme.AddState("WARN00009", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isExternalOk(), cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning()), ErrFrom: "CHECK"})
+					cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isExternalOk(), cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning()), ErrFrom: "CHECK"})
 				}
 			} else {
-				cluster.sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CHECK"})
+				cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 			}
 		}
 
@@ -52,7 +52,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
 	// no illimited failed count
 
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
-		cluster.LogPrintf("DEBUG: Need failover, maximum number of master failure detection reached")
+		cluster.sme.AddState("WARN00023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("DEBUG: Need failover, maximum number of master failure detection reached"), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
