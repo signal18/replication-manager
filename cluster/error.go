@@ -7,6 +7,7 @@ var clusterError = map[string]string{
 	"ERR00008": "User must have SUPER privilege",
 	"ERR00009": "User must have RELOAD privilege",
 	"ERR00011": "Multiple masters detected but explicity setup, setting the parameter",
+	"ERR00012": "Could not detect a master",
 	"ERR00013": "Binary log disabled on slave: %s",
 	"ERR00014": "Error getting binlog dump count on server %s: %s",
 	"ERR00015": "Error getting privileges for user %s on server %s: %s",
@@ -15,4 +16,5 @@ var clusterError = map[string]string{
 	"ERR00018": "Could not connect to MaxScale: %s",
 	"ERR00019": "Could not get MaxScale maxadmin server list: %s",
 	"ERR00020": "Could not get MaxScale maxinfo server list: %s",
+	"ERR00021": "All cluster down in non interactive mode",
 }

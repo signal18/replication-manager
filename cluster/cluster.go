@@ -67,10 +67,10 @@ type Cluster struct {
 	switchoverChan       chan bool
 	testStopCluster      bool
 	testStartCluster     bool
+	clusterDown          bool
 }
 
-//var switchoverChan = make(chan bool)
-
+// Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
@@ -506,6 +506,14 @@ func (cluster *Cluster) SetSwitchSync(check bool) {
 
 func (cluster *Cluster) GetSwitchSync() bool {
 	return cluster.conf.SwitchSync
+}
+
+func (cluster *Cluster) SetLogLevel(level int) {
+	cluster.conf.LogLevel = level
+}
+
+func (cluster *Cluster) GetLogLevel() int {
+	return cluster.conf.LogLevel
 }
 
 func (cluster *Cluster) SetRejoin(check bool) {

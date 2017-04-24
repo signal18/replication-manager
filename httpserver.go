@@ -43,6 +43,7 @@ type settings struct {
 	RplChecks           string   `json:"rplchecks"`
 	FailSync            string   `json:"failsync"`
 	SwitchSync          string   `json:"switchsync"`
+	Verbose             string   `json:"verbose"`
 	Rejoin              string   `json:"rejoin"`
 	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
 	RejoinSemiSync      string   `json:"rejoinsemisync"`
@@ -198,6 +199,7 @@ func httpserver() {
 		router.HandleFunc("/setactive", handlerSetActive)
 		router.HandleFunc("/dashboard.js", handlerJS)
 		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
+		router.HandleFunc("/setverbosity", handlerVerbosity)
 
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
@@ -228,6 +230,7 @@ func httpserver() {
 		http.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
 		http.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
 		http.HandleFunc("/setrejoindump", handlerRejoinDump)
+		http.HandleFunc("/setverbosity", handlerVerbosity)
 		http.HandleFunc("/settest", handlerSetTest)
 		http.HandleFunc("/tests", handlerTests)
 		http.HandleFunc("/sysbench", handlerSysbench)
@@ -372,7 +375,11 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Clusters = cfgGroupList
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
-
+	if currentCluster.GetLogLevel() > 0 {
+		s.Verbose = fmt.Sprintf("%v", true)
+	} else {
+		s.Verbose = fmt.Sprintf("%v", false)
+	}
 	if currentCluster.GetFailoverTs() != 0 {
 		t := time.Unix(currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()
@@ -453,6 +460,17 @@ func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO: Force swithover on status sync %v", currentCluster.GetFailSync())
 
 	currentCluster.SetSwitchSync(!currentCluster.GetSwitchSync())
+	return
+}
+
+func handlerVerbosity(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO: Change Verbosity %v", currentCluster.GetFailSync())
+	if currentCluster.GetLogLevel() > 0 {
+		currentCluster.SetLogLevel(0)
+	} else {
+		currentCluster.SetLogLevel(4)
+	}
 	return
 }
 

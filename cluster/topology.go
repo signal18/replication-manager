@@ -283,6 +283,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.LogPrintf("DEBUG: Server %s has no slaves connected", sv.URL)
 				}
 			} else {
+				cluster.LogPrintf("DEBUG: Server %s was selected as master because last non slave", sv.URL)
 				cluster.master = cluster.servers[k]
 				cluster.master.State = stateMaster
 			}
@@ -469,12 +470,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 				smh := cluster.slaves[0].MasterHost
 				for k, s := range cluster.servers {
 					if s.State == stateFailed {
-						if s.Host == smh || s.IP == smh {
+						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].MasterPort {
 							cluster.master = cluster.servers[k]
 							cluster.master.PrevState = stateMaster
-							if cluster.conf.LogLevel > 2 {
-								cluster.LogPrintf("DEBUG: Assuming failed server %s was a master", s.URL)
-							}
+
+							cluster.LogPrintf("DEBUG: Assuming failed server %s was a master", s.URL)
+
 							break
 						}
 					}
@@ -484,9 +485,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	// Final check if master has been found
 	if cluster.master == nil {
-
-		cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: "Could not autodetect a master", ErrFrom: "TOPO"})
-
+		// could not detect master
+		cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
@@ -541,7 +541,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 			}
 		}
-
+		// State also check in failover_check false positive
 		if cluster.master.State == stateFailed && cluster.slaves.checkAllSlavesRunning() {
 			cluster.sme.AddState("ERR00016", state.State{
 				ErrType: "ERROR",
@@ -552,10 +552,32 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
+	// Check topology Cluster is down
+	cluster.TopologyClusterDown()
 	if cluster.sme.CanMonitor() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
+}
+
+// TopologyClusterDown track state all ckuster down
+func (cluster *Cluster) TopologyClusterDown() bool {
+	// search for all cluster down
+	if cluster.master == nil || cluster.master.State == stateFailed {
+		if cluster.conf.Interactive == false {
+			allslavefailed := true
+			for _, s := range cluster.slaves {
+				if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+					allslavefailed = false
+				}
+			}
+			if allslavefailed {
+				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (cluster *Cluster) GetTopology() string {

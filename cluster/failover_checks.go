@@ -8,6 +8,7 @@ package cluster
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
+	"github.com/tanji/replication-manager/state"
 )
 
 func (cluster *Cluster) CheckFailed() {
@@ -31,16 +33,16 @@ func (cluster *Cluster) CheckFailed() {
 					cluster.MasterFailover(true)
 					cluster.failoverCond.Send <- true
 				} else {
-					cluster.LogPrintf("WARN : Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning())
+					cluster.sme.AddState("WARN00009", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isExternalOk(), cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning()), ErrFrom: "CHECK"})
 				}
 			} else {
-				cluster.LogPrintf("WARN : Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach())
+				cluster.sme.AddState("WARN00010", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CHECK"})
 			}
 		}
 
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("WARN : No master skip failover check")
+			cluster.LogPrintf("WARN : Undiscovered master skip failover check")
 		}
 	}
 }

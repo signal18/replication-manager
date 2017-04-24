@@ -45,6 +45,7 @@ type ServerMonitor struct {
 	ServerID                    uint
 	MasterServerID              uint
 	MasterHost                  string
+	MasterPort                  string
 	LogBin                      string
 	UsingGtid                   string
 	CurrentGtid                 *gtid.List
@@ -350,6 +351,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
 		//server.MasterServerID = 0 Do not reset as we may need it for recovery
 		server.MasterHost = ""
+		server.MasterPort = "3306"
 		server.IOErrno = 0
 		server.IOError = ""
 		server.SQLError = ""
@@ -369,6 +371,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.MasterServerID = slaveStatus.Master_Server_Id
 		}
 		server.MasterHost = slaveStatus.Master_Host
+		server.MasterPort = strconv.FormatUint(uint64(slaveStatus.Master_Port), 10)
 		server.IOErrno = slaveStatus.Last_IO_Errno
 		server.IOError = slaveStatus.Last_IO_Error
 		server.SQLError = slaveStatus.Last_SQL_Error
@@ -604,6 +607,9 @@ func (server *ServerMonitor) replicationCheck() string {
 }
 
 func (sl serverList) checkAllSlavesRunning() bool {
+	if len(sl) == 0 {
+		return false
+	}
 	for _, s := range sl {
 		if s.SQLThread != "Yes" || s.IOThread != "Yes" {
 			return false

@@ -422,6 +422,16 @@ td {
 					 </md-switch>
 				 </td>
 			 </tr>
+			 <tr>
+				 <th>Verbose</th>
+			 </tr>
+			 <tr>
+				 <td>
+					 <md-switch ng-model="settings.verbose=='true'" ng-click="verbose()"  aria-label="Verbosity Change">
+						 <span ng-if="settings.verbose=='true'" class="label label-primary">On</span><span ng-if="settings.verbose=='false'" class="label label-warning">Off</span></td>
+					 </md-switch>
+				 </td>
+			 </tr>
 			</table>
 			</div>
 			</div>

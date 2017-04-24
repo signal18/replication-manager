@@ -234,6 +234,21 @@ if (r == true) {
 
 };
 
+$scope.verbose = function() {
+var r = confirm("Confirm Verbosity Change?");
+if (r == true) {
+  var response = $http.get('/setverbosity');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+
+};
+
 $scope.switchsync = function() {
 var r = confirm("Confirm Change Switchover Sync Checks?");
 if (r == true) {

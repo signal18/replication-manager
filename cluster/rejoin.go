@@ -273,12 +273,13 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 
 	if mycurrentmaster != nil {
+
 		if server.ClusterGroup.master != nil {
 
 			if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
 				server.ClusterGroup.LogPrintf("DEBUG: Found slave to rejoin  %s slave was previously in %s replication io thread is %s , pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
 
-				if (mycurrentmaster.State == stateFailed || server.ClusterGroup.conf.MultiTierSlave == false) && mycurrentmaster.IsRelay == false {
+				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay == false && server.ClusterGroup.conf.MultiTierSlave == false {
 					realmaster := server.ClusterGroup.master
 					slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
 					master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
