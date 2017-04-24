@@ -181,6 +181,7 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
+			conn.Exec("set sql_log_bin=0")
 			grants := "grant all on *.* to '" + cluster.dbUser + "'@'%%' identified by '" + cluster.dbPass + "'"
 			conn.Exec("grant all on *.* to '" + cluster.dbUser + "'@'%' identified by '" + cluster.dbPass + "'")
 			cluster.LogPrintf(grants)

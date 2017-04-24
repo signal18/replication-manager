@@ -46,7 +46,6 @@ func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) 
 		os.Remove(path)
 	}
 	return
-
 }
 
 func (server *ServerMonitor) saveBinlog(crash *Crash) error {
@@ -68,7 +67,6 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 		server.ClusterGroup.LogPrintf("WorkingDir does not exist %s check param working-directory", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
 		return err
 	}
-
 	var cmdrun *exec.Cmd
 	server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.conf.WorkingDir+"/", server.deletefiles)

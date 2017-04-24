@@ -201,7 +201,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG: Failure detection handling for server %s", server.URL)
 		}
-		if err != sql.ErrNoRows && (server.State == stateMaster || server.State == stateSuspect || server.State == stateFailed) {
+		if err != sql.ErrNoRows && server.State == stateMaster && (server.State == stateSuspect || server.State == stateFailed) {
 			server.FailCount++
 			server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 			if server.ClusterGroup.master != nil {
