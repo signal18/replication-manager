@@ -60,6 +60,15 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 }
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
+	if _, err := os.Stat(server.ClusterGroup.conf.MariaDBBinaryPath + "/mysqlbinlog"); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("Backup Binlog File does not exist %s check param mariadb-binary-path", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+		return err
+	}
+	if _, err := os.Stat(server.ClusterGroup.conf.WorkingDir); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("WorkingDir does not exist %s check param working-directory", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+		return err
+	}
+
 	var cmdrun *exec.Cmd
 	server.ClusterGroup.LogPrintf("INFO : Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.conf.WorkingDir+"/", server.deletefiles)
