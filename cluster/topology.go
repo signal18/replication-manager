@@ -574,6 +574,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				}
 			}
 			if allslavefailed {
+				cluster.master = nil
 				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
 				return true
 			}

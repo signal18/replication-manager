@@ -261,7 +261,7 @@ func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
 		}
 		server.ClusterGroup.LogPrintf("INFO : Flashback rejoin Failed")
 	}
-	server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed, can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
+	server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed, can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
 	if server.ClusterGroup.conf.AutorejoinMysqldump == true {
 		server.rejoinOldMasterDump(crash)
 	} else {

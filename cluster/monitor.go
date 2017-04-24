@@ -201,27 +201,23 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG: Failure detection handling for server %s", server.URL)
 		}
-		if err != sql.ErrNoRows && server.State == stateMaster && (server.State == stateSuspect || server.State == stateFailed) {
+		if err != sql.ErrNoRows && server.ClusterGroup.master != nil {
 			server.FailCount++
-			server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
-			if server.ClusterGroup.master != nil {
-				if server.URL == server.ClusterGroup.master.URL {
-					if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
-						server.ClusterGroup.LogPrintf("WARN : Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
-					}
-					if server.FailCount >= server.ClusterGroup.conf.MaxFail {
-						if server.FailCount == server.ClusterGroup.conf.MaxFail {
-							server.ClusterGroup.LogPrint("WARN : Declaring master as failed")
-						}
-						server.ClusterGroup.master.State = stateFailed
-					} else {
-						server.ClusterGroup.master.State = stateSuspect
-					}
+			if server.URL == server.ClusterGroup.master.URL {
+				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
+				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
+					server.ClusterGroup.LogPrintf("WARN : Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
 				}
-			}
-		} else {
-			if server.State != stateMaster && server.State != stateFailed {
-				server.FailCount++
+				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
+					if server.FailCount == server.ClusterGroup.conf.MaxFail {
+						server.ClusterGroup.LogPrint("WARN : Declaring master as failed")
+					}
+					server.ClusterGroup.master.State = stateFailed
+				} else {
+					server.ClusterGroup.master.State = stateSuspect
+				}
+			} else {
+				// not the master
 				if server.ClusterGroup.conf.LogLevel > 2 {
 					server.ClusterGroup.LogPrintf("DEBUG: Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.conf.MaxFail)
 				}
@@ -229,11 +225,11 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 					if server.FailCount == server.ClusterGroup.conf.MaxFail {
 						server.ClusterGroup.LogPrintf("WARN : Declaring server %s as failed", server.URL)
 						server.State = stateFailed
-					} else {
-						server.State = stateSuspect
+						// remove from slave list
+						server.delete(&server.ClusterGroup.slaves)
 					}
-					// remove from slave list
-					server.delete(&server.ClusterGroup.slaves)
+				} else {
+					server.State = stateSuspect
 				}
 			}
 		}
