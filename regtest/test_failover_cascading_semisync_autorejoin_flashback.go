@@ -65,6 +65,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 			return false
 		}
 	}
+	time.Sleep(10 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR: Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)

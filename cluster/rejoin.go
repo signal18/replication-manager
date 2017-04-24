@@ -49,6 +49,15 @@ func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) 
 
 }
 
+func (server *ServerMonitor) saveBinlog(crash *Crash) error {
+	t := time.Now()
+	backupdir := server.ClusterGroup.conf.WorkingDir + "/crash" + t.Format("20060102150405")
+	server.ClusterGroup.LogPrintf("INFO : New Master %s was not sync before failover, unsafe flashback, lost events backing up event to %s ", crash.URL, backupdir)
+	os.Mkdir(backupdir, 0777)
+	os.Rename(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile, backupdir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	return nil
+
+}
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
 	var cmdrun *exec.Cmd
@@ -70,172 +79,190 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	return nil
 }
 
+func (server *ServerMonitor) rejoinOldMasterSync(crash *Crash) error {
+	server.ClusterGroup.LogPrintf("INFO : Found same or lower  GTID %s  and new elected master was %s ", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
+	var err error
+	realmaster := server.ClusterGroup.master
+	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
+		realmaster = server.ClusterGroup.GetRelayServer()
+	}
+	if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+		})
+	} else {
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "MXS",
+			Logfile:   crash.FailoverMasterLogFile,
+			Logpos:    crash.FailoverMasterLogPos,
+		})
+	}
+	dbhelper.StartSlave(server.Conn)
+	return err
+
+}
+
+func (server *ServerMonitor) rejoinOldMasterFashBack(crash *Crash) error {
+	realmaster := server.ClusterGroup.master
+	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
+		realmaster = server.ClusterGroup.GetRelayServer()
+	}
+	//		server.ClusterGroup.LogPrintf("INFO :  SYNC using semisync, searching for a rejoin method")
+	// Flashback here
+	binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	server.ClusterGroup.LogPrintf("FlashBack: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", binlogCmd.Args)
+	var err error
+	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
+	if err != nil {
+		server.ClusterGroup.LogPrintf("Error opening pipe: %s", err)
+		return err
+	}
+	if err := binlogCmd.Start(); err != nil {
+		server.ClusterGroup.LogPrintf("Error in mysqlbinlog command: %s at %s", err, binlogCmd.Path)
+		return err
+	}
+	if err := clientCmd.Run(); err != nil {
+		server.ClusterGroup.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
+		return err
+	}
+	server.ClusterGroup.LogPrintf("INFO : SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
+	_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + crash.FailoverIOGtid.Sprint() + "\"")
+	if err != nil {
+		return err
+	}
+	var err2 error
+	if server.MxsHaveGtid || server.IsMaxscale == false {
+		err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+		})
+	} else {
+		err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "MXS",
+			Logfile:   realmaster.FailoverMasterLogFile,
+			Logpos:    realmaster.FailoverMasterLogPos,
+		})
+	}
+	if err2 != nil {
+		return err2
+	}
+	dbhelper.StartSlave(server.Conn)
+	if crash.FailoverSemiSyncSlaveStatus == true {
+		server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover safe flashback, no lost committed events", crash.URL)
+	} else {
+		server.saveBinlog(crash)
+	}
+	return nil
+}
+
+func (server *ServerMonitor) rejoinOldMasterDump(crash *Crash) error {
+	var err3 error
+	realmaster := server.ClusterGroup.master
+	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
+		realmaster = server.ClusterGroup.GetRelayServer()
+	}
+	// done change master just to set the host and port before dump
+	if server.MxsHaveGtid || server.IsMaxscale == false {
+		err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+		})
+	} else {
+		err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "MXS",
+			Logfile:   realmaster.FailoverMasterLogFile,
+			Logpos:    realmaster.FailoverMasterLogPos,
+		})
+	}
+	if err3 != nil {
+		return err3
+	}
+	// dump here
+	server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+	dbhelper.StartSlave(server.Conn)
+	return nil
+}
+
 func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
 		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on rejoined %s", server.URL)
 	}
 
-	realmaster := server.ClusterGroup.master
-	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
-		realmaster = server.ClusterGroup.GetRelayServer()
-	}
 	if crash.FailoverIOGtid != nil {
 		server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 		server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 	}
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.conf.MxsBinlogOn {
-		server.ClusterGroup.LogPrintf("INFO : Found same or lower  GTID %s  and new elected master was %s ", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
-		var err error
-		if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
-			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-				Host:      realmaster.IP,
-				Port:      realmaster.Port,
-				User:      server.ClusterGroup.rplUser,
-				Password:  server.ClusterGroup.rplPass,
-				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-				Mode:      "SLAVE_POS",
-			})
+		server.rejoinOldMasterSync(crash)
+		return nil
+	}
+	if crash.FailoverIOGtid != nil {
+		if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+			server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we can not flashback")
 		} else {
-			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-				Host:      realmaster.IP,
-				Port:      realmaster.Port,
-				User:      server.ClusterGroup.rplUser,
-				Password:  server.ClusterGroup.rplPass,
-				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-				Mode:      "MXS",
-				Logfile:   crash.FailoverMasterLogFile,
-				Logpos:    crash.FailoverMasterLogPos,
-			})
+			server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		}
-		dbhelper.StartSlave(server.Conn)
-		return err
 	} else {
-		if crash.FailoverIOGtid != nil {
-			if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
-				server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we can not flashback")
-			} else {
-				server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
-			}
-		} else {
-			server.ClusterGroup.LogPrintf("INFO : Found none old server GTID for fashback")
-		}
-		if crash.FailoverIOGtid != nil && server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
-			//		server.ClusterGroup.LogPrintf("INFO :  SYNC using semisync, searching for a rejoin method")
-
-			// Flashback here
-			binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-			clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-			server.ClusterGroup.LogPrintf("FlashBack: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", binlogCmd.Args)
-			var err error
-			clientCmd.Stdin, err = binlogCmd.StdoutPipe()
-			if err != nil {
-				server.ClusterGroup.LogPrintf("Error opening pipe: %s", err)
-				return err
-			}
-			if err := binlogCmd.Start(); err != nil {
-				server.ClusterGroup.LogPrintf("Error in mysqlbinlog command: %s at %s", err, binlogCmd.Path)
-				return err
-			}
-			if err := clientCmd.Run(); err != nil {
-				server.ClusterGroup.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
-				return err
-			}
-			server.ClusterGroup.LogPrintf("INFO : SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
-			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + crash.FailoverIOGtid.Sprint() + "\"")
-			if err != nil {
-				return err
-			}
-			var err2 error
-			if server.MxsHaveGtid || server.IsMaxscale == false {
-				err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-					Host:      realmaster.IP,
-					Port:      realmaster.Port,
-					User:      server.ClusterGroup.rplUser,
-					Password:  server.ClusterGroup.rplPass,
-					Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-					Mode:      "SLAVE_POS",
-				})
-			} else {
-				err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-					Host:      realmaster.IP,
-					Port:      realmaster.Port,
-					User:      server.ClusterGroup.rplUser,
-					Password:  server.ClusterGroup.rplPass,
-					Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-					Mode:      "MXS",
-					Logfile:   realmaster.FailoverMasterLogFile,
-					Logpos:    realmaster.FailoverMasterLogPos,
-				})
-			}
-			if err2 != nil {
-				return err2
-			}
-			dbhelper.StartSlave(server.Conn)
-			if crash.FailoverSemiSyncSlaveStatus == true {
-				server.ClusterGroup.LogPrintf("INFO : New Master %s was in sync before failover safe flashback, no lost committed events", crash.URL)
-			} else {
-				t := time.Now()
-				backupdir := server.ClusterGroup.conf.WorkingDir + "/crash" + t.Format("20060102150405")
-				server.ClusterGroup.LogPrintf("INFO : New Master %s was not sync before failover, unsafe flashback, lost events backing up event to %s ", crash.URL, backupdir)
-				os.Mkdir(backupdir, 0777)
-				os.Rename(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile, backupdir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-			}
+		server.ClusterGroup.LogPrintf("INFO : Found none old server GTID for fashback")
+	}
+	if crash.FailoverIOGtid != nil && server.ClusterGroup.canFlashBack == true && server.ClusterGroup.conf.AutorejoinFlashback == true && server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+		err := server.rejoinOldMasterFashBack(crash)
+		if err == nil {
 			return nil
-		} else {
-			server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed, can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
-			if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-				var err3 error
-				// done change master just to set the host and port before dump
-				if server.MxsHaveGtid || server.IsMaxscale == false {
-					err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:      realmaster.IP,
-						Port:      realmaster.Port,
-						User:      server.ClusterGroup.rplUser,
-						Password:  server.ClusterGroup.rplPass,
-						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-						Mode:      "SLAVE_POS",
-					})
-				} else {
-					err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:      realmaster.IP,
-						Port:      realmaster.Port,
-						User:      server.ClusterGroup.rplUser,
-						Password:  server.ClusterGroup.rplPass,
-						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-						Mode:      "MXS",
-						Logfile:   realmaster.FailoverMasterLogFile,
-						Logpos:    realmaster.FailoverMasterLogPos,
-					})
-				}
-				if err3 != nil {
-					return err3
-				}
-				// dump here
-				server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-				dbhelper.StartSlave(server.Conn)
-				return nil
-			}
-			server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
-			server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")
-			if server.ClusterGroup.conf.RejoinScript != "" {
-				server.ClusterGroup.LogPrintf("INFO : Calling rejoin script")
-				var out []byte
-				out, err := exec.Command(server.ClusterGroup.conf.RejoinScript, server.Host, server.ClusterGroup.master.Host).CombinedOutput()
-				if err != nil {
-					server.ClusterGroup.LogPrint("ERROR:", err)
-				}
-				server.ClusterGroup.LogPrint("INFO : Rejoin script complete", string(out))
-			}
 		}
-
-		//}
+		server.ClusterGroup.LogPrintf("INFO : Flashback rejoin Failed")
+	}
+	server.ClusterGroup.LogPrintf("INFO : No flashback rejoin : binlog capture failed, can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
+	if server.ClusterGroup.conf.AutorejoinMysqldump == true {
+		server.rejoinOldMasterDump(crash)
+	} else {
+		server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
+		server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")
+	}
+	if server.ClusterGroup.conf.RejoinScript != "" {
+		server.ClusterGroup.LogPrintf("INFO : Calling rejoin script")
+		var out []byte
+		out, err := exec.Command(server.ClusterGroup.conf.RejoinScript, server.Host, server.ClusterGroup.master.Host).CombinedOutput()
+		if err != nil {
+			server.ClusterGroup.LogPrint("ERROR:", err)
+		}
+		server.ClusterGroup.LogPrint("INFO : Rejoin script complete", string(out))
 	}
 
 	return nil
