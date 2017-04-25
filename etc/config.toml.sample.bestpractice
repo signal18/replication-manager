@@ -293,10 +293,9 @@ sysbench-threads = 4
 sysbench-time = 60
 
 
-  # MARIADB >= 10.2
-  # ---------------
-
-  mariadb-binary-path = "/usr/sbin"
+# MARIADB >= 10.2
+# ---------------
+mariadb-binary-path = "/usr/sbin"
 
 # REJOIN
 # --------

@@ -178,19 +178,31 @@ After checking the leader N times (failcount=5), replication-manager default beh
 
 When manual failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
 
-Per default following checks are disabled but are defined in the configuration template and advised to set:
-- Exceeding a given replication delay (maxdelay=0)
+Per default additional checks are disabled but can ne defined in the configuration template and advised to set:
+- Exceeding a given replication delay (failover-max-slave-delay=0)
 - Failover did not happen previously in less than a given time interval (failover-time-limit=0)  
 - Failover limit was not reached (failover-limit=0)
 
+```
+failover-limit = 3
+failover-time-limit = 10
+failover-at-sync = false
+failover-max-slave-delay = 30
+failover-restart-unsafe = false
+```
+
 A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
 
-Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi- sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
+Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi-sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
 
-- Last semi sync status was SYNC  (failsync=false)  
+- Last semi sync status was SYNC  (failover-at-sync=false)  
 
 A user can change this check based on what is reported by SLA in sync, and decide that most of the time the replication is in sync and when it's not, that the failover should be manual. Via http console, use "Failover Sync" button
 
+All cluster down lead to some situation where it is possible to first restart a slave previously stopped before the entire cluster was shutdown, failover in such situation can promote a delayed slave by a big amount of time and lead to as much time data lost, by default replication-manager will prevent such failover for the first node is a slave unless you change failover-restart-unsafe to true. When using the default it is advise to start the old master first if not replication-manager will wait for the old master to show up again until it can failover again.   
+
+Previous scenario is not that frequent and one can flavor availability in case the master never show up again. The DC crash would have bring down all the nodes around the same time. So data lost can be mitigated if you automate starting a slave node and failover on it via failover-restart-unsafe=true if the master can't or is to long to recover from the crash.  
+ 
 ### False positive detection
 
 Since version 1.1 all replicas and Maxscale can be questioned for consensus detection of leader death:
@@ -259,7 +271,7 @@ It is passing the server to rejoin as first argument and the new topology master
 Replication-Manager can operate with MaxScale in 3 modes,  
 
 ### Mode 1
-passive mode MaxScale auto-discovers the new topology after failover or switchover. Replication Manager will set the new master in MaxScale to reduce the time where it might block clients. This setup best works in 3 nodes in Master-Slaves cluster, one slave should always be available for re-discovering new topologies.
+Advised mode, MaxScale auto-discovers the new topology after failover or switchover. Replication Manager can reduce MaxScale monitor detection time of the master failure to reduce the time where it might block clients. This setup best works in 3 nodes in Master-Slaves cluster, because one slave is always available for re-discovering new topologies.
 
 Example settings:
 
@@ -321,20 +333,19 @@ max_slave_replication_lag=30
 Operating MaxScale without monitoring is the second Replication-Manager mode via:
 This mode was introduce in version 1.1 and is control via
 ```
-maxscale-monitor = false
+maxscale-disable-monitor = true
 ```
-replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This is a good mode of operation similar to HAProxy, but it can lead to a unusable cluster if replication can't contact the proxy, so it is strongly advised to colocate the 2 services.   
+replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This mode of operation is similar to HAProxy. It is not needed when using MaxScale in a single datacenter
+If your are using old MaxScale release that does not support  detect_stale_slave it can be used to support 2 nodes cluster
 
 ### Mode 3
 
-Driving replication-manager from Maxscale
+Driving replication-manager from MaxScale via calling scripts
 
-[Automatic Failover](Automatic-Failover.md)
-
-### Daemon mode to print maxscale status  
+### Http server and maxscale status  
 
 In version 1.1 one can see maxscale servers state in a new tab this is done and control via new parameters, default is to use maxadmin tcp row protocol via maxscale-get-info-method = "maxadmin"
-A more robust configuration can be enable via load ing the maxinfo plugin in maxscale that provide a JSON REST service to replication-manager
+A more robust configuration can be enable via loading the maxinfo plugin in maxscale that provide a JSON REST service to replication-manager
 
 ```
 maxscale = true
@@ -643,6 +654,16 @@ replication-manager 1.1 embed a graphite server and can serve as a carbon relay 
 very few metrics are yet push inside carbon, the metrics are pushed with the server-id prefix name. to get unicity against nodes  
 
 Contact the authors for contributions or custom metrics to be added.
+
+To enable collecting graphs use
+```
+graphite-metrics = true
+graphite-embedded = true
+```
+Customize /usr/share/replication-manager/dashboard/static/graph.js
+Set the host address of the replication-manager. And play to make your own graph
+Statd and Collectd can be install install on each database node to add system metrics   
+
 
 ## Non-regression tests
 
