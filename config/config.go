@@ -80,6 +80,7 @@ type Config struct {
 	FailSync                           bool   `mapstructure:"failover-at-sync"`
 	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
 	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
+	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
 	MaxFail                            int    `mapstructure:"failcount"`
 	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
 	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`

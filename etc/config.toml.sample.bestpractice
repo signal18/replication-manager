@@ -195,6 +195,7 @@ failover-limit = 3
 failover-time-limit = 10
 failover-at-sync = true
 failover-max-slave-delay = 30
+failover-restart-unsafe = false
 
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
