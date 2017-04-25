@@ -509,7 +509,7 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 			server.ClusterGroup.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
 		}
 		srvport, _ := strconv.Atoi(server.Port)
-		server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport)
+		server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
 	} else {
 
 		_, err := m.ListServers()

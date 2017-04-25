@@ -325,10 +325,13 @@ func (m *MaxScale) GetServer(ip string, port string) (string, string, string) {
 	return "", "", ""
 }
 
-func (m *MaxScale) GetMaxInfoServer(ip string, port int) (string, string, int) {
+func (m *MaxScale) GetMaxInfoServer(ip string, port int, matchserverport bool) (string, string, int) {
 	for _, s := range ServerMaxinfos {
 		//	log.Printf("%s,%s", s.Address, ip)
 		if s.Address == ip && s.Port == port {
+			return s.Server, s.Status, s.Connections
+		}
+		if matchserverport == false && s.Address == ip {
 			return s.Server, s.Status, s.Connections
 		}
 	}

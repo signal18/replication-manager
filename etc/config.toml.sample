@@ -234,8 +234,9 @@ switchover-max-slave-delay = 30
 
 maxscale = false
 
-# when disable replication manager fully drive maxscale for 2 nodes cluster
-maxscale-monitor = false
+# When true replication manager drive maxscale server state
+# Not required unless multiple maxscale or release does not support detect_stale_slave
+maxscale-disable-monitor = false
 
 # maxinfo|maxadmin
 
