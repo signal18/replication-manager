@@ -21,4 +21,5 @@ var clusterError = map[string]string{
 	"ERR00023": "Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t",
 	"ERR00024": "Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t",
 	"ERR00025": "Could not get MaxScale maxinfo server list: %s",
+	"ERR00026": "Constraint is blocking for failover slave back isFirstSlave %t",
 }

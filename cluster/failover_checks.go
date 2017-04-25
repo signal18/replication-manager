@@ -30,8 +30,12 @@ func (cluster *Cluster) CheckFailed() {
 		if cluster.master.State == stateFailed {
 			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
 				if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
-					cluster.MasterFailover(true)
-					cluster.failoverCond.Send <- true
+					if cluster.isFirstSlave() == false {
+						cluster.MasterFailover(true)
+						cluster.failoverCond.Send <- true
+					} else {
+						cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"], cluster.isFirstSlave()), ErrFrom: "CHECK"})
+					}
 				} else {
 					cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isExternalOk(), cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning()), ErrFrom: "CHECK"})
 				}
@@ -231,6 +235,24 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
+		return true
+	}
+	return false
+}
+
+func (cluster *Cluster) isFirstSlave() bool {
+	// let the failover doable if interactive or failover on first slave
+	if cluster.conf.Interactive == true || cluster.conf.FailRestartUnsafe == true {
+		return false
+	}
+	// do not failover if master info is unknowned:
+	// - first replication-manager start on no topology
+	// - all cluster down
+	if cluster.master == nil {
+		return true
+	}
+	crash := cluster.getCrash(cluster.master.URL)
+	if cluster.master.State == stateFailed && crash == nil {
 		return true
 	}
 	return false
