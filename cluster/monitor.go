@@ -518,7 +518,7 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 		} else {
 			//		server.ClusterGroup.LogPrint("get MaxScale server list")
 			var connections string
-			server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port)
+			server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
 			server.MxsServerConnections, _ = strconv.Atoi(connections)
 		}
 	}

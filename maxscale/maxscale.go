@@ -316,10 +316,13 @@ func (m *MaxScale) GetMaxInfoStoppedMonitor() string {
 	return ""
 }
 
-func (m *MaxScale) GetServer(ip string, port string) (string, string, string) {
+func (m *MaxScale) GetServer(ip string, port string, matchserverport bool) (string, string, string) {
 	for _, s := range ServerList {
 		if s.Address == ip && s.Port == port {
 			return s.Server, s.Connections, s.Status
+		}
+		if matchserverport == false && s.Address == ip {
+			return s.Server, s.Status, s.Connections
 		}
 	}
 	return "", "", ""
