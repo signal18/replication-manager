@@ -101,7 +101,7 @@ func (server *ServerMonitor) rejoinOldMasterSync(crash *Crash) error {
 			Password:  server.ClusterGroup.rplPass,
 			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-			Mode:      "SLAVE_POS",
+			Mode:      "CURRENT_POS",
 		})
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{

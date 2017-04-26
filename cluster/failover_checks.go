@@ -64,7 +64,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
 	// no illimited failed count
 
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
-		cluster.sme.AddState("WARN00023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("DEBUG: Need failover, maximum number of master failure detection reached"), ErrFrom: "CHECK"})
+		cluster.sme.AddState("WARN00023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("DEBUG: Need failover, number of failed master ping reached"), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
