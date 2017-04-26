@@ -204,7 +204,7 @@ func (cluster *Cluster) pingServerList() {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						if driverErr.Number == 1045 {
 							sv.State = stateUnconn
-							cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Database %s access denied: %s.", sv.URL, err.Error()), ErrFrom: "TOPO"})
+							cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
 					} else {
 						cluster.sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
@@ -269,7 +269,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			var n int
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 			if err != nil {
-				cluster.sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting binlog dump count on server %s: %s", sv.URL, err), ErrFrom: "CONF"})
+				cluster.sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
 				if cluster.conf.LogLevel > 2 {
 					cluster.LogPrint("DEBUG: State failed set by topology detection ERR00014")
 				}
@@ -301,20 +301,20 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.LogPrintf("DEBUG: Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
 			}
 			if err != nil {
-				cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
+				cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
 			} else {
 				priv, err := dbhelper.GetPrivileges(sv.Conn, cluster.dbUser, cluster.repmgrHostname, myip)
 				if err != nil {
-					cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s@%s: %s", cluster.dbUser, cluster.repmgrHostname, err), ErrFrom: "CONF"})
+					cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, cluster.repmgrHostname, err), ErrFrom: "CONF"})
 				}
 				if priv.Repl_client_priv == "N" {
-					cluster.sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION CLIENT privilege", ErrFrom: "CONF"})
+					cluster.sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF"})
 				}
 				if priv.Super_priv == "N" {
-					cluster.sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: "User must have SUPER privilege", ErrFrom: "CONF"})
+					cluster.sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF"})
 				}
 				if priv.Reload_priv == "N" {
-					cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: "User must have RELOAD privilege", ErrFrom: "CONF"})
+					cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF"})
 				}
 			}
 			// Check replication user has correct privs.
@@ -323,10 +323,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
-						cluster.sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Error getting privileges for user %s on server %s: %s", cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
+						cluster.sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
 					}
 					if rpriv.Repl_slave_priv == "N" {
-						cluster.sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: "User must have REPLICATION SLAVE privilege", ErrFrom: "CONF"})
+						cluster.sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
 					}
 					// Additional health checks go here
 					if sv.acidTest() == false && cluster.sme.IsDiscovered() {
@@ -339,7 +339,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	m.Close()
 	// If no cluster.slaves are detected, generate an error
 	if len(cluster.slaves) == 0 {
-		cluster.sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: "No slaves were detected", ErrFrom: "TOPO"})
+		cluster.sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
 	// Check that all slave servers have the same master and conformity.
@@ -394,7 +394,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
 				}*/
 				if sl.HasCycling(sl.ServerID) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
-					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: "Multiple masters detected but explicity setup, dynamicly setting", ErrFrom: "TOPO"})
+					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
 					cluster.conf.MultiMaster = true
 				}
 			}
@@ -534,7 +534,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, reason: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
 					}
 					if sl.LogBin == "OFF" {
-						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Binary log disabled on slave: %s", sl.URL), ErrFrom: "TOPO"})
+						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
 				if sl.Delay.Int64 <= cluster.conf.SwitchMaxDelay && sl.SQLThread == "Yes" {
@@ -547,7 +547,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.master.State == stateFailed && cluster.slaves.checkAllSlavesRunning() {
 			cluster.sme.AddState("ERR00016", state.State{
 				ErrType: "ERROR",
-				ErrDesc: "Network issue - Master is unreachable but slaves are replicating",
+				ErrDesc: clusterError["ERR00016"],
 				ErrFrom: "NET",
 			})
 		}
@@ -574,7 +574,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				}
 			}
 			if allslavefailed {
-				cluster.master = nil
+				//cluster.master = nil
 				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
 				return true
 			}

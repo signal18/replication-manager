@@ -29,15 +29,23 @@ func (cluster *Cluster) CheckFailed() {
 	if cluster.master != nil {
 		if cluster.master.State == stateFailed {
 			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
-				if cluster.isExternalOk() == false && cluster.isActiveArbitration() == true && cluster.isBeetwenFailoverTimeTooShort() == false && cluster.isMaxClusterFailoverCountReach() == false && cluster.isOneSlaveHeartbeatIncreasing() == false && cluster.isMaxscaleSupectRunning() == false {
-					if cluster.isFirstSlave() == false {
-						cluster.MasterFailover(true)
-						cluster.failoverCond.Send <- true
-					} else {
-						cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"], cluster.isFirstSlave()), ErrFrom: "CHECK"})
+				if cluster.isExternalOk() == false {
+					if cluster.isActiveArbitration() == true {
+						if cluster.isMaxClusterFailoverCountReach() == false {
+							if cluster.isOneSlaveHeartbeatIncreasing() == false {
+								if cluster.isMaxscaleSupectRunning() == false {
+									if cluster.isBeetwenFailoverTimeTooShort() == false {
+										if cluster.isFirstSlave() == false {
+											if cluster.isFoundCandidateMaster() == true {
+												cluster.MasterFailover(true)
+												cluster.failoverCond.Send <- true
+											}
+										}
+									}
+								}
+							}
+						}
 					}
-				} else {
-					cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking for failover isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t", cluster.isExternalOk(), cluster.isActiveArbitration(), cluster.isBeetwenFailoverTimeTooShort(), cluster.isMaxClusterFailoverCountReach(), cluster.isOneSlaveHeartbeatIncreasing(), cluster.isMaxscaleSupectRunning()), ErrFrom: "CHECK"})
 				}
 			} else {
 				cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
@@ -64,12 +72,12 @@ func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
 
 func (cluster *Cluster) isMaxClusterFailoverCountReach() bool {
 	// illimited failed count
-	cluster.LogPrintf("CHECK: Failover Counter Reach")
+	//cluster.LogPrintf("CHECK: Failover Counter Reach")
 	if cluster.conf.FailLimit == 0 {
 		return false
 	}
 	if cluster.failoverCtr == cluster.conf.FailLimit {
-		cluster.LogPrintf("ERROR: Can't failover, maximum number of cluster failover reached")
+		cluster.sme.AddState("ERR00027", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -81,9 +89,9 @@ func (cluster *Cluster) isBeetwenFailoverTimeTooShort() bool {
 	if cluster.conf.FailTime == 0 {
 		return false
 	}
-	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
+	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
-		cluster.LogPrintf("ERROR: Can failover, time between failover to short ")
+		cluster.sme.AddState("ERR00029", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -93,7 +101,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	if cluster.conf.CheckFalsePositiveHeartbeat == false {
 		return false
 	}
-	cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
+	//cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
 
 	for _, s := range cluster.slaves {
 		relaycheck, _ := cluster.GetMasterFromReplication(s)
@@ -101,12 +109,16 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 			if relaycheck.IsRelay == false {
 				status, _ := dbhelper.GetStatusAsInt(s.Conn)
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-				cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+				if cluster.conf.LogLevel > 1 {
+					cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+				}
 				time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
-				cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+				if cluster.conf.LogLevel > 1 {
+					cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.LogPrintf("ERROR: Can't failover,  slave %s still see the master ", s.DSN)
+					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.DSN), ErrFrom: "CHECK"})
 					return true
 				}
 			}
@@ -122,7 +134,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	if cluster.conf.CheckFalsePositiveMaxscale == false {
 		return false
 	}
-	cluster.LogPrintf("CHECK: Failover Maxscale Master Satus")
+	//cluster.LogPrintf("CHECK: Failover Maxscale Master Satus")
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
@@ -171,10 +183,19 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
-		cluster.LogPrintf("ERROR: Can't failover Master still up for Maxscale %s", cluster.master.MxsServerStatus)
+		cluster.sme.AddState("ERR00030", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
+}
+
+func (cluster *Cluster) isFoundCandidateMaster() bool {
+	key := cluster.electCandidate(cluster.slaves, false)
+	if key == -1 {
+		cluster.sme.AddState("ERR00032", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
+		return false
+	}
+	return true
 }
 
 func (cluster *Cluster) isActiveArbitration() bool {
@@ -182,7 +203,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if cluster.conf.Arbitration == false {
 		return true
 	}
-	cluster.LogPrintf("CHECK: Failover External Arbitration")
+	//	cluster.LogPrintf("CHECK: Failover External Arbitration")
 
 	url := "http://" + cluster.conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
@@ -198,6 +219,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogPrintf("ERROR: %s", err.Error())
+		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	defer resp.Body.Close()
@@ -211,13 +233,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cluster.LogPrintf("ERROR: arbitrator says invalid JSON")
+		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
 		cluster.LogPrintf("INFO :Arbitrator says: winner")
 		return true
 	}
-	cluster.LogPrintf("INFO : Arbitrator says: loser")
+	cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 	return false
 }
 
@@ -225,7 +248,7 @@ func (cluster *Cluster) isExternalOk() bool {
 	if cluster.conf.CheckFalsePositiveExternal == false {
 		return false
 	}
-	cluster.LogPrintf("CHECK: Failover External Request")
+	//cluster.LogPrintf("CHECK: Failover External Request")
 	if cluster.master == nil {
 		return false
 	}
@@ -235,6 +258,7 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
+		cluster.sme.AddState("ERR00031", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -249,10 +273,12 @@ func (cluster *Cluster) isFirstSlave() bool {
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.master == nil {
+		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return true
 	}
 	crash := cluster.getCrash(cluster.master.URL)
 	if cluster.master.State == stateFailed && crash == nil {
+		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
