@@ -104,10 +104,10 @@ td {
 		 </select>
    </form>
  </td></tr></table>
-  <md-content>
-    <md-tabs  class="tabsMrmDynamicHeight" md-dynamic-height="" md-border-bottom="">
+  <md-content layout="column">
+    <md-tabs   md-dynamic-height=""  md-border-bottom="" >
       <md-tab label="DASHBOARD">
-        <md-content class="md-padding">
+				 <md-content  class="md-padding">
 
 					<div  ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
 
@@ -210,11 +210,12 @@ td {
 			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
 				 </pre>
 	 </md-content>
-		</md-tab>
-			 	<md-tab label="ALERTS">
-				<md-content class="md-padding">
+ </md-tab>
+			 	<md-tab label="ALERTS ^{{alerts.errors.length}}">
+
+				<md-content  class="md-padding" >
  				<p class="sectionheader">ERRORS</p>
-				<pre class="alert alert-danger"  >
+				<pre class="alert alert-danger">
 				 <div  ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
 				 </pre>
 
