@@ -102,7 +102,9 @@ type ServerMonitor struct {
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
+	ReplicationSourceName       string
 	DBVersion                   *dbhelper.MySQLVersion
+	Status                      map[string]string
 	GTIDExecuted                string
 }
 
@@ -323,6 +325,82 @@ func (server *ServerMonitor) Refresh() error {
 
 	}
 
+	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) {
+		// maxscale don't support show variables
+		sv, err := dbhelper.GetVariables(server.Conn)
+		if err != nil {
+			return err
+		}
+		server.Version = dbhelper.MariaDBVersion(sv["VERSION"]) // Deprecated
+		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR: Could not get Database Version")
+		}
+
+		if sv["EVENT_SCHEDULER"] != "ON" {
+			server.EventScheduler = false
+		} else {
+			server.EventScheduler = true
+		}
+		server.GTIDBinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
+		server.GTIDExecuted = sv["GTID_EXECUTED"]
+		server.Strict = sv["GTID_STRICT_MODE"]
+		server.LogBin = sv["LOG_BIN"]
+		server.ReadOnly = sv["READ_ONLY"]
+		if sv["lOG_BIN_COMPRESS"] != "ON" {
+			server.HaveBinlogCompress = false
+		} else {
+			server.HaveBinlogCompress = true
+		}
+		if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
+			server.HaveInnodbTrxCommit = false
+		} else {
+			server.HaveInnodbTrxCommit = true
+		}
+		if sv["SYNC_BINLOG"] != "1" {
+			server.HaveSyncBinLog = false
+		} else {
+			server.HaveSyncBinLog = true
+		}
+		if sv["INNODB_CHECKSUM"] == "NONE" {
+			server.HaveChecksum = false
+		} else {
+			server.HaveChecksum = true
+		}
+		if sv["BINLOG_FORMAT"] != "ROW" {
+			server.HaveBinlogRow = false
+		} else {
+			server.HaveBinlogRow = true
+		}
+		if sv["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
+			server.HaveBinlogAnnotate = false
+		} else {
+			server.HaveBinlogAnnotate = true
+		}
+		if sv["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
+			server.HaveBinlogSlowqueries = false
+		} else {
+			server.HaveBinlogSlowqueries = true
+		}
+
+		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+		server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
+		server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
+		sid, err := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+		if err != nil {
+			server.ClusterGroup.LogPrint("ERROR: Could not parse server_id, reason: ", err)
+		}
+		server.ServerID = uint(sid)
+		err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
+		if err != nil {
+			return err
+		}
+		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR: Could not get events")
+		}
+	}
+	// SHOW MASTER STATUS
 	masterStatus, err := dbhelper.GetMasterStatus(server.Conn)
 	if err != nil {
 		// binary log might be closed for that server
@@ -331,11 +409,17 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogPos = strconv.FormatUint(uint64(masterStatus.Position), 10)
 	}
 
-	server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
-	if err != nil {
-		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show all slaves status on %s", server.DSN)
+	// SHOW SLAVE STATUS
+
+	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+		server.Replications, _ = dbhelper.GetAllSlavesStatus(server.Conn)
+	} else {
+		server.Replications = make([]dbhelper.SlaveStatus, 1)
+		server.Replications[0], _ = dbhelper.GetSlaveStatus(server.Conn)
 	}
-	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
+	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
+	//	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
+
 	if err != nil {
 		server.IsSlave = false
 		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)
@@ -380,91 +464,20 @@ func (server *ServerMonitor) Refresh() error {
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
-	sv, err := dbhelper.GetVariables(server.Conn)
-	if err != nil {
-		return err
-	}
-	server.Version = dbhelper.MariaDBVersion(sv["VERSION"]) // Deprecated
-	server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
-	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR: Could not get Database Version")
-	}
 
-	if sv["EVENT_SCHEDULER"] != "ON" {
-		server.EventScheduler = false
-	} else {
-		server.EventScheduler = true
-	}
-	server.GTIDBinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
-	server.GTIDExecuted = sv["GTID_EXECUTED"]
-	server.Strict = sv["GTID_STRICT_MODE"]
-	server.LogBin = sv["LOG_BIN"]
-	server.ReadOnly = sv["READ_ONLY"]
-	if sv["lOG_BIN_COMPRESS"] != "ON" {
-		server.HaveBinlogCompress = false
-	} else {
-		server.HaveBinlogCompress = true
-	}
-	if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
-		server.HaveInnodbTrxCommit = false
-	} else {
-		server.HaveInnodbTrxCommit = true
-	}
-	if sv["SYNC_BINLOG"] != "1" {
-		server.HaveSyncBinLog = false
-	} else {
-		server.HaveSyncBinLog = true
-	}
-	if sv["INNODB_CHECKSUM"] == "NONE" {
-		server.HaveChecksum = false
-	} else {
-		server.HaveChecksum = true
-	}
-	if sv["BINLOG_FORMAT"] != "ROW" {
-		server.HaveBinlogRow = false
-	} else {
-		server.HaveBinlogRow = true
-	}
-	if sv["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
-		server.HaveBinlogAnnotate = false
-	} else {
-		server.HaveBinlogAnnotate = true
-	}
-	if sv["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
-		server.HaveBinlogSlowqueries = false
-	} else {
-		server.HaveBinlogSlowqueries = true
-	}
-
-	server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
-	server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
-	server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
-	sid, err := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
-	if err != nil {
-		server.ClusterGroup.LogPrint("ERROR: Could not parse server_id, reason: ", err)
-	}
-	server.ServerID = uint(sid)
-	err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
-	if err != nil {
-		return err
-	}
-	server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
-	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR: Could not get events")
-	}
-	su, _ := dbhelper.GetStatus(server.Conn)
+	server.Status, _ = dbhelper.GetStatus(server.Conn)
 	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
-	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
+	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
 		server.HaveSemiSync = false
 	} else {
 		server.HaveSemiSync = true
 	}
-	if su["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
+	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
 		server.SemiSyncMasterStatus = true
 	} else {
 		server.SemiSyncMasterStatus = false
 	}
-	if su["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" {
+	if server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" {
 		server.SemiSyncSlaveStatus = true
 	} else {
 		server.SemiSyncSlaveStatus = false
@@ -482,10 +495,10 @@ func (server *ServerMonitor) Refresh() error {
 		if err == nil {
 			var metrics = make([]graphite.Metric, 5)
 			metrics[0] = graphite.NewMetric(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", server.Delay.Int64), time.Now().Unix())
-			metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), su["QUERIES"], time.Now().Unix())
-			metrics[2] = graphite.NewMetric(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), su["THREADS_RUNNING"], time.Now().Unix())
-			metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), su["BYTES_SENT"], time.Now().Unix())
-			metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), su["BYTES_RECEIVED"], time.Now().Unix())
+			metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), server.Status["QUERIES"], time.Now().Unix())
+			metrics[2] = graphite.NewMetric(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), server.Status["THREADS_RUNNING"], time.Now().Unix())
+			metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), server.Status["BYTES_SENT"], time.Now().Unix())
+			metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), server.Status["BYTES_RECEIVED"], time.Now().Unix())
 			//	metrics[5] = graphite.NewMetric(, time.Now().Unix())
 			//	metrics[6] = graphite.NewMetric(, time.Now().Unix())
 			//	metrics[7] = graphite.NewMetric(, time.Now().Unix())
@@ -496,6 +509,17 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 	return nil
+}
+
+func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
+	if server.Replications != nil {
+		for _, ss := range server.Replications {
+			if ss.Connection_name == name {
+				return &ss, nil
+			}
+		}
+	}
+	return nil, errors.New("Empty replications channels")
 }
 
 func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {

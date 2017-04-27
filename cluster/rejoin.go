@@ -22,6 +22,10 @@ func (server *ServerMonitor) Rejoin() error {
 			crash := server.ClusterGroup.getCrash(server.URL)
 			if crash == nil {
 				server.ClusterGroup.LogPrintf("Error : rejoin found no crash info for %s", server.URL)
+				if server.ClusterGroup.conf.AutorejoinMysqldump == true {
+					server.ClusterGroup.LogPrintf("Error : rejoin promoted to dump restore", server.URL)
+					server.rejoinOldMasterDump()
+				}
 				return errors.New("No crash found")
 			}
 			if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
@@ -192,7 +196,7 @@ func (server *ServerMonitor) rejoinOldMasterFashBack(crash *Crash) error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinOldMasterDump(crash *Crash) error {
+func (server *ServerMonitor) rejoinOldMasterDump() error {
 	var err3 error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
@@ -227,7 +231,7 @@ func (server *ServerMonitor) rejoinOldMasterDump(crash *Crash) error {
 	}
 	// dump here
 	server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-	dbhelper.StartSlave(server.Conn)
+
 	return nil
 }
 
@@ -264,7 +268,7 @@ func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
 		server.ClusterGroup.LogPrintf("INFO : No flashback rejoin: can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
 	}
 	if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-		server.rejoinOldMasterDump(crash)
+		server.rejoinOldMasterDump()
 	} else {
 		server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
 		server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")

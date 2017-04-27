@@ -764,8 +764,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 }
 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
-	ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
-
+	ss, _ := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 		if cluster.conf.LogLevel > 2 || forcingLog {
@@ -796,7 +795,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
-	ss, _ := dbhelper.GetSlaveStatus(sl.Conn)
+	ss, _ := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
 	hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
 	if err != nil {
 		if cluster.conf.LogLevel > 2 || forcingLog {

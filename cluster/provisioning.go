@@ -40,6 +40,7 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 		cluster.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
 		return err
 	}
+	dbhelper.StartSlave(dest.Conn)
 	return nil
 }
 
