@@ -110,13 +110,7 @@ func (cluster *Cluster) Stop() {
 	cluster.exit = true
 }
 func (cluster *Cluster) Run() {
-	/*	cluster.mxs = maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
-		if cluster.conf.MxsOn {
-			err := cluster.mxs.Connect()
-			if err != nil {
-				cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
-			}
-		}*/
+
 	interval := time.Second
 	ticker := time.NewTicker(interval * time.Duration(cluster.conf.MonitoringTicker))
 	for cluster.exit == false {
@@ -139,12 +133,7 @@ func (cluster *Cluster) Run() {
 			// run once
 			if cluster.runOnceAfterTopology {
 				if cluster.master != nil {
-					if cluster.conf.HaproxyOn {
-						cluster.initHaproxy()
-					}
-					if cluster.conf.MxsOn {
-						cluster.initMaxscale(nil)
-					}
+					cluster.initProxies()
 					cluster.runOnceAfterTopology = false
 				}
 			}
@@ -168,17 +157,9 @@ func (cluster *Cluster) Run() {
 			}
 			wg.Wait()
 
-			if cluster.conf.MxsOn {
-				for _, server := range cluster.servers {
-					if server.PrevState != server.State {
-						cluster.initMaxscale(nil)
-						break
-					}
-				}
-			}
-
 			cluster.pingServerList()
 			cluster.TopologyDiscover()
+			cluster.refreshProxies()
 			// switchover / failover only on Active
 			cluster.CheckFailed()
 			states := cluster.sme.GetStates()

@@ -91,10 +91,9 @@ type Config struct {
 	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
 	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
-	MdbProxyOn                         bool   `mapstructure:"mdbproxy"`
-	MdbProxyHosts                      string `mapstructure:"mdbproxy-hosts"`
-	MdbProxyUser                       string `mapstructure:"mdbproxy-user"`
-	MdbProxyPass                       string `mapstructure:"mdbproxy-pass"`
+	MdbsProxyOn                        bool   `mapstructure:"mdbshardproxy"`
+	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-hosts"`
+	MdbsProxyUser                      string `mapstructure:"mdbshardproxy-user"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-host"`
 	MxsPort                            string `mapstructure:"maxscale-port"`

@@ -265,7 +265,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 	var ss dbhelper.SlaveStatus
 	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
-	// We have no replication can this be the old master
+	// We have no replicatieon can this be the old master
 	if errss == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.

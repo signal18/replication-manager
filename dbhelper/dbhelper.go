@@ -26,6 +26,15 @@ import (
 
 const debug = false
 
+type Table struct {
+	Table_schema string
+	Table_name   string
+	Engine       string
+	Table_rows   int64
+	Data_length  int64
+	Index_length int64
+}
+
 type Event struct {
 	Db      string
 	Name    string
@@ -486,6 +495,15 @@ func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 	udb := db.Unsafe()
 	err := udb.Get(&ms, "SHOW MASTER STATUS")
 	return ms, err
+}
+
+func GetTables(db *sqlx.DB) ([]Table, error) {
+	tbl := []Table{}
+	err := db.Select(&tbl, "SELECT TABLE_NAME, TABLE_SCHEMA , ENGINE,TABLE_ROWS,DATA_LENGTH,INDEX_LENGTH FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
+	if err != nil {
+		return nil, errors.New("Could not get table lis")
+	}
+	return tbl, nil
 }
 
 func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, error) {

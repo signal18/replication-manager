@@ -16,7 +16,7 @@ import (
 	"github.com/tanji/replication-manager/haproxy"
 )
 
-func (cluster *Cluster) initHaproxy() {
+func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	haproxyconfigPath := cluster.conf.WorkingDir
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := cluster.cfgGroup + "-haproxy.cfg"

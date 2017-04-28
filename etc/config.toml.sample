@@ -264,6 +264,12 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 haproxy-write-port = 3306
 haproxy-read-port = 3307
 
+# MARIADB SHARDING PROXY
+# ----------------------
+mdbshardproxy = false
+mdbshardproxy-hosts = "127.0.0.1:3306"
+mdbshardproxy-user = "root:mariadb"
+
 # STATS
 # -----
 
