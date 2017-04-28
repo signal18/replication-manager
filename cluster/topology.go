@@ -32,7 +32,7 @@ func (cluster *Cluster) newServerList() error {
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
 		var err error
-		cluster.servers[k], err = cluster.newServerMonitor(url)
+		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
 			cluster.LogPrintf("ERROR: Could not open connection to server %s : %s", cluster.servers[k].URL, err)
 			//return err
@@ -65,7 +65,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 					if extraUrl != "" {
 						for j, url := range strings.Split(extraUrl, ",") {
 							var err error
-							srv, err := cluster.newServerMonitor(url)
+							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 							srv.State = stateShard
 							cluster.servers = append(cluster.servers, srv)
 							if err != nil {

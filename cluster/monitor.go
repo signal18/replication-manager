@@ -35,6 +35,8 @@ import (
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Conn                        *sqlx.DB
+	User                        string
+	Pass                        string
 	URL                         string
 	DSN                         string `json:"-"`
 	Host                        string
@@ -129,9 +131,11 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
+	server.User = user
+	server.Pass = pass
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveSyncBinLog = true
@@ -158,7 +162,7 @@ func (cluster *Cluster) newServerMonitor(url string) (*ServerMonitor, error) {
 	}
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 	mydsn := func() string {
-		dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
 			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 		} else {

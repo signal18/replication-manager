@@ -183,10 +183,10 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
 			conn.Exec("set sql_log_bin=0")
-			grants := "grant all on *.* to '" + cluster.dbUser + "'@'%%' identified by '" + cluster.dbPass + "'"
-			conn.Exec("grant all on *.* to '" + cluster.dbUser + "'@'%' identified by '" + cluster.dbPass + "'")
+			grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
+			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
 			cluster.LogPrintf(grants)
-			grants2 := "grant all on *.* to '" + cluster.dbUser + "'@'127.0.0.1' identified by '" + cluster.dbPass + "'"
+			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			conn.Exec(grants2)
 			exitloop = 100
 		}

@@ -131,12 +131,6 @@ func (cluster *Cluster) Run() {
 			cluster.display()
 			//	if cluster.sme.CanMonitor() {
 			// run once
-			if cluster.runOnceAfterTopology {
-				if cluster.master != nil {
-					cluster.initProxies()
-					cluster.runOnceAfterTopology = false
-				}
-			}
 
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrint("DEBUG: Monitoring server loop")
@@ -156,10 +150,17 @@ func (cluster *Cluster) Run() {
 				go server.check(wg)
 			}
 			wg.Wait()
-
 			cluster.pingServerList()
 			cluster.TopologyDiscover()
-			cluster.refreshProxies()
+
+			if cluster.runOnceAfterTopology {
+				if cluster.master != nil {
+					cluster.initProxies()
+					cluster.runOnceAfterTopology = false
+				}
+			} else {
+				cluster.refreshProxies()
+			}
 			// switchover / failover only on Active
 			cluster.CheckFailed()
 			states := cluster.sme.GetStates()
