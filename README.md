@@ -4,55 +4,59 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion (aka switchover), or electing a new master on failure detection (aka failover). It enforces best practices to get at a minimum up to zero loss in most failure cases.
 
-- [Overview](#overview)
-- [Why replication-manager](#why-replication-manager)
-- [Staying in sync](#howto-stay-in-sync)
-- [Using parallel replication](#using-parallel-replication)
-- [Using semi-synchronous replication](#using-semi-synchronous-replication)
-- [Switchover workflow](#switchover-workflow)
-- [Failover workflow](#failover-workflow)
-- [Usage](#usage)
-- [Command line switchover](#command-line-switchover)
-- [Command line failover](#command-line-failover)
-- [Command line monitor](#Command-line-monitor)
-- [Command line bootstrap](#Command-line-bootstrap)
-- [Using monitor in daemon mode](#daemon-monitoring)
-- [Using configuration files](#using-configuration-files)
-- [Using external scripts](#using-external-scripts)
-- [Using Maxscale](#using-maxscale)
-- [Using Haproxy](#using-haproxy)
-- [Using ProxySQL](#using-proxysql)
-- [Using MariaDBShardProxy](#using-mariadbshardproxy)
-- [Using Multi Master](#using-multi-master)
-- [Using Multi Tier Slave](#using-multi-tier-slave)
-- [Force best practices](#force-best-practices)
-- [Active standby and external arbitrator](#active-standby-and-external-arbitrator)
-- [Metrics](#metrics)
-- [Non-regression tests](#non-regression-tests)
-- [System requirements](#system-requirements)
-- [Bugs](#bugs)
-- [Features](#features)
-- [Faq](FAQ.md)
-- [Downloads](#downloads)
-- [Contributors](#contributors)
-- [Authors](#authors)
+#[Overview](#overview)
+#[Why replication-manager](#why-replication-manager)
+#[Replication best practice](#howto-stay-in-sync)
+##[Using parallel replication](#using-parallel-replication)
+##[Using semi-synchronous replication](#using-semi-synchronous-replication)
+##[Force best practices](#force-best-practices)
+#[Workflow](#switchover-workflow)
+##[Switchover](#switchover-workflow)
+##[Failover](#failover-workflow)
+#[Usage](#usage)
+##[Command line switchover](#command-line-switchover)
+##[Command line failover](#command-line-failover)
+##[Command line monitor](#Command-line-monitor)
+##[Command line bootstrap](#Command-line-bootstrap)
+##[Monitor in daemon mode](#daemon-monitoring)
+#[Config](#config)
+##[Configuration files](#using-configuration-files)
+##[Using external scripts](#using-external-scripts)
+##[Using Maxscale](#using-maxscale)
+##[Using Haproxy](#using-haproxy)
+##[Using ProxySQL](#using-proxysql)
+##[Using MariaDBShardProxy](#using-mariadbshardproxy)
+#[topology](#topology)
+##[Using Multi Master](#using-multi-master)
+##[Using Multi Tier Slave](#using-multi-tier-slave)
+#[Active standby and external Arbitrator](#active-standby-and-external-arbitrator)
+#[Metrics](#metrics)
+#[Non-regression tests](#non-regression-tests)
+#[System requirements](#system-requirements)
+#[Bugs](#bugs)
+#[Features](#features)
+#[Faq](FAQ.md)
+#[Downloads](#downloads)
+#[Contributors](#contributors)
+#[Authors](#authors)
 
 ## Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
 
-  * Verify replication settings
-  * Check (configurable) replication on the slaves
-  * Check for long running queries and transactions on master
-  * Elect a new master (default to most up to date, but it could also be a designated candidate)
-  * Put down the IP address on master by calling an optional script
-  * Reject writes on master by calling FLUSH TABLES WITH READ LOCK
-  * Reject writes on master by setting READ_ONLY flag
-  * Reject writes on master by decreasing MAX_CONNECTIONS
-  * Kill pending connections on master if any remaining
-  * Watching for all slaves to catch up to the current GTID position
-  * Promote the candidate slave to be a new master
-  * Put up the IP address on new master by calling an optional script
-  * Switch other slaves and old master to be slaves of the new master and set them read-only
+  - [x] Verify replication settings
+  - [x] Check (configurable) replication on the slaves
+  - [x] Check for long running queries and transactions on master
+  - [x] Elect a new master (default to most up to date, but it could also be a designated candidate)
+  - [x] Put down the IP address on master by calling an optional script
+  - [x] Reject writes on master by calling FLUSH TABLES WITH READ LOCK
+  - [x] Reject writes on master by setting READ_ONLY flag
+  - [x] Reject writes on master by decreasing MAX_CONNECTIONS
+  - [x] Kill pending connections on master if any remaining
+  - [x] Watching for all slaves to catch up to the current GTID position
+  - [x] Promote the candidate slave to be a new master
+  - [x] Put up the IP address on new master by calling an optional script
+  - [x] Switch other slaves and old master to be slaves of the new master  
+  - [x] Set slave read-only
 
 __replication-manager__ is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
@@ -64,21 +68,21 @@ __replication-manager__ is commonly used as an arbitrator and drive a proxy that
 
 Leader Election Cluster is best used in such scenarios:
 
-   * Dysfunctional node does not impact leader performance
-   * Heterogeneous node in configuration and resources does not impact leader performance
-   * Leader peak performance is not impacted by data replication
-   * Read scalability does not impact write scalability
-   * Network interconnect quality fluctuation
-   * Can benefit of human expertise on false positive failure detection
-   * Can benefit a minimum cluster size of two data nodes
-   * Can benefit having different storage engines
+   - [x] Dysfunctional node does not impact leader performance
+   - [x] Heterogeneous node in configuration and resources does not impact leader performance
+   - [x] Leader peak performance is not impacted by data replication
+   - [x] Read scalability does not impact write scalability
+   - [x] Network interconnect quality fluctuation
+   - [x] Can benefit of human expertise on false positive failure detection
+   - [x] Can benefit a minimum cluster size of two data nodes
+   - [x] Can benefit having different storage engines
 
 This is achieved via the following drawbacks:
 
-   * Overloading the leader can lead to data loss during failover or no failover depending of setup   
-   * READ on replica is eventually consistent  
-   * ACID can be preserved via route to leader always
-   * READ on replica can be COMMITTED READ under usage of the 10.2 semi-sync no slave behind feature
+   - [x] Overloading the leader can lead to data loss during failover or no failover depending of setup   
+   - [x] READ on replica is eventually consistent  
+   - [x] ACID can be preserved via route to leader always
+   - [x] READ on replica can be COMMITTED READ under usage of the 10.2 semi-sync no slave behind feature
 
 
 Leader Election Asynchronous Cluster can guarantee continuity of service at no cost for the leader and in some conditions with "No Data Loss", __replication-manager__ will track failover SLA (Service Level Availability).
