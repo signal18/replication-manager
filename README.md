@@ -22,6 +22,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 - [Using Maxscale](#using-maxscale)
 - [Using Haproxy](#using-haproxy)
 - [Using ProxySQL](#using-proxysql)
+- [Using MariaDBShardProxy](#using-mariadbshardproxy)
 - [Using Multi Master](#using-multi-master)
 - [Using Multi Tier Slave](#using-multi-tier-slave)
 - [Force best practices](#force-best-practices)
@@ -202,7 +203,7 @@ A user can change this check based on what is reported by SLA in sync, and decid
 All cluster down lead to some situation where it is possible to first restart a slave previously stopped before the entire cluster was shutdown, failover in such situation can promote a delayed slave by a big amount of time and lead to as much time data lost, by default replication-manager will prevent such failover for the first node is a slave unless you change failover-restart-unsafe to true. When using the default it is advise to start the old master first if not replication-manager will wait for the old master to show up again until it can failover again.   
 
 Previous scenario is not that frequent and one can flavor availability in case the master never show up again. The DC crash would have bring down all the nodes around the same time. So data lost can be mitigated if you automate starting a slave node and failover on it via failover-restart-unsafe=true if the master can't or is to long to recover from the crash.  
- 
+
 ### False positive detection
 
 Since version 1.1 all replicas and Maxscale can be questioned for consensus detection of leader death:
@@ -255,7 +256,7 @@ replication-manager gets 4 different cases for rejoin:
 autorejoin = true
 autorejoin-semisync = true
 autorejoin-flashback = true
-autorejoin-mysqldump = false
+autorejoin-mysqldump = true
 ```
 
 If none of above method is set or available replication-manager will call external scripts
@@ -400,6 +401,32 @@ haproxy-read-port = 3307
 ## Using ProxySQL
 
 Replication-Manager supports ProxySQL out of the box. As ProxySQL detects topologies based on the state of the read-only flag, it will pick up changes automatically and change hostgroups accordingly.
+
+## Using MariaDBShardProxy
+
+Since version 1.1 replication-manager can manage a new type of proxy for schema sharding. Such type of proxy preserve consistency across shard group clusters, so transactions can be run against multiple shard clusters. Joins queries can be achieved inter clusters. This is done using Spider storage engine for discovering the master tables on startup and during failover and  switchover.   
+
+For every cluster you wan't to proxy add the same extra MariaDBShardProxy
+```
+mdbshardproxy = true
+mdbshardproxy-hosts = "127.0.0.1:3306"
+mdbshardproxy-user = "root:mariadb"
+```
+
+We advice to give a path to  MariaDB 10.2 and above version if you would like replication-manager to launch a local MariaDBShardProxy.   
+```  
+mariadb-binary-path = "/usr/local/mysql/bin"
+```  
+This instance will use a default configuration file in
+```  
+/usr/share/tests/etc/mdbsproxy.cnf
+```  
+
+In local wrapper mode replication-manager never stop proxies to avoid disturbing the workload:)
+
+## Using Multi-Proxies
+
+Just declare multiple configuration of them in your cluster section
 
 ## Usage
 
@@ -731,47 +758,57 @@ Nightly builds available on https://orient.dragonscale.eu/replication-manager/ni
 
 ### 1.0 Features GA
 
- * High availability support with leader election
- * Semi-sync replication support
- * Provisioning
- * Bootstrap
- * Http daemon mode
- * Email alerts
- * Configuration file
- * AES Password encryption
- * 2 nodes Multi Master Switchover support
- * On-leave mode
- * Failover SLA tracking
- * Log facilities and verbosity
+ * CORE: Master slave
+ * CORE: Multi Master 2 nodes
+ * CORE: Semi-sync replication
+ * CORE: Email alerts
+ * CORE: Configuration file
+ * CORE: AES Password encryption
+ * CORE: On-leave mode
+ * CORE: Log facilities and verbosity
+ * API: Bootstrap
+ * HTTP: Daemon mode
+ * HTTP: Failover SLA tracking
+ * TESTS: Non regression tests via http
+ * PROXY: HaProxy wrapper
  * Docker images
  * Docker deployment via OpenSVC in Google Cloud
  * Docker deployment via OpenSVC on premise for Ubuntu and OSX
- * Non regression tests via http
- * Haproxy wrapper
 
 ### 1.1 Features Beta
 
- * Multi cluster support
- * Flashback and dump rejoin  
- * Forced rejoin with lost events, backup lost events  
- * Trends store  
- * Maxscale 2 nodes master-slave driving
- * Replication heartbeat false positive detection
- * Maxscale state server display
- * MaxScale integration to disable traffic on READ_ONLY flag https://jira.mariadb.org/browse/MXS-778
- * Trends display
- * Force replication best practice
- * Non regression tests via command line
- * Maxscale binlog server support
- * Active Standby replication-manager via external arbitrator
+ * CORE: Multi cluster
+ * CORE: Multi proxies
+ * CORE: Rejoin failed nodes
+ * CORE: Rejoin flashback  
+ * CORE: Rejoin mysqldump   
+ * CORE: Backup lost events  
+ * CORE: Trends storage in whisper   
+ * CORE: Active Standby mode
+ * CORE: External arbitrator
+ * CORE: Enforce replication practice
+ * CORE: False positive via replication heartbeat
+ * CORE: False positive via external http call
+ * CORE: False positive via maxscale monitor  
+ * CORE: MultiTier replication topology
+ * CORE: Alert on node state change
+ * PROXY: MariaDB sharding proxy
+ * PROXY: MaxScale 2 nodes master-slave driving
+ * PROXY: MaxScale integration to disable traffic on READ_ONLY flag
+ * PROXY: Maxscale binlog server support
+ * HTTP: MaxScale monitor state server display
+ * HTTP: Trends display
+ * TESTS: Non regression tests, via command line
+ * TESTS: Non regression tests, more tests
+ * TESTS: Non regression tests, sysbench wrapper in tests
+ * TESTS: Non regression tests, all topology bootstrap  
 
-### 1.1 Roadmap
 
- * Load and non regression simulator
- * Etcd integration
- * Agent base server stop leader on switchover   
- * MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
+### Roadmap
 
+ * CORE: Etcd integration
+ * CORE: Agent base server stop leader on switchover   
+ * SERVER: MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
 
 ## Authors
 
