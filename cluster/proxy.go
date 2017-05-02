@@ -159,7 +159,7 @@ func (cluster *Cluster) refreshProxies() {
 		}
 		if cluster.conf.MdbsProxyOn && pr.Name == proxySpider {
 			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {
-				cluster.initMdbsproxy(nil, pr)
+				cluster.refreshMdbsproxy(nil, pr)
 
 			}
 		}

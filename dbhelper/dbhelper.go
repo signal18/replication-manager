@@ -500,7 +500,7 @@ func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 func GetTables(db *sqlx.DB) ([]Table, error) {
 	tbl := []Table{}
 
-	err := db.Select(&tbl, "SELECT  TABLE_SCHEMA as Table_schema ,  TABLE_NAME as Table_name ,ENGINE as Engine,TABLE_ROWS as Table_rows ,DATA_LENGTH as Data_length,INDEX_LENGTH as Index_length FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
+	err := db.Select(&tbl, "SELECT  TABLE_SCHEMA as Table_schema ,  TABLE_NAME as Table_name ,ENGINE as Engine,TABLE_ROWS as Table_rows ,DATA_LENGTH as Data_length,INDEX_LENGTH as Index_length FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema','replication_manager_schema')")
 	if err != nil {
 		return nil, errors.New("Could not get table list")
 	}

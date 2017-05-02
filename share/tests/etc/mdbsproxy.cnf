@@ -1,0 +1,44 @@
+[mysqld]
+
+expire_logs_days=7
+skip_name_resolve
+
+
+innodb_autoinc_lock_mode = 2
+innodb_stats_on_metadata = 0
+innodb_buffer_pool_instances = 1
+innodb_flush_method = O_DIRECT
+innodb_log_file_size = 128M
+innodb_log_files_in_group=8
+innodb_buffer_pool_size = 128M
+innodb_log_buffer_size = 128M
+innodb_max_dirty_pages_pct = 30
+innodb_file_per_table
+innodb_doublewrite = 1
+innodb_flush_log_at_trx_commit = 1
+innodb_adaptive_hash_index = 0
+innodb_write_io_threads = 16
+innodb_flush_neighbors = 0
+innodb_thread_concurrency = 0
+innodb_defragment = 1
+innodb_purge_threads =4
+innodb_change_buffering=none
+innodb_concurrency_tickets =5000
+innodb_io_capacity=20000
+innodb_io_capacity_max=40000
+
+back_log=128
+max_connections = 1024
+table_open_cache = 2048
+table_definition_cache = 2048
+max_allowed_packet = 16M
+max_heap_table_size = 64M
+thread_cache_size = 128
+query_cache_size = 0
+query_cache_limit = 2M
+ft_min_word_len = 4
+thread_stack = 192K
+tmp_table_size = 512K
+sort_buffer_size =  512K
+join_buffer_size =  2M
+key_buffer_size = 32M
