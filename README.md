@@ -9,7 +9,8 @@ Product goals are topology detection and topology monitoring, enable on-demand s
 * [Replication best practice](#replication-best-practice)
     * [Parallel replication](#parallel-replication)
     * [Semi-synchronous replication](#semi-synchronous-replication)
-    * [Force best practices](#force-best-practices)
+    * [Monitoring SLA](#monitoring-sla)
+    * [Forcing best practices](#forcing-best-practices)
 * [Workflow](#workflow)
     * [Switchover](#switchover)
     * [Failover](#failover)
@@ -63,11 +64,11 @@ To perform switchover, preserving data consistency, replication-manager uses an 
   - [x] Switch other slaves and old master to be slaves of the new master  
   - [x] Set slave read-only
 
-__replication-manager__ is commonly used as an arbitrator and drive a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
+__replication-manager__ is commonly used as an arbitrator with a proxy that routes the database traffic to the leader database node (aka the MASTER). We can advise usage of:
 
-- A layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology
-- With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
-- Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
+  - [x] Layer 7 proxy as MariaDB MaxScale that can transparently follow a newly elected topology
+  - [x]  With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
+  - [x]  Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
 ## Why using
 
@@ -152,7 +153,9 @@ This leads to a situation where semisync is used to slowdown the workload to the
 
 Setting rpl_semi_sync_master_wait_point to AFTER_SYNC may limit the number of extra transactions inside the binlog after a crash but those transactions would have been made visible to the clients and may have been lost during failover to an other node. It is highly recommended to keep AFTER_COMMIT to make sure the workload is safer.    
 
-### State: Not in-sync & failable
+### Monitoring SLA
+
+#### SLA: Not in-sync & failable
 
 __replication-manager__ can still auto failover when replication is delayed up to a reasonable time, in such case we will possibly lose data, because we are giving to HA a bigger priority compared to the quantity of possible data lost.
 
@@ -165,7 +168,7 @@ Probability to lose data is increased with a single slave topology, when the sla
 
 To limit such cases we advise usage of a 3 nodes cluster that removes such scenarios as losing a slave.
 
-### State: Not in-sync & unfailable
+#### SLA: Not in-sync & unfailable
 
 The first SLA is the one that tracks the presence of a valid topology from  __replication-manager__, when a leader is reachable but number of possible failovers exceeded, time before next failover not yet reached, no slave available to failover.
 
