@@ -15,11 +15,11 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Failover](#failover)
     * [False positive](#false-positive)
     * [Rejoining nodes](#rejoining-nodes)
-    * [Topology](#topology)
+* [Topology](#topology)
         * [Multi Master](#multi-master)
         * [Multi Tier Slave](#multi-tier-slave)
         * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)    
-* [Install](#install)
+* [Quick start](#install)
     * [System requirements](#system-requirements)
     * [Downloads](#downloads)
     * [Config](#config)
@@ -212,6 +212,7 @@ extra_port = 3307
 extra_max_connections = 10
 ```   
 Also, to protect consistency it is strongly advised to disable *SUPER* privilege to users that perform writes, such as the The MaxScale user used with Read-Write split module is instructed to check for replication lag via writing in the leader, privileges should be lower as describe in Maxscale settings   
+![switchover](/doc/switchover.png)
 
 ### Failover
 
@@ -250,8 +251,8 @@ A user can change this check based on what is reported by SLA in sync, and decid
 
 All cluster down lead to some situation where it is possible to first restart a slave previously stopped before the entire cluster was shutdown, failover in such situation can promote a delayed slave by a big amount of time and lead to as much time data lost, by default replication-manager will prevent such failover for the first node is a slave unless you change failover-restart-unsafe to true. When using the default it is advise to start the old master first if not replication-manager will wait for the old master to show up again until it can failover again.   
 
-
 Previous scenario is not that frequent and one can flavor availability in case the master never show up again. The DC crash would have bring down all the nodes around the same time. So data lost can be mitigated if you automate starting a slave node and failover on it via failover-restart-unsafe=true if the master can't or is to long to recover from the crash.  
+![failover](/doc/failover.png)
 
 ### False positive
 
@@ -654,6 +655,16 @@ Start replication-manager in automatic daemon mode:
 This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
 
 ## Topology
+
+### Master slave
+
+`replication-manager`  supports 2-node master slave setup, it is advice to use at least 3 nodes cluster to get the cluster tolerant to losing or stopping a slave.  
+
+
+By default `replication-manager` assume flat topology but can auto promote multi-tier topology with some additional setting, this scenario is you stop a slave and his master die, when the master rejoin the topology it can keep his  slave behind it or the slave can be switched to the new master
+```
+multi-tier-slave=true
+```
 
 ### Multi master
 
