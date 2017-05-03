@@ -181,7 +181,7 @@ A good practice is to enable slow query log in the replication stream on slaves 
 log_slow_slave_statements = 1
 ```
 
-### Force best practices
+### Forcing best practices
 
 Since version 1.1 replication can enforce the best practices about the replication usage. It dynamically configure the MariaDB it does monitor. Note that such enforcement will be lost if replication manager monitoring is shutdown and the MariaDB restarted. The command line usage do not enforce but default config file do, so disable what may not be possible in your custom production setup.   
 ```
@@ -200,6 +200,8 @@ force-sync-binlog = true
 force-sync-innodb = true
 force-binlog-checksum = true
 ```
+
+The only default enforcement is force-slave-readonly = true, we advice to permanently set the variables inside your database node configuration. and disable most enforcement on the long run. 
 
 ## Workflow
 
