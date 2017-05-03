@@ -230,18 +230,36 @@ interactive = true
 ```
 Failover can be resume via web server in default port http://replication-manger-host:1001/
 
-When failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
+When failover is automatically triggered using
+```
+interactive = false
+```
+Conditions for a possible failover are checked. Per default a slave need to be available and up and running.
 
 
-Per default additional checks are disabled but can ne defined in the configuration template and advised to set:
-- [x] Exceeding a given replication delay (failover-max-slave-delay=0)
-- [x] Failover did not happen previously in less than a given time interval (failover-time-limit=0)  
-- [x] Failover limit was not reached (failover-limit=0)
+Most additional checks are disabled by default but can be defined in the configuration file
+- [x] Exceeding a given replication delay
+    Default unlimited failover-max-slave-delay=0
+- [x] Failover did not happen previously in less than a given time interval      
+    Default unlimited failover-time-limit=0  
+- [x] Failover limit was not reached
+    Default unlimited failover-limit=0
+
+
+We strongly advised to set following setting to avoid loosing data in automatic failover:
 ```
 failover-limit = 3
 failover-time-limit = 10
 failover-at-sync = false
 failover-max-slave-delay = 30
+failover-restart-unsafe = false
+```
+For a more conservative never lost data scenario  
+```
+failover-limit = 3
+failover-time-limit = 10
+failover-at-sync = true
+failover-max-slave-delay = 0
 failover-restart-unsafe = false
 ```
 
