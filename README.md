@@ -234,7 +234,8 @@ When failover is automatically triggered using
 ```
 interactive = false
 ```
-Conditions for a possible failover are checked. Per default a slave need to be available and up and running.
+Conditions for a possible failover are checked.
+- [x] A slave need to be available and up and running.
 
 
 Most additional checks are disabled by default but can be defined in the configuration file
@@ -263,7 +264,12 @@ failover-max-slave-delay = 0
 failover-restart-unsafe = false
 ```
 
-A user can force switchover or failover by ignoring those checks via the (rplchecks=false) flag or via the console "Replication Checks Change" button.
+A user can force switchover or failover by ignoring those checks via the
+```
+rplchecks=false
+```
+
+flag or via the console "Replication Checks Change" button.
 
 
 Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi-sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
