@@ -5,7 +5,7 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion `<so call switchover>`, or electing a new master on failure detection `<so call failover>`. It  enforces best practices to get at a minimum up to zero loss in most failure cases. Multiple clusters management is foundation to define shard groups and replication-manager can be used to deploy some MariaDB sharding solutions.
 
 * [Overview](#overview)
-* [Why replication-manager](#why-replication-manager)
+* [Why using](#why-using)
 * [Replication best practice](#replication-best-practice)
     * [Parallel replication](#parallel-replication)
     * [Semi-synchronous replication](#semi-synchronous-replication)
@@ -15,33 +15,35 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Failover](#failover)
     * [False positive](#false-positive)
     * [Rejoining nodes](#rejoining-nodes)
-* [Usage](#usage)
-    * [Command line switchover](#command-line-switchover)
-    * [Command line failover](#command-line-failover)
-    * [Command line monitor](#Command-line-monitor)
-    * [Command line bootstrap](#Command-line-bootstrap)
-    * [Monitor in daemon mode](#daemon-monitoring)
-* [Config](#config)
-    * [Configuration files](#configuration-files)
-    * [External scripts](#external-scripts)
-    * [Maxscale](#maxscale)
-    * [Haproxy](#haproxy)
-    * [ProxySQL](#proxysql)
-    * [MariaDBShardProxy](#mariadbshardproxy)
-    * [Multiple proxies](#multiple-proxies)
-* [Topology](#topology)
-    * [Multi Master](#multi-master)
-    * [Multi Tier Slave](#multi-tier-slave)
-    * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)
+    * [Topology](#topology)
+        * [Multi Master](#multi-master)
+        * [Multi Tier Slave](#multi-tier-slave)
+        * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)    
+* [Install](#install)
+    * [System requirements](#system-requirements)
+    * [Downloads](#downloads)
+    * [Config](#config)
+       * [Configuration files](#configuration-files)
+       * [External scripts](#external-scripts)
+       * [Maxscale](#maxscale)
+       * [Haproxy](#haproxy)
+       * [ProxySQL](#proxysql)
+       * [MariaDBShardProxy](#mariadbshardproxy)
+       * [Multiple proxies](#multiple-proxies)
+    * [Usage](#usage)
+        * [Command line switchover](#command-line-switchover)
+        * [Command line failover](#command-line-failover)
+        * [Command line monitor](#Command-line-monitor)
+        * [Command line bootstrap](#Command-line-bootstrap)
+        * [Monitor in daemon mode](#daemon-monitoring)
 * [Metrics](#metrics)
-* [Non-regression tests](#non-regression-tests)
-* [System requirements](#system-requirements)
-* [Bugs](#bugs)
 * [Features](#features)
-* [Faq](FAQ.md)
-* [Downloads](#downloads)
-* [Contributors](#contributors)
-* [Authors](#authors)
+* [Faq](doc/FAQ.md)
+* [Community](#community)
+    * [Non-regression tests](#non-regression-tests)
+    * [Bugs](#bugs)
+    * [Contributors](#contributors)
+    * [Authors](#authors)
 
 ## Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
@@ -67,7 +69,7 @@ __replication-manager__ is commonly used as an arbitrator and drive a proxy that
 - With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
 - Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-## Why replication-manager
+## Why using
 
 Leader Election Cluster is best used in such scenarios:
 
@@ -80,7 +82,7 @@ Leader Election Cluster is best used in such scenarios:
   - [x] Can benefit a minimum cluster size of two data nodes
   - [x] Can benefit having different storage engines
 
-This is achieved via the following drawbacks:
+This is achieved via drawbacks:
 
   - [x] Overloading the leader can lead to data loss during failover or no failover depending of setup   
   - [x] READ on replica is eventually consistent  
@@ -102,9 +104,7 @@ We can classify SLA and failover scenario into 3 cases:
   - [x] Replica stream not sync but state does not allow failover
 
 > Staying in sync
-
 >When the replication can be monitored in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
-
 >In order to reach this state most of the time, we advise next section settings.
 
 ## Replication best practice
@@ -215,10 +215,15 @@ Also, to protect consistency it is strongly advised to disable *SUPER* privilege
 
 ### Failover
 
-After checking the leader N times (failcount=5), replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.This is know as the On-call mode or configured via interactive = true.
+After checking the leader failure N times default failcount=5, replication-manager default behavior is to send an alert email and put itself in waiting mode until a user completes the failover or master self-heals.
 
+This default is know as the On-call mode and configured via
+```
+interactive = true
+```
+Failover can be resume via web server in default port http://replication-manger-host:1001/
 
-When manual failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
+When failover is triggered, conditions for a possible failover are checked. Per default a slave is available and up and running.
 
 
 Per default additional checks are disabled but can ne defined in the configuration template and advised to set:
@@ -328,9 +333,22 @@ failover-restart-unsafe = true
 ```
 In this is case it exists some other scenario that will possibly elect a late slave and when no information state is found for rejoining the old master than the replication-manager will promote it using mysqldump
 
-## Config
+## Install
+### System requirements
 
-### Configuration files
+`replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
+On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
+### Downloads
+
+As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
+
+Check https://github.com/tanji/replication-manager/releases for official releases.
+
+Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
+
+### Config
+
+#### Configuration files
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
@@ -346,7 +364,7 @@ The replication user needs the following privilege: `REPLICATION SLAVE`
 > Since replication-manager 1.1 a *[default]* section is required
 > It's best practice to split each managed cluster in his own section
 
-### External scripts
+#### External scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
@@ -356,11 +374,11 @@ post-failover-script = ""
 rejoin-script = ""
 ```
 
-### Maxscale
+#### Maxscale
 
 Replication-Manager can operate with MaxScale in 3 modes,  
 
-#### Mode 1
+##### Mode 1
 
 Advised mode, MaxScale auto-discovers the new topology after failover or switchover. Replication Manager can reduce MaxScale monitor detection time of the master failure to reduce the time where it might block clients. This setup best works in 3 nodes in Master-Slaves cluster, because one slave is always available for re-discovering new topologies.
 
@@ -415,7 +433,7 @@ type=service
 router=readwritesplit
 max_slave_replication_lag=30
 ```
-#### Mode 2
+##### Mode 2
 
 Operating MaxScale without monitoring is the second Replication-Manager mode via:
 ```
@@ -427,11 +445,11 @@ This mode was introduce in version 1.1 and is control via
 replication-manager will assign server status flags to the nodes of the cluster via MaxScale admin port. This mode of operation is similar to HAProxy. It is not needed when using MaxScale in a single datacenter
 If your are using old MaxScale release that does not support  detect_stale_slave it can be used to support 2 nodes cluster
 
-#### Mode 3
+##### Mode 3
 
 Driving replication-manager from MaxScale via calling scripts
 
-#### Http server and maxscale status  
+##### Http server and maxscale status  
 
 In version 1.1 one can see maxscale servers state in a new tab this is done and control via new parameters, default is to use maxadmin tcp row protocol via maxscale-get-info-method = "maxadmin"
 A more robust configuration can be enable via loading the maxinfo plugin in maxscale that provide a JSON REST service to replication-manager
@@ -445,7 +463,7 @@ maxscale-host = "192.168.0.201"
 maxscale-port = 4003
 ```
 
-#### Maxscale Binlog Server and Slave Relay
+##### Maxscale Binlog Server and Slave Relay
 
 All MariaDB Nodes should have same binlog prefix
 ```
@@ -470,7 +488,7 @@ part of task https://github.com/mariadb-corporation/MaxScale/tree/MXS-1075
   transaction_safety=On,mariadb10-compatibility=On,mariadb_gtid=On
 ```  
 
-### Haproxy
+#### Haproxy
 
 Haproxy can be used but only in same server as replication-manager, replication-manager will prepare a configuration file for haproxy for every cluster that it manage, this template is located in the share directory used by replication-manager. For safety haproxy is not stopped when replication-manager is stopped
 ```
@@ -483,11 +501,11 @@ haproxy-write-port = 3306
 haproxy-read-port = 3307
 ```
 
-### ProxySQL
+#### ProxySQL
 
 Replication-Manager supports ProxySQL out of the box. As ProxySQL detects topologies based on the state of the read-only flag, it will pick up changes automatically and change hostgroups accordingly.
 
-### MariaDBShardProxy
+#### MariaDBShardProxy
 
 Since version 1.1 replication-manager can manage a new type of proxy for schema sharding. Such type of proxy preserve consistency across shard group clusters, so transactions can be run against multiple shard clusters. Joins queries can be achieved inter clusters. This is done using Spider storage engine for discovering the master tables on startup and during failover and  switchover.   
 
@@ -510,11 +528,11 @@ This instance will use a default configuration file in
 
 In local wrapper mode replication-manager never stop proxies to avoid disturbing the workload:)
 
-### Multiple proxies
+#### Multiple proxies
 
 Just declare multiple configuration of them in your cluster section
 
-## Usage
+### Usage
 
 ```
   agent       Starts replication monitoring agent
@@ -534,7 +552,7 @@ To print the help and option flags for each command, use `replication-manager [c
 
 Flags help for the monitor command is given below.
 
-### Monitor options
+#### Monitor options
 
 ```
 Flags:
@@ -578,26 +596,26 @@ Global Flags:
       --verbose          Print detailed execution info
 ```
 
-### Command line switchover
+#### Command line switchover
 
 Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
 
 `replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
 
-### Command line failover
+#### Command line failover
 
 Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
 
 `replication-manager failover --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
 
-### Command line bootstrap
+#### Command line bootstrap
 
 With some already exiting database nodes but no replication  setup replication-manager enable you to init the replication on various topology
 master-slave | master-slave-no-gtid | maxscale-binlog | multi-master | multi-tier-slave
 
 `replication-manager --config-group=cluster_test_3_nodes bootstrap --clean-all --topology="multi-tier-slave"`
 
-### Command line monitor
+#### Command line monitor
 
 Start replication-manager in console mode to monitor the cluster:
 
@@ -617,7 +635,7 @@ Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
 ```
 
-### Using monitor in daemon mode
+#### Monitor in daemon mode
 
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
@@ -750,69 +768,6 @@ Set the host address of the replication-manager address and to make your own gra
 
 Statd and Collectd can be install install on each database node to add system metrics   
 
-## Non-regression tests
-
-A testing framework is available via http or in command line.
-Setting the `test` variable in the predefined testing cluster in config file:
-```  
-[Cluster_Test_2_Nodes]
-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-user = "root:"
-rpluser = "root:"
-title = "cluster1"
-connect-timeout = 1
-prefmaster = "127.0.0.1:3310"
-haproxy-write-port=3303
-haproxy-read-port=3304
-test=true
-```  
-
-The tests can be run on am existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server installed locally.  
-
-
-Some tests are requiring sysbench and haproxy so it's advised to set:    
-```  
-mariadb-binary-path = "/usr/local/mysql/bin"
-sysbench-binary-path = "/usr/sbin/sysbench"
-sysbench-threads = 4
-sysbench-time = 60
-haproxy = true
-haproxy-binary-path = "/usr/sbin/haproxy"
-```
-
-Command line test printing
-
-```
-./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes --show-tests=true test
-INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSync testSwitchOverLongQueryNoRplCheckNoSemiSync testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync testSlaReplAllDelay testFailoverReplAllDelayInteractive testFailoverReplAllDelayAutoRejoinFlashback testSwitchoverReplAllDelay testSlaReplAllSlavesStopNoSemiSync testSwitchOverReadOnlyNoRplCheck testSwitchOverNoReadOnlyNoRplCheck testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck testSwitchOverBackPreferedMasterNoRplCheckSemiSync testSwitchOverAllSlavesStopRplCheckNoSemiSync testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck testSwitchOverAllSlavesDelayRplCheckNoSemiSync testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayRplChecksNoSemiSync testFailOverNoRplChecksNoSemiSync testNumberFailOverLimitReach testFailOverTimeNotReach]
-```
-Command-line running some tests via passing a list of tests in run-tests
-ALL is a special test to run all available tests.
-```
-./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
-```
-
-## System requirements
-
-`replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
-On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
-
-## Bugs
-
-Check https://github.com/tanji/replication-manager/issues for a list of issues.
-
-## Downloads
-
-As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
-
-Check https://github.com/tanji/replication-manager/releases for official releases.
-
-Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
-
-## Contributors
-
-[Building from source](BUILD.md)
-
 ## Features
 
 ### 1.0 Features GA
@@ -868,14 +823,65 @@ Nightly builds available on https://orient.dragonscale.eu/replication-manager/ni
  * CORE: Etcd integration
  * CORE: Agent base server stop leader on switchover   
  * SERVER: MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
+## Community
+### Non-regression tests
 
-## Authors
+A testing framework is available via http or in command line.
+Setting the `test` variable in the predefined testing cluster in config file:
+```  
+[Cluster_Test_2_Nodes]
+hosts = "127.0.0.1:3310,127.0.0.1:3311"
+user = "root:"
+rpluser = "root:"
+title = "cluster1"
+connect-timeout = 1
+prefmaster = "127.0.0.1:3310"
+haproxy-write-port=3303
+haproxy-read-port=3304
+test=true
+```  
+
+The tests can be run on am existing cluster but the default is to bootstrap a local replication cluster via the path to some MariaDB server installed locally.  
+
+
+Some tests are requiring sysbench and haproxy so it's advised to set:    
+```  
+mariadb-binary-path = "/usr/local/mysql/bin"
+sysbench-binary-path = "/usr/sbin/sysbench"
+sysbench-threads = 4
+sysbench-time = 60
+haproxy = true
+haproxy-binary-path = "/usr/sbin/haproxy"
+```
+
+Command line test printing
+
+```
+./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes --show-tests=true test
+INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSync testSwitchOverLongQueryNoRplCheckNoSemiSync testSwitchOverLongTransactionWithoutCommitNoRplCheckNoSemiSync testSlaReplAllDelay testFailoverReplAllDelayInteractive testFailoverReplAllDelayAutoRejoinFlashback testSwitchoverReplAllDelay testSlaReplAllSlavesStopNoSemiSync testSwitchOverReadOnlyNoRplCheck testSwitchOverNoReadOnlyNoRplCheck testSwitchOver2TimesReplicationOkNoSemiSyncNoRplCheck testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck testSwitchOverBackPreferedMasterNoRplCheckSemiSync testSwitchOverAllSlavesStopRplCheckNoSemiSync testSwitchOverAllSlavesStopNoSemiSyncNoRplCheck testSwitchOverAllSlavesDelayRplCheckNoSemiSync testSwitchOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayNoRplChecksNoSemiSync testFailOverAllSlavesDelayRplChecksNoSemiSync testFailOverNoRplChecksNoSemiSync testNumberFailOverLimitReach testFailOverTimeNotReach]
+```
+Command-line running some tests via passing a list of tests in run-tests
+ALL is a special test to run all available tests.
+```
+./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
+```
+
+### Bugs
+
+Check https://github.com/tanji/replication-manager/issues for a list of issues.
+
+### Contributors
+
+[Building from source](BUILD.md)
+
+
+### Authors
 
 Guillaume Lefranc <guillaume@signal18.io>
 
 Stephane Varoqui <stephane@mariadb.com>
 
-### Special Thanks
+#### Special Thanks
 
 Thanks to Markus Mäkelä from the MaxScale team for his valuable time contributions, Willy Tarreau from HaProxy, René Cannao from ProxySQL. The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Orchestrator, Yoshinori Matsunobu for MHA, Johan Anderson for S9 Cluster Control.
 
