@@ -1,8 +1,8 @@
 ## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager) [![Stories in Ready](https://badge.waffle.io/tanji/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/tanji/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
 
-__replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL / Percona Server 5.7 GTID replication topologies.  
+__replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
-Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion ==so call switchover==, or electing a new master on failure detection ==so call failover==. It can enforces best practices to get at a minimum up to zero loss in most failure cases. Multiple clusters management is the foundation to define shard groups and replication-manager can be used to deploy some MariaDB sharding solutions.
+Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion `<so call switchover>`, or electing a new master on failure detection `<so call failover>`. It  enforces best practices to get at a minimum up to zero loss in most failure cases. Multiple clusters management is foundation to define shard groups and replication-manager can be used to deploy some MariaDB sharding solutions.
 
 * [Overview](#overview)
 * [Why replication-manager](#why-replication-manager)
@@ -14,7 +14,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Switchover](#switchover)
     * [Failover](#failover)
     * [False positive](#false-positive)
-    * [Rejoining nodes](#rejoining nodes)
+    * [Rejoining nodes](#rejoining-nodes)
 * [Usage](#usage)
     * [Command line switchover](#command-line-switchover)
     * [Command line failover](#command-line-failover)
@@ -28,9 +28,10 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Haproxy](#haproxy)
     * [ProxySQL](#proxysql)
     * [MariaDBShardProxy](#mariadbshardproxy)
+    * [Multiple proxies](#multiple-proxies)
 * [Topology](#topology)
-    * [Using Multi Master](#using-multi-master)
-    * [Using Multi Tier Slave](#using-multi-tier-slave)
+    * [Multi Master](#multi-master)
+    * [Multi Tier Slave](#multi-tier-slave)
     * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)
 * [Metrics](#metrics)
 * [Non-regression tests](#non-regression-tests)
@@ -509,7 +510,7 @@ This instance will use a default configuration file in
 
 In local wrapper mode replication-manager never stop proxies to avoid disturbing the workload:)
 
-## Using Multi-Proxies
+### Multiple proxies
 
 Just declare multiple configuration of them in your cluster section
 
