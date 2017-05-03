@@ -17,10 +17,10 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [False positive](#false-positive)
     * [Rejoining nodes](#rejoining-nodes)
 * [Topology](#topology)
-    * [Multi Master](#multi-master)
-    * [Multi Tier Slave](#multi-tier-slave)
-    * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)    
-* [Quick start](#install)
+        * [Multi Master](#multi-master)
+        * [Multi Tier Slave](#multi-tier-slave)
+        * [Active standby and external Arbitrator](#active-standby-and-external-arbitrator)    
+* [Quick start](#quick-start)
     * [System requirements](#system-requirements)
     * [Downloads](#downloads)
     * [Config](#config)
@@ -45,6 +45,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Bugs](#bugs)
     * [Contributors](#contributors)
     * [Authors](#authors)
+* [Legal](#license)
 
 ## Overview
 To perform switchover, preserving data consistency, replication-manager uses an improved workflow similar to common MySQL failover tools such as MHA:
@@ -343,8 +344,10 @@ In this is case it exists some other scenario that will possibly elect a late sl
 
 ### System requirements
 
-`replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
-On the MariaDB side, slaves need to use GTID for replication. Old-style positional replication is not supported (yet).
+`replication-manager` is a self-contained binary, which means that no system libraries are needed at the operating system level.
+On the MariaDB side, slaves need to use GTID for replication.
+Web browser IE is reported not working with http interface.
+
 ### Downloads
 
 As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
@@ -353,10 +356,51 @@ Check https://github.com/tanji/replication-manager/releases for official release
 
 Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
 
-### Install package
+### Packages installation
 
-Packages will deploy a set of directories
+Packages installation will deploy a set of directories
 
+  - [x] /etc/replication-manager/
+    Default and example conf file
+
+  - [x] /usr/share/replication-manager
+    Static files, templates haproxy and graphite services
+
+    The root of http server
+    /usr/share/replication-manager/dashboard
+    The files used for non regression testing, example mysql conf files
+    /usr/share/replication-manager/tests
+
+  - [x] /var/lib/replication-manager
+    A data directory used to bootstrap proxies and MariaDB local instances for reg tests, to backup binary logs, to store metrics
+
+Log can be found in /var/log/replication-manager.log
+
+In case of non standard installation like tar.gz the configuration variables need to be adapted to the deployment:
+```
+working-directory = "/var/lib/replication-manager"
+share-directory = "/usr/share/replication-manager"
+http-root = "/usr/share/replication-manager/dashboard"
+logfile = "/var/log/replication-manager.log"
+```
+
+#### Extra packages
+
+MariaDB-Server package minimum 10.2 server need to be install if you plan to use following features
+- [x] Automatic node rejoin
+- [x] Non regression testing  
+- [x] Binlog Backups
+- [x] MariaDBShardProxy
+
+HaProxy package need to be install to benefit from haproxy bootstrap mode
+Sysbench package are used for some of the non regression tests
+
+Can be setup according to following configuration options
+
+```
+mariadb-binary-path = "/usr/sbin"
+haproxy-binary-path = "/usr/sbin/haproxy"
+```
 
 #### Configuration files
 
@@ -375,6 +419,14 @@ The replication user needs the following privilege: `REPLICATION SLAVE`
 > It's best practice to split each managed cluster in his own section
 
 Read and decide about changing route strategy via proxy usage or failover scripts.  
+
+Declaring multiple cluster in the configuration file, they will all be monitored by default, but one can specify the cluster to be monitor via passing the cluster list in
+
+`--config-group=cluster1,cluster2`
+
+A specific configuration file name can be explicitly setup via
+
+`--config=/etc/replication-manager.cnf`
 
 #### Starting service
 
@@ -659,6 +711,7 @@ Ctrl-R  Set slaves read-only
 Ctrl-S  Switchover
 Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
+Ctrl-P Ctrl-N switch between clusters
 ```
 
 #### Monitor in daemon mode
@@ -802,6 +855,7 @@ graphite-embedded = true
 Customize /usr/share/replication-manager/dashboard/static/graph.js
 Set the host address of the replication-manager address and to make your own graph
 
+![graphs](/doc/graphs.png)
 
 Statd and Collectd can be install install on each database node to add system metrics   
 
@@ -922,7 +976,7 @@ Stephane Varoqui <stephane@mariadb.com>
 
 Thanks to Markus Mäkelä from the MaxScale team for his valuable time contributions, Willy Tarreau from HaProxy, René Cannao from ProxySQL. The fantastic core team at MariaDB, Kristian Nielsen on the GTID and parallel replication feature. Claudio Nanni from MariaDB support on his effort to test SemiSync, All early adopters like Pierre Antoine from Kang, Nicolas Payart and Damien Mangin from CCM, Tristan Auriol from Bettr, Madan Sugumar and Sujatha Challagundla. Community members for inspiration or reviewing: Shlomi Noach for Orchestrator, Yoshinori Matsunobu for MHA, Johan Anderson for S9 Cluster Control.
 
-### License
+## License
 
 THIS PROGRAM IS PROVIDED “AS IS” AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
