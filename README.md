@@ -25,7 +25,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Downloads](#downloads)
     * [Config](#config)
        * [Configuration files](#configuration-files)
-       * [External scripts](#external-scripts)
+       * [External failover scripts](#external-failover-scripts)
        * [Maxscale](#maxscale)
        * [Haproxy](#haproxy)
        * [ProxySQL](#proxysql)
@@ -201,7 +201,7 @@ force-sync-innodb = true
 force-binlog-checksum = true
 ```
 
-The only default enforcement is force-slave-readonly = true, we advice to permanently set the variables inside your database node configuration. and disable most enforcement on the long run. 
+The only default enforcement is force-slave-readonly = true, we advice to permanently set the variables inside your database node configuration. and disable most enforcement on the long run.
 
 ## Workflow
 
@@ -339,7 +339,8 @@ failover-restart-unsafe = true
 ```
 In this is case it exists some other scenario that will possibly elect a late slave and when no information state is found for rejoining the old master than the replication-manager will promote it using mysqldump
 
-## Install
+## Quick start
+
 ### System requirements
 
 `replication-manager` is a self-contained binary, which means that no dependencies are needed at the operating system level.
@@ -352,14 +353,17 @@ Check https://github.com/tanji/replication-manager/releases for official release
 
 Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
 
-### Config
+### Install package
+
+Packages will deploy a set of directories
+
 
 #### Configuration files
 
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
 
-It is strongly advice to create a dedicated user for the management user !  
+> It is strongly advice to create a dedicated user for the management user !  
 Management user (given by the --user option) and Replication user (given by the --repluser option) need to be given privileges to the host from which `replication-manager` runs. Users with wildcards are accepted as well.
 
 
@@ -370,7 +374,23 @@ The replication user needs the following privilege: `REPLICATION SLAVE`
 > Since replication-manager 1.1 a *[default]* section is required
 > It's best practice to split each managed cluster in his own section
 
-#### External scripts
+Read and decide about changing route strategy via proxy usage or failover scripts.  
+
+#### Starting service
+
+After package installation, a systemd file is deployed to start and stop replication-manager in daemon mode. Such init call binary `/usr/bin/replication-manager`
+
+
+System serice file can be found in:
+`/etc/systemd/system/replication-manager.service`
+Usage:
+`systemctl start|stop|restart replication-manager`
+
+
+Some init.d script for old os compatibility
+`/etc/init.d/replication-manager`
+
+#### External failover scripts
 
 Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
 
@@ -647,11 +667,12 @@ Start replication-manager in background to monitor the cluster, using the http s
 
 `replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
 
-The http server is accessible on http://localhost:10001 by default, and looks like this:
+The internal http server is accessible on http://localhost:10001 by default, and looks like this:
 
 ![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
 
-The http dashboard is an experimental angularjs application, please don't use it in production as it has no protected access for now (or use creativity to restrict access to it).
+> The http dashboard is an angularjs application, it has no protected access for now use creativity to restrict access to it.
+Some login protection using http-auth = true can be enable and use the database password giving in the replication-manager config file but it is reported to leak memory when a browser is still connected and constantly refresh the display. We advice not to used it but to protect via a web proxying authentication instead.   
 
 Start replication-manager in automatic daemon mode:
 
