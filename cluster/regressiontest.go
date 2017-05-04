@@ -104,20 +104,22 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
+
 	if err != nil {
-		cluster.LogPrintf("Failed to take master checksum table ")
+		cluster.LogPrintf("ERROR: Failed to take master checksum table ")
 	} else {
-		cluster.LogPrintf("Checksum master table test.sbtest =  %s ", checksum)
+		cluster.LogPrintf("INFO: Checksum master table test.sbtest =  %s %s", checksum, cluster.master.DSN)
 	}
 
 	ctslave := 0
 	for _, s := range cluster.slaves {
 		ctslave++
+		s.Refresh()
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogPrintf("Failed to take slave checksum table ")
+			cluster.LogPrintf("ERROR: Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("Checksum slave table test.sbtest =  %s ", checksumslave)
+			cluster.LogPrintf("INFO: Checksum slave table test.sbtest =  %s on %s ", checksumslave, s.DSN)
 		}
 		if checksumslave != checksum {
 			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
@@ -125,7 +127,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		}
 	}
 	if ctslave == 0 {
-		cluster.LogPrintf("ERROR:  No slaves while checking consistancy")
+		cluster.LogPrintf("ERROR: No slaves while checking consistancy")
 		return false
 	}
 	return true

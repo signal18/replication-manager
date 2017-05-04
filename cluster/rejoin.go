@@ -16,15 +16,19 @@ import (
 // Rejoin a server that just show up
 func (server *ServerMonitor) Rejoin() error {
 	// Check if master exists in topology before rejoining.
+	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
-			server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s to master %s ", server.URL, server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO: Rejoining previously failed server %s to master %s ", server.URL, server.ClusterGroup.master.URL)
 			crash := server.ClusterGroup.getCrash(server.URL)
 			if crash == nil {
-				server.ClusterGroup.LogPrintf("Error : rejoin found no crash info for %s", server.URL)
+				server.ClusterGroup.LogPrintf("ERROR: rejoin found no crash info for %s", server.URL)
 				if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-					server.ClusterGroup.LogPrintf("Error : rejoin promoted to dump restore", server.URL)
-					server.rejoinOldMasterDump()
+					server.ClusterGroup.LogPrintf("ERROR: rejoin promoted to dump restore", server.URL)
+					err := server.rejoinOldMasterDump()
+					if err != nil {
+						server.ClusterGroup.LogPrintf("ERROR: dump restore failed %s ", err)
+					}
 				}
 				return errors.New("No crash found")
 			}
@@ -230,12 +234,15 @@ func (server *ServerMonitor) rejoinOldMasterDump() error {
 		return err3
 	}
 	// dump here
-	server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-
+	err3 = server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+	if err3 != nil {
+		return err3
+	}
 	return nil
 }
 
 func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
+
 	server.Refresh()
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
@@ -253,7 +260,8 @@ func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
 	}
 	if crash.FailoverIOGtid != nil {
 		if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
-			server.ClusterGroup.LogPrintf("DEBUG: Cascading failover considere we can not flashback")
+			server.ClusterGroup.LogPrintf("INFO: Cascading failover considere we can not flashback")
+			server.ClusterGroup.canFlashBack = false
 		} else {
 			server.ClusterGroup.LogPrintf("INFO : Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		}
@@ -270,7 +278,11 @@ func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
 		server.ClusterGroup.LogPrintf("INFO : No flashback rejoin: can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
 	}
 	if server.ClusterGroup.conf.AutorejoinMysqldump == true {
-		server.rejoinOldMasterDump()
+		err := server.rejoinOldMasterDump()
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR :  dump restore failed %s ", err)
+		}
+
 	} else {
 		server.ClusterGroup.LogPrintf("INFO : No mysqldump rejoin : binlog capture failed or wrong version %t , autorejoin-mysqldump %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
 		server.ClusterGroup.LogPrintf("INFO : No rejoin method found, old master says: leave me alone, I'm ahead")

@@ -40,6 +40,9 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 		cluster.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
 		return err
 	}
+	dumpCmd.Wait()
+	cluster.LogPrintf("INFO: Start slave after dump")
+
 	dbhelper.StartSlave(dest.Conn)
 	return nil
 }
@@ -300,7 +303,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 	exitloop := 0
 
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	for exitloop < 200 {
 
 		select {
 		case <-ticker.C:
@@ -314,7 +317,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		}
 
 	}
-	if exitloop == 100 {
+	if exitloop < 200 {
 		cluster.LogPrintf("TEST: Rejoin Finished")
 
 	} else {
