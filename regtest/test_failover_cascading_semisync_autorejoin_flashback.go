@@ -26,6 +26,8 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.SetRejoinDump(true)
 	cluster.EnableSemisync()
 	cluster.SetFailTime(0)
+	cluster.SetFailRestartUnsafe(true)
+
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()

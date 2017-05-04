@@ -434,6 +434,10 @@ func (cluster *Cluster) IsMasterFailed() bool {
 	}
 }
 
+func (cluster *Cluster) SetFailRestartUnsafe(check bool) {
+	cluster.conf.FailRestartUnsafe = check
+}
+
 func (cluster *Cluster) SetSlavesReadOnly(check bool) {
 	for _, sl := range cluster.slaves {
 		dbhelper.SetReadOnly(sl.Conn, check)

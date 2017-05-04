@@ -190,6 +190,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 }
 
 func (cluster *Cluster) isFoundCandidateMaster() bool {
+
 	key := cluster.electCandidate(cluster.slaves, false)
 	if key == -1 {
 		cluster.sme.AddState("ERR00032", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
@@ -276,10 +277,11 @@ func (cluster *Cluster) isFirstSlave() bool {
 		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return true
 	}
+	/* Wrong founding they could be no crash information when checking first failover
 	crash := cluster.getCrash(cluster.master.URL)
 	if cluster.master.State == stateFailed && crash == nil {
 		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return true
-	}
+	}*/
 	return false
 }

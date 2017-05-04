@@ -114,7 +114,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	ctslave := 0
 	for _, s := range cluster.slaves {
 		ctslave++
-		s.Refresh()
+
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
 			cluster.LogPrintf("ERROR: Failed to take slave checksum table ")
