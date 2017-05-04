@@ -18,7 +18,7 @@ func (server *ServerMonitor) Rejoin() error {
 	// Check if master exists in topology before rejoining.
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
-			server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s", server.URL)
+			server.ClusterGroup.LogPrintf("INFO : Rejoining previously failed server %s to master %s ", server.URL, server.ClusterGroup.master.URL)
 			crash := server.ClusterGroup.getCrash(server.URL)
 			if crash == nil {
 				server.ClusterGroup.LogPrintf("Error : rejoin found no crash info for %s", server.URL)
@@ -236,12 +236,14 @@ func (server *ServerMonitor) rejoinOldMasterDump() error {
 }
 
 func (server *ServerMonitor) rejoinOldMaster(crash *Crash) error {
+	server.Refresh()
 	if server.ClusterGroup.conf.ReadOnly {
 		dbhelper.SetReadOnly(server.Conn, true)
 		server.ClusterGroup.LogPrintf("INFO : Setting Read Only on rejoined %s", server.URL)
 	}
 
 	if crash.FailoverIOGtid != nil {
+
 		server.ClusterGroup.LogPrintf("INFO : rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 		server.ClusterGroup.LogPrintf("INFO : Saved GTID sequence %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 	}

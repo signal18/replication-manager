@@ -17,6 +17,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}
+	cluster.SetFailoverCtr(0)
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
 	cluster.SetRplChecks(false)
@@ -24,12 +25,14 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.SetRejoinFlashback(true)
 	cluster.SetRejoinDump(false)
 	cluster.EnableSemisync()
+	cluster.SetFailTime(0)
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
 	cluster.PrepareBench()
 	//go clusteruster.RunBench()
-	go cluster.RunSysbench()
+	cluster.PrepareBench()
+	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -37,6 +40,9 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.KillMariaDB(cluster.GetMaster())
 	wg.Wait()
 	SaveMaster2 := cluster.GetMaster()
+
+	cluster.RunBench()
+
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
 	cluster.KillMariaDB(cluster.GetMaster())
@@ -53,6 +59,10 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	go cluster.WaitRejoin(wg2)
 	cluster.StartMariaDB(SaveMaster)
 	wg2.Wait()
+	//Recovered as slave first wait that it trigger master failover
+	time.Sleep(30 * time.Second)
+	cluster.RunBench()
+
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
 	cluster.StartMariaDB(SaveMaster2)

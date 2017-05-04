@@ -192,8 +192,8 @@ failcount-reset-time = 300
 # Cancel failover in semi-sync when one slave is not in sync
 # Cancel failover if one slave receive master heartbeat
 # Cancel failover when replication delay is more than N seconds
-failover-limit = 3
-failover-time-limit = 10
+failover-limit = 0
+failover-time-limit = 0
 failover-at-sync = false
 failover-max-slave-delay = 30
 failover-restart-unsafe = false
