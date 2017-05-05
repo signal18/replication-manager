@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"bytes"
+	"log"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -110,7 +111,13 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	} else {
 		cluster.LogPrintf("INFO: Checksum master table test.sbtest =  %s %s", checksum, cluster.master.DSN)
 	}
-
+	var count int
+	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
+	if err != nil {
+		log.Println("ERROR: Could not check long running writes", err)
+	} else {
+		cluster.LogPrintf("INFO: numer of rows master table test.sbtest =  %d %s", count, cluster.master.DSN)
+	}
 	ctslave := 0
 	for _, s := range cluster.slaves {
 		ctslave++
@@ -120,6 +127,12 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 			cluster.LogPrintf("ERROR: Failed to take slave checksum table ")
 		} else {
 			cluster.LogPrintf("INFO: Checksum slave table test.sbtest =  %s on %s ", checksumslave, s.DSN)
+		}
+		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
+		if err != nil {
+			log.Println("ERROR: Could not check long running writes", err)
+		} else {
+			cluster.LogPrintf("INFO: numer of rows slave table test.sbtest =  %d %s", count, s.DSN)
 		}
 		if checksumslave != checksum {
 			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
@@ -166,7 +179,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	}
 	//cluster.waitFailoverEndState()
 	cluster.WaitBootstrapDiscovery()
-
+	cluster.initProxies()
 	if cluster.master == nil {
 		cluster.LogPrintf("TEST : Abording test, no master found")
 		cluster.ShutdownClusterSemiSync()
