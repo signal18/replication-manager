@@ -280,7 +280,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 			server.FailCount = 0
 			if server.ClusterGroup.conf.Autorejoin {
-				server.Rejoin()
+				server.RejoinMaster()
 			} else {
 				server.ClusterGroup.LogPrintf("DEBUG: Auto Rejoin is disable")
 			}
