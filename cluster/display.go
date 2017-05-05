@@ -141,8 +141,17 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	}
 }
 
-func (cluster *Cluster) LogPrintf(format string, args ...interface{}) {
-	format = "[" + cluster.cfgGroup + "] " + format
+func (cluster *Cluster) LogPrintf(level string, format string, args ...interface{}) {
+
+	padright := func(str, pad string, lenght int) string {
+		for {
+			str += pad
+			if len(str) > lenght {
+				return str[0:lenght]
+			}
+		}
+	}
+	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
 	if cluster.conf.LogFile != "" {
 		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
 

@@ -28,7 +28,7 @@ var savedFailoverTs int64
 
 func (cluster *Cluster) PrepareBench() error {
 	var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
-	cluster.LogPrintf("BENCHMARK : %s", prepare)
+	cluster.LogPrintf("BENCH", "%s", prepare)
 	var cmdprep *exec.Cmd
 
 	cmdprep = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
@@ -37,10 +37,10 @@ func (cluster *Cluster) PrepareBench() error {
 
 	cmdprepErr := cmdprep.Run()
 	if cmdprepErr != nil {
-		cluster.LogPrintf("ERRROR : %s", cmdprepErr)
+		cluster.LogPrintf("ERROR", "%s", cmdprepErr)
 		return cmdprepErr
 	}
-	cluster.LogPrintf("BENCHMARK : %s", outprep.String())
+	cluster.LogPrintf("BENCH", "%s", outprep.String())
 	return nil
 }
 
@@ -54,16 +54,16 @@ func (cluster *Cluster) CleanupBench() error {
 
 	cmdclsErr := cmdcls.Run()
 	if cmdclsErr != nil {
-		cluster.LogPrintf("ERRROR : %s", cmdclsErr)
+		cluster.LogPrintf("ERROR", "%s", cmdclsErr)
 		return cmdclsErr
 	}
-	cluster.LogPrintf("BENCHMARK : %s", outcls.String())
+	cluster.LogPrintf("BENCH", "%s", outcls.String())
 	return nil
 }
 
 func (cluster *Cluster) RunBench() error {
 	var run = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(cluster.conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.conf.SysbenchThreads) + " run"
-	cluster.LogPrintf("BENCHMARK : %s", run)
+	cluster.LogPrintf("BENCH", "%s", run)
 	var cmdrun *exec.Cmd
 
 	cmdrun = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time="+strconv.Itoa(cluster.conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.conf.SysbenchThreads), "run")
@@ -72,10 +72,10 @@ func (cluster *Cluster) RunBench() error {
 
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
-		cluster.LogPrintf("ERRROR : %s", cmdrunErr)
+		cluster.LogPrintf("ERROR", "%s", cmdrunErr)
 		return cmdrunErr
 	}
-	cluster.LogPrintf("BENCHMARK : %s", outrun.String())
+	cluster.LogPrintf("BENCH", "%s", outrun.String())
 	return nil
 
 }
@@ -91,12 +91,12 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.slaves {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("TEST : Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.LogPrintf("TEST", "Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
 
 			return false
 		}
 		if s.MasterServerID != cluster.master.ServerID {
-			cluster.LogPrintf("TEST :  Replication is  pointing to wrong master %s ", cluster.master.ServerID)
+			cluster.LogPrintf("TEST", "Replication is  pointing to wrong master %s ", cluster.master.ServerID)
 			return false
 		}
 	}
@@ -107,16 +107,16 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
 	if err != nil {
-		cluster.LogPrintf("ERROR: Failed to take master checksum table ")
+		cluster.LogPrintf("ERROR", "Failed to take master checksum table ")
 	} else {
-		cluster.LogPrintf("INFO: Checksum master table test.sbtest =  %s %s", checksum, cluster.master.DSN)
+		cluster.LogPrintf("INFO", "Checksum master table test.sbtest =  %s %s", checksum, cluster.master.DSN)
 	}
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
-		log.Println("ERROR: Could not check long running writes", err)
+		cluster.LogPrintf("ERROR", "Could not check long running writes", err)
 	} else {
-		cluster.LogPrintf("INFO: numer of rows master table test.sbtest =  %d %s", count, cluster.master.DSN)
+		cluster.LogPrintf("INFO", "Number of rows master table test.sbtest =  %d %s", count, cluster.master.DSN)
 	}
 	ctslave := 0
 	for _, s := range cluster.slaves {
@@ -124,36 +124,36 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogPrintf("ERROR: Failed to take slave checksum table ")
+			cluster.LogPrintf("ERROR", "Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("INFO: Checksum slave table test.sbtest =  %s on %s ", checksumslave, s.DSN)
+			cluster.LogPrintf("INFO", "Checksum slave table test.sbtest =  %s on %s ", checksumslave, s.DSN)
 		}
 		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 		if err != nil {
 			log.Println("ERROR: Could not check long running writes", err)
 		} else {
-			cluster.LogPrintf("INFO: numer of rows slave table test.sbtest =  %d %s", count, s.DSN)
+			cluster.LogPrintf("INFO", "Numner of rows slave table test.sbtest =  %d %s", count, s.DSN)
 		}
 		if checksumslave != checksum {
-			cluster.LogPrintf("ERROR: Checksum on slave is different from master")
+			cluster.LogPrintf("ERROR", "Checksum on slave is different from master")
 			return false
 		}
 	}
 	if ctslave == 0 {
-		cluster.LogPrintf("ERROR: No slaves while checking consistancy")
+		cluster.LogPrintf("ERROR", "No slaves while checking consistancy")
 		return false
 	}
 	return true
 }
 
 func (cluster *Cluster) DelayAllSlaves() error {
-	cluster.LogPrintf("BENCH : Stopping slaves, injecting data & long transaction")
+	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("BENCH : %s %s", err.Error(), result)
+		cluster.LogPrintf("BENCH", "%s %s", err.Error(), result)
 	}
 	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
 	time.Sleep(10 * time.Second)
@@ -173,7 +173,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	cluster.CleanAll = true
 	err := cluster.Bootstrap()
 	if err != nil {
-		cluster.LogPrintf("TEST : Abording test, bootstrap failed, %s", err)
+		cluster.LogPrintf("TEST", "Abording test, bootstrap failed, %s", err)
 		cluster.ShutdownClusterSemiSync()
 		return false
 	}
@@ -181,18 +181,18 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	cluster.WaitBootstrapDiscovery()
 	cluster.initProxies()
 	if cluster.master == nil {
-		cluster.LogPrintf("TEST : Abording test, no master found")
+		cluster.LogPrintf("TEST", "Abording test, no master found")
 		cluster.ShutdownClusterSemiSync()
 		return false
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("ERROR: Insert some events %s %s", err.Error(), result)
+		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
 		cluster.ShutdownClusterSemiSync()
 	}
 	time.Sleep(2 * time.Second)
 
-	cluster.LogPrintf("TESTING : Starting Test %s", test)
+	cluster.LogPrintf("TEST", "Starting Test %s", test)
 	return true
 }
 
@@ -263,7 +263,7 @@ func (cluster *Cluster) EnableSemisync() error {
 	return nil
 }
 func (cluster *Cluster) StopSlaves() error {
-	cluster.LogPrintf("BENCH: Stopping replication")
+	cluster.LogPrintf("BENCH", "Stopping replication")
 	for _, s := range cluster.slaves {
 		err := dbhelper.StopSlave(s.Conn)
 		if err != nil {
@@ -274,7 +274,7 @@ func (cluster *Cluster) StopSlaves() error {
 }
 
 func (cluster *Cluster) StartSlaves() error {
-	cluster.LogPrintf("BENCH : Sarting replication")
+	cluster.LogPrintf("BENCH", "Sarting replication")
 	for _, s := range cluster.slaves {
 		err := dbhelper.StartSlave(s.Conn)
 		if err != nil {

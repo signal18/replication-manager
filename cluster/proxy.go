@@ -45,13 +45,13 @@ func (cluster *Cluster) newProxyList() error {
 
 	cluster.proxies = make([]*Proxy, nbproxies)
 
-	cluster.LogPrintf("INFO: Loading %d proxies", nbproxies)
+	cluster.LogPrintf("INFO", "Loading %d proxies", nbproxies)
 
 	var ctproxy = 0
 	var err error
 	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MxsHost, ",") {
-			cluster.LogPrintf("INFO: Loading Maxscale...")
+			cluster.LogPrintf("INFO", "Loading Maxscale...")
 			prx := new(Proxy)
 			prx.Name = proxyMaxscale
 			prx.Host = proxyHost
@@ -63,7 +63,7 @@ func (cluster *Cluster) newProxyList() error {
 
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 			if cluster.conf.Verbose {
 				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
@@ -72,7 +72,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.conf.HaproxyOn {
-		cluster.LogPrintf("INFO: Loading HaProxy...")
+		cluster.LogPrintf("INFO", "Loading HaProxy...")
 
 		prx := new(Proxy)
 		prx.Name = proxyHaproxy
@@ -83,7 +83,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadWritePort = cluster.conf.HaproxyWritePort
 		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 		if err != nil {
-			cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 		}
 		if cluster.conf.Verbose {
 			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
@@ -92,7 +92,7 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
-			cluster.LogPrintf("INFO: Loading MdbShardProxy...")
+			cluster.LogPrintf("INFO", "Loading MdbShardProxy...")
 			prx := new(Proxy)
 			prx.Name = proxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
@@ -102,7 +102,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR: Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 			if cluster.conf.Verbose {
 				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
@@ -136,7 +136,7 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 						}
 						err = m.SetServer(server.MxsServerName, "maintenance")
 						if err != nil {
-							cluster.LogPrintf("ERROR: Could not set  server %s in maintenance", err)
+							cluster.LogPrintf("ERROR", "Could not set  server %s in maintenance", err)
 							m.Close()
 						}
 						m.Close()
@@ -172,7 +172,7 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.proxies {
-		cluster.LogPrintf("Init %s %s %s", pr.Name, pr.Host, pr.Port)
+		cluster.LogPrintf("INFO", "Init %s %s %s", pr.Name, pr.Host, pr.Port)
 		if cluster.conf.HaproxyOn && pr.Name == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}

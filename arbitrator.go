@@ -255,7 +255,7 @@ func fHeartbeat() {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR: %s", err)
+				currentCluster.LogPrintf("ERROR", "%s", err)
 			}
 			continue
 
@@ -263,7 +263,7 @@ func fHeartbeat() {
 		resp, err := client.Do(req)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR: %s", err)
+				currentCluster.LogPrintf("ERROR", "%s", err)
 			}
 			continue
 		}
@@ -274,16 +274,16 @@ func fHeartbeat() {
 		defer resp.Body.Close()
 		monjson, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			currentCluster.LogPrintf("ERROR: %s", err)
+			currentCluster.LogPrintf("ERROR", "%s", err)
 		}
 		// Use json.Decode for reading streams of JSON data
 		var h heartbeat
 		if err := json.Unmarshal(monjson, &h); err != nil {
-			currentCluster.LogPrintf("ERROR: %s", err)
+			currentCluster.LogPrintf("ERROR", "%s", err)
 		} else {
 			splitBrain = false
 			if conf.LogLevel > 3 {
-				currentCluster.LogPrintf("RETURN :%s", h)
+				currentCluster.LogPrintf("DEBUG", "RETURN :%s", h)
 			}
 			if h.Status == "S" {
 				runStatus = "A"
@@ -295,14 +295,14 @@ func fHeartbeat() {
 	}
 	if splitBrain {
 		if bcksplitbrain != splitBrain {
-			currentCluster.LogPrintf("INFO : Splitbrain")
+			currentCluster.LogPrintf("INFO", "Splitbrain")
 		}
 
 		// report to arbitrator
 		for _, cl := range clusters {
 			if cl.LostMajority() {
 				if bcksplitbrain != splitBrain {
-					currentCluster.LogPrintf("INFO : Database cluster lost majority ")
+					currentCluster.LogPrintf("INFO", "Database cluster lost majority ")
 				}
 			}
 			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
@@ -318,7 +318,7 @@ func fHeartbeat() {
 			client := &http.Client{Timeout: timeout}
 			resp, err := client.Do(req)
 			if err != nil {
-				cl.LogPrintf("ERROR: %s", err.Error())
+				cl.LogPrintf("ERROR", "%s", err.Error())
 				cl.SetActiveStatus("S")
 				runStatus = "S"
 				return
@@ -334,7 +334,7 @@ func fHeartbeat() {
 		for _, cl := range clusters {
 
 			if bcksplitbrain != splitBrain {
-				cl.LogPrintf("INFO : External Arbitration check requested")
+				cl.LogPrintf("INFO", "External Arbitration check requested")
 			}
 			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
 			var mst string
@@ -349,7 +349,7 @@ func fHeartbeat() {
 			client := &http.Client{Timeout: timeout}
 			resp, err := client.Do(req)
 			if err != nil {
-				cl.LogPrintf("ERROR: %s", err.Error())
+				cl.LogPrintf("ERROR", "%s", err.Error())
 				cl.SetActiveStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"
@@ -366,7 +366,7 @@ func fHeartbeat() {
 			var r response
 			err = json.Unmarshal(body, &r)
 			if err != nil {
-				cl.LogPrintf("ERROR: Arbitrator says invalid JSON")
+				cl.LogPrintf("ERROR", "Arbitrator says invalid JSON")
 				cl.SetActiveStatus("S")
 				cl.SetMasterReadOnly()
 				runStatus = "S"
@@ -375,14 +375,14 @@ func fHeartbeat() {
 			}
 			if r.Arbitration == "winner" {
 				if bcksplitbrain != splitBrain {
-					cl.LogPrintf("INFO : Arbitrator says winner")
+					cl.LogPrintf("INFO", "Arbitrator says winner")
 				}
 				cl.SetActiveStatus("A")
 				runStatus = "A"
 				return
 			}
 			if bcksplitbrain != splitBrain {
-				cl.LogPrintf("INFO : Arbitrator says loser")
+				cl.LogPrintf("INFO", "Arbitrator says loser")
 				if cl.GetMaster() != nil {
 					mst = cl.GetMaster().URL
 				}

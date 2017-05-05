@@ -39,7 +39,7 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -55,7 +55,7 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	SaveMaster.ReadAllRelayLogs()
 
 	if killedSlave.HasSiblings(cluster.GetSlaves()) == false {
-		cluster.LogPrintf("ERROR: Not all slaves pointing to master")
+		cluster.LogPrintf("ERROR", "Not all slaves pointing to master")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

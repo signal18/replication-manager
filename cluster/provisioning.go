@@ -22,26 +22,26 @@ import (
 )
 
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf("Rejoining via Dump Master")
+	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
 	dumpCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	clientCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	var err error
 	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {
-		cluster.LogPrintf("Error opening pipe: %s", err)
+		cluster.LogPrintf("ERROR", "Failed opening pipe: %s", err)
 		return err
 	}
 	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf("Error in mysqldump command: %s at %s", err, dumpCmd.Path)
+		cluster.LogPrintf("ERROR", "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf("Error starting client:%s at %s", err, clientCmd.Path)
+		cluster.LogPrintf("ERROR", "Can't start mysql client:%s at %s", err, clientCmd.Path)
 		return err
 	}
 	dumpCmd.Wait()
-	cluster.LogPrintf("INFO: Start slave after dump")
+	cluster.LogPrintf("INFO", "Start slave after dump")
 
 	dbhelper.StartSlave(dest.Conn)
 	return nil
@@ -58,9 +58,9 @@ func readPidFromFile(pidfile string) (string, error) {
 func (cluster *Cluster) InitClusterSemiSync() error {
 	cluster.sme.SetFailoverState()
 	for k, server := range cluster.servers {
-		cluster.LogPrintf("INFO : Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
+		cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
 		if server.Conn.Ping() == nil {
-			cluster.LogPrintf("INFO : DB Server is not stop killing now %s", server.URL)
+			cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
 			if server.Name == "" {
 				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
 				pid, _ := readPidFromFile(pidfile)
@@ -103,7 +103,7 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 
 func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf string) error {
 	if server.Host != "127.0.0.1" {
-		cluster.LogPrintf("ERROR : Starting remote DB server will be Replication Manager Enterprise feature")
+		cluster.LogPrintf("INFO", "Starting remote DB server will be Replication Manager Enterprise feature")
 	}
 	server.Name = name
 	server.Conf = conf
@@ -123,7 +123,7 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
 		if err != nil {
-			cluster.LogPrintf("TESTING : GRANTS %s", err)
+			cluster.LogPrintf("TEST", "GRANTS %s", err)
 		}
 	}
 
@@ -133,10 +133,10 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 
 	if server.Host != "127.0.0.1" {
-		cluster.LogPrintf("ERROR : Killing remote DB server will be Replication Manager Enterprise feature")
+		cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
 	}
 
-	cluster.LogPrintf("TEST : Killing MariaDB %s %d", server.Name, server.Process.Pid)
+	cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Name, server.Process.Pid)
 
 	//	server.Process.Kill()
 	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
@@ -153,42 +153,42 @@ func (cluster *Cluster) ShutdownMariaDB(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 
-	cluster.LogPrintf("TEST : Starting MariaDB %s", server.Name)
+	cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Name)
 	if server.Name == "" {
 
 		_, err := os.Stat(server.Name)
 		if err != nil {
-			cluster.LogPrintf("TEST : Starting MariaDB need bootstrap")
+			cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
 		}
 
 	}
 	path := cluster.conf.WorkingDir + "/" + server.Name
 	err := os.RemoveAll(path + "/" + server.Name + ".pid")
 	if err != nil {
-		cluster.LogPrintf("ERRROR : %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		return err
 	}
 	usr, err := user.Current()
 	if err != nil {
-		cluster.LogPrintf("ERRROR : %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		return err
 	}
 	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
-	cluster.LogPrintf("%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
 
 	exitloop := 0
 	for exitloop < 30 {
 		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrint("Waiting MariaDB startup ..")
+		cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
 		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
 			conn.Exec("set sql_log_bin=0")
 			grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
 			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
-			cluster.LogPrintf(grants)
+			cluster.LogPrintf("INFO", "%s", grants)
 			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			conn.Exec(grants2)
 			exitloop = 100
@@ -197,10 +197,10 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 
 	}
 	if exitloop == 101 {
-		cluster.LogPrintf("MariaDB started.")
+		cluster.LogPrintf("INFO", "MariaDB started.")
 
 	} else {
-		cluster.LogPrintf("MariaDB timeout.")
+		cluster.LogPrintf("INFO", "MariaDB timeout.")
 		return errors.New("Failed to start")
 	}
 
@@ -215,7 +215,7 @@ func (cluster *Cluster) StartAllNodes() error {
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
-		cluster.LogPrintf("TEST: Waiting for failover stopped.")
+		cluster.LogPrintf("TEST", "Waiting for failover stopped.")
 	}
 	time.Sleep(recoverTime * time.Second)
 }
@@ -256,7 +256,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Failover end")
+			cluster.LogPrintf("TEST", "Waiting Failover end")
 			exitloop++
 		case <-cluster.failoverCond.Recv:
 			return
@@ -264,9 +264,9 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Failover end")
+		cluster.LogPrintf("TEST", "Failover end")
 	} else {
-		cluster.LogPrintf("TEST: Failover end timeout")
+		cluster.LogPrintf("TEST", "Failover end timeout")
 		return
 	}
 	return
@@ -280,7 +280,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Switchover end")
+			cluster.LogPrint("TEST", "Waiting Switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
 			return
@@ -288,9 +288,9 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Switchover end")
+		cluster.LogPrintf("TEST", "Switchover end")
 	} else {
-		cluster.LogPrintf("TEST: Switchover end timeout")
+		cluster.LogPrintf("TEST", "Switchover end timeout")
 		return
 	}
 	return
@@ -307,7 +307,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Rejoin ")
+			cluster.LogPrintf("TEST", "Waiting Rejoin")
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
 			return
@@ -318,10 +318,10 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	}
 	if exitloop < 200 {
-		cluster.LogPrintf("TEST: Rejoin Finished")
+		cluster.LogPrintf("TEST", "Rejoin Finished")
 
 	} else {
-		cluster.LogPrintf("TEST: Rejoin timeout")
+		cluster.LogPrintf("TEST", "Rejoin timeout")
 		return
 	}
 	return
@@ -333,7 +333,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting MariaDB shutdown")
+			cluster.LogPrint("TEST", "Waiting MariaDB shutdown")
 			exitloop++
 			_, err := os.FindProcess(server.Process.Pid)
 			if err != nil {
@@ -343,9 +343,9 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: MariaDB shutdown")
+		cluster.LogPrintf("TEST", "MariaDB shutdown")
 	} else {
-		cluster.LogPrintf("TEST: MariaDB shutdown timeout")
+		cluster.LogPrintf("TEST", "MariaDB shutdown timeout")
 		return errors.New("Failed to Stop MariaDB")
 	}
 	return nil
@@ -358,7 +358,7 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Bootstrap and discovery")
+			cluster.LogPrintf("TEST", "Waiting Bootstrap and discovery")
 			exitloop++
 			if cluster.sme.IsDiscovered() {
 				exitloop = 100
@@ -367,22 +367,22 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Cluster is Bootstraped and discovery")
+		cluster.LogPrintf("TEST", "Cluster is Bootstraped and discovery")
 	} else {
-		cluster.LogPrintf("TEST: Bootstrap timeout")
+		cluster.LogPrintf("TEST", "Bootstrap timeout")
 		return errors.New("Failed Bootstrap timeout")
 	}
 	return nil
 }
 
 func (cluster *Cluster) waitMasterDiscovery() error {
-	cluster.LogPrint("TEST: Waiting Master Found")
+	cluster.LogPrintf("TEST", "Waiting Master Found")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Master Found")
+			cluster.LogPrintf("TEST", "Waiting Master Found")
 			exitloop++
 			if cluster.master != nil {
 				exitloop = 100
@@ -391,9 +391,9 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Master founded")
+		cluster.LogPrintf("TEST", "Master founded")
 	} else {
-		cluster.LogPrintf("TEST: Master found timeout")
+		cluster.LogPrintf("TEST", "Master found timeout")
 		return errors.New("Failed Master search timeout")
 	}
 	return nil
@@ -403,7 +403,7 @@ func (cluster *Cluster) Bootstrap() error {
 	cluster.sme.SetFailoverState()
 	// default to master slave
 	if cluster.CleanAll {
-		cluster.LogPrint("INFO : Cleaning up replication on existing servers")
+		cluster.LogPrintf("INFO", "Cleaning up replication on existing servers")
 		for _, server := range cluster.servers {
 			if cluster.conf.Verbose {
 				cluster.LogPrintf("INFO : SetDefaultMasterConn on server %s ", server.URL)
@@ -465,7 +465,7 @@ func (cluster *Cluster) Bootstrap() error {
 	}
 	_, err := cluster.servers[masterKey].Conn.Exec("RESET MASTER")
 	if err != nil {
-		cluster.LogPrint("WARN : RESET MASTER failed on master")
+		cluster.LogPrintf("INFO", "RESET MASTER failed on master")
 	}
 	// master-slave
 	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false && cluster.conf.ForceSlaveNoGtid == false {
@@ -491,7 +491,7 @@ func (cluster *Cluster) Bootstrap() error {
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
 		}
-		cluster.LogPrintf("INFO : Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
+		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
 	//Old style replication
 	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false && cluster.conf.ForceSlaveNoGtid == true {
@@ -528,7 +528,7 @@ func (cluster *Cluster) Bootstrap() error {
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
 		}
-		cluster.LogPrintf("INFO : Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
+		cluster.LogPrintf("INFO", "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
 	}
 
 	// Slave realy
@@ -573,7 +573,7 @@ func (cluster *Cluster) Bootstrap() error {
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
 		}
-		cluster.LogPrintf("INFO : Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
+		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
 	if cluster.conf.MultiMaster == true {
 		for key, server := range cluster.servers {

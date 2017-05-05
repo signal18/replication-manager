@@ -39,7 +39,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -51,20 +51,20 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR: Inconsitant slave")
+		cluster.LogPrintf("ERROR", "Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	time.Sleep(8 * time.Second)
 	relay, _ := cluster.GetMasterFromReplication(SaveMaster)
-	cluster.LogPrintf("TEST :Pointing to relay %s", relay.DSN)
+	cluster.LogPrintf("TEST", "Pointing to relay %s", relay.DSN)
 	if relay == nil {
-		cluster.LogPrintf("TEST : Old master is not attach to Relay  ")
+		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	if relay.IsRelay == false {
-		cluster.LogPrintf("TEST : Old master is not attach to Relay  ")
+		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

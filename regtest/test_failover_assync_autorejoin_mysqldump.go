@@ -40,7 +40,7 @@ func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, tes
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -53,13 +53,13 @@ func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, tes
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR: Inconsitant slave")
+		cluster.LogPrintf("ERROR", "Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
 	if cluster.CheckSlavesRunning() == false {
-		cluster.LogPrintf("ERROR: replication issue")
+		cluster.LogPrintf("ERROR", "Replication issue")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

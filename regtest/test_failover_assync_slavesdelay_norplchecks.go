@@ -20,14 +20,14 @@ func testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cluster *cluster.Cluster, c
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.DelayAllSlaves()
 
-	cluster.LogPrintf("INFO :  Master is %s", cluster.GetMaster().URL)
+	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
 	cluster.GetMaster().FailCount = cluster.GetMaxFail()
@@ -44,11 +44,11 @@ func testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cluster *cluster.Cluster, c
 	go cluster.WaitFailover(wg)
 	cluster.KillMariaDB(cluster.GetMaster())
 	wg.Wait()
-	cluster.LogPrintf("INFO : New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("INFO : Old master %s ==  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("ERROR", "Old master %s ==  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

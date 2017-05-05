@@ -15,13 +15,13 @@ func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, te
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR:", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 
-	cluster.LogPrintf("INFO :  Master is %s", cluster.GetMaster().URL)
+	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
 	cluster.GetMaster().FailCount = cluster.GetMaxFail()
@@ -34,15 +34,15 @@ func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, te
 	cluster.CheckFailed()
 
 	cluster.WaitFailoverEnd()
-	cluster.LogPrintf("INFO : New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("INFO : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", " %s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

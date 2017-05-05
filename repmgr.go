@@ -368,14 +368,14 @@ Interactive console and HTTP dashboards are available for control`,
 						if currentCluster.IsMasterFailed() == false || currentCluster.GetMasterFailCount() > 0 {
 							currentCluster.MasterFailover(false)
 						} else {
-							currentCluster.LogPrint("ERROR: Master failed, cannot initiate switchover")
+							currentCluster.LogPrintf("ERROR", "Master failed, cannot initiate switchover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if currentCluster.IsMasterFailed() {
 							currentCluster.MasterFailover(true)
 						} else {
-							currentCluster.LogPrint("ERROR: Master not failed, cannot initiate failover")
+							currentCluster.LogPrintf("ERROR", "Master not failed, cannot initiate failover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
@@ -404,11 +404,11 @@ Interactive console and HTTP dashboards are available for control`,
 						}
 					}
 					if event.Key == termbox.KeyCtrlR {
-						currentCluster.LogPrint("INFO: Setting slaves read-only")
+						currentCluster.LogPrintf("INFO", "Setting slaves read-only")
 						currentCluster.SetSlavesReadOnly(true)
 					}
 					if event.Key == termbox.KeyCtrlW {
-						currentCluster.LogPrint("INFO: Setting slaves read-write")
+						currentCluster.LogPrint("INFO", "Setting slaves read-write")
 						currentCluster.SetSlavesReadOnly(false)
 					}
 					if event.Key == termbox.KeyCtrlI {
@@ -418,12 +418,12 @@ Interactive console and HTTP dashboards are available for control`,
 						currentCluster.DisplayHelp()
 					}
 					if event.Key == termbox.KeyCtrlQ {
-						currentCluster.LogPrint("INFO : Quitting monitor")
+						currentCluster.LogPrintf("INFO", "Quitting monitor")
 						exit = true
 						currentCluster.Stop()
 					}
 					if event.Key == termbox.KeyCtrlC {
-						currentCluster.LogPrint("INFO : Quitting monitor")
+						currentCluster.LogPrintf("INFO", "Quitting monitor")
 						exit = true
 						currentCluster.Stop()
 					}

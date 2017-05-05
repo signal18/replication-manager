@@ -19,21 +19,21 @@ func testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cluster *cluster.Cluster
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	cluster.SetPrefMaster(cluster.GetMaster().URL)
-	cluster.LogPrintf("TEST : Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
+	cluster.LogPrintf("TEST", "Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
 	time.Sleep(2 * time.Second)
 	SaveMasterURL := cluster.GetMaster().URL
 	for i := 0; i < 2; i++ {
-		cluster.LogPrintf("TEST : New Master  %s Failover counter %d", cluster.GetMaster().URL, i)
+		cluster.LogPrintf("TEST", "New Master  %s Failover counter %d", cluster.GetMaster().URL, i)
 		cluster.SwitchoverWaitTest()
-		cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	}
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR: Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("ERROR", "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

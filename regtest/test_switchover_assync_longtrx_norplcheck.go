@@ -20,7 +20,7 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 	cluster.SetRplChecks(false)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -29,19 +29,19 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 
 	db, err := cluster.GetClusterProxyConn()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
 	err = dbhelper.InjectTrxWithoutCommit(db, 20)
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
-	cluster.LogPrintf("TEST : Wainting in some trx 12s more wait-trx  default %d ", cluster.GetWaitTrx())
+	cluster.LogPrintf("TEST", "Wainting in some trx 12s more wait-trx  default %d ", cluster.GetWaitTrx())
 	time.Sleep(14 * time.Second)
 
 	cluster.LogPrintf("TEST :  Master is %s", cluster.GetMaster().URL)
@@ -49,13 +49,13 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 	cluster.LogPrintf("TEST : New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err)
+		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("TEST : Saved  master %s <> from master  %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("ERROR", "Saved  master %s <> from master  %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

@@ -34,7 +34,7 @@ func (cluster *Cluster) newServerList() error {
 		var err error
 		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
-			cluster.LogPrintf("ERROR: Could not open connection to server %s : %s", cluster.servers[k].URL, err)
+			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
 			//return err
 		}
 		if cluster.conf.Verbose {
@@ -48,7 +48,7 @@ func (cluster *Cluster) newServerList() error {
 	}
 	err := cluster.newProxyList()
 	if err != nil {
-		cluster.LogPrintf("ERROR: Could not set proxy list %s", err)
+		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
 					if err != nil {
-						cluster.LogPrintf("WARN : Can not set heartbeat table to %s", url)
+						cluster.LogPrintf("WARN", "Can not set heartbeat table to %s", url)
 						return
 					}
 					err = dbhelper.SetMultiSourceRepl(cluster.servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
@@ -108,7 +108,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 
 func (cluster *Cluster) pingServerList() {
 	if cluster.sme.IsInState("WARN00008") {
-		cluster.LogPrintf("DEBUG: In Failover skip topology detection")
+		cluster.LogPrintf("INFO", "In Failover skip ping server list")
 		return
 	}
 	wg := new(sync.WaitGroup)
@@ -123,7 +123,7 @@ func (cluster *Cluster) pingServerList() {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						if driverErr.Number == 1045 {
 							sv.State = stateUnconn
-							cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], sv.URL, err.Error()), ErrFrom: "TOPO"})
+							cluster.sme.AddState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
 					} else {
 						cluster.sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
@@ -131,7 +131,7 @@ func (cluster *Cluster) pingServerList() {
 						// Otherwise, let the monitor check function handle failures
 						if sv.State == "" {
 							if cluster.conf.LogLevel > 2 {
-								cluster.LogPrint("DEBUG: State failed set by topology detection INF00001")
+								cluster.LogPrintf("DEBUG", "State failed set by topology detection INF00001")
 							}
 							sv.State = stateFailed
 						}
@@ -152,11 +152,11 @@ func (cluster *Cluster) pingServerList() {
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("DEBUG: In Failover skip topology detection")
+		cluster.LogPrintf("INFO", "In Failover skip topology detection")
 		return nil
 	}
 	if cluster.conf.LogLevel > 2 {
-		cluster.LogPrintf("DEBUG: Entering topology detection")
+		cluster.LogPrintf("DEBUG", "Entering topology detection")
 	}
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	if cluster.conf.MxsOn {
@@ -171,7 +171,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		err := sv.Refresh()
 		if err != nil {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG: Server %s could not be refreshed: %s", sv.URL, err)
+				cluster.LogPrintf("DEBUG", "Server %s could not be refreshed: %s", sv.URL, err)
 			}
 			continue
 		}
@@ -180,7 +180,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG: Server %s is configured as a slave", sv.URL)
+				cluster.LogPrintf("DEBUG", ": Server %s is configured as a slave", sv.URL)
 			}
 			sv.replicationCheck()
 			cluster.slaves = append(cluster.slaves, sv)
@@ -199,11 +199,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG: Server %s has no slaves connected", sv.URL)
+					cluster.LogPrintf("DEBUG", "Server %s has no slaves connected", sv.URL)
 				}
 			} else {
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG: Server %s was set mastrer as last non slave", sv.URL)
+					cluster.LogPrintf("DEBUG", "Server %s was set mastrer as last non slave", sv.URL)
 				}
 				cluster.master = cluster.servers[k]
 				cluster.master.State = stateMaster
@@ -211,13 +211,13 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		// Check replication manager user privileges on live servers
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Privilege check on %s", sv.URL)
+			cluster.LogPrintf("DEBUG", "Privilege check on %s", sv.URL)
 		}
 		if sv.State != "" && sv.State != stateFailed && sv.IsRelay == false {
 			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG: Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
+				cluster.LogPrintf("DEBUG", "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
 			}
 			if err != nil {
 				cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
@@ -266,46 +266,46 @@ func (cluster *Cluster) TopologyDiscover() error {
 		for _, sl := range cluster.slaves {
 			if sl.IsRelay == false && sl.State != stateFailed {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
-					cluster.LogPrintf("DEBUG: Enforce semisync on slave %s", sl.DSN)
+					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.DSN)
 					dbhelper.InstallSemiSync(sl.Conn)
 				}
 				if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
 					// In non-multimaster mode, enforce read-only flag if the option is set
 					dbhelper.SetBinlogFormat(sl.Conn, "ROW")
-					cluster.LogPrintf("DEBUG: Enforce binlog format ROW on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce binlog format ROW on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
 					// In non-multimaster mode, enforce read-only flag if the option is set
 					dbhelper.SetReadOnly(sl.Conn, true)
-					cluster.LogPrintf("DEBUG: Enforce read only on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce read only on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
 					dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
-					cluster.LogPrintf("DEBUG: Enforce heartbeat to 1s on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
 					dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
-					cluster.LogPrintf("DEBUG: Enforce GTID replication on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
 					dbhelper.SetSyncInnodb(sl.Conn)
-					cluster.LogPrintf("DEBUG: Enforce sync InnoDB  on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce sync InnoDB  on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
 					dbhelper.SetBinlogChecksum(sl.Conn)
-					cluster.LogPrintf("DEBUG: Enforce checksum on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce checksum on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
 					dbhelper.SetBinlogSlowqueries(sl.Conn)
-					cluster.LogPrintf("DEBUG: Enforce log slow queries of replication on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce log slow queries of replication on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
-					cluster.LogPrintf("DEBUG: Enforce annotate on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce annotate on slave %s", sl.DSN)
 				}
 				if cluster.conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 					dbhelper.SetBinlogCompress(sl.Conn)
-					cluster.LogPrintf("DEBUG: Enforce binlog compression on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce binlog compression on slave %s", sl.DSN)
 				}
 				/* Disable because read-only variable
 				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
@@ -368,7 +368,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
 						if cluster.conf.LogLevel > 2 {
-							cluster.LogPrintf("DEBUG: Server %s was autodetected as a master", s.URL)
+							cluster.LogPrintf("DEBUG", "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
@@ -378,7 +378,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
 						if cluster.conf.LogLevel > 2 {
-							cluster.LogPrintf("DEBUG: Server %s was autodetected as a master", s.URL)
+							cluster.LogPrintf("DEBUG", "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
@@ -394,8 +394,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].MasterPort {
 							cluster.master = cluster.servers[k]
 							cluster.master.PrevState = stateMaster
-
-							cluster.LogPrintf("DEBUG: Assuming failed server %s was a master", s.URL)
+							cluster.LogPrintf("INFO", "Assuming failed server %s was a master", s.URL)
 
 							break
 						}
@@ -413,32 +412,32 @@ func (cluster *Cluster) TopologyDiscover() error {
 		// End of autodetection code
 		if cluster.master.State != stateFailed {
 			if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
-				cluster.LogPrintf("DEBUG: Enforce semisync on Master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce semisync on Master %s", cluster.master.DSN)
 				dbhelper.InstallSemiSync(cluster.master.Conn)
 			}
 			if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {
 				dbhelper.SetBinlogFormat(cluster.master.Conn, "ROW")
-				cluster.LogPrintf("DEBUG: Enforce binlog format ROW on Master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce binlog format ROW on Master %s", cluster.master.DSN)
 			}
 			if cluster.conf.ForceSyncBinlog && cluster.master.HaveSyncBinLog == false {
 				dbhelper.SetSyncBinlog(cluster.master.Conn)
-				cluster.LogPrintf("DEBUG: Enforce sync binlog on Master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce sync binlog on Master %s", cluster.master.DSN)
 			}
 			if cluster.conf.ForceSyncInnoDB && cluster.master.HaveSyncBinLog == false {
 				dbhelper.SetSyncInnodb(cluster.master.Conn)
-				cluster.LogPrintf("DEBUG: Enforce innodb sync on Master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce innodb sync on Master %s", cluster.master.DSN)
 			}
 			if cluster.conf.ForceBinlogAnnotate && cluster.master.HaveBinlogAnnotate == false {
 				dbhelper.SetBinlogAnnotate(cluster.master.Conn)
-				cluster.LogPrintf("DEBUG: Enforce binlog annotate on master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce binlog annotate on master %s", cluster.master.DSN)
 			}
 			if cluster.conf.ForceBinlogChecksum && cluster.master.HaveChecksum == false {
 				dbhelper.SetBinlogChecksum(cluster.master.Conn)
-				cluster.LogPrintf("DEBUG: Enforce ckecsum annotate on master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce ckecsum annotate on master %s", cluster.master.DSN)
 			}
 			if cluster.conf.ForceBinlogCompress && cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
 				dbhelper.SetBinlogCompress(cluster.master.Conn)
-				cluster.LogPrintf("DEBUG: Enforce binlog compression on master %s", cluster.master.DSN)
+				cluster.LogPrintf("INFO", "Enforce binlog compression on master %s", cluster.master.DSN)
 			}
 		}
 		// Replication checks
@@ -446,7 +445,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			for _, sl := range cluster.slaves {
 				if sl.IsRelay == false {
 					if cluster.conf.LogLevel > 2 {
-						cluster.LogPrintf("DEBUG: Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
+						cluster.LogPrintf("DEBUG", "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					is, err := dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port)
 					if !is {
@@ -498,7 +497,6 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 					cluster.master = nil
 				}
 				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
-
 				return true
 			}
 		}
@@ -525,7 +523,7 @@ func (cluster *Cluster) GetTopology() string {
 
 func (cluster *Cluster) PrintTopology() {
 	for k, v := range cluster.servers {
-		cluster.LogPrintf("DEBUG: Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
+		cluster.LogPrintf("INFO", "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
 }
 
@@ -535,7 +533,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 	}
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf("DEBUG", "Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.URL == cluster.conf.PrefMaster {
 			return server
@@ -547,7 +545,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG: Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf("DEBUG", "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.IsRelay {
 			return server
@@ -571,7 +569,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 
 		if len(s.Replications) > 0 {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG: rejoin replication master id %d was lookup if master %s is that one : %d", s.MasterServerID, server.DSN, server.ServerID)
+				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.MasterServerID, server.DSN, server.ServerID)
 			}
 			if s.MasterServerID == server.ServerID {
 				return server, nil

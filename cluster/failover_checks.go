@@ -23,7 +23,7 @@ import (
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("INFO : In Failover, skip checking failed master")
+		cluster.LogPrintf("INFO", "In Failover, skip checking failed master")
 		return
 	}
 	if cluster.master != nil {
@@ -54,7 +54,7 @@ func (cluster *Cluster) CheckFailed() {
 
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("WARN : Undiscovered master skip failover check")
+			cluster.LogPrintf("WARN", "Undiscovered master skip failover check")
 		}
 	}
 }
@@ -110,12 +110,12 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 				status, _ := dbhelper.GetStatusAsInt(s.Conn)
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
 				if cluster.conf.LogLevel > 1 {
-					cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+					cluster.LogPrintf("DEBUG", "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
 				time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
 				if cluster.conf.LogLevel > 1 {
-					cluster.LogPrintf("SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+					cluster.LogPrintf("DEBUG", "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
 					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.DSN), ErrFrom: "CHECK"})
@@ -138,12 +138,12 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
-		cluster.LogPrint("ERROR: Could not connect to MaxScale:", err)
+		cluster.LogPrintf("ERROR", "Could not connect to MaxScale:", err)
 		return false
 	}
 	defer m.Close()
 	if cluster.master.MxsServerName == "" {
-		cluster.LogPrint("ERROR: MaxScale server name undiscovered")
+		cluster.LogPrintf("INFO", "MaxScale server name undiscovered")
 		return false
 	}
 	//disable monitoring
@@ -151,18 +151,18 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		var monitor string
 		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
 			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrint("INFO: Getting Maxscale monitor via maxinfo")
+				cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxinfo")
 			}
 			m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 			monitor = m.GetMaxInfoStoppedMonitor()
 
 		} else {
 			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrint("INFO : Getting Maxscale monitor via maxadmin")
+				cluster.LogPrintf("DEGUG", "Getting Maxscale monitor via maxadmin")
 			}
 			_, err := m.ListMonitors()
 			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could list monitors monitor:%s", err)
+				cluster.LogPrintf("ERROR", "MaxScale client could list monitors monitor:%s", err)
 				return false
 			}
 			monitor = m.GetStoppedMonitor()
@@ -172,11 +172,11 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 			cluster.LogPrintf("INFO : %s", cmd)
 			err = m.RestartMonitor(monitor)
 			if err != nil {
-				cluster.LogPrint("ERROR: MaxScale client could not startup monitor:%s", err)
+				cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor:%s", err)
 				return false
 			}
 		} else {
-			cluster.LogPrint("INFO : MaxScale Monitor not found")
+			cluster.LogPrintf("INFO", "MaxScale Monitor not found")
 			return false
 		}
 	}
@@ -219,7 +219,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		cluster.LogPrintf("ERROR: %s", err.Error())
+		cluster.LogPrintf("ERROR", "%s", err.Error())
 		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
@@ -233,12 +233,12 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf("ERROR: arbitrator says invalid JSON")
+		cluster.LogPrintf("ERROR", "Arbitrator says invalid JSON")
 		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogPrintf("INFO :Arbitrator says: winner")
+		cluster.LogPrintf("INFO", "Arbitrator says: winner")
 		return true
 	}
 	cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})

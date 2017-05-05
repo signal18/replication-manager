@@ -1,6 +1,7 @@
 package cluster
 
 var clusterError = map[string]string{
+	"ERR00004": "Database %s access denied: %s",
 	"ERR00005": "Could not get privileges for user %s@%s: %s",
 	"ERR00006": "User must have REPLICATION CLIENT privilege",
 	"ERR00007": "User must have REPLICATION SLAVE privilege",

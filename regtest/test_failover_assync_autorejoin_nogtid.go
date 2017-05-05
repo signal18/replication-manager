@@ -39,7 +39,7 @@ func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, t
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -51,7 +51,7 @@ func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, t
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR: Inconsitant slave")
+		cluster.LogPrintf("ERROR", "Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

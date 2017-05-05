@@ -99,9 +99,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 
 	cluster.newServerList()
 	if cluster.conf.Interactive {
-		cluster.LogPrintf("INFO : Monitor started in manual mode")
+		cluster.LogPrintf("INFO", "Monitor started in manual mode")
 	} else {
-		cluster.LogPrintf("INFO : Monitor started in automatic mode")
+		cluster.LogPrintf("INFO", "Monitor started in automatic mode")
 	}
 	return nil
 }
@@ -133,14 +133,14 @@ func (cluster *Cluster) Run() {
 			// run once
 
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrint("DEBUG: Monitoring server loop")
+				cluster.LogPrintf("DEBUG", "Monitoring server loop")
 				for k, v := range cluster.servers {
-					cluster.LogPrintf("DEBUG: Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					cluster.LogPrintf("DEBUG", "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 				}
 				if cluster.master != nil {
-					cluster.LogPrintf("DEBUG: Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+					cluster.LogPrintf("DEBUG", "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
 					for k, v := range cluster.slaves {
-						cluster.LogPrintf("DEBUG: Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						cluster.LogPrintf("DEBUG", "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
 			}
@@ -165,7 +165,7 @@ func (cluster *Cluster) Run() {
 			cluster.CheckFailed()
 			states := cluster.sme.GetStates()
 			for i := range states {
-				cluster.LogPrint(states[i])
+				cluster.LogPrintf("STATE", states[i])
 			}
 			if !cluster.sme.IsInFailover() {
 				cluster.sme.ClearState()
@@ -179,7 +179,7 @@ func (cluster *Cluster) Run() {
 						cluster.MasterFailover(false)
 						cluster.switchoverCond.Send <- true
 					} else {
-						cluster.LogPrintf("INFO : Not in mode active cancel switchover %s", cluster.runStatus)
+						cluster.LogPrintf("INFO", "Not in mode active cancel switchover %s", cluster.runStatus)
 					}
 				}
 
@@ -245,7 +245,7 @@ func (cluster *Cluster) FailoverForce() error {
 				if s.State == "" {
 					s.State = stateFailed
 					if cluster.conf.LogLevel > 2 {
-						cluster.LogPrint("DEBUG: State failed set by state detection ERR00012")
+						cluster.LogPrintf("DEBUG", "State failed set by state detection ERR00012")
 					}
 					cluster.master = s
 				}
@@ -256,16 +256,16 @@ func (cluster *Cluster) FailoverForce() error {
 		}
 	}
 	if cluster.master == nil {
-		cluster.LogPrint("ERROR: Could not find a failed server in the hosts list")
+		cluster.LogPrintf("ERROR", "Could not find a failed server in the hosts list")
 		return errors.New("ERROR: Could not find a failed server in the hosts list")
 	}
 	if cluster.conf.FailLimit > 0 && cluster.failoverCtr >= cluster.conf.FailLimit {
-		cluster.LogPrintf("ERROR: Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
+		cluster.LogPrintf("ERROR", "Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
 		return errors.New("ERROR: Failover has exceeded its configured limit")
 	}
 	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
 	if cluster.conf.FailTime > 0 && rem > 0 {
-		cluster.LogPrintf("ERROR: Failover time limit enforced. Next failover available in %d seconds", rem)
+		cluster.LogPrintf("ERROR", "Failover time limit enforced. Next failover available in %d seconds", rem)
 		return errors.New("ERROR: Failover time limit enforced")
 	}
 	if cluster.MasterFailover(true) {
@@ -273,7 +273,7 @@ func (cluster *Cluster) FailoverForce() error {
 		sf.Timestamp = cluster.failoverTs
 		err := sf.write()
 		if err != nil {
-			cluster.LogPrintf("WARN : Could not write values to state file:%s", err)
+			cluster.LogPrintf("WARN", "Could not write values to state file:%s", err)
 		}
 	}
 	return nil
@@ -291,7 +291,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		var err error
 		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			cluster.LogPrint("ERROR: Error opening logfile, disabling for the rest of the session")
+			cluster.LogPrintf("ERROR", "Failed opening logfile, disabling for the rest of the session")
 			cluster.conf.LogFile = ""
 		}
 	}
@@ -299,19 +299,19 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	if cluster.conf.Hosts != "" {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
-		cluster.LogPrint("ERROR: No hosts list specified")
+		cluster.LogPrintf("ERROR", "No hosts list specified")
 		return errors.New("ERROR: No hosts list specified")
 	}
 
 	// validate users
 	if cluster.conf.User == "" {
-		cluster.LogPrint("ERROR: No master user/pair specified")
+		cluster.LogPrintf("ERROR", "No master user/pair specified")
 		return errors.New("ERROR: No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 
 	if cluster.conf.RplUser == "" {
-		cluster.LogPrint("ERROR: No replication user/pair specified")
+		cluster.LogPrintf("ERROR", "No replication user/pair specified")
 		return errors.New("ERROR: No replication user/pair specified")
 	}
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
@@ -333,7 +333,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	// Check if preferred master is included in Host List
 	pfa := strings.Split(cluster.conf.PrefMaster, ",")
 	if len(pfa) > 1 {
-		cluster.LogPrint("ERROR: prefmaster option takes exactly one argument")
+		cluster.LogPrintf("ERROR", "Prefmaster option takes exactly one argument")
 		return errors.New("ERROR: prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
@@ -345,7 +345,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		return false
 	}
 	if ret() == false && cluster.conf.PrefMaster != "" {
-		cluster.LogPrint("ERROR: Preferred master is not included in the hosts option")
+		cluster.LogPrintf("ERROR", "Preferred master is not included in the hosts option")
 		return errors.New("ERROR: prefmaster option takes exactly one argument")
 	}
 	return nil
@@ -354,10 +354,10 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 func (cluster *Cluster) ToggleInteractive() {
 	if cluster.conf.Interactive == true {
 		cluster.conf.Interactive = false
-		cluster.LogPrintf("INFO : Failover monitor switched to automatic mode")
+		cluster.LogPrintf("INFO", "Failover monitor switched to automatic mode")
 	} else {
 		cluster.conf.Interactive = true
-		cluster.LogPrintf("INFO : Failover monitor switched to manual mode")
+		cluster.LogPrintf("INFO", "Failover monitor switched to manual mode")
 	}
 }
 
@@ -559,7 +559,7 @@ func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
 		err := dbhelper.SetReadOnly(cluster.master.Conn, true)
 		if err != nil {
-			cluster.LogPrintf("ERROR: Could not set  master as read-only, %s", err)
+			cluster.LogPrintf("ERROR", "Could not set  master as read-only, %s", err)
 		}
 	}
 }

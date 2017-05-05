@@ -51,7 +51,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	wg.Wait()
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST : Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
@@ -72,14 +72,14 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("ERROR: Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
 			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
 	time.Sleep(10 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR: Inconsitant slave")
+		cluster.LogPrintf("ERROR", "Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}

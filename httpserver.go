@@ -72,11 +72,11 @@ func httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := testFile("app.html"); err != nil {
-		currentCluster.LogPrint("ERROR: Dashboard app.html file missing - will not start http server", err)
+		currentCluster.LogPrintf("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
 		return
 	}
 	if err := testFile("dashboard.js"); err != nil {
-		currentCluster.LogPrint("ERROR: dashboard.js file missing - will not start http server")
+		currentCluster.LogPrintf("ERROR", "Dashboard dashboard.js file missing - will not start http server")
 		return
 	}
 
@@ -290,10 +290,10 @@ func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerStopServer(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO: Rest API request stop server-id: %s", r.URL.Query().Get("server"))
+	currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
 	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		currentCluster.LogPrintf("ERROR", "Failed encoding JSON:%s ", err)
 		return
 	}
 	node := currentCluster.GetServerFromId(uint(intsrvid))
@@ -301,7 +301,7 @@ func handlerStopServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO: Rest API request start server-id: %s", r.URL.Query().Get("server"))
+	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
 	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -421,11 +421,11 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if currentCluster.IsMasterFailed() {
-		currentCluster.LogPrint("ERROR: Master failed, cannot initiate switchover")
+		currentCluster.LogPrintf("ERROR", " Master failed, cannot initiate switchover")
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
-	currentCluster.LogPrint("INFO: Rest API receive Switchover request")
+	currentCluster.LogPrintf("INFO", "Rest API receive Switchover request")
 	currentCluster.SwitchOver()
 	return
 }
@@ -450,14 +450,14 @@ func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
 
 func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrint("INFO: Force to ignore conditions %v", currentCluster.GetRplChecks())
+	currentCluster.LogPrintf("INFO", "Force to ignore conditions %v", currentCluster.GetRplChecks())
 	currentCluster.SetRplChecks(!currentCluster.GetRplChecks())
 	return
 }
 
 func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Force swithover on status sync %v", currentCluster.GetFailSync())
+	currentCluster.LogPrintf("INFO", "Force swithover on status sync %v", currentCluster.GetFailSync())
 
 	currentCluster.SetSwitchSync(!currentCluster.GetSwitchSync())
 	return
@@ -465,7 +465,7 @@ func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
 
 func handlerVerbosity(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Verbosity %v", currentCluster.GetFailSync())
+	currentCluster.LogPrintf("INFO", "Change Verbosity %v", currentCluster.GetFailSync())
 	if currentCluster.GetLogLevel() > 0 {
 		currentCluster.SetLogLevel(0)
 	} else {
@@ -476,48 +476,48 @@ func handlerVerbosity(w http.ResponseWriter, r *http.Request) {
 
 func handlerRejoin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Auto Rejoin %v", currentCluster.GetRejoin())
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin %v", currentCluster.GetRejoin())
 	currentCluster.SetRejoin(!currentCluster.GetRejoin())
 	return
 }
 
 func handlerRejoinBackupBinlog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Auto Rejoin Backup Binlog %v", currentCluster.GetRejoinBackupBinlog())
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Backup Binlog %v", currentCluster.GetRejoinBackupBinlog())
 	currentCluster.SetRejoinBackupBinlog(!currentCluster.GetRejoinBackupBinlog())
 	return
 }
 
 func handlerRejoinFlashback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Auto Rejoin Flashback %v", currentCluster.GetRejoinFlashback())
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Flashback %v", currentCluster.GetRejoinFlashback())
 	currentCluster.SetRejoinFlashback(!currentCluster.GetRejoinFlashback())
 	return
 }
 func handlerRejoinDump(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Auto Rejoin Dump %v", currentCluster.GetRejoinDump())
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Dump %v", currentCluster.GetRejoinDump())
 	currentCluster.SetRejoinDump(!currentCluster.GetRejoinDump())
 	return
 }
 
 func handlerRejoinSemisync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Change Auto Rejoin Semisync SYNC %v", currentCluster.GetRejoinSemisync())
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Semisync SYNC %v", currentCluster.GetRejoinSemisync())
 	currentCluster.SetRejoinSemisync(!currentCluster.GetRejoinSemisync())
 	return
 }
 
 func handlerSetTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: test/prod mode %v", currentCluster.GetFailSync())
+	currentCluster.LogPrintf("INFO", "Change test/prod mode %v", currentCluster.GetFailSync())
 	currentCluster.SetTestMode(!currentCluster.GetTestMode())
 	return
 }
 
 func handlerFailSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO: Force failover on status sync %v", currentCluster.GetFailSync())
+	currentCluster.LogPrintf("INFO", "Force failover on status sync %v", currentCluster.GetFailSync())
 
 	currentCluster.SetFailSync(!currentCluster.GetFailSync())
 	return
@@ -534,8 +534,8 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.SetCleanAll(true)
 	if err := currentCluster.Bootstrap(); err != nil {
-		currentCluster.LogPrint("ERROR: Could not bootstrap replication")
-		currentCluster.LogPrint(err)
+		currentCluster.LogPrintf("ERROR", "Could not bootstrap replication %s", err)
+
 	}
 	return
 }
@@ -546,7 +546,7 @@ func handlerTests(w http.ResponseWriter, r *http.Request) {
 
 	err := regtest.RunAllTests(currentCluster, "ALL")
 	if err == false {
-		currentCluster.LogPrint("ERROR: Some tests failed")
+		currentCluster.LogPrintf("ERROR", "Some tests failed")
 	}
 	return
 }
