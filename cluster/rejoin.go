@@ -344,7 +344,7 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		// FailoverIOGtid is fetch at failover from show slave status of the new master
 		// If server-id can't be found in FailoverIOGtid can state cascading master failover
 		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
-			server.ClusterGroup.LogPrintf("INFO", " Cascading failover considere we are ahead to force dump")
+			server.ClusterGroup.LogPrintf("INFO", "Cascading failover found empty GTID forcing full state tranfert")
 			return true
 		}
 		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {

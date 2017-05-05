@@ -257,7 +257,7 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 	sort.Strings(keys)
 
 	for _, v := range keys {
-		cluster.LogPrintf("TESTS : Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v])
+		cluster.LogPrintf("TEST", "Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v])
 	}
 
 	cluster.CleanAll = false
