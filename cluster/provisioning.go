@@ -609,6 +609,7 @@ func (cluster *Cluster) Bootstrap() error {
 			dbhelper.SetReadOnly(server.Conn, true)
 		}
 	}
+	cluster.initProxies()
 	cluster.sme.RemoveFailoverState()
 	//bootstrapChan <- true
 	return nil
