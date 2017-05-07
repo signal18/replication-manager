@@ -38,7 +38,7 @@ func (cluster *Cluster) newServerList() error {
 			//return err
 		}
 		if cluster.conf.Verbose {
-			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[k].URL))
+			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
 		}
 
 	}
@@ -392,10 +392,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				for k, s := range cluster.servers {
 					if s.State == stateFailed {
 						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].MasterPort {
-							cluster.master = cluster.servers[k]
-							cluster.master.PrevState = stateMaster
-							cluster.LogPrintf("INFO", "Assuming failed server %s was a master", s.URL)
-
+							if cluster.conf.FailRestartUnsafe {
+								cluster.master = cluster.servers[k]
+								cluster.master.PrevState = stateMaster
+								cluster.LogPrintf("INFO", "Assuming failed server %s was a master", s.URL)
+							}
 							break
 						}
 					}
@@ -492,9 +493,12 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				}
 			}
 			if allslavefailed {
-				if cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
+				if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
 					// forget the master if safe mode
+					cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					cluster.lastmaster = cluster.master
 					cluster.master = nil
+
 				}
 				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
 				return true

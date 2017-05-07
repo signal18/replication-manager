@@ -65,9 +65,6 @@ func (cluster *Cluster) newProxyList() error {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
-			if cluster.conf.Verbose {
-				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
-			}
 			ctproxy++
 		}
 	}
@@ -85,9 +82,7 @@ func (cluster *Cluster) newProxyList() error {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 		}
-		if cluster.conf.Verbose {
-			cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
-		}
+
 		ctproxy++
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {

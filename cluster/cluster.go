@@ -68,6 +68,7 @@ type Cluster struct {
 	testStopCluster      bool
 	testStartCluster     bool
 	clusterDown          bool
+	lastmaster           *ServerMonitor //saved when all cluster down
 }
 
 // Init initial cluster definition
@@ -99,9 +100,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 
 	cluster.newServerList()
 	if cluster.conf.Interactive {
-		cluster.LogPrintf("INFO", "Monitor started in manual mode")
+		cluster.LogPrintf("INFO", "Failover in interactive mode")
 	} else {
-		cluster.LogPrintf("INFO", "Monitor started in automatic mode")
+		cluster.LogPrintf("INFO", "Failover in automatic mode")
 	}
 	return nil
 }

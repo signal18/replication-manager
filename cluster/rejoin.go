@@ -16,6 +16,7 @@ import (
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	// Check if master exists in topology before rejoining.
+	server.ClusterGroup.LogPrintf("INFO", "Tentative to rejoin master :%s", server.URL)
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
@@ -40,6 +41,14 @@ func (server *ServerMonitor) RejoinMaster() error {
 			}
 			crash.delete(&server.ClusterGroup.crashes)
 			server.ClusterGroup.rejoinCond.Send <- true
+		}
+	} else {
+		if server.ClusterGroup.lastmaster != nil {
+			if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
+				server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
+				server.ClusterGroup.master = server
+				server.ClusterGroup.lastmaster = nil
+			}
 		}
 	}
 	return nil

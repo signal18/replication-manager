@@ -207,9 +207,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG", "Failure detection handling for server %s", server.URL)
 		}
-		if err != sql.ErrNoRows && server.ClusterGroup.master != nil {
+		if err != sql.ErrNoRows {
 			server.FailCount++
-			if server.URL == server.ClusterGroup.master.URL {
+			if server.ClusterGroup.master != nil && server.URL == server.ClusterGroup.master.URL {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
 					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
@@ -284,6 +284,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			} else {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disable")
 			}
+
 		} else if server.State != stateMaster {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
