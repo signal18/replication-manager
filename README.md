@@ -356,8 +356,19 @@ Script is passing the server to rejoin as first argument and the new master in c
 
 In some cascading failure scenarios replication-manager have not way to track  replication position of an election, this will happen every time no slaves are found inside topology.
 
-
 The default rejoining method is to never promote a slave as a master when the no information state happen and to wait for the old master to recover.
+
+| failover-restart-unsafe = false      |
+|---------------------|----------------|
+|  Master/Slave/Kill  | Read/Write/Err |
+|---------------------|----------------|
+| MS-MK-MS            | RW-RW-RW       |
+| MS-MK-KK-KS-MS      | RW-RW-EE-EE-RW |
+| MS-MK-KK-MK-MS      | RW-RW-EE-RW-RW |
+| MS-KM-SM            | RW-RW-RW       |
+| MS-KM-KK-KM-SM      | RW-RW-EE-RW-RW |
+| MS-KM-KK-SK-SM      | RW-RW-EE-EE-RW |
+
 We can change default to flavor HA against possible data lost or to force a failover after a full DC crash if the master don't show up.  
 ```
 failover-restart-unsafe = true
