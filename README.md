@@ -357,9 +357,9 @@ Script is passing the server to rejoin as first argument and the new master in c
 In some cascading failure scenarios replication-manager have not way to track  replication position of an election, this will happen every time no slaves are found inside topology.
 
 The default rejoining method is to never promote a slave as a master when the no information state happen and to wait for the old master to recover.
-
+```
  failover-restart-unsafe = false      
-
+```
 |  Master/Slave/Kill  | Read/Write/Err |
 |---------------------|----------------|
 | MS-MK-MS            | RW-RW-RW       |
@@ -373,6 +373,16 @@ We can change default to flavor HA against possible data lost or to force a fail
 ```
 failover-restart-unsafe = true
 ```
+|  Master/Slave/Kill  | Read/Write/Err | Lost |
+|---------------------|----------------|------|     
+| MS-MK-MS            | RW-RW-RW       |      |
+| MS-MK-KK-KM-SM      | RW-RW-RW-RW-RW | L    |
+| MS-MK-KK-MK-MS      | RW-RW-RW-RW-RW |      |
+| MS-KM-SM            | RW-RW-RW       |      |
+| MS-KM-KK-KM-SM      | RW-RW-RW-RW-RW |      |
+| MS-KM-KK-MK-MS      | RW-RW-RW-RW-RW | L    |
+
+
 In this is case it exists some other scenario that will possibly elect a late slave and when no information state is found for rejoining the old master than the replication-manager will promote it using mysqldump
 
 ## Quick start
