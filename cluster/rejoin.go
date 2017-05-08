@@ -48,6 +48,11 @@ func (server *ServerMonitor) RejoinMaster() error {
 				server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
 				server.ClusterGroup.master = server
 				server.ClusterGroup.lastmaster = nil
+			} else {
+				if server.ClusterGroup.conf.FailRestartUnsafe == false {
+					server.ClusterGroup.LogPrintf("INFO", "Old master is not last seen master: %s", server.URL)
+					server.rejoinMasterAsSlave()
+				}
 			}
 		}
 	}
@@ -259,6 +264,35 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "No flashback rejoin can flashback %t ,autorejoin-flashback %t autorejoin-backup-binlog %t ", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinFlashback, server.ClusterGroup.conf.AutorejoinBackupBinlog)
 		return errors.New("Flashback disable")
+	}
+	return nil
+}
+
+func (server *ServerMonitor) rejoinMasterAsSlave() error {
+	realmaster := server.ClusterGroup.lastmaster
+
+	server.ClusterGroup.LogPrintf("INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
+	err := dbhelper.SetReadOnly(server.Conn, true)
+	if err == nil {
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.IP,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "CURRENT_POS",
+		})
+		if err == nil {
+			dbhelper.StartSlave(server.Conn)
+		} else {
+			server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect master server %s, stopping slave as a precaution.", server.URL)
+			server.ClusterGroup.LogPrint(err)
+			return err
+		}
+	} else {
+		server.ClusterGroup.LogPrint(err)
+		return err
 	}
 	return nil
 }
