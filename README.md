@@ -358,8 +358,8 @@ In some cascading failure scenarios replication-manager have not way to track  r
 
 The default rejoining method is to never promote a slave as a master when the no information state happen and to wait for the old master to recover.
 
-| failover-restart-unsafe = false      |
-|---------------------|----------------|
+ failover-restart-unsafe = false      
+
 |  Master/Slave/Kill  | Read/Write/Err |
 |---------------------|----------------|
 | MS-MK-MS            | RW-RW-RW       |
