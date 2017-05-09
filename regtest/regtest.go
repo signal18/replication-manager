@@ -22,6 +22,10 @@ var tests = []string{
 	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck",
 	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync",
 	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS",
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
 	"testFailoverAssyncAutoRejoinRelay",
 	"testFailoverAssyncAutoRejoinNoGtid",
 	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync",
@@ -54,7 +58,34 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 	ret := true
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
-
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
 	if test == "testFailoverAssyncAutoRejoinNoGtid" || test == "ALL" {
 		res = testFailoverAssyncAutoRejoinNoGtid(cluster, "semisync.cnf", "testFailoverAssyncAutoRejoinNoGtid")
 		allTests["testFailoverAssyncAutoRejoinNoGtid"] = regtest.getTestResultLabel(res)

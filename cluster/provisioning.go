@@ -303,7 +303,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 	exitloop := 0
 
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 200 {
+	for exitloop < 30 {
 
 		select {
 		case <-ticker.C:
@@ -317,7 +317,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		}
 
 	}
-	if exitloop < 200 {
+	if exitloop < 30 {
 		cluster.LogPrintf("TEST", "Rejoin Finished")
 
 	} else {

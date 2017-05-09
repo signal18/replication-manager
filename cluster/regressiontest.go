@@ -157,9 +157,19 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not check long running writes", err)
+		cluster.LogPrintf("ERROR", "Could count record in bench table", err)
 	} else {
-		cluster.LogPrintf("INFO", "Number of rows master table %s =  %d %s", table, count, cluster.master.URL)
+		cluster.LogPrintf("INFO", "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
+	}
+	var max int
+	if cluster.benchmarkType == "table" {
+
+		err = cluster.master.Conn.QueryRowx("select max(val) from " + table).Scan(&max)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could get max val in bench table", err)
+		} else {
+			cluster.LogPrintf("INFO", "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
+		}
 	}
 	ctslave := 0
 	for _, s := range cluster.slaves {
@@ -169,16 +179,29 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("INFO", "Checksum slave table %s =  %s on %s ", table, checksumslave, s.URL)
+			cluster.LogPrintf("INFO", "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
 		}
 		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 		if err != nil {
 			log.Println("ERROR: Could not check long running writes", err)
 		} else {
-			cluster.LogPrintf("INFO", "Numner of rows slave table %s =  %d %s", table, count, s.URL)
+			cluster.LogPrintf("INFO", "Number of rows slave table %s =  %d %s", table, count, s.URL)
 		}
-		if checksumslave != checksum {
+		var maxslave int
+		if cluster.benchmarkType == "table" {
+			err = s.Conn.QueryRowx("select max(val) from " + table).Scan(&maxslave)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could get max val in bench table", err)
+			} else {
+				cluster.LogPrintf("INFO", "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
+			}
+		}
+		if checksumslave != checksum && cluster.benchmarkType == "sysbench" {
 			cluster.LogPrintf("ERROR", "Checksum on slave is different from master")
+			return false
+		}
+		if maxslave != max && cluster.benchmarkType == "table" {
+			cluster.LogPrintf("ERROR", "Max table value on slave is different from master")
 			return false
 		}
 	}
