@@ -22,8 +22,12 @@ var tests = []string{
 	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck",
 	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync",
 	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS",
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS",
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMS",
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS",
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMSM",
 	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
 	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS",
@@ -60,6 +64,29 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 	ret := true
 	var res bool
 	cluster.LogPrintf("TESTING : %s", test)
+
+	if test == "testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS")
+		allTests["testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS")
+		allTests["testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXMS" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSMXMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSMXMS")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXMS"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS" || test == "ALL" {
 		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS")
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS"] = regtest.getTestResultLabel(res)
@@ -70,6 +97,14 @@ func (regtest *RegTest) RunAllTests(cluster *cluster.Cluster, test string) bool 
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM" || test == "ALL" {
 		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM")
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM"] = regtest.getTestResultLabel(res)
+		if res == false {
+			ret = res
+		}
+	}
+
+	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMSM" || test == "ALL" {
+		res = testFailoverSemisyncAutoRejoinUnsafeMSXMSM(cluster, "semisync.cnf", "testFailoverSemisyncAutoRejoinUnsafeMSXMSM")
+		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMSM"] = regtest.getTestResultLabel(res)
 		if res == false {
 			ret = res
 		}
