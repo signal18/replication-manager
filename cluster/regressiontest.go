@@ -337,3 +337,10 @@ func (cluster *Cluster) StartSlaves() error {
 	}
 	return nil
 }
+
+func (cluster *Cluster) ForgetTopology() error {
+	cluster.master = nil
+	cluster.slaves = nil
+
+	return nil
+}

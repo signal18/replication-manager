@@ -43,6 +43,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 			server.ClusterGroup.rejoinCond.Send <- true
 		}
 	} else {
+		//no master discovered
 		if server.ClusterGroup.lastmaster != nil {
 			if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
 				server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
@@ -50,9 +51,16 @@ func (server *ServerMonitor) RejoinMaster() error {
 				server.ClusterGroup.lastmaster = nil
 			} else {
 				if server.ClusterGroup.conf.FailRestartUnsafe == false {
-					server.ClusterGroup.LogPrintf("INFO", "Old master is not last seen master: %s", server.URL)
+					server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
+
 					server.rejoinMasterAsSlave()
+
 				}
+			}
+		} else {
+			if server.ClusterGroup.conf.FailRestartUnsafe == true {
+				server.ClusterGroup.LogPrintf("INFO", "Restart Unsafe Picking first non slave as master :%s", server.URL)
+				server.ClusterGroup.master = server
 			}
 		}
 	}
