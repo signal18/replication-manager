@@ -27,55 +27,98 @@ var savedFailoverCtr int
 var savedFailoverTs int64
 
 func (cluster *Cluster) PrepareBench() error {
-	var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
-	cluster.LogPrintf("BENCH", "%s", prepare)
-	var cmdprep *exec.Cmd
+	if cluster.benchmarkType == "sysbench" {
+		var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
+		cluster.LogPrintf("BENCH", "%s", prepare)
+		var cmdprep *exec.Cmd
 
-	cmdprep = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
-	var outprep bytes.Buffer
-	cmdprep.Stdout = &outprep
+		cmdprep = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
+		var outprep bytes.Buffer
+		cmdprep.Stdout = &outprep
 
-	cmdprepErr := cmdprep.Run()
-	if cmdprepErr != nil {
-		cluster.LogPrintf("ERROR", "%s", cmdprepErr)
-		return cmdprepErr
+		cmdprepErr := cmdprep.Run()
+		if cmdprepErr != nil {
+			cluster.LogPrintf("ERROR", "%s", cmdprepErr)
+			return cmdprepErr
+		}
+		cluster.LogPrintf("BENCH", "%s", outprep.String())
 	}
-	cluster.LogPrintf("BENCH", "%s", outprep.String())
+	if cluster.benchmarkType == "table" {
+		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+		} else {
+			cluster.LogPrintf("BENCH", "%s", result)
+		}
+	}
 	return nil
 }
 
 func (cluster *Cluster) CleanupBench() error {
-	var cleanup = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
-	cluster.LogPrintf("BENCHMARK : %s", cleanup)
-	var cmdcls *exec.Cmd
-	cmdcls = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
-	var outcls bytes.Buffer
-	cmdcls.Stdout = &outcls
+	if cluster.benchmarkType == "sysbench" {
+		var cleanup = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
+		cluster.LogPrintf("BENCHMARK : %s", cleanup)
+		var cmdcls *exec.Cmd
+		cmdcls = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
+		var outcls bytes.Buffer
+		cmdcls.Stdout = &outcls
 
-	cmdclsErr := cmdcls.Run()
-	if cmdclsErr != nil {
-		cluster.LogPrintf("ERROR", "%s", cmdclsErr)
-		return cmdclsErr
+		cmdclsErr := cmdcls.Run()
+		if cmdclsErr != nil {
+			cluster.LogPrintf("ERROR", "%s", cmdclsErr)
+			return cmdclsErr
+		}
+		cluster.LogPrintf("BENCH", "%s", outcls.String())
 	}
-	cluster.LogPrintf("BENCH", "%s", outcls.String())
+	if cluster.benchmarkType == "table" {
+
+		err := dbhelper.BenchCleanup(cluster.GetMaster().Conn)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err.Error())
+		}
+	}
 	return nil
 }
 
-func (cluster *Cluster) RunBench() error {
-	var run = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(cluster.conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.conf.SysbenchThreads) + " run"
-	cluster.LogPrintf("BENCH", "%s", run)
-	var cmdrun *exec.Cmd
-
-	cmdrun = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time="+strconv.Itoa(cluster.conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.conf.SysbenchThreads), "run")
-	var outrun bytes.Buffer
-	cmdrun.Stdout = &outrun
-
-	cmdrunErr := cmdrun.Run()
-	if cmdrunErr != nil {
-		cluster.LogPrintf("ERROR", "%s", cmdrunErr)
-		return cmdrunErr
+func (cluster *Cluster) ChecksumBench() bool {
+	if cluster.benchmarkType == "table" {
+		if cluster.CheckTableConsistency("replication_manager_schema.bench") != true {
+			cluster.LogPrintf("ERROR", "Inconsitant slave")
+			return false
+		}
 	}
-	cluster.LogPrintf("BENCH", "%s", outrun.String())
+	if cluster.benchmarkType == "sysbench" {
+		if cluster.CheckTableConsistency("test.sbtest") != true {
+			cluster.LogPrintf("ERROR", "Inconsitant slave")
+			return false
+		}
+	}
+	return true
+}
+
+func (cluster *Cluster) RunBench() error {
+	if cluster.benchmarkType == "sysbench" {
+		var run = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(cluster.conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.conf.SysbenchThreads) + " run"
+		cluster.LogPrintf("BENCH", "%s", run)
+		var cmdrun *exec.Cmd
+
+		cmdrun = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time="+strconv.Itoa(cluster.conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.conf.SysbenchThreads), "run")
+		var outrun bytes.Buffer
+		cmdrun.Stdout = &outrun
+
+		cmdrunErr := cmdrun.Run()
+		if cmdrunErr != nil {
+			cluster.LogPrintf("ERROR", "%s", cmdrunErr)
+			return cmdrunErr
+		}
+		cluster.LogPrintf("BENCH", "%s", outrun.String())
+	}
+	if cluster.benchmarkType == "table" {
+		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+		}
+	}
 	return nil
 
 }
@@ -109,14 +152,14 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Failed to take master checksum table ")
 	} else {
-		cluster.LogPrintf("INFO", "Checksum master table test.sbtest =  %s %s", checksum, cluster.master.DSN)
+		cluster.LogPrintf("INFO", "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
 	}
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not check long running writes", err)
 	} else {
-		cluster.LogPrintf("INFO", "Number of rows master table test.sbtest =  %d %s", count, cluster.master.DSN)
+		cluster.LogPrintf("INFO", "Number of rows master table %s =  %d %s", table, count, cluster.master.URL)
 	}
 	ctslave := 0
 	for _, s := range cluster.slaves {
@@ -126,13 +169,13 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("INFO", "Checksum slave table test.sbtest =  %s on %s ", checksumslave, s.DSN)
+			cluster.LogPrintf("INFO", "Checksum slave table %s =  %s on %s ", table, checksumslave, s.URL)
 		}
 		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 		if err != nil {
 			log.Println("ERROR: Could not check long running writes", err)
 		} else {
-			cluster.LogPrintf("INFO", "Numner of rows slave table test.sbtest =  %d %s", count, s.DSN)
+			cluster.LogPrintf("INFO", "Numner of rows slave table %s =  %d %s", table, count, s.URL)
 		}
 		if checksumslave != checksum {
 			cluster.LogPrintf("ERROR", "Checksum on slave is different from master")
@@ -214,21 +257,9 @@ func (cluster *Cluster) SwitchoverWaitTest() {
 }
 
 func (cluster *Cluster) RestoreConf() {
-	cluster.conf.RplChecks = savedConf.RplChecks
-	cluster.conf.ReadOnly = savedConf.ReadOnly
-	cluster.conf.PrefMaster = savedConf.PrefMaster
-	cluster.conf.Interactive = savedConf.Interactive
-	cluster.conf.SwitchMaxDelay = savedConf.SwitchMaxDelay
-	cluster.conf.FailLimit = savedConf.FailLimit
-	cluster.conf.FailTime = savedConf.FailTime
-	cluster.conf.Autorejoin = savedConf.Autorejoin
-	cluster.conf.AutorejoinBackupBinlog = savedConf.AutorejoinBackupBinlog
-	cluster.conf.AutorejoinFlashback = savedConf.AutorejoinFlashback
-	cluster.conf.AutorejoinMysqldump = savedConf.AutorejoinMysqldump
-	cluster.conf.AutorejoinSemisync = savedConf.AutorejoinSemisync
+	cluster.conf = savedConf
 	cluster.failoverTs = savedFailoverTs
 	cluster.failoverCtr = savedFailoverCtr
-	cluster.conf.CheckFalsePositiveHeartbeat = savedConf.CheckFalsePositiveHeartbeat
 
 }
 

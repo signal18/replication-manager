@@ -1067,6 +1067,14 @@ func InjectLongTrx(db *sqlx.DB, time int) error {
 	return nil
 }
 
+func BenchCleanup(db *sqlx.DB) error {
+	_, err := db.Exec("DROP TABLE replication_manager_schema.bench")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 	var tableres string
 	var checkres string

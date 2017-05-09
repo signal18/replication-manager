@@ -27,12 +27,11 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.EnableSemisync()
 	cluster.SetFailTime(0)
 	cluster.SetFailRestartUnsafe(true)
-
+	cluster.SetBenchMethod("table")
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
-	cluster.PrepareBench()
-	//go clusteruster.RunBench()
+	cluster.CleanupBench()
 	cluster.PrepareBench()
 	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
@@ -62,7 +61,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.StartMariaDB(SaveMaster)
 	wg2.Wait()
 	//Recovered as slave first wait that it trigger master failover
-	time.Sleep(30 * time.Second)
+	time.Sleep(5 * time.Second)
 	cluster.RunBench()
 
 	wg2.Add(1)
@@ -77,8 +76,8 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 			return false
 		}
 	}
-	time.Sleep(10 * time.Second)
-	if cluster.CheckTableConsistency("test.sbtest") != true {
+	time.Sleep(5 * time.Second)
+	if cluster.ChecksumBench() != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
 		cluster.CloseTestCluster(conf, test)
 		return false

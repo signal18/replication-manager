@@ -69,6 +69,7 @@ type Cluster struct {
 	testStartCluster     bool
 	clusterDown          bool
 	lastmaster           *ServerMonitor //saved when all cluster down
+	benchmarkType        string
 }
 
 // Init initial cluster definition
@@ -92,6 +93,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.key = key
 	cluster.sme = new(state.StateMachine)
 	cluster.runStatus = "A"
+	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
 	err := cluster.repmgrFlagCheck()
 	if err != nil {
@@ -364,6 +366,10 @@ func (cluster *Cluster) ToggleInteractive() {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.conf.Interactive = check
+}
+
+func (cluster *Cluster) SetBenchMethod(m string) {
+	cluster.benchmarkType = m
 }
 
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
