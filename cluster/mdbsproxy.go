@@ -20,6 +20,8 @@ import (
 var crcTable = crc64.MakeTable(crc64.ECMA)
 
 func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
+	cluster.LogPrintf("INFO", "Init MdbShardProxy")
+
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 
 	dsn := proxy.User + ":" + proxy.Pass + "@"
@@ -63,9 +65,9 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
 		query := "CREATE OR REPLACE TABLE " + t.Table_schema + "." + t.Table_name + " ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		_, err = c.Exec(query)
-		//	if err != nil {
-		cluster.LogPrintf("ERROR: query %s %s", query, err)
-		//	}
+		if err != nil {
+			cluster.LogPrintf("ERROR: query %s %s", query, err)
+		}
 	}
 	c.Close()
 }
