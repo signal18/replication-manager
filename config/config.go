@@ -140,4 +140,5 @@ type Config struct {
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	FailForceGtid                      bool   //suspicious code
 	RegTestStopCluster                 bool   //used by regtest to stop cluster
+	Enterprise                         bool   //used to talk to opensvc collector
 }

@@ -314,10 +314,10 @@ Content-Length: 40\r\n
 
 ### Rejoining nodes
 
-Before 1.1 only rejoining nodes with equal GTID at election time can be re-attach to the cluster
+Before 1.1 release only rejoining nodes with equal GTID at election time can be re-attach to the cluster
 
 
-In replication-manager 1.1, rejoining of dead leader has been improved to cover more cases.
+In replication-manager 1.1, rejoining of dead nodes has been improved to cover more cases.
 
 
 MariaDB 10.2 binary package need to be colocated with replication-manager via the config option :
@@ -369,21 +369,21 @@ The default rejoining method is to never promote a slave as a master when the no
 | MS-KM-KK-KM-SM      | RW-RW-EE-RW-RW |
 | MS-KM-KK-SK-SM      | RW-RW-EE-EE-RW |
 
-We can change default to flavor HA against possible data lost or to force a failover after a full DC crash if the master don't show up.  
+We can change this default to flavor HA against protecting over data lost and do failover on first node to ping: after a full DC crash or if the master never show up.  
 ```
 failover-restart-unsafe = true
 ```
 |  Master/Slave/Kill  | Read/Write/Err | Lost |
 |---------------------|----------------|------|     
 | MS-MK-MS            | RW-RW-RW       |      |
-| MS-MK-KK-KM-SM      | RW-RW-RW-RW-RW | L    |
-| MS-MK-KK-MK-MS      | RW-RW-RW-RW-RW |      |
+| MS-MK-KK-KM-SM      | RW-RW-EE-RW-RW | L    |
+| MS-MK-KK-MK-MS      | RW-RW-EE-RW-RW |      |
 | MS-KM-SM            | RW-RW-RW       |      |
-| MS-KM-KK-KM-SM      | RW-RW-RW-RW-RW |      |
-| MS-KM-KK-MK-MS      | RW-RW-RW-RW-RW | L    |
+| MS-KM-KK-KM-SM      | RW-RW-EE-RW-RW |      |
+| MS-KM-KK-MK-MS      | RW-RW-EE-RW-RW | L    |
 
 
-In this is case it exists some other scenario that will possibly elect a late slave and when no information state is found for rejoining the old master than the replication-manager will promote it using mysqldump
+This setup can possibly elect a very late slave as first leader and when no crash information state is found for rejoining the old master than the replication-manager will provision it using full state transfer via mysqldump or external script
 
 ## Quick start
 

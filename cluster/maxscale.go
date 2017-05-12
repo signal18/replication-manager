@@ -52,7 +52,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		}
 		if monitor != "" {
 			cmd := "shutdown monitor \"" + monitor + "\""
-			cluster.LogPrintf("INFO: %s", cmd)
+			cluster.LogPrintf("INFO", "Maxscale shutdown monitor: %s", cmd)
 			err = m.ShutdownMonitor(monitor)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "MaxScale client could not shutdown monitor:%s", err)

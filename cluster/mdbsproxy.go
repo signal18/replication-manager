@@ -20,7 +20,7 @@ import (
 var crcTable = crc64.MakeTable(crc64.ECMA)
 
 func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	cluster.LogPrintf("INFO", "Init MdbShardProxy")
+	// cluster.LogPrintf("INFO", "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
 
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 
