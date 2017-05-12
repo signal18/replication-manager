@@ -400,7 +400,9 @@ func (cluster *Cluster) GetServers() serverList {
 func (cluster *Cluster) GetSlaves() serverList {
 	return cluster.slaves
 }
-
+func (cluster *Cluster) GetProxies() proxyList {
+	return cluster.proxies
+}
 func (cluster *Cluster) GetMaster() *ServerMonitor {
 	return cluster.master
 }

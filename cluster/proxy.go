@@ -106,8 +106,8 @@ func (cluster *Cluster) newProxyList() error {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
-			if cluster.conf.Verbose {
-				cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New proxy created: %s ,%s", cluster.cfgGroup, prx.Host, prx.Port))
+			if cluster.conf.LogLevel > 1 {
+				cluster.LogPrintf("DEBUG", "New MdbShardProxy proxy created: %s %s", prx.Host, prx.Port)
 			}
 			ctproxy++
 		}

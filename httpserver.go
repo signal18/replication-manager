@@ -31,6 +31,7 @@ type HandlerManager struct {
 }
 
 type settings struct {
+	Enterprise          string   `json:"enterprise"`
 	Interactive         string   `json:"interactive"`
 	FailoverCtr         string   `json:"failoverctr"`
 	MaxDelay            string   `json:"maxdelay"`
@@ -48,6 +49,7 @@ type settings struct {
 	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
 	RejoinSemiSync      string   `json:"rejoinsemisync"`
 	RejoinFlashback     string   `json:"rejoinflashback"`
+	RejoinUnsafe        string   `json:"rejoinunsafe"`
 	RejoinDump          string   `json:"rejoindump"`
 	Test                string   `json:"test"`
 	Heartbeat           string   `json:"heartbeat"`
@@ -176,6 +178,8 @@ func httpserver() {
 		router.HandleFunc("/runonetest", handlerSetOneTest)
 		router.HandleFunc("/master", handlerMaster)
 		router.HandleFunc("/slaves", handlerSlaves)
+		router.HandleFunc("/agents", handlerAgents)
+		router.HandleFunc("/proxies", handlerProxies)
 		router.HandleFunc("/crashes", handlerCrashes)
 		router.HandleFunc("/log", handlerLog)
 		router.HandleFunc("/switchover", handlerSwitchover)
@@ -213,6 +217,8 @@ func httpserver() {
 		http.HandleFunc("/runonetest", handlerSetOneTest)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/slaves", handlerSlaves)
+		http.HandleFunc("/agents", handlerAgents)
+		http.HandleFunc("/proxies", handlerProxies)
 		http.HandleFunc("/crashes", handlerCrashes)
 		http.HandleFunc("/alerts", handlerAlerts)
 		http.HandleFunc("/log", handlerLog)
@@ -322,6 +328,26 @@ func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerAgents(w http.ResponseWriter, r *http.Request) {
+	e := json.NewEncoder(w)
+	err := e.Encode(agents)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
+func handlerProxies(w http.ResponseWriter, r *http.Request) {
+	e := json.NewEncoder(w)
+	err := e.Encode(currentCluster.GetProxies())
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
 func handlerMaster(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	err := e.Encode(currentCluster.GetMaster())
@@ -347,6 +373,7 @@ func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(settings)
+	s.Enterprise = fmt.Sprintf("%v", currentCluster.GetConf().Enterprise)
 	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
 	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
 	s.FailSync = fmt.Sprintf("%v", currentCluster.GetConf().FailSync)
@@ -356,6 +383,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RejoinSemiSync = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSemisync)
 	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
 	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
+	s.RejoinUnsafe = fmt.Sprintf("%v", currentCluster.GetConf().FailRestartUnsafe)
 	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().SwitchMaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)

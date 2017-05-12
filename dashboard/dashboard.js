@@ -12,6 +12,13 @@ app.factory('Servers', function($resource) {
   return $resource('/servers');
 });
 
+app.factory('Agents', function($resource) {
+  return $resource('/agents');
+});
+
+app.factory('Proxies', function($resource) {
+  return $resource('/proxies');
+});
 
 app.factory('Log', function($resource) {
   return $resource('/log');
@@ -74,7 +81,7 @@ app.factory('Bootstrap', function($resource) {
 });
 
 
-app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master) {
+app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master','Agents','Proxies', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master,Agents,Proxies) {
 
    var timeFrame = $routeParams.timeFrame;
    if (timeFrame=="") {
@@ -109,7 +116,16 @@ app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$h
     $scope.master = data;
   }, function(error) {
     $scope.reserror = true;
-
+  });
+  Proxies.query({}, function(data) {
+    $scope.proxies = data;
+  }, function(error) {
+    $scope.reserror = true;
+  });
+  Agents.query({}, function(data) {
+    $scope.agents = data;
+  }, function(error) {
+    $scope.reserror = true;
   });
 }, 1000);
 $scope.switch = function(fail) {

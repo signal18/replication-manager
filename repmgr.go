@@ -40,6 +40,7 @@ var (
 	exit           bool
 	currentCluster *cluster.Cluster
 	clusters       = map[string]*cluster.Cluster{}
+	agents         []opensvc.Host
 )
 
 func init() {
@@ -320,8 +321,9 @@ Interactive console and HTTP dashboards are available for control`,
 			svc.Pass = "opensvc"
 			svc.ImportCompliance(conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.cnf.json")
 			svc.CreateDBAGroup()
-			s := svc.GetNodes()
-			log.Println(s)
+			agents = svc.GetNodes()
+
+			//log.Println(agents)
 		}
 		if conf.GraphiteEmbedded {
 			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
