@@ -363,11 +363,11 @@ The default rejoining method is to never promote a slave as a master when the no
 |  Master/Slave/Kill  | Read/Write/Err |
 |---------------------|----------------|
 | MS-MK-MS            | RW-RW-RW       |
-| MS-MK-KK-KS-MS      | RW-RW-EE-EE-RW |
+| MS-MK-KK-KS-MS      | RW-RW-EE-RE-RW |
 | MS-MK-KK-MK-MS      | RW-RW-EE-RW-RW |
 | MS-KM-SM            | RW-RW-RW       |
 | MS-KM-KK-KM-SM      | RW-RW-EE-RW-RW |
-| MS-KM-KK-SK-SM      | RW-RW-EE-EE-RW |
+| MS-KM-KK-SK-SM      | RW-RW-EE-RE-RW |
 
 We can change this default to flavor HA against protecting over data lost and do failover on first node to ping: after a full DC crash or if the master never show up.  
 ```
