@@ -319,8 +319,14 @@ Interactive console and HTTP dashboards are available for control`,
 			svc.Port = "443"
 			svc.User = "root@localhost.localdomain"
 			svc.Pass = "opensvc"
-			svc.ImportCompliance(conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.cnf.json")
-			svc.CreateDBAGroup()
+			svc.RplMgrUser = "replication-manager"
+			svc.RplMgrPassword = "mariadb"
+
+			err := svc.Bootstrap(conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.cnf.json")
+			if err != nil {
+				log.Printf("%s", err)
+
+			}
 			agents = svc.GetNodes()
 
 			//log.Println(agents)
