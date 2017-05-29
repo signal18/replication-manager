@@ -4,6 +4,18 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01,Cluster_Test_2_Nodes monitor --daemon
 
+[Cluster_Enterprise_MasterSlave]
+title = "ClusterEnterpriseMasterSlave"
+hosts = "192.168.0.51,192.168.0.52"
+prefmaster = "192.168.0.51"
+user = "root:mariadb"
+rpluser = "root:mariadb"
+connect-timeout = 1
+prov-agents = "node2"
+prov-template = "system.ext4.none.loopback./srv"
+prov-net-gateway = "192.168.0.254"
+prov-net-mask = "255.255.255.0"
+
 [Cluster_Maxscale_MasterSlave]
 title = "ClusterTestMaxscale"
 hosts = "127.0.0.1:5055,127.0.0.1:5056"

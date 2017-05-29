@@ -14,38 +14,15 @@ import (
 	"os/exec"
 	"os/user"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/tanji/replication-manager/misc"
+	"github.com/tanji/replication-manager/opensvc"
 )
-
-func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
-	dumpCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	var err error
-	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed opening pipe: %s", err)
-		return err
-	}
-	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf("ERROR", "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
-		return err
-	}
-	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf("ERROR", "Can't start mysql client:%s at %s", err, clientCmd.Path)
-		return err
-	}
-	dumpCmd.Wait()
-	cluster.LogPrintf("INFO", "Start slave after dump")
-
-	dbhelper.StartSlave(dest.Conn)
-	return nil
-}
 
 func readPidFromFile(pidfile string) (string, error) {
 	d, err := ioutil.ReadFile(pidfile)
@@ -56,22 +33,68 @@ func readPidFromFile(pidfile string) (string, error) {
 }
 
 func (cluster *Cluster) InitClusterSemiSync() error {
+
 	cluster.sme.SetFailoverState()
-	for k, server := range cluster.servers {
-		cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
-		if server.Conn.Ping() == nil {
-			cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
-			if server.Name == "" {
-				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
-				pid, _ := readPidFromFile(pidfile)
-				pidint, _ := strconv.Atoi(pid)
-				server.Process, _ = os.FindProcess(pidint)
+	// create service template and post
+	if cluster.conf.Enterprise {
+
+		var svc opensvc.Collector
+		svc.Host, svc.Port = misc.SplitHostPort(cluster.conf.ProvHost)
+		svc.User, svc.Pass = misc.SplitPair(cluster.conf.ProvAdminUser)
+		svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.conf.ProvUser)
+		servers := cluster.GetServers()
+		var iplist []string
+		for _, s := range servers {
+			iplist = append(iplist, s.Host)
+		}
+		svc.ProvAgents = cluster.conf.ProvAgents
+		svc.ProvTemplate = cluster.conf.ProvTemplate
+		svc.ProvMem = cluster.conf.ProvMem
+		svc.ProvPwd = cluster.GetDbPass()
+		svc.ProvIops = cluster.conf.ProvIops
+		svc.ProvDisk = cluster.conf.ProvDisk
+		svc.ProvNetMask = cluster.conf.ProvNetmask
+		svc.ProvNetGateway = cluster.conf.ProvGateway
+		if svc.IsServiceBootstrap(cluster.GetName()) == false {
+			// create template && bootstrap
+			agents := svc.GetNodes()
+			var clusteragents []opensvc.Host
+
+			for _, node := range agents {
+				if strings.Contains(svc.ProvAgents, node.Node_name) {
+					clusteragents = append(clusteragents, node)
+				}
+			}
+			res, err := svc.GenerateTemplate(iplist, clusteragents)
+			if err != nil {
+				return err
 			}
 
-			cluster.KillMariaDB(server)
-		}
+			idtemplate, _ := svc.CreateTemplate(cluster.GetName(), res)
 
-		cluster.InitMariaDB(server, server.Name, "semisync.cnf")
+			for _, node := range agents {
+				if strings.Contains(svc.ProvAgents, node.Node_name) {
+					svc.ProvisionTemplate(idtemplate, node.Node_id, cluster.GetName())
+				}
+			}
+		}
+	} else {
+		for k, server := range cluster.servers {
+			cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
+			if server.Conn.Ping() == nil {
+				cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
+				if server.Name == "" {
+					pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
+					pid, _ := readPidFromFile(pidfile)
+					pidint, _ := strconv.Atoi(pid)
+					server.Process, _ = os.FindProcess(pidint)
+				}
+
+				cluster.KillMariaDB(server)
+			}
+
+			cluster.InitMariaDB(server, server.Name, "semisync.cnf")
+		}
 	}
 	cluster.sme.RemoveFailoverState()
 
@@ -399,7 +422,22 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 	return nil
 }
 
+// Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
+
+	// create service template and post
+	if cluster.conf.Enterprise {
+		cluster.InitClusterSemiSync()
+	}
+
+	err := cluster.BootstrapReplication()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) BootstrapReplication() error {
 	cluster.sme.SetFailoverState()
 	// default to master slave
 	if cluster.CleanAll {

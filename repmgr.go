@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/graphite"
+	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/termlog"
 )
@@ -154,7 +155,6 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "88.191.151.84:80", "")
 	monitorCmd.Flags().IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique instance idententifier")
 	monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10002", "replication-manager hosts http port")
-	monitorCmd.Flags().BoolVar(&conf.Enterprise, "enterprise", false, "Enterpise release")
 
 	viper.BindPFlags(monitorCmd.Flags())
 
@@ -208,6 +208,18 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 
 	cmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Use SSL encryption to replicate from master")
+	cmd.Flags().BoolVar(&conf.Enterprise, "enterprise", false, "Enterpise release")
+	cmd.Flags().StringVar(&conf.ProvHost, "prov-host", "127.0.0.1:443", "OpenSVC collector API")
+	cmd.Flags().StringVar(&conf.ProvAdminUser, "prov-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
+	cmd.Flags().StringVar(&conf.ProvUser, "prov-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
+	cmd.Flags().StringVar(&conf.ProvTemplate, "prov-template", "system.ext4.none.loopback./srv", "URI [system|docker].[zfs|xfs|ext4].[none|zpool|lvm].[loopback|physical].[path-to-loopfile|/dev/xx]")
+	cmd.Flags().StringVar(&conf.ProvAgents, "prov-agents", "", "Comma seperated list of agents for micro services provisionning")
+	cmd.Flags().StringVar(&conf.ProvMem, "prov-memory", "256", "Memory in M for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDisk, "prov-disk-size", "20g", "Disk in g for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvIops, "prov-disk-iops", "300", "Rnd IO/s in for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvGateway, "prov-net-gateway", "192.168.0.254", "Micro Service network gateway")
+	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-net-mask", "255.255.255.0", "Micro Service network mask")
+
 	viper.BindPFlags(cmd.Flags())
 
 }
@@ -315,17 +327,12 @@ Interactive console and HTTP dashboards are available for control`,
 		if conf.Enterprise {
 
 			var svc opensvc.Collector
-			svc.Host = "127.0.0.1"
-			svc.Port = "443"
-			svc.User = "root@localhost.localdomain"
-			svc.Pass = "opensvc"
-			svc.RplMgrUser = "replication-manager"
-			svc.RplMgrPassword = "mariadb"
-
-			err := svc.Bootstrap(conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.cnf.json")
+			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
+			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
+			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
+			err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
 			if err != nil {
 				log.Printf("%s", err)
-
 			}
 			agents = svc.GetNodes()
 

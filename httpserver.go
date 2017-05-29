@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +22,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	"github.com/tanji/replication-manager/cluster"
+	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/regtest"
 	"github.com/tanji/replication-manager/state"
 )
@@ -204,6 +207,8 @@ func httpserver() {
 		router.HandleFunc("/dashboard.js", handlerJS)
 		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 		router.HandleFunc("/setverbosity", handlerVerbosity)
+		router.HandleFunc("/template", handlerOpenSVCTemplate)
+		router.HandleFunc("/repocomp", handlerRepoComp)
 
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
@@ -243,6 +248,8 @@ func httpserver() {
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
 		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
+		http.HandleFunc("/template", handlerOpenSVCTemplate)
+		http.HandleFunc("/repocomp", handlerRepoComp)
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
 	if confs[cfgGroup].Verbose {
@@ -274,9 +281,23 @@ func handlerJS(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
+	//marshal unmarchal for ofuscation deep copy of struc
+	data, _ := json.Marshal(currentCluster.GetServers())
+	var srvs []*cluster.ServerMonitor
 
+	err := json.Unmarshal(data, &srvs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+	for i := range srvs {
+		srvs[i].Pass = "XXXXXXXX"
+	}
 	e := json.NewEncoder(w)
-	err := e.Encode(currentCluster.GetServers())
+
+	err = e.Encode(srvs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -293,6 +314,19 @@ func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+}
+
+func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
+
+	data, err := ioutil.ReadFile(string(conf.ShareDir + "/opensvc/current"))
+
+	if err != nil {
+		w.WriteHeader(404)
+		w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+		return
+	}
+	w.Write(data)
+
 }
 
 func handlerStopServer(w http.ResponseWriter, r *http.Request) {
@@ -319,8 +353,21 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSlaves(w http.ResponseWriter, r *http.Request) {
+	data, _ := json.Marshal(currentCluster.GetSlaves())
+	var srvs []*cluster.ServerMonitor
+
+	err := json.Unmarshal(data, &srvs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+	for i := range srvs {
+		srvs[i].Pass = "XXXXXXXX"
+	}
 	e := json.NewEncoder(w)
-	err := e.Encode(currentCluster.GetSlaves())
+	err = e.Encode(srvs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -337,9 +384,34 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
+	var svc opensvc.Collector
+	servers := currentCluster.GetServers()
+	var iplist []string
+	for _, s := range servers {
+		iplist = append(iplist, s.Host)
+	}
+	svc.ProvAgents = conf.ProvAgents
+	svc.ProvTemplate = conf.ProvTemplate
+	svc.ProvMem = conf.ProvMem
+	svc.ProvPwd = currentCluster.GetDbPass()
+	svc.ProvIops = conf.ProvIops
+	svc.ProvDisk = conf.ProvDisk
+	svc.ProvNetMask = conf.ProvNetmask
+	svc.ProvNetGateway = conf.ProvGateway
 
+	res, err := svc.GenerateTemplate(iplist, agents)
+	w.Write([]byte(res))
+
+	if err != nil {
+		log.Println("HTTP Error ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
 func handlerProxies(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
+
 	err := e.Encode(currentCluster.GetProxies())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -349,8 +421,22 @@ func handlerProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMaster(w http.ResponseWriter, r *http.Request) {
+	m := currentCluster.GetMaster()
+	var srvs *cluster.ServerMonitor
+	if m != nil {
+
+		data, _ := json.Marshal(m)
+
+		err := json.Unmarshal(data, &srvs)
+		if err != nil {
+			log.Println("Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+		srvs.Pass = "XXXXXXXX"
+	}
 	e := json.NewEncoder(w)
-	err := e.Encode(currentCluster.GetMaster())
+	err := e.Encode(srvs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
