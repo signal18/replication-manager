@@ -1,0 +1,70 @@
+[DEFAULT]
+docker_daemon_args = --log-opt max-size=1m
+docker_daemon_private = false
+[fs#1]
+type = directory
+path = /srv/{svcname}/docker
+
+[fs#2]
+type = directory
+path = /srv/{svcname}/data
+blocking_post_provision = mkdir -p /srv/{svcname}/data/web2py/applications; test -d /srv/{svcname}/data/web2py/applications/init || git clone https://git.opensvc.com/collector_eval/.git /srv/{svcname}/data/web2py/applications; chown -R {env.uid}:{env.gid} /srv/{svcname}/data/web2py/applications; touch /srv/{svcname}/data/web2py/applications/init/modules/config.py
+
+
+[container#0]
+type = docker
+run_image = busybox:latest
+run_args = -i -t
+        --ip={env.ipaddr}
+        --net={svcname}
+        -v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#1]
+type = docker
+run_image = collector_db:build11
+
+run_args = -v /srv/{svcname}/data/db/conf:/conf
+        -v /srv/{svcname}/data/web2py/applications/init/dbdump/schema.dump:/schema.dump
+        -v /srv/{svcname}/data/web2py/applications/init/dbdump/data.dump:/data.dump
+        -v /srv/{svcname}/data/db/data:/var/lib/mysql:rw
+        -v /etc/localtime:/etc/localtime:ro
+        -e CUSTO_UID={env.uid} -e CUSTO_GID={env.gid}
+        --net=container:{svcname}.container.0
+pre_provision = mkdir -p /srv/{svcname}/data/db/conf /srv/{svcname}/data/db/data;docker image load -i/usr/share/replication-manager/opensvc/collector_db.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_busybox.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_nginx.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_redis.tar.gz
+docker image load -i/usr/share/replication-manager/opensvc/collector_web2py.tar.gz
+
+[container#2]
+type = docker
+run_image = collector_nginx:build1
+run_args = -i -t
+        -v /etc/localtime:/etc/localtime:ro
+        -v /srv/{svcname}/data/nginx/conf:/conf:rw
+        -v /srv/{svcname}/data/web2py/applications:/opt/web2py/applications:rw
+        -e SVCNAME={svcname}
+        --net=container:{svcname}.container.0
+pre_provision = mkdir -p /srv/{svcname}/data/nginx/conf
+
+[container#3]
+type = docker
+run_image = collector_redis:build1
+run_args = -i -t
+        -v /etc/localtime:/etc/localtime:ro
+        --net=container:{svcname}.container.0
+
+[container#4]
+type = docker
+run_image = collector_web2py:build10
+run_args = -i -t
+        -v /etc/localtime:/etc/localtime:ro
+        -v /srv/{svcname}/data/web2py/applications:/opt/web2py/applications:rw
+        -e CUSTO_UID={env.uid} -e CUSTO_GID={env.gid} -e CUSTO_PWD=pbkdf2(1000,20,sha512)$8bdd39e55b6d3f58$67f012486f95f0464762c7e568e5ca8c3b4395d0
+        --net=container:{svcname}.container.0
+
+[env]
+datafile_dir = /srv
+ipaddr = 10.0.3.3
+netmask = 255.255.255.0
+gateway = 10.0.3.1
+uid = 1001
+gid = 1001

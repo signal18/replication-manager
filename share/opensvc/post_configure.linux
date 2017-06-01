@@ -1,0 +1,12 @@
+# install OpenSVC agent
+docker image load -i/usr/share/replication-manager/opensvc/collector_busybox.tar.gz
+docker image load -i/usr/share/replication-manager/opensvc/collector_db.tar.gz
+docker image load -i/usr/share/replication-manager/opensvc/collector_nginx.tar.gz
+docker image load -i/usr/share/replication-manager/opensvc/collector_redis.tar.gz
+docker image load -i/usr/share/replication-manager/opensvc/collector_web2py.tar.gz
+
+svcmgr -s opensvc-collector create --provision --interactive --template /usr/share/replication-manager/collector.linux.template
+
+# register du noeud
+nodemgr register
+nodemgr set --param node.dbopensvc --value https://127.0.0.1
