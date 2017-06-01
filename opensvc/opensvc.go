@@ -80,23 +80,17 @@ type Collector struct {
 
 func (collector *Collector) GenerateTemplate(servers []string, agents []Host) (string, error) {
 	tpl := strings.Split(collector.ProvTemplate, ".")
+	log.Println(collector.ProvTemplate)
 	collector.ProvMicroSrv = tpl[0]
 	collector.ProvFSType = tpl[1]
 	collector.ProvFSPool = tpl[2]
 	collector.ProvFSMode = tpl[3]
 	collector.ProvFSPath = tpl[4]
-	type Section1 struct {
-		Nodes               string `ini:"nodes"`
-		DockerDaemonPrivate bool   `ini:"docker_daemon_private"`
-		ClusterType         string `ini:"cluster_type"`
-		Rollback            bool   `ini:"rollback"`
-		ShowDisabled        bool   `ini:"show_disabled"`
-	}
-	type Template struct {
-		Name      string    `ini:"NAME"`
-		NeverMind string    `ini:"-"`
-		Section   *Section1 `ini:"DEFAULT"`
-	}
+
+	var net string
+	var vm string
+	var disk string
+	var fs string
 
 	conf := `
 [DEFAULT]
@@ -106,27 +100,38 @@ cluster_type = flex
 rollback = false
 show_disabled = false
 	`
+	log.Println("ProvFSMode " + collector.ProvFSMode)
 
 	if collector.ProvMicroSrv == "docker" {
 		conf = conf + `
 docker_daemon_private = false
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
-
-[container#00]
-type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
-    -v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
 `
+
+		if collector.ProvFSMode == "loopback" {
+			disk = `
+[disk#00]
+type = loop
+file = ` + collector.ProvFSPath + `/{svcname}_docker.dsk
+size = {env.size}
+
+`
+			fs = `
+[fs#00]
+type = ` + collector.ProvFSType + `
+dev = {disk#00.file}
+mnt = {env.base_dir}/docker
+size = 2g
+
+`
+		}
+
 	}
 
-	var disk string
-	var fs string
-	var net string
-	var vm string
-	ip_pods := ""
+	ipPods := ""
+
+	//main loop over db instances
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
 
@@ -193,7 +198,7 @@ tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
 			net = net + `
 type = docker
 ipdev = br0
-container_rid = container#00
+container_rid = container#00` + pod + `
 
 `
 		} else {
@@ -212,21 +217,28 @@ enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + 
 
 `
 
-		ip_pods = ip_pods + `
+		ipPods = ipPods + `
 ip_pod` + pod + ` = ` + host + `
 `
 		if collector.ProvMicroSrv == "docker" {
 			vm = vm + `
-[container#` + pod + `]
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+    -v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
 tags = pod` + pod + `
 type = docker
 run_image = {env.db_img}
-run_args = --net=container:{svcname}.container.00
+run_args = --net=container:{svcname}.container.00` + pod + `
    -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
    -e MYSQL_INITDB_SKIP_TZINFO=yes
    -v /etc/localtime:/etc/localtime:ro
    -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
-   -v {env.base_dir}/pod` + pod + `/conf/my.cnf:/etc/mysql/my.cnf:rw
+   -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
    -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 disable = true
 enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + `//{#nodes}))]}
@@ -255,7 +267,7 @@ post_provision = {svcmgr} -s {svcname} compliance fix --attach --moduleset maria
 nodes = ` + collector.ProvAgents + `
 size = ` + collector.ProvDisk + `
 db_img = mariadb:latest
-` + ip_pods + `
+` + ipPods + `
 mysql_root_password = ` + collector.ProvPwd + `
 network = ` + network + `
 gateway =  ` + collector.ProvNetGateway + `
@@ -681,7 +693,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 		log.Println("ERROR ", err)
 		return "", err
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)

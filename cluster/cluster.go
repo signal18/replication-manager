@@ -68,6 +68,7 @@ type Cluster struct {
 	testStopCluster      bool
 	testStartCluster     bool
 	clusterDown          bool
+	isProvisionned       bool
 	lastmaster           *ServerMonitor //saved when all cluster down
 	benchmarkType        string
 }

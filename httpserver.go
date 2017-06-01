@@ -17,12 +17,14 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
 	"github.com/tanji/replication-manager/cluster"
+	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/regtest"
 	"github.com/tanji/replication-manager/state"
@@ -386,29 +388,43 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 }
 func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 	var svc opensvc.Collector
+	svc.Host, svc.Port = misc.SplitHostPort(currentCluster.GetConf().ProvHost)
+	svc.User, svc.Pass = misc.SplitPair(currentCluster.GetConf().ProvAdminUser)
+	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(currentCluster.GetConf().ProvUser)
 	servers := currentCluster.GetServers()
 	var iplist []string
 	for _, s := range servers {
 		iplist = append(iplist, s.Host)
 	}
-	svc.ProvAgents = conf.ProvAgents
-	svc.ProvTemplate = conf.ProvTemplate
-	svc.ProvMem = conf.ProvMem
+	svc.ProvAgents = currentCluster.GetConf().ProvAgents
+	svc.ProvTemplate = currentCluster.GetConf().ProvTemplate
+	svc.ProvMem = currentCluster.GetConf().ProvMem
 	svc.ProvPwd = currentCluster.GetDbPass()
-	svc.ProvIops = conf.ProvIops
-	svc.ProvDisk = conf.ProvDisk
-	svc.ProvNetMask = conf.ProvNetmask
-	svc.ProvNetGateway = conf.ProvGateway
+	svc.ProvIops = currentCluster.GetConf().ProvIops
+	svc.ProvDisk = currentCluster.GetConf().ProvDisk
+	svc.ProvNetMask = currentCluster.GetConf().ProvNetmask
+	svc.ProvNetGateway = currentCluster.GetConf().ProvGateway
+	agts := svc.GetNodes()
+	var clusteragents []opensvc.Host
 
-	res, err := svc.GenerateTemplate(iplist, agents)
-	w.Write([]byte(res))
+	for _, node := range agts {
+		currentCluster.LogPrintf("INFO", "hypervisors for cluster: %s %s", svc.ProvAgents, node.Node_name)
+		if strings.Contains(svc.ProvAgents, node.Node_name) {
+			currentCluster.LogPrintf("INFO", "hypervisors Found")
 
+			clusteragents = append(clusteragents, node)
+		}
+	}
+	res, err := svc.GenerateTemplate(iplist, clusteragents)
 	if err != nil {
 		log.Println("HTTP Error ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+
+	w.Write([]byte(res))
 }
+
 func handlerProxies(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 
