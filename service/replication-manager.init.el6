@@ -1,11 +1,19 @@
 #!/bin/sh
-#
 # replication-manager       Replication HA Management for MariaDB 10.x
 #
 # chkconfig: - 90 10
 # description: replication-manager
 # processname: replication-manager
 # config: /etc/replication-manager/config.toml
+### BEGIN INIT INFO
+# Provides:          replication-manager
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts replication-manager
+# Description:       starts the MariaDB/MySQL replication-manager service
+### END INIT INFO
 
 # Source function library.
 . /etc/rc.d/init.d/functions
