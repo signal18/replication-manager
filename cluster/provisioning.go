@@ -62,7 +62,9 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	if cluster.testStopCluster == false {
 		return nil
 	}
+
 	cluster.sme.SetFailoverState()
+
 	for _, server := range cluster.servers {
 		cluster.KillMariaDB(server)
 
@@ -112,17 +114,19 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 
 func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 
-	if server.Host != "127.0.0.1" {
-		cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCStopService(server)
+	} else {
+
+		if server.Host != "127.0.0.1" {
+			cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
+		}
+		cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Name, server.Process.Pid)
+		//	server.Process.Kill()
+		killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
+		killCmd.Run()
+		//cluster.waitMariaDBStop(server)
 	}
-
-	cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Name, server.Process.Pid)
-
-	//	server.Process.Kill()
-	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
-	killCmd.Run()
-
-	//cluster.waitMariaDBStop(server)
 	return nil
 }
 
@@ -133,57 +137,61 @@ func (cluster *Cluster) ShutdownMariaDB(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 
-	cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Name)
-	if server.Name == "" {
-
-		_, err := os.Stat(server.Name)
-		if err != nil {
-			cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
-		}
-
-	}
-	path := cluster.conf.WorkingDir + "/" + server.Name
-	err := os.RemoveAll(path + "/" + server.Name + ".pid")
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		return err
-	}
-	usr, err := user.Current()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		return err
-	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
-	cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
-	mariadbdCmd.Start()
-	server.Process = mariadbdCmd.Process
-
-	exitloop := 0
-	for exitloop < 30 {
-		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
-		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
-		conn, err2 := sqlx.Open("mysql", dsn)
-		if err2 == nil {
-			conn.Exec("set sql_log_bin=0")
-			grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
-			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
-			cluster.LogPrintf("INFO", "%s", grants)
-			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
-			conn.Exec(grants2)
-			exitloop = 100
-		}
-		exitloop++
-
-	}
-	if exitloop == 101 {
-		cluster.LogPrintf("INFO", "MariaDB started.")
-
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCStartService(server)
 	} else {
-		cluster.LogPrintf("INFO", "MariaDB timeout.")
-		return errors.New("Failed to start")
-	}
 
+		cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Name)
+		if server.Name == "" {
+
+			_, err := os.Stat(server.Name)
+			if err != nil {
+				cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
+			}
+
+		}
+		path := cluster.conf.WorkingDir + "/" + server.Name
+		err := os.RemoveAll(path + "/" + server.Name + ".pid")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+			return err
+		}
+		usr, err := user.Current()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+			return err
+		}
+		mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
+		cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+		mariadbdCmd.Start()
+		server.Process = mariadbdCmd.Process
+
+		exitloop := 0
+		for exitloop < 30 {
+			time.Sleep(time.Millisecond * 2000)
+			cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
+			dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
+			conn, err2 := sqlx.Open("mysql", dsn)
+			if err2 == nil {
+				conn.Exec("set sql_log_bin=0")
+				grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
+				conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
+				cluster.LogPrintf("INFO", "%s", grants)
+				grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
+				conn.Exec(grants2)
+				exitloop = 100
+			}
+			exitloop++
+
+		}
+		if exitloop == 101 {
+			cluster.LogPrintf("INFO", "MariaDB started.")
+
+		} else {
+			cluster.LogPrintf("INFO", "MariaDB timeout.")
+			return errors.New("Failed to start")
+		}
+	}
 	return nil
 }
 

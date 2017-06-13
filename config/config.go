@@ -144,11 +144,26 @@ type Config struct {
 	ProvHost                           string `mapstructure:"prov-host"`
 	ProvAdminUser                      string `mapstructure:"prov-admin-user"`
 	ProvUser                           string `mapstructure:"prov-user"`
-	ProvTemplate                       string `mapstructure:"prov-template"`
-	ProvAgents                         string `mapstructure:"prov-agents"`
-	ProvMem                            string `mapstructure:"prov-memory"`
-	ProvIops                           string `mapstructure:"prov-disk-iops"`
-	ProvDisk                           string `mapstructure:"prov-disk-size"`
-	ProvNetmask                        string `mapstructure:"prov-net-mask"`
-	ProvGateway                        string `mapstructure:"prov-net-gateway"`
+	ProvType                           string `mapstructure:"prov-db-service-type"`
+	ProvAgents                         string `mapstructure:"prov-db-agents"`
+	ProvMem                            string `mapstructure:"prov-db-memory"`
+	ProvIops                           string `mapstructure:"prov-db-disk-iops"`
+	ProvDisk                           string `mapstructure:"prov-db-disk-size"`
+	ProvDiskFS                         string `mapstructure:"prov-db-disk-fs"`
+	ProvDiskPool                       string `mapstructure:"prov-db-disk-pool"`
+	ProvDiskDevice                     string `mapstructure:"prov-db-disk-device"`
+	ProvDiskType                       string `mapstructure:"prov-db-disk-type"`
+	ProvNetIface                       string `mapstructure:"prov-db-net-iface"`
+	ProvNetmask                        string `mapstructure:"prov-db-net-mask"`
+	ProvGateway                        string `mapstructure:"prov-db-net-gateway"`
+	ProvProxType                       string `mapstructure:"prov-proxy-service-type"`
+	ProvProxAgents                     string `mapstructure:"prov-proxy-agents"`
+	ProvProxDisk                       string `mapstructure:"prov-proxy-disk-size"`
+	ProvProxDiskFS                     string `mapstructure:"prov-proxy-disk-fs"`
+	ProvProxDiskPool                   string `mapstructure:"prov-proxy-disk-pool"`
+	ProvProxDiskDevice                 string `mapstructure:"prov-proxy-disk-device"`
+	ProvProxDiskType                   string `mapstructure:"prov-proxy-disk-type"`
+	ProvProxNetIface                   string `mapstructure:"prov-proxy-net-iface"`
+	ProvProxNetmask                    string `mapstructure:"prov-proxy-net-mask"`
+	ProvProxGateway                    string `mapstructure:"prov-proxy-net-gateway"`
 }

@@ -9,11 +9,11 @@
 package cluster
 
 import (
-	"crypto/sha1"
 	"database/sql"
-	"encoding/hex"
+	//"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"net/http"
 	"os"
 	"strconv"
@@ -151,8 +151,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 	server.ClusterGroup = cluster
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
-	servertohash := sha1.Sum([]byte(server.URL))
-	server.Name = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
+	//servertohash := sha1.Sum([]byte(server.URL))
+	//server.Name = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
+	// LVM does not suppot long name
+	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
+	server.Name = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)

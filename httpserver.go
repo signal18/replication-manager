@@ -16,7 +16,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
 	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/regtest"
 	"github.com/tanji/replication-manager/state"
@@ -210,7 +208,7 @@ func httpserver() {
 		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 		router.HandleFunc("/setverbosity", handlerVerbosity)
 		router.HandleFunc("/template", handlerOpenSVCTemplate)
-		router.HandleFunc("/repocomp", handlerRepoComp)
+		router.HandleFunc("/repocomp/current", handlerRepoComp)
 
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
@@ -251,7 +249,7 @@ func httpserver() {
 		http.HandleFunc("/dashboard.js", handlerJS)
 		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 		http.HandleFunc("/template", handlerOpenSVCTemplate)
-		http.HandleFunc("/repocomp", handlerRepoComp)
+		http.HandleFunc("/repocomp/current", handlerRepoComp)
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
 	if confs[cfgGroup].Verbose {
@@ -333,23 +331,17 @@ func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 
 func handlerStopServer(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
-	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
-	if err != nil {
-		currentCluster.LogPrintf("ERROR", "Failed encoding JSON:%s ", err)
-		return
-	}
-	node := currentCluster.GetServerFromId(uint(intsrvid))
+	srv := r.URL.Query().Get("server")
+
+	node := currentCluster.GetServerFromName(srv)
 	currentCluster.ShutdownMariaDB(node)
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
-	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		return
-	}
-	node := currentCluster.GetServerFromId(uint(intsrvid))
+	srv := r.URL.Query().Get("server")
+
+	node := currentCluster.GetServerFromName(srv)
 	node.Conf = "semisync.cnf"
 	currentCluster.StartMariaDB(node)
 }
@@ -387,23 +379,16 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
-	var svc opensvc.Collector
-	svc.Host, svc.Port = misc.SplitHostPort(currentCluster.GetConf().ProvHost)
-	svc.User, svc.Pass = misc.SplitPair(currentCluster.GetConf().ProvAdminUser)
-	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(currentCluster.GetConf().ProvUser)
+	svc := currentCluster.OpenSVCConnect()
 	servers := currentCluster.GetServers()
 	var iplist []string
+	var portlist []string
 	for _, s := range servers {
 		iplist = append(iplist, s.Host)
+		portlist = append(portlist, s.Port)
+
 	}
-	svc.ProvAgents = currentCluster.GetConf().ProvAgents
-	svc.ProvTemplate = currentCluster.GetConf().ProvTemplate
-	svc.ProvMem = currentCluster.GetConf().ProvMem
-	svc.ProvPwd = currentCluster.GetDbPass()
-	svc.ProvIops = currentCluster.GetConf().ProvIops
-	svc.ProvDisk = currentCluster.GetConf().ProvDisk
-	svc.ProvNetMask = currentCluster.GetConf().ProvNetmask
-	svc.ProvNetGateway = currentCluster.GetConf().ProvGateway
+
 	agts := svc.GetNodes()
 	var clusteragents []opensvc.Host
 
@@ -415,7 +400,7 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
-	res, err := svc.GenerateTemplate(iplist, clusteragents)
+	res, err := svc.GenerateTemplate(iplist, portlist, clusteragents, "")
 	if err != nil {
 		log.Println("HTTP Error ", err)
 		http.Error(w, "Encoding error", 500)

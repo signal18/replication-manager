@@ -71,6 +71,7 @@ type Cluster struct {
 	isProvisionned       bool
 	lastmaster           *ServerMonitor //saved when all cluster down
 	benchmarkType        string
+	openSVCServiceStatus int
 }
 
 // Init initial cluster definition

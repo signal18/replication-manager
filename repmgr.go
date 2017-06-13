@@ -8,6 +8,7 @@ package main
 import (
 	"io/ioutil"
 	mysqllog "log"
+	_ "net/http/pprof"
 	"os"
 	"runtime/pprof"
 	"strconv"
@@ -212,13 +213,31 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.ProvHost, "prov-host", "127.0.0.1:443", "OpenSVC collector API")
 	cmd.Flags().StringVar(&conf.ProvAdminUser, "prov-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
 	cmd.Flags().StringVar(&conf.ProvUser, "prov-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
-	cmd.Flags().StringVar(&conf.ProvTemplate, "prov-template", "system.ext4.none.loopback./srv", "URI [system|docker].[zfs|xfs|ext4].[none|zpool|lvm].[loopback|physical].[path-to-loopfile|/dev/xx]")
-	cmd.Flags().StringVar(&conf.ProvAgents, "prov-agents", "", "Comma seperated list of agents for micro services provisionning")
-	cmd.Flags().StringVar(&conf.ProvMem, "prov-memory", "256", "Memory in M for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvDisk, "prov-disk-size", "20g", "Disk in g for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvIops, "prov-disk-iops", "300", "Rnd IO/s in for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvGateway, "prov-net-gateway", "192.168.0.254", "Micro Service network gateway")
-	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-net-mask", "255.255.255.0", "Micro Service network mask")
+	cmd.Flags().StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker]")
+	cmd.Flags().StringVar(&conf.ProvAgents, "prov-db-agents", "", "Comma seperated list of agents for micro services provisionning")
+	cmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDisk, "prov-db-disk-size", "20g", "Disk in g for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvIops, "prov-db-disk-iops", "300", "Rnd IO/s in for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDiskFS, "prov-db-disk-fs", "ext4", "[zfs|xfs|ext4]")
+	cmd.Flags().StringVar(&conf.ProvDiskPool, "prov-db-disk-pool", "none", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvDiskType, "prov-db-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
+	cmd.Flags().StringVar(&conf.ProvNetIface, "prov-db-net-iface", "eth0", "HBA Device to hold Ips")
+	cmd.Flags().StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
+	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
+
+	cmd.Flags().StringVar(&conf.ProvType, "prov-proxy-service-type ", "package", "[package|docker]")
+	cmd.Flags().StringVar(&conf.ProvAgents, "prov-proxy-agents", "", "Comma seperated list of agents for micro services provisionning")
+	cmd.Flags().StringVar(&conf.ProvMem, "prov-proxy-memory", "256", "Memory in M for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDisk, "prov-proxy-disk-size", "20g", "Disk in g for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvIops, "prov-proxy-disk-iops", "300", "Rnd IO/s in for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDiskFS, "prov-proxy-disk-fs", "ext4", "[zfs|xfs|ext4]")
+	cmd.Flags().StringVar(&conf.ProvDiskPool, "prov-proxy-disk-pool", "none", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvDiskType, "prov-proxy-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-proxy-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
+	cmd.Flags().StringVar(&conf.ProvNetIface, "prov-proxy-net-iface", "eth0", "HBA Device to hold Ips")
+	cmd.Flags().StringVar(&conf.ProvGateway, "prov-proxy-net-gateway", "192.168.0.254", "Micro Service network gateway")
+	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
 
 	viper.BindPFlags(cmd.Flags())
 
@@ -323,10 +342,10 @@ Interactive console and HTTP dashboards are available for control`,
 		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 		tlog = termlog.NewTermLog(loglen)
 		// Initialize go-carbon
+		var svc opensvc.Collector
 
 		if conf.Enterprise {
 
-			var svc opensvc.Collector
 			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
 			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
 			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
@@ -336,7 +355,6 @@ Interactive console and HTTP dashboards are available for control`,
 			}
 			agents = svc.GetNodes()
 
-			//log.Println(agents)
 		}
 		if conf.GraphiteEmbedded {
 			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
@@ -390,6 +408,9 @@ Interactive console and HTTP dashboards are available for control`,
 			case <-ticker.C:
 				if conf.Arbitration {
 					fHeartbeat()
+				}
+				if conf.Enterprise {
+					//	agents = svc.GetNodes()
 				}
 			case event := <-termboxChan:
 				switch event.Type {
