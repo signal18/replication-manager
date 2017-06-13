@@ -1,0 +1,306 @@
+{
+    "modulesets": [
+        {
+            "modules": [],
+            "rulesets": [],
+            "modset_name": "mariadb.svc.mrm.proxy",
+            "modulesets": [
+                "mariadb.svc.mrm.proxy.cnf"
+            ],
+            "publications": [
+                "MariaDB",
+                "Everybody"
+            ],
+            "id": 27,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "modules": [
+                {
+                    "autofix": false,
+                    "modset_mod_name": "mariadb.svc.mrm.proxy.cnf"
+                }
+            ],
+            "rulesets": [
+                "mariadb.svc.mrm.proxy.cnf"
+            ],
+            "modset_name": "mariadb.svc.mrm.proxy.cnf",
+            "modulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 28,
+            "responsibles": [
+                "MariaDB"
+            ]
+        }
+    ],
+    "filtersets": [
+        {
+            "fset_stats": false,
+            "id": 33,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "os_name",
+                        "f_value": "linux",
+                        "f_table": "nodes",
+                        "id": 35
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "linux servers"
+        },
+        {
+            "fset_stats": false,
+            "id": 54,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "os_name",
+                        "f_value": "darwin",
+                        "f_table": "nodes",
+                        "id": 59
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "servers osx"
+        }
+    ],
+    "rulesets": [
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf",
+            "variables": [
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2016-11-25 08:59:51",
+                    "var_name": "proxy_cnf_dir_conf",
+                    "id": 261
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2017-01-03 08:51:31",
+                    "var_name": "proxy_cnf_dir_data",
+                    "id": 430
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/log/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2017-01-03 08:55:07",
+                    "var_name": "proxy_cnf_dir_log",
+                    "id": 457
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/keepalived.conf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global_defs { \\n notification_email { stephane@mariadb.com } \\n notification_email_from keepalived@lb-3d9d6604 \\n smtp_server localhost \\n smtp_connect_timeout 30 \\n# This should be unique. \\n router_id 100 \\n} \\nvrrp_instance mysql_pool { \\n# The interface we listen on. interface eth1 \\n# The default state, one should be master, the others should be set to SLAVE.\\nstate %%ENV:STATE%% \\n \\n# This should be the same on all participating load balancers. \\nvirtual_router_id 100 \\npriority %%ENV:VRRP_PRIO%% \\n# Set the interface whose status to track to trigger a failover. \\n\\ntrack_interface { \\n eth1 \\n} \\n\\n# Password for the loadbalancers to share. \\nauthentication { \\n  auth_type PASS \\n  auth_pass 1111 \\n} \\n\\n# This is the IP address that floats between the loadbalancers. \\nvirtual_ipaddress { \\n  %%ENV:SVC_CONF_ENV_VIP_ADDR%%/%%ENV:SVC_CONF_ENV_VIP_NETMASK%% \\n}\\n \\n}\"}",
+                    "var_updated": "2016-11-26 00:18:43",
+                    "var_name": "proxy_cnf_keepalived",
+                    "id": 268
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mysqlmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\n \\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\n\\n\\n[Debug Listener]\\ntype=listener\\nservice=Debug Interface\\nprotocol=telnetd\\nport=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\n\\n%%ENV:SERVERS%%\\n\"}",
+                    "var_updated": "2017-01-03 09:04:24",
+                    "var_name": "proxy_cnf_maxscale",
+                    "id": 233
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/config-haproxy.toml\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# TOPOLOGY\\n# --------\\nhosts = \\\"%%ENV:SVC_CONF_ENV_BACKEND_IPS%%\\\"\\nuser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\nrpluser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\ntitle = \\\"%%ENV:SERVICES_SVCNAME%%/%%ENV:POD%%\\\"\\n\\nconnect-timeout = 1\\n \\n\\n# config.toml\\n# Example replication-manager configuration file\\n\\n# LOG\\n# ---\\n\\n#logfile = \\\"./dashboard/replication-manager.log\\\"\\n#verbose = true\\n\\n#spider = true\\n# HTTP\\n# ----\\n\\nhttp-server = true  \\nhttp-bind-address = \\\"0.0.0.0\\\"\\nhttp-port = \\\"%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\\"\\n# http-root = \\\"./dashboard\\\"\\n\\n# ALERTS\\n# ------\\n\\n#mail-from = \\\"mrm@localhost\\\"\\n#mail-smtp-addr = \\\"localhost:25\\\"\\n#mail-to = \\\"mrm@mariadb.com\\\"\\n\\n# FAILOVER\\n# --------\\n\\n# Automatically rejoin a failed server to the current master\\n# Slaves will re enter with read-only\\n# Wait 5 seconds before killing long running transactions\\n\\nautorejoin = true\\nreadonly = true\\nwait-kill = 5000\\npost-failover-script = \\\"\\\"\\npre-failover-script =\\\"\\\"\\n\\n# CHECK\\n# -----\\n\\ncheck-type = \\\"tcp\\\"\\n\\n# Failover after N failures detection\\n# Failover is stopped after N failovers\\n# Wait N seconds for next failover\\n# Don't initiate failover unless slaves are fully in sync\\n# Don't failover when replication pass delay\\n\\nfailcount = 5\\nfailover-limit = 3\\nfailover-time-limit = 10\\ngtidcheck = true\\nmaxdelay = 30\\n\\n# HA PROXY WRAPPER MODE\\n# ---------------------\\nhaproxy = true \\nhaproxy-binary-path = \\\"/usr/sbin/haproxy\\\"\\n# Read write traffic\\nhaproxy-write-port= %%ENV:SVC_CONF_ENV_PORT_RW%%\\n# Read only load balance least connection traffic\\nhaproxy-read-port=%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n\"}",
+                    "var_updated": "2016-11-29 23:36:40",
+                    "var_name": "proxy_cnf_mrm",
+                    "id": 283
+                },
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/config.toml\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# TOPOLOGY\\n# --------\\nhosts = \\\"%%ENV:SVC_CONF_ENV_BACKEND_IPS%%\\\"\\nuser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\nrpluser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\ntitle = \\\"%%ENV:SERVICES_SVCNAME%%/%%ENV:POD%%\\\"\\n\\nconnect-timeout = 1\\n \\n\\n# config.toml\\n# Example replication-manager configuration file\\n\\n# LOG\\n# ---\\n\\n#logfile = \\\"./dashboard/replication-manager.log\\\"\\n#verbose = true\\n\\n#spider = true\\n# HTTP\\n# ----\\n\\nhttp-server = true  \\nhttp-bind-address = \\\"0.0.0.0\\\"\\nhttp-port = \\\"%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\\"\\n# http-root = \\\"./dashboard\\\"\\n\\n# ALERTS\\n# ------\\n\\n#mail-from = \\\"mrm@localhost\\\"\\n#mail-smtp-addr = \\\"localhost:25\\\"\\n#mail-to = \\\"mrm@mariadb.com\\\"\\n\\n# FAILOVER\\n# --------\\n\\n# Automatically rejoin a failed server to the current master\\n# Slaves will re enter with read-only\\n# Wait 5 seconds before killing long running transactions\\n\\nautorejoin = true\\nreadonly = true\\nwait-kill = 5000\\npost-failover-script = \\\"\\\"\\npre-failover-script =\\\"\\\"\\n\\n# CHECK\\n# -----\\n\\ncheck-type = \\\"tcp\\\"\\n\\n# Failover after N failures detection\\n# Failover is stopped after N failovers\\n# Wait N seconds for next failover\\n# Don't initiate failover unless slaves are fully in sync\\n# Don't failover when replication pass delay\\n\\nfailcount = 5\\nfailover-limit = 3\\nfailover-time-limit = 10\\n#gtidcheck = true\\nmaxdelay = 30\\n\\n# HA PROXY WRAPPER MODE\\n# ---------------------\\n#haproxy = true \\n#haproxy-binary-path = \\\"/usr/sbin/haproxy\\\"\\n# Read write traffic\\n#haproxy-write-port= %%ENV:SVC_CONF_ENV_PORT_RW%%\\n# Read only load balance least connection traffic\\n#haproxy-read-port=%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n\"}",
+                    "var_updated": "2016-11-29 23:05:49",
+                    "var_name": "proxy_cnf_mrm_mx",
+                    "id": 429
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [
+                "mariadb.svc.env",
+                "mariadb.svc.basedir"
+            ],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 78,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.basedir",
+            "variables": [],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [
+                "mariadb.svc.basedir.darwin",
+                "mariadb.svc.basedir.not.darwin"
+            ],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 104,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.basedir.darwin",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "/svc/%%ENV:SERVICES_SVCNAME%%",
+                    "var_updated": "2016-07-08 14:44:10",
+                    "var_name": "base_dir",
+                    "id": 392
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 105,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.basedir.not.darwin",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "/Users/%%ENV:SVC_USERNAME%%/%%ENV:SERVICES_SVCNAME%%",
+                    "var_updated": "2016-07-08 14:43:38",
+                    "var_name": "base_dir",
+                    "id": 391
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 106,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.env",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "999",
+                    "var_updated": "2016-11-23 10:18:20",
+                    "var_name": "mysql_gid",
+                    "id": 428
+                },
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "999",
+                    "var_updated": "2016-11-23 10:18:28",
+                    "var_name": "mysql_uid",
+                    "id": 427
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [
+                "mariadb.svc.env.linux",
+                "mariadb.svc.env.osx"
+            ],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 109,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": "servers osx",
+            "ruleset_name": "mariadb.svc.env.osx",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "777",
+                    "var_updated": "2016-11-23 10:17:30",
+                    "var_name": "binded_dir_perms",
+                    "id": 426
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 110,
+            "responsibles": [
+                "MariaDB"
+            ]
+        },
+        {
+            "fset_name": "linux servers",
+            "ruleset_name": "mariadb.svc.env.linux",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "raw",
+                    "var_value": "775",
+                    "var_updated": "2016-11-23 10:17:14",
+                    "var_name": "binded_dir_perms",
+                    "id": 425
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 111,
+            "responsibles": [
+                "MariaDB"
+            ]
+        }
+    ]
+}

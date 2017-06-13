@@ -1,0 +1,63 @@
+#!/bin/bash
+
+PATH_LIB=$OSVC_PATH_COMP/com.replication-manager
+PREFIX=OSVC_COMP_SPDC_KERNEL
+
+typeset -i r=0
+
+function check_thp_live {
+	typeset -i r=0
+	grep -q "\[never" /sys/kernel/mm/transparent_hugepage/enabled && {
+		echo "the live kernel thp enabled state is 'never'"
+	} || {
+		echo "the live kernel thp enabled state is not 'never'" >&2
+		r=1
+	}
+	grep -q "\[never" /sys/kernel/mm/transparent_hugepage/defrag && {
+		echo "the live kernel thp defrag state is 'never'"
+	} || {
+		echo "the live kernel thp defrag state is not 'never'" >&2
+		r=1
+	}
+	return $r
+}
+
+function fix_thp_live {
+	grep -q "\[never" /sys/kernel/mm/transparent_hugepage/enabled || {
+		echo "echo never >/sys/kernel/mm/transparent_hugepage/enabled"
+		echo never >/sys/kernel/mm/transparent_hugepage/enabled
+	}
+	grep -q "\[never" /sys/kernel/mm/transparent_hugepage/defrag || {
+		echo "echo never >/sys/kernel/mm/transparent_hugepage/defrag"
+		echo never >/sys/kernel/mm/transparent_hugepage/defrag
+	}
+}
+
+case $1 in
+check)
+	check_thp_live
+	[ $? -eq 1 ] && r=1
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE check
+	[ $? -eq 1 ] && r=1
+	$OSVC_PYTHON $PATH_LIB/sysctl.py ${PREFIX}_SYSCTL check
+	[ $? -eq 1 ] && r=1
+	exit $r
+	;;
+fix)
+	fix_thp_live
+	[ $? -eq 1 ] && exit 1
+	typeset -i need_update_grub=0
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE check >/dev/null 2>&1 || need_update_grub=1
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE fix
+	[ $? -eq 1 ] && exit 1
+	$OSVC_PYTHON $PATH_LIB/sysctl.py ${PREFIX}_SYSCTL fix
+	[ $? -eq 1 ] && r=1
+	[ $need_update_grub -eq 1 ] && {
+		update-grub
+	}
+	exit 0
+	;;
+fixable)
+	exit 2
+	;;
+esac
