@@ -243,7 +243,7 @@ and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
 		tlog := termlog.TermLog{}
-		err := currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
+		err := currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
 			log.WithError(err).Fatal("Error initializing cluster")
 		}
