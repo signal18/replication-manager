@@ -1,8 +1,15 @@
 #!/bin/sh
-
+### BEGIN INIT INFO
+# Provides:          replication-manager
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts replication-manager
+# Description:       starts the MariaDB/MySQL replication-manager service
+### END INIT INFO
 # chkconfig: 2345 95 20
-# description: Replication Manager is a MariDB HA replication architeture
-# Startup script for ScrambleDB server and library
+# description: Replication Manager is a MariaDB HA replication monitor
 # Copyright (C) 2016 Stephane Varoqui @MariaDB
 # All rights reserved.
 # processname: replication-manager
