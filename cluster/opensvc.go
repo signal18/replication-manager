@@ -1,8 +1,10 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +20,6 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.User, svc.Pass = misc.SplitPair(cluster.conf.ProvAdminUser)
 	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.conf.ProvUser)
 	svc.ProvAgents = cluster.conf.ProvAgents
-
 	svc.ProvMem = cluster.conf.ProvMem
 	svc.ProvPwd = cluster.GetDbPass()
 	svc.ProvIops = cluster.conf.ProvIops
@@ -32,8 +33,34 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvFSMode = cluster.conf.ProvDiskType
 	svc.ProvFSPath = cluster.conf.ProvDiskDevice
 
+	svc.ProvProxAgents = cluster.conf.ProvProxAgents
+	svc.ProvProxDisk = cluster.conf.ProvProxDisk
+	svc.ProvProxNetMask = cluster.conf.ProvProxNetmask
+	svc.ProvProxNetGateway = cluster.conf.ProvProxGateway
+	svc.ProvProxNetIface = cluster.conf.ProvProxNetIface
+	svc.ProvProxMicroSrv = cluster.conf.ProvProxType
+	svc.ProvProxFSType = cluster.conf.ProvProxDiskFS
+	svc.ProvProxFSPool = cluster.conf.ProvProxDiskPool
+	svc.ProvProxFSMode = cluster.conf.ProvProxDiskType
+	svc.ProvProxFSPath = cluster.conf.ProvProxDiskDevice
+
 	return svc
 }
+
+func (cluster *Cluster) OpenSVCUnprovision() {
+	opensvc := cluster.OpenSVCConnect()
+	agents := opensvc.GetNodes()
+	for _, db := range cluster.servers {
+		for _, node := range agents {
+			for _, svc := range node.Svc {
+				if db.Name == svc.Svc_name {
+					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				}
+			}
+		}
+	}
+}
+
 func (cluster *Cluster) OpenSVCStopService(server *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	agents := svc.GetNodes()
@@ -84,6 +111,21 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
 	svc := cluster.OpenSVCConnect()
 	servers := cluster.GetServers()
+	agents := svc.GetNodes()
+	var clusteragents []opensvc.Host
+
+	for _, node := range agents {
+		cluster.LogPrintf("ERROR", "Searching %s %s ", svc.ProvAgents, node.Node_name)
+
+		if strings.Contains(svc.ProvAgents, node.Node_name) {
+			clusteragents = append(clusteragents, node)
+		}
+	}
+	if len(clusteragents) == 0 {
+		cluster.LogPrintf("ERROR", "No agent found")
+		return errors.New("No agent found for this cluster")
+	}
+
 	var iplist []string
 	var portlist []string
 	for i, s := range servers {
@@ -96,14 +138,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		}
 		if srvStatus == 0 {
 			// create template && bootstrap
-			agents := svc.GetNodes()
-			var clusteragents []opensvc.Host
 
-			for _, node := range agents {
-				if strings.Contains(svc.ProvAgents, node.Node_name) {
-					clusteragents = append(clusteragents, node)
-				}
-			}
 			res, err := svc.GenerateTemplate([]string{s.Host}, []string{s.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, s.Name)
 			if err != nil {
 				return err
@@ -217,167 +252,220 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 	return srvStatus, nil
 }
 
-func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, srv ServerMonitor, agent opensvc.Host) (string, error) {
+func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx Proxy) (string, error) {
+
+	var net string
+	var vm string
+	var disk string
+	var fs string
+	var app string
+	ipPods := ""
+	portPods := ""
 
 	conf := `
 [DEFAULT]
 nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
 cluster_type = flex
 rollback = false
 show_disabled = false
-docker_data_dir = {env.base_dir}/docker
-docker_daemon_args = --log-opt max-size=1m
+`
+	log.Println("ProvFSMode " + collector.ProvFSMode)
 
+	if collector.ProvProxMicroSrv == "docker" {
+		conf = conf + `
+docker_daemon_private = false
+docker_data_dir = {env.base_dir}/docker
+docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
+`
+	}
+
+	if collector.ProvProxMicroSrv == "docker" {
+		if collector.ProvProxFSMode == "loopback" {
+			disk = `
+[disk#00]
+type = loop
+file = ` + collector.ProvProxFSPath + `/{svcname}_docker.dsk
+size = {env.size}
+
+`
+			fs = `
 [fs#00]
-type = btrfs
-dev = /dev/{env.vg}/{svcname}-docker
+type = ` + collector.ProvProxFSType + `
+dev = {disk#00.file}
 mnt = {env.base_dir}/docker
-mnt_opt = subvolid=0
-mkfs_opt = -O ^extref
-vg = {env.vg}
 size = 2g
 
-[container#00]
-type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
-    -v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
-pre_provision = {svcmgr} -s {svcname} compliance fix --attach --moduleset  mariadb.svc.mrm.proxy --force
+`
+		}
 
-[fs#01]
-type = xfs
-dev = /dev/{env.vg}/{svcname}-pod01
-mnt = {env.base_dir}/pod01
-size = {env.size}
-disable = true
-enable_on = {nodes[$(0//(3//{#nodes}))]}
-vg = {env.vg}
+	}
+	i := 1
+	pod := fmt.Sprintf("%02d", i+1)
 
+	if collector.ProvProxFSMode == "loopback" {
 
+		disk = disk + `
+		[disk#` + pod + `]
+		type = loop
+		file = ` + collector.ProvProxFSPath + `/{svcname}_pod` + pod + `.dsk
+		size = {env.size}
 
-[ip#01]
-tags = sm sm.container sm.container.pod01 pod01
-type = docker
-ipdev = br0
-ipname = {env.ip_pod01}
-netmask = 255.255.255.0
-network = {env.network_prefix}.0
-gateway = {env.gateway}
-del_net_route = true
-container_rid = container#00
-disable = true
-enable_on = {nodes[$(0//(3//{#nodes}))]}
+		`
+	}
+	if collector.ProvProxFSPool == "lvm" {
+		disk = disk + `
+		[disk#10` + pod + `]
+		name = {svcname}_` + pod + `
+		type = lvm
+		pvs = {disk#` + pod + `.file}
 
-[container#01]
-tags = pod01
-type = docker
-run_image = {env.maxscale_img}
-run_args = --net=container:{svcname}.container.00
-    -e MYSQL_ROOT_PASSWORD=undefined
-	    -v /etc/localtime:/etc/localtime:ro
-        -v {env.base_dir}/pod01/conf/maxscale.cnf:/etc/maxscale.cnf:rw
-        -v {env.base_dir}/pod01/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
-disable = true
-enable_on = {nodes[$(0//(3//{#nodes}))]}
+		`
+	}
 
+	if collector.ProvProxFSType == "directory" {
+		fs = fs + `
+		[fs#` + pod + `]
+		type = directory
+		path = {env.base_dir}/pod` + pod + `
+		pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}
 
+		`
 
-[fs#02]
-type = xfs
-dev = /dev/{env.vg}/{svcname}-pod02
-mnt = {env.base_dir}/pod02
-size = {env.size}
-disable = true
-enable_on = {nodes[$(1//(3//{#nodes}))]}
-vg = {env.vg}
+	} else {
+		podpool := pod
+		if collector.ProvProxFSPool == "lvm" {
+			podpool = "10" + pod
+		}
 
-[ip#02]
-tags = sm sm.container sm.container.pod02 pod02
-type = docker
-ipdev = br0
-ipname = {env.ip_pod02}
-netmask = 255.255.255.0
-network = {env.network_prefix}.0
-gateway = {env.gateway}
-del_net_route = true
-container_rid = container#00
-disable = true
-enable_on = {nodes[$(1//(3//{#nodes}))]}
+		fs = fs + `
+		[fs#` + pod + `]
+		type = ` + collector.ProvProxFSType + `
+		`
+		if collector.ProvProxFSPool == "lvm" {
+			re := regexp.MustCompile("[0-9]+")
+			strlvsize := re.FindAllString(collector.ProvProxDisk, 1)
+			lvsize, _ := strconv.Atoi(strlvsize[0])
+			lvsize--
+			fs = fs + `
+		dev = /dev/{svcname}_` + pod + `/pod` + pod + `
+		vg = {svcname}_` + pod + `
+		size = ` + strconv.Itoa(lvsize) + `g
+		`
+		} else {
+			fs = fs + `
+		dev = {disk#` + podpool + `.file}
+		size = {env.size}
+		`
+		}
+		fs = fs + `
+		mnt = {env.base_dir}/pod` + pod + `
+		disable = true
+		enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + `//{#nodes}))]}
 
+		`
 
-[container#02]
-tags = pod02
-type = docker
-run_image = {env.maxscale_img}
-run_args = --net=container:{svcname}.container.00
-    -e MYSQL_ROOT_PASSWORD=undefined
-	    -v /etc/localtime:/etc/localtime:ro
-        -v {env.base_dir}/pod02/conf/maxscale.cnf:/etc/maxscale.cnf:rw
-        -v {env.base_dir}/pod02/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
-disable = true
-enable_on = {nodes[$(1//(3//{#nodes}))]}
+	}
 
+	ipdev := collector.ProvProxNetIface
+	net = net + `
+		[ip#` + pod + `]
+		tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
+		`
+	if collector.ProvProxMicroSrv == "docker" {
+		net = net + `
+		type = docker
+		ipdev = ` + collector.ProvProxNetIface + `
+		container_rid = container#00` + pod + `
 
+		`
+	} else {
+		net = net + `
+		ipdev = ` + ipdev + `
+		`
+	}
+	net = net + `
+		ipname = {env.ip_pod` + fmt.Sprintf("%02d", i+1) + `}
+		netmask = {env.netmask}
+		network = {env.network}
+		gateway = {env.gateway}
+		disable = true
+		enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + `//{#nodes}))]}
+		`
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+		`
+	if collector.ProvProxMicroSrv == "docker" {
+		vm = vm + `
+		[container#00` + pod + `]
+		type = docker
+		run_image = busybox:latest
+		run_args =  --net=none  -i -t
+		-v /etc/localtime:/etc/localtime:ro
+		run_command = /bin/sh
 
-[fs#03]
-type = xfs
-dev = /dev/{env.vg}/{svcname}-pod03
-mnt = {env.base_dir}/pod03
-size = {env.size}
-disable = true
-enable_on = {nodes[$(2//(3//{#nodes}))]}
-vg = {env.vg}
+		[container#20` + pod + `]
+		tags = pod` + pod + `
+		type = docker
+		run_image =run_image = {env.maxscale_img}
+		run_args = --net=container:{svcname}.container.00
+		    -e MYSQL_ROOT_PASSWORD=undefined
+			    -v /etc/localtime:/etc/localtime:ro
+		        -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
+		        -v {env.base_dir}/pod` + pod + `/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
+		disable = true
+		enable_on = {nodes[$(1//(3//{#nodes}))]}
+		`
+	}
+	if collector.ProvProxMicroSrv == "package" {
+		app = app + `
+		[app#` + pod + `]
+		script = {env.base_dir}/pod` + pod + `/init/launcher
+		start = 50
+		stop = 50
+		check = 50
+		info = 50
+		`
+	}
 
-[ip#03]
-tags = sm sm.container sm.container.pod03 pod03
-type = docker
-ipdev = br0
-ipname = {env.ip_pod03}
-netmask = 255.255.255.0
-network = {env.network_prefix}.0
-gateway = {env.gateway}
-del_net_route = true
-container_rid = container#00
-disable = true
-enable_on = {nodes[$(2//(3//{#nodes}))]}
-
-
-[container#03]
-tags = pod03
-type = docker
-run_image = {env.replication_manager_img}
-run_args = --net=container:{svcname}.container.00
-        --cap-add=NET_ADMIN
-        -v /etc/localtime:/etc/localtime:ro
-        -v {env.base_dir}/pod03/conf/config.toml:/etc/replication-manager/config.toml:rw
-disable = true
-enable_on = {nodes[$(2//(3//{#nodes}))]}
-
-
+	conf = conf + disk
+	conf = conf + fs
+	conf = conf + `
+		post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+		`
+	conf = conf + net
+	conf = conf + vm
+	conf = conf + app
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
 [env]
-vg = data
-size = 4g
-nodes = node1 node2 node3
-network_prefix = 192.168.0
+nodes = ` + collector.ProvAgents + `
+size = ` + collector.ProvDisk + `
+db_img = mariadb:latest
+` + ipPods + `
+` + portPods + `
+mysql_root_password = ` + collector.ProvPwd + `
+network = ` + network + `
+gateway =  ` + collector.ProvProxNetGateway + `
+netmask =  ` + collector.ProvProxNetMask + `
 maxscale_img =  tanji/maxscale:keepalived
-replication_manager_img = tanji/replication-manager
-gateway = {env.network_prefix}.254
 ip_pod01 = {env.network_prefix}.244
-ip_pod02 = {env.network_prefix}.245
-ip_pod03 = {env.network_prefix}.246
 vip_addr = {env.network_prefix}.240
-vip_netmask = 255.255.255.0
 port_rw = 3306
 port_rw_split = 3307
 port_r_lb = 3308
 port_http = 80
-mysql_root_password = mariadb
+
 base_dir = /srv/{svcname}
-backend_ips = {env.network_prefix}.241,{env.network_prefix}.242,{env.network_prefix}.243
+backend_ips = ` + servers + `
 `
 	log.Println(conf)
 
 	return conf, nil
-
 }

@@ -226,19 +226,16 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
 	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
 
-	cmd.Flags().StringVar(&conf.ProvType, "prov-proxy-service-type ", "package", "[package|docker]")
-	cmd.Flags().StringVar(&conf.ProvAgents, "prov-proxy-agents", "", "Comma seperated list of agents for micro services provisionning")
-	cmd.Flags().StringVar(&conf.ProvMem, "prov-proxy-memory", "256", "Memory in M for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvDisk, "prov-proxy-disk-size", "20g", "Disk in g for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvIops, "prov-proxy-disk-iops", "300", "Rnd IO/s in for micro service VM")
-	cmd.Flags().StringVar(&conf.ProvDiskFS, "prov-proxy-disk-fs", "ext4", "[zfs|xfs|ext4]")
-	cmd.Flags().StringVar(&conf.ProvDiskPool, "prov-proxy-disk-pool", "none", "[none|zpool|lvm]")
-	cmd.Flags().StringVar(&conf.ProvDiskType, "prov-proxy-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
-	cmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-proxy-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
-	cmd.Flags().StringVar(&conf.ProvNetIface, "prov-proxy-net-iface", "eth0", "HBA Device to hold Ips")
-	cmd.Flags().StringVar(&conf.ProvGateway, "prov-proxy-net-gateway", "192.168.0.254", "Micro Service network gateway")
-	cmd.Flags().StringVar(&conf.ProvNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
-
+	cmd.Flags().StringVar(&conf.ProvProxType, "prov-proxy-service-type", "package", "[package|docker]")
+	cmd.Flags().StringVar(&conf.ProvProxAgents, "prov-proxy-agents", "", "Comma seperated list of agents for micro services provisionning")
+	cmd.Flags().StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20g", "Disk in g for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvProxDiskFS, "prov-proxy-disk-fs", "ext4", "[zfs|xfs|ext4]")
+	cmd.Flags().StringVar(&conf.ProvProxDiskPool, "prov-proxy-disk-pool", "none", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvProxDiskType, "prov-proxy-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
+	cmd.Flags().StringVar(&conf.ProvProxDiskDevice, "prov-proxy-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
+	cmd.Flags().StringVar(&conf.ProvProxNetIface, "prov-proxy-net-iface", "eth0", "HBA Device to hold Ips")
+	cmd.Flags().StringVar(&conf.ProvProxGateway, "prov-proxy-net-gateway", "192.168.0.254", "Micro Service network gateway")
+	cmd.Flags().StringVar(&conf.ProvProxNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
 	viper.BindPFlags(cmd.Flags())
 
 }
@@ -274,9 +271,9 @@ and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		currentCluster = new(cluster.Cluster)
 		tlog := termlog.TermLog{}
-		err := currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
+		err := currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
 		if err != nil {
-			log.WithError(err).Fatal("Error initializing cluster")
+			log.WithError(err).Fatal("E:rror initializing cluster")
 		}
 		currentCluster.SetLogStdout()
 		currentCluster.TopologyDiscover()
@@ -349,10 +346,12 @@ Interactive console and HTTP dashboards are available for control`,
 			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
 			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
 			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
+			//if false {
 			err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
 			if err != nil {
 				log.Printf("%s", err)
 			}
+			//}
 			agents = svc.GetNodes()
 
 		}
@@ -410,7 +409,7 @@ Interactive console and HTTP dashboards are available for control`,
 					fHeartbeat()
 				}
 				if conf.Enterprise {
-					//	agents = svc.GetNodes()
+					//			agents = svc.GetNodes()
 				}
 			case event := <-termboxChan:
 				switch event.Type {

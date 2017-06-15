@@ -209,7 +209,8 @@ func httpserver() {
 		router.HandleFunc("/setverbosity", handlerVerbosity)
 		router.HandleFunc("/template", handlerOpenSVCTemplate)
 		router.HandleFunc("/repocomp/current", handlerRepoComp)
-
+		router.HandleFunc("/unprovision", handlerUnprovision)
+		router.HandleFunc("/rolling", handlerRollingUpgrade)
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
@@ -250,6 +251,8 @@ func httpserver() {
 		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 		http.HandleFunc("/template", handlerOpenSVCTemplate)
 		http.HandleFunc("/repocomp/current", handlerRepoComp)
+		http.HandleFunc("/unprovision", handlerUnprovision)
+		http.HandleFunc("/rolling", handlerRollingUpgrade)
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
 	if confs[cfgGroup].Verbose {
@@ -344,6 +347,16 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 	node := currentCluster.GetServerFromName(srv)
 	node.Conf = "semisync.cnf"
 	currentCluster.StartMariaDB(node)
+}
+
+func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
+	currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", currentCluster.GetName())
+	currentCluster.OpenSVCUnprovision()
+}
+
+func handlerRollingUpgrade(w http.ResponseWriter, r *http.Request) {
+	currentCluster.LogPrintf("INFO", "Rest API request rolling upgrade cluster: %s", currentCluster.GetName())
+	currentCluster.RollingUpgrade()
 }
 
 func handlerSlaves(w http.ResponseWriter, r *http.Request) {

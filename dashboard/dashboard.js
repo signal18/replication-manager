@@ -80,6 +80,22 @@ app.factory('Bootstrap', function($resource) {
   );
 });
 
+app.factory('Rolling', function($resource) {
+  return $resource(
+    '/rolling',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
+app.factory('Unprovision', function($resource) {
+  return $resource(
+    '/unprovision',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 
 app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master','Agents','Proxies', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master,Agents,Proxies) {
 
@@ -388,6 +404,32 @@ if (r == true) {
     });
   }
 };
+
+$scope.unprovision = function() {
+var r = confirm("Unprovision operation will destroy your existing data. \n Are you really sure?");
+if (r == true) {
+  var response = $http.get('/unprovision');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
+
+$scope.rolling = function() {
+  var response = $http.get('/rolling');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+};
+
 
 $scope.gtidstring = function(arr) {
   var output = [];

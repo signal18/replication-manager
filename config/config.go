@@ -166,4 +166,8 @@ type Config struct {
 	ProvProxNetIface                   string `mapstructure:"prov-proxy-net-iface"`
 	ProvProxNetmask                    string `mapstructure:"prov-proxy-net-mask"`
 	ProvProxGateway                    string `mapstructure:"prov-proxy-net-gateway"`
+	ProvMaxscaleVip                    string `mapstructure:"prov-proxy-net-maxscale-vip"`
+	ProvMdbshardproxyVip               string `mapstructure:"prov-proxy-net-mdbsproxy-vip"`
+	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
+	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
 }

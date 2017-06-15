@@ -52,6 +52,7 @@ type Host struct {
 	Os_kernel string `json:"os_kernel"`
 	Os_name   string `json:"os_name"`
 	Ips       []Addr
+	Svc       []Service
 }
 type Service struct {
 	Id         int    `json:"id"`
@@ -106,6 +107,9 @@ func (collector *Collector) GenerateTemplate(servers []string, ports []string, a
 	var disk string
 	var fs string
 	var app string
+	ipPods := ""
+	portPods := ""
+
 	conf := `
 [DEFAULT]
 nodes = {env.nodes}
@@ -122,7 +126,9 @@ docker_daemon_private = false
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
 `
+	}
 
+	if collector.ProvMicroSrv == "docker" {
 		if collector.ProvFSMode == "loopback" {
 			disk = `
 [disk#00]
@@ -143,8 +149,6 @@ size = 2g
 
 	}
 
-	ipPods := ""
-	portPods := ""
 	//main loop over db instances
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
@@ -376,7 +380,6 @@ func (collector *Collector) Bootstrap(path string) error {
 	collector.ImportCompliance(path + "moduleset_mariadb.svc.mrm.db.json")
 	collector.ImportCompliance(path + "moduleset_mariadb.svc.mrm.proxy.json")
 
-	//	collector.ImportCompliance(path + "moduleset_mariadb.svc.mrm.db.cnf.json")
 	return nil
 }
 
@@ -851,6 +854,7 @@ func (collector *Collector) GetNodes() []Host {
 	}
 	for i, agent := range r.Data {
 		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
 	}
 	return r.Data
 
@@ -1047,6 +1051,44 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	return r.Services, nil
 }
 
+func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes/" + nodeid + "/services?limit=0&props=services.svcname,services.svc_id"
+	//	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+
+	}
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+
+	type Message struct {
+		Services []Service `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	return r.Services, nil
+}
+
 // GetServiceStatus 0 not provision, 1 prov and up , 2 prov & not up
 func (collector *Collector) GetServiceStatus(name string) (int, error) {
 	services, err := collector.GetServices()
@@ -1115,6 +1157,36 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	log.Println("INFO ", urlpost)
 
 	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "start"}]`)
+	req, err := http.NewRequest("PUT", urlpost, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	log.Println("INFO ", string(body))
+	return string(body), nil
+
+}
+
+func (collector *Collector) UnprovisionService(nodeid string, serviceid string) (string, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
+	log.Println("INFO ", urlpost)
+
+	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "unprovision"}]`)
 	req, err := http.NewRequest("PUT", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		return "", err

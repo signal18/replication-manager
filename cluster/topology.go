@@ -476,13 +476,13 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Fecth service Status
-	if cluster.conf.Enterprise {
+	/*	if cluster.conf.Enterprise {
 		status, err := cluster.GetOpenSVCSeviceStatus()
 		cluster.openSVCServiceStatus = status
 		if err != nil {
 			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
 		}
-	}
+	}*/
 	if cluster.sme.CanMonitor() {
 		return nil
 	}

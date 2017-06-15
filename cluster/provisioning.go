@@ -83,6 +83,9 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	return nil
 }
 
+func (cluster *Cluster) RollingUpgrade() {
+}
+
 func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf string) error {
 	if server.Host != "127.0.0.1" {
 		cluster.LogPrintf("INFO", "Starting remote DB server will be Replication Manager Enterprise feature")

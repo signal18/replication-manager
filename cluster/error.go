@@ -50,4 +50,5 @@ var clusterError = map[string]string{
 	"ERR00044":  "Can't connect OpenSVC collector %s",
 	"WARN00045": "Provision task is in queue",
 	"WARN00046": "Provision task is working",
+	"WARN00047": "Entreprise provision of MariaDB Sharding Cluster not yet implemented",
 }
