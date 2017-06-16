@@ -29,6 +29,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	var err error
 	if fail == false {
 		cluster.LogPrintf("INFO", "Checking long running updates on master %d", cluster.conf.SwitchWaitWrite)
+		if cluster.master == nil {
+			cluster.LogPrintf("ERROR", "Can not switchover without a master")
+			return false
+		}
+		if cluster.master.Conn == nil {
+			cluster.LogPrintf("ERROR", "Can not switchover without a master connection")
+			return false
+		}
 		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.conf.SwitchWaitWrite) > 0 {
 			cluster.LogPrintf("ERROR", "Long updates running on master. Cannot switchover")
 			cluster.sme.RemoveFailoverState()
