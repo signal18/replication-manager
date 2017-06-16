@@ -137,7 +137,26 @@ file = ` + collector.ProvFSPath + `/{svcname}_docker.dsk
 size = {env.size}
 
 `
-			fs = `
+			if collector.ProvFSPool == "zpool" {
+				disk = disk + `
+[disk#0000]
+name = zp{svcname}_00
+type = zpool
+vdev  = {disk#00.file}
+
+`
+			}
+			if collector.ProvFSPool == "zpool" {
+				fs = `
+[fs#00]
+type = ` + collector.ProvFSType + `
+dev = zp{svcname}_00/docker
+mnt = {env.base_dir}/docker
+size = 2g
+
+`
+			} else {
+				fs = `
 [fs#00]
 type = ` + collector.ProvFSType + `
 dev = {disk#00.file}
@@ -145,6 +164,7 @@ mnt = {env.base_dir}/docker
 size = 2g
 
 `
+			}
 		}
 
 	}
@@ -172,6 +192,15 @@ pvs = {disk#` + pod + `.file}
 
 `
 		}
+		if collector.ProvFSPool == "zpool" {
+			disk = disk + `
+[disk#10` + pod + `]
+name = zp{svcname}_pod` + pod + `
+type = zpool
+vdev  = {disk#` + pod + `.file}
+
+`
+		}
 
 		if collector.ProvFSType == "directory" {
 			fs = fs + `
@@ -184,7 +213,7 @@ pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cid
 
 		} else {
 			podpool := pod
-			if collector.ProvFSPool == "lvm" {
+			if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
 				podpool = "10" + pod
 			}
 
@@ -202,6 +231,12 @@ dev = /dev/{svcname}_` + pod + `/pod` + pod + `
 vg = {svcname}_` + pod + `
 size = ` + strconv.Itoa(lvsize) + `g
 `
+			} else if collector.ProvFSPool == "zpool" {
+				fs = fs + `
+dev = zp{svcname}_` + pod + `/pod` + pod + `
+size = {env.size}
+`
+
 			} else {
 				fs = fs + `
 dev = {disk#` + podpool + `.file}
