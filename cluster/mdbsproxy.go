@@ -140,7 +140,7 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) {
 		cluster.sme.AddState("WARN00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00047"]), ErrFrom: "TOPO"})
 		return
 	} else {
-		cluster.InitMariaDB(srv, srv.Name, "mdbsproxy.cnf")
+		cluster.InitMariaDB(srv, srv.Id, "mdbsproxy.cnf")
 	}
 	query := `create table if not exists mysql.spider_xa(
     format_id int not null default 0,

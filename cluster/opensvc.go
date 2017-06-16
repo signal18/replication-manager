@@ -53,7 +53,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 	for _, db := range cluster.servers {
 		for _, node := range agents {
 			for _, svc := range node.Svc {
-				if db.Name == svc.Svc_name {
+				if db.Id == svc.Svc_name {
 					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				}
 			}
@@ -74,8 +74,8 @@ func (cluster *Cluster) OpenSVCStopService(server *ServerMonitor) {
 	}
 	for i, srv := range cluster.servers {
 		agenti := i % len(clusteragents)
-		service, _ := svc.GetServiceFromName(srv.Name)
-		if srv.Name == server.Name {
+		service, _ := svc.GetServiceFromName(srv.Id)
+		if srv.Id == server.Id {
 			svc.StopService(strconv.Itoa(clusteragents[agenti].Id), strconv.Itoa(service.Id))
 		}
 	}
@@ -93,8 +93,8 @@ func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) {
 	}
 	for i, srv := range cluster.servers {
 		agenti := i % len(clusteragents)
-		if srv.Name == server.Name {
-			service, _ := svc.GetServiceFromName(srv.Name)
+		if srv.Id == server.Id {
+			service, _ := svc.GetServiceFromName(srv.Id)
 			svc.StartService(clusteragents[agenti].Node_id, service.Svc_id)
 		}
 	}
@@ -139,16 +139,16 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		if srvStatus == 0 {
 			// create template && bootstrap
 
-			res, err := svc.GenerateTemplate([]string{s.Host}, []string{s.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, s.Name)
+			res, err := svc.GenerateTemplate([]string{s.Host}, []string{s.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, s.Id)
 			if err != nil {
 				return err
 			}
 
-			idtemplate, _ := svc.CreateTemplate(s.Name, res)
+			idtemplate, _ := svc.CreateTemplate(s.Id, res)
 
 			for _, node := range agents {
 				if strings.Contains(svc.ProvAgents, node.Node_name) {
-					idaction, _ := svc.ProvisionTemplate(idtemplate, node.Node_id, s.Name)
+					idaction, _ := svc.ProvisionTemplate(idtemplate, node.Node_id, s.Id)
 					ct := 0
 					for {
 						time.Sleep(2 * time.Second)
@@ -260,7 +260,6 @@ func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers
 	var fs string
 	var app string
 	ipPods := ""
-	portPods := ""
 
 	conf := `
 [DEFAULT]
@@ -447,19 +446,17 @@ size = 2g
 [env]
 nodes = ` + collector.ProvAgents + `
 size = ` + collector.ProvDisk + `
-db_img = mariadb:latest
 ` + ipPods + `
-` + portPods + `
 mysql_root_password = ` + collector.ProvPwd + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img =  tanji/maxscale:keepalived
+maxscale_img =  asosso/maxscale:latest
 ip_pod01 = {env.network_prefix}.244
 vip_addr = {env.network_prefix}.240
-port_rw = 3306
-port_rw_split = 3307
-port_r_lb = 3308
+port_rw = ` + strconv.Itoa(prx.ReadWritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
 port_http = 80
 
 base_dir = /srv/{svcname}

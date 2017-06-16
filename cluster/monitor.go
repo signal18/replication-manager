@@ -34,6 +34,7 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
+	Id                          string //Unique name given by cluster & crc64(URL) used by test to provision
 	Conn                        *sqlx.DB
 	User                        string
 	Pass                        string
@@ -82,7 +83,6 @@ type ServerMonitor struct {
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
 	Process                     *os.Process
-	Name                        string //Unique name given by cluster & sha1(URL) used by test to provision
 	Conf                        string //Unique Conf given by reg test initMariaDB
 	MxsServerName               string //Unique server Name in maxscale conf
 	MxsServerStatus             string
@@ -152,10 +152,10 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
 	//servertohash := sha1.Sum([]byte(server.URL))
-	//server.Name = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
+	//server.Id = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
 	// LVM does not suppot long name
 	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
-	server.Name = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
+	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)

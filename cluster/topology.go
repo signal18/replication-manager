@@ -576,7 +576,7 @@ func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
 }
 func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 	for _, server := range cluster.servers {
-		if server.Name == name {
+		if server.Id == name {
 			return server
 		}
 	}

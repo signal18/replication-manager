@@ -9,6 +9,7 @@ package cluster
 
 import (
 	"fmt"
+	"hash/crc64"
 	"strconv"
 	"strings"
 
@@ -19,7 +20,8 @@ import (
 
 // Proxy defines a proxy
 type Proxy struct {
-	Name          string
+	Id            string
+	Type          string
 	Host          string
 	Port          string
 	User          string
@@ -60,13 +62,15 @@ func (cluster *Cluster) newProxyList() error {
 		for _, proxyHost := range strings.Split(cluster.conf.MxsHost, ",") {
 			cluster.LogPrintf("INFO", "Loading Maxscale...")
 			prx := new(Proxy)
-			prx.Name = proxyMaxscale
+			prx.Type = proxyMaxscale
 			prx.Host = proxyHost
 			prx.Port = cluster.conf.MxsPort
 			prx.User = cluster.conf.MxsUser
 			prx.Pass = cluster.conf.MxsPass
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
+			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -79,7 +83,7 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.LogPrintf("INFO", "Loading HaProxy...")
 
 		prx := new(Proxy)
-		prx.Name = proxyHaproxy
+		prx.Type = proxyHaproxy
 		prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
 		prx.Host = cluster.conf.HaproxyWriteBindIp
 		prx.ReadPort = cluster.conf.HaproxyReadPort
@@ -96,7 +100,7 @@ func (cluster *Cluster) newProxyList() error {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
 			cluster.LogPrintf("INFO", "Loading MdbShardProxy...")
 			prx := new(Proxy)
-			prx.Name = proxySpider
+			prx.Type = proxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.conf.MdbsProxyUser)
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
@@ -125,12 +129,12 @@ func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 func (cluster *Cluster) SetMaintenance(serverid string) {
 	// Found server from ServerId
 	for _, pr := range cluster.proxies {
-		if cluster.conf.MxsOn && pr.Name == "maxscale" {
+		if cluster.conf.MxsOn && pr.Type == "maxscale" {
 			intsrvid, _ := strconv.Atoi(serverid)
 			server := cluster.GetServerFromId(uint(intsrvid))
 			for _, p := range cluster.proxies {
 				if cluster.master != nil {
-					if p.Name == proxyMaxscale {
+					if p.Type == proxyMaxscale {
 						m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 						err := m.Connect()
 						if err != nil {
@@ -151,7 +155,7 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
-		if cluster.conf.MxsOn && pr.Name == proxyMaxscale {
+		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
 			for _, server := range cluster.servers {
 				if server.PrevState != server.State {
 					cluster.initMaxscale(nil, pr)
@@ -159,7 +163,7 @@ func (cluster *Cluster) refreshProxies() {
 				}
 			}
 		}
-		if cluster.conf.MdbsProxyOn && pr.Name == proxySpider {
+		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {
 				cluster.refreshMdbsproxy(nil, pr)
 
@@ -174,14 +178,14 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.proxies {
-		cluster.LogPrintf("INFO", "Init %s %s %s", pr.Name, pr.Host, pr.Port)
-		if cluster.conf.HaproxyOn && pr.Name == proxyHaproxy {
+		cluster.LogPrintf("INFO", "Init %s %s %s", pr.Type, pr.Host, pr.Port)
+		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
-		if cluster.conf.MxsOn && pr.Name == proxyMaxscale {
+		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
 			cluster.initMaxscale(nil, pr)
 		}
-		if cluster.conf.MdbsProxyOn && pr.Name == proxySpider {
+		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			cluster.initMdbsproxy(nil, pr)
 		}
 	}

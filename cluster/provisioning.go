@@ -40,7 +40,7 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 			cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
 			if server.Conn.Ping() == nil {
 				cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
-				if server.Name == "" {
+				if server.Id == "" {
 					pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
 					pid, _ := readPidFromFile(pidfile)
 					pidint, _ := strconv.Atoi(pid)
@@ -50,7 +50,7 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 				cluster.KillMariaDB(server)
 			}
 
-			cluster.InitMariaDB(server, server.Name, "semisync.cnf")
+			cluster.InitMariaDB(server, server.Id, "semisync.cnf")
 		}
 	}
 	cluster.sme.RemoveFailoverState()
@@ -90,7 +90,7 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 	if server.Host != "127.0.0.1" {
 		cluster.LogPrintf("INFO", "Starting remote DB server will be Replication Manager Enterprise feature")
 	}
-	server.Name = name
+	server.Id = name
 	server.Conf = conf
 	path := cluster.conf.WorkingDir + "/" + name
 	os.RemoveAll(path)
@@ -124,7 +124,7 @@ func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 		if server.Host != "127.0.0.1" {
 			cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
 		}
-		cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Name, server.Process.Pid)
+		cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Id, server.Process.Pid)
 		//	server.Process.Kill()
 		killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
 		killCmd.Run()
@@ -144,17 +144,17 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 		cluster.OpenSVCStartService(server)
 	} else {
 
-		cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Name)
-		if server.Name == "" {
+		cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Id)
+		if server.Id == "" {
 
-			_, err := os.Stat(server.Name)
+			_, err := os.Stat(server.Id)
 			if err != nil {
 				cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
 			}
 
 		}
-		path := cluster.conf.WorkingDir + "/" + server.Name
-		err := os.RemoveAll(path + "/" + server.Name + ".pid")
+		path := cluster.conf.WorkingDir + "/" + server.Id
+		err := os.RemoveAll(path + "/" + server.Id + ".pid")
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s", err)
 			return err
@@ -164,7 +164,7 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 			cluster.LogPrintf("ERROR", "%s", err)
 			return err
 		}
-		mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
+		mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Id+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 		cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 		mariadbdCmd.Start()
 		server.Process = mariadbdCmd.Process
@@ -173,7 +173,7 @@ func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 		for exitloop < 30 {
 			time.Sleep(time.Millisecond * 2000)
 			cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
-			dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
+			dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Id + ".sock)/?timeout=1s"
 			conn, err2 := sqlx.Open("mysql", dsn)
 			if err2 == nil {
 				conn.Exec("set sql_log_bin=0")
