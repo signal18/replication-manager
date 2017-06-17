@@ -277,6 +277,7 @@ and demoting the old master to slave`,
 		}
 		currentCluster.SetLogStdout()
 		currentCluster.TopologyDiscover()
+		time.Sleep(time.Millisecond * 3000)
 		currentCluster.MasterFailover(false)
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
