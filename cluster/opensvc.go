@@ -43,6 +43,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxFSPool = cluster.conf.ProvProxDiskPool
 	svc.ProvProxFSMode = cluster.conf.ProvProxDiskType
 	svc.ProvProxFSPath = cluster.conf.ProvProxDiskDevice
+	svc.Verbose = 1
 
 	return svc
 }
@@ -104,7 +105,54 @@ func (cluster *Cluster) OpenSVCProvision() error {
 
 	//	err :=  cluster.OpenSVCProvisionOneSrv()
 	err := cluster.OpenSVCProvisionOneSrvPerDB()
+	err = cluster.OpenSVCProvisionProxies()
+
 	return err
+}
+
+func (cluster *Cluster) OpenSVCProvisionProxies() error {
+
+	svc := cluster.OpenSVCConnect()
+	agents := svc.GetNodes()
+	var clusteragents []opensvc.Host
+	for _, node := range agents {
+		cluster.LogPrintf("ERROR", "Searching %s %s ", svc.ProvProxAgents, node.Node_name)
+
+		if strings.Contains(svc.ProvProxAgents, node.Node_name) {
+			clusteragents = append(clusteragents, node)
+		}
+	}
+	if len(clusteragents) == 0 {
+		cluster.LogPrintf("ERROR", "No agent found")
+		return errors.New("No agent found for Proxy on this cluster")
+	}
+	srvlist := make([]string, len(cluster.servers))
+	for i, s := range cluster.servers {
+		srvlist[i] = s.Host
+	}
+
+	for i, prx := range cluster.proxies {
+		if prx.Type == proxyMaxscale {
+			if strings.Contains(svc.ProvAgents, clusteragents[i%len(clusteragents)].Node_name) {
+				res, err := cluster.GetMaxscaleTemplate(svc, strings.Join(srvlist, " "), clusteragents[i%len(clusteragents)], prx)
+				if err != nil {
+					return err
+				}
+				idtemplate, err := svc.CreateTemplate(prx.Id, res)
+				if err != nil {
+					return err
+				}
+
+				idaction, _ := svc.ProvisionTemplate(idtemplate, clusteragents[i%len(clusteragents)].Node_id, prx.Id)
+				cluster.OpenSVCWaitDequeue(svc, idaction)
+				task := svc.GetAction(strconv.Itoa(idaction))
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			}
+		}
+
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
@@ -139,43 +187,42 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		if srvStatus == 0 {
 			// create template && bootstrap
 
-			res, err := svc.GenerateTemplate([]string{s.Host}, []string{s.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, s.Id)
+			res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, s.Id, clusteragents[i%len(clusteragents)].Node_name)
 			if err != nil {
 				return err
 			}
-
 			idtemplate, _ := svc.CreateTemplate(s.Id, res)
-
-			for _, node := range agents {
-				if strings.Contains(svc.ProvAgents, node.Node_name) {
-					idaction, _ := svc.ProvisionTemplate(idtemplate, node.Node_id, s.Id)
-					ct := 0
-					for {
-						time.Sleep(2 * time.Second)
-						status := svc.GetActionStatus(strconv.Itoa(idaction))
-						if status == "Q" {
-							cluster.sme.AddState("WARN00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
-						}
-						if status == "W" {
-							cluster.sme.AddState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
-						}
-						if status == "T" {
-							break
-						}
-						ct++
-						if ct > 200 {
-							break
-						}
-
-					}
-					task := svc.GetAction(strconv.Itoa(idaction))
-					cluster.LogPrintf("INFO", "%s", task.Stderr)
-				}
-			}
+			idaction, _ := svc.ProvisionTemplate(idtemplate, clusteragents[i%len(clusteragents)].Node_id, s.Id)
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			cluster.LogPrintf("INFO", "%s", task.Stderr)
 		}
+
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) {
+	ct := 0
+	for {
+		time.Sleep(2 * time.Second)
+		status := svc.GetActionStatus(strconv.Itoa(idaction))
+		if status == "Q" {
+			cluster.sme.AddState("WARN00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+		}
+		if status == "W" {
+			cluster.sme.AddState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+		}
+		if status == "T" {
+			break
+		}
+		ct++
+		if ct > 200 {
+			break
+		}
+
+	}
 }
 
 func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
@@ -203,7 +250,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 				clusteragents = append(clusteragents, node)
 			}
 		}
-		res, err := svc.GenerateTemplate(iplist, portlist, clusteragents, "")
+		res, err := cluster.GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
 		if err != nil {
 			return err
 		}
@@ -252,13 +299,8 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 	return srvStatus, nil
 }
 
-func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx Proxy) (string, error) {
+func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
-	var net string
-	var vm string
-	var disk string
-	var fs string
-	var app string
 	ipPods := ""
 
 	conf := `
@@ -269,171 +311,17 @@ cluster_type = flex
 rollback = false
 show_disabled = false
 `
-	log.Println("ProvFSMode " + collector.ProvFSMode)
-
-	if collector.ProvProxMicroSrv == "docker" {
-		conf = conf + `
-docker_daemon_private = false
-docker_data_dir = {env.base_dir}/docker
-docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
-`
-	}
-
-	if collector.ProvProxMicroSrv == "docker" {
-		if collector.ProvProxFSMode == "loopback" {
-			disk = `
-[disk#00]
-type = loop
-file = ` + collector.ProvProxFSPath + `/{svcname}_docker.dsk
-size = {env.size}
-
-`
-			fs = `
-[fs#00]
-type = ` + collector.ProvProxFSType + `
-dev = {disk#00.file}
-mnt = {env.base_dir}/docker
-size = 2g
-
-`
-		}
-
-	}
-	i := 1
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
-
-	if collector.ProvProxFSMode == "loopback" {
-
-		disk = disk + `
-		[disk#` + pod + `]
-		type = loop
-		file = ` + collector.ProvProxFSPath + `/{svcname}_pod` + pod + `.dsk
-		size = {env.size}
-
-		`
-	}
-	if collector.ProvProxFSPool == "lvm" {
-		disk = disk + `
-		[disk#10` + pod + `]
-		name = {svcname}_` + pod + `
-		type = lvm
-		pvs = {disk#` + pod + `.file}
-
-		`
-	}
-
-	if collector.ProvProxFSType == "directory" {
-		fs = fs + `
-		[fs#` + pod + `]
-		type = directory
-		path = {env.base_dir}/pod` + pod + `
-		pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}
-
-		`
-
-	} else {
-		podpool := pod
-		if collector.ProvProxFSPool == "lvm" {
-			podpool = "10" + pod
-		}
-
-		fs = fs + `
-		[fs#` + pod + `]
-		type = ` + collector.ProvProxFSType + `
-		`
-		if collector.ProvProxFSPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(collector.ProvProxDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
-			fs = fs + `
-		dev = /dev/{svcname}_` + pod + `/pod` + pod + `
-		vg = {svcname}_` + pod + `
-		size = ` + strconv.Itoa(lvsize) + `g
-		`
-		} else {
-			fs = fs + `
-		dev = {disk#` + podpool + `.file}
-		size = {env.size}
-		`
-		}
-		fs = fs + `
-		mnt = {env.base_dir}/pod` + pod + `
-		disable = true
-		enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + `//{#nodes}))]}
-
-		`
-
-	}
-
-	ipdev := collector.ProvProxNetIface
-	net = net + `
-		[ip#` + pod + `]
-		tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
-		`
-	if collector.ProvProxMicroSrv == "docker" {
-		net = net + `
-		type = docker
-		ipdev = ` + collector.ProvProxNetIface + `
-		container_rid = container#00` + pod + `
-
-		`
-	} else {
-		net = net + `
-		ipdev = ` + ipdev + `
-		`
-	}
-	net = net + `
-		ipname = {env.ip_pod` + fmt.Sprintf("%02d", i+1) + `}
-		netmask = {env.netmask}
-		network = {env.network}
-		gateway = {env.gateway}
-		disable = true
-		enable_on = {nodes[$(` + strconv.Itoa(i) + `//(` + strconv.Itoa(len(servers)) + `//{#nodes}))]}
-		`
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerProxyTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
-		`
-	if collector.ProvProxMicroSrv == "docker" {
-		vm = vm + `
-		[container#00` + pod + `]
-		type = docker
-		run_image = busybox:latest
-		run_args =  --net=none  -i -t
-		-v /etc/localtime:/etc/localtime:ro
-		run_command = /bin/sh
-
-		[container#20` + pod + `]
-		tags = pod` + pod + `
-		type = docker
-		run_image =run_image = {env.maxscale_img}
-		run_args = --net=container:{svcname}.container.00
-		    -e MYSQL_ROOT_PASSWORD=undefined
-			    -v /etc/localtime:/etc/localtime:ro
-		        -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
-		        -v {env.base_dir}/pod` + pod + `/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
-		disable = true
-		enable_on = {nodes[$(1//(3//{#nodes}))]}
-		`
-	}
-	if collector.ProvProxMicroSrv == "package" {
-		app = app + `
-		[app#` + pod + `]
-		script = {env.base_dir}/pod` + pod + `/init/launcher
-		start = 50
-		stop = 50
-		check = 50
-		info = 50
-		`
-	}
-
-	conf = conf + disk
-	conf = conf + fs
-	conf = conf + `
-		post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
-		`
-	conf = conf + net
-	conf = conf + vm
-	conf = conf + app
+`
 	ips := strings.Split(collector.ProvProxNetGateway, ".")
 	masks := strings.Split(collector.ProvProxNetMask, ".")
 	for i, mask := range masks {
@@ -444,7 +332,7 @@ size = 2g
 	network := strings.Join(ips, ".")
 	conf = conf + `
 [env]
-nodes = ` + collector.ProvAgents + `
+nodes = ` + agent.Node_name + `
 size = ` + collector.ProvDisk + `
 ` + ipPods + `
 mysql_root_password = ` + collector.ProvPwd + `
@@ -452,17 +340,318 @@ network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
 maxscale_img =  asosso/maxscale:latest
-ip_pod01 = {env.network_prefix}.244
-vip_addr = {env.network_prefix}.240
-port_rw = ` + strconv.Itoa(prx.ReadWritePort) + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + collector.ProvProxNetMask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
 port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
 port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
 port_http = 80
-
 base_dir = /srv/{svcname}
 backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+`
+	log.Println(conf)
+	return conf, nil
+}
+
+/* Found iface
+var ipdev string
+agent := agents[i%len(agents)]
+log.Printf("%d,%d,%d", i, len(agents), i%len(agents))
+for _, addr := range agent.Ips {
+	ipsagents := strings.Split(addr.Addr, ".")
+	ipsdb := strings.Split(host, ".")
+	if ipsagents[0] == ipsdb[0] && ipsagents[1] == ipsdb[1] && ipsagents[2] == ipsdb[2] {
+		ipdev = addr.Net_intf
+	}
+}*/
+
+func (cluster *Cluster) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {
+
+	ipPods := ""
+	portPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	//main loop over db instances
+	for i, host := range servers {
+		pod := fmt.Sprintf("%02d", i+1)
+		conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
+	`
+		conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+		conf = conf + cluster.GetPodDockerDBTemplate(collector, pod)
+		conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + host + `
+	`
+		portPods = portPods + `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + ports[i] + `
+	`
+	}
+	ips := strings.Split(collector.ProvNetGateway, ".")
+	masks := strings.Split(collector.ProvNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent + `
+size = ` + collector.ProvDisk + `
+db_img = mariadb:latest
+` + ipPods + `
+` + portPods + `
+mysql_root_password = ` + collector.ProvPwd + `
+network = ` + network + `
+gateway =  ` + collector.ProvNetGateway + `
+netmask =  ` + collector.ProvNetMask + `
+base_dir = /srv/{svcname}
+max_iops = ` + collector.ProvIops + `
+max_mem = ` + collector.ProvMem + `
+micro_srv = ` + collector.ProvMicroSrv + `
 `
 	log.Println(conf)
 
 	return conf, nil
+}
+
+func (cluster *Cluster) GetPodNetTemplate(collector opensvc.Collector, pod string, i int) string {
+	var net string
+	ipdev := collector.ProvNetIface
+	net = net + `
+[ip#` + pod + `]
+tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
+`
+	if collector.ProvMicroSrv == "docker" {
+		net = net + `type = docker
+ipdev = ` + collector.ProvNetIface + `
+container_rid = container#00` + pod + `
+`
+	} else {
+		net = net + `ipdev = ` + ipdev + `
+`
+	}
+	net = net + `
+ipname = {env.ip_pod` + fmt.Sprintf("%02d", i+1) + `}
+netmask = {env.netmask}
+network = {env.network}
+gateway = {env.gateway}
+`
+	//Use in gcloud
+	//del_net_route = true
+
+	return net
+}
+
+func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod string) string {
+
+	var disk string
+	var fs string
+	if collector.ProvFSMode == "loopback" {
+
+		disk = disk + `
+[disk#` + pod + `]
+type = loop
+file = ` + collector.ProvFSPath + `/{svcname}_pod` + pod + `.dsk
+size = {env.size}
+
+`
+	}
+	if collector.ProvFSPool == "lvm" {
+		disk = disk + `
+[disk#10` + pod + `]
+name = {svcname}_` + pod + `
+type = lvm
+pvs = {disk#` + pod + `.file}
+
+`
+	}
+	if collector.ProvFSPool == "zpool" {
+		disk = disk + `
+[disk#10` + pod + `]
+name = zp{svcname}_pod` + pod + `
+type = zpool
+vdev  = {disk#` + pod + `.file}
+
+`
+	}
+
+	if collector.ProvFSType == "directory" {
+		fs = fs + `
+[fs#` + pod + `]
+type = directory
+path = {env.base_dir}/pod` + pod + `
+pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}
+
+`
+
+	} else {
+		podpool := pod
+		if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
+			podpool = "10" + pod
+		}
+
+		fs = fs + `
+[fs#` + pod + `]
+type = ` + collector.ProvFSType + `
+`
+		if collector.ProvFSPool == "lvm" {
+			re := regexp.MustCompile("[0-9]+")
+			strlvsize := re.FindAllString(collector.ProvDisk, 1)
+			lvsize, _ := strconv.Atoi(strlvsize[0])
+			lvsize--
+			fs = fs + `
+dev = /dev/{svcname}_` + pod + `/pod` + pod + `
+vg = {svcname}_` + pod + `
+size = ` + strconv.Itoa(lvsize) + `g
+`
+		} else if collector.ProvFSPool == "zpool" {
+			fs = fs + `
+dev = {disk#` + podpool + `.name}/pod` + pod + `
+size = {env.size}
+`
+
+		} else {
+			fs = fs + `
+dev = {disk#` + podpool + `.file}
+size = {env.size}
+`
+		}
+		fs = fs + `
+mnt = {env.base_dir}/pod` + pod + `
+`
+
+	}
+	return disk + fs
+}
+func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) string {
+	var conf string
+	var disk string
+	var fs string
+	if collector.ProvMicroSrv != "docker" {
+		return string("")
+	}
+	conf = conf + `
+docker_daemon_private = false
+docker_data_dir = {env.base_dir}/docker
+docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
+`
+
+	if collector.ProvFSMode == "loopback" {
+		disk = `
+[disk#00]
+type = loop
+file = ` + collector.ProvFSPath + `/{svcname}_docker.dsk
+size = {env.size}
+
+`
+		if collector.ProvFSPool == "zpool" {
+			disk = disk + `
+[disk#0000]
+name = zp{svcname}_00
+type = zpool
+vdev  = {disk#00.file}
+
+`
+		}
+		if collector.ProvFSPool == "zpool" {
+			fs = `
+[fs#00]
+type = ` + collector.ProvFSType + `
+dev = {disk#0000.name}/docker
+mnt = {env.base_dir}/docker
+size = 2g
+
+`
+		} else {
+			fs = `
+[fs#00]
+type = ` + collector.ProvFSType + `
+dev = {disk#00.file}
+mnt = {env.base_dir}/docker
+size = 2g
+
+`
+		}
+	}
+
+	return conf + disk + fs
+}
+
+func (cluster *Cluster) GetPodDockerDBTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+	-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.db_img}
+run_args = --net=container:{svcname}.container.00` + pod + `
+ -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
+ -e MYSQL_INITDB_SKIP_TZINFO=yes
+ -v /etc/localtime:/etc/localtime:ro
+ -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
+ -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
+ -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+`
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodDockerProxyTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvProxMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.maxscale_img}
+run_args = --net=container:{svcname}.container.00` + pod + `
+    -e MYSQL_ROOT_PASSWORD=undefined
+    -v /etc/localtime:/etc/localtime:ro
+    -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
+    -v {env.base_dir}/pod` + pod + `/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
+		`
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodPackageTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+
+	if collector.ProvMicroSrv == "package" {
+		vm = vm + `
+		[app#` + pod + `]
+		script = {env.base_dir}/pod` + pod + `/init/launcher
+		start = 50
+		stop = 50
+		check = 50
+		info = 50
+		`
+	}
+	return vm
 }

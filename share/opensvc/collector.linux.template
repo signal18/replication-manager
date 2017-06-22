@@ -25,11 +25,12 @@ type = docker
 run_image = collector_db:build11
 
 run_args = -v /srv/{svcname}/data/db/conf:/conf
+        -v /srv/{svcname}/data/web2py/applications/init/dbdump:/dbdump
         -v /srv/{svcname}/data/web2py/applications/init/dbdump/schema.dump:/schema.dump
         -v /srv/{svcname}/data/web2py/applications/init/dbdump/data.dump:/data.dump
         -v /srv/{svcname}/data/db/data:/var/lib/mysql:rw
         -v /etc/localtime:/etc/localtime:ro
-        -e CUSTO_UID={env.uid} -e CUSTO_GID={env.gid}
+        -e MYSQL_ROOT_PASSWORD=opensvc
         --net=container:{svcname}.container.0
 pre_provision = mkdir -p /srv/{svcname}/data/db/conf /srv/{svcname}/data/db/data;docker image load -i/usr/share/replication-manager/opensvc/collector_db.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_busybox.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_nginx.tar.gz;docker image load -i/usr/share/replication-manager/opensvc/collector_redis.tar.gz
 docker image load -i/usr/share/replication-manager/opensvc/collector_web2py.tar.gz

@@ -69,6 +69,8 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Pass = cluster.conf.MxsPass
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
+			prx.ReadWritePort = cluster.conf.MxsReadWritePort
+
 			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 

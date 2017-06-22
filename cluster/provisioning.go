@@ -397,7 +397,7 @@ func (cluster *Cluster) Bootstrap() error {
 	if cluster.conf.Enterprise {
 		cluster.InitClusterSemiSync()
 	}
-
+	time.Sleep(time.Millisecond * 3000)
 	err := cluster.BootstrapReplication()
 	if err != nil {
 		return err

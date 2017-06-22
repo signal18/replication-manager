@@ -413,7 +413,7 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
-	res, err := svc.GenerateTemplate(iplist, portlist, clusteragents, "")
+	res, err := currentCluster.GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
 	if err != nil {
 		log.Println("HTTP Error ", err)
 		http.Error(w, "Encoding error", 500)

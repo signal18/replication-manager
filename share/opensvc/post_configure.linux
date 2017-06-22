@@ -8,8 +8,23 @@ docker image load -i/usr/share/replication-manager/opensvc/collector_nginx.tar.g
 docker image load -i/usr/share/replication-manager/opensvc/collector_redis.tar.gz
 docker image load -i/usr/share/replication-manager/opensvc/collector_web2py.tar.gz
 
+# when no docker image
+#nodemgr set --param node.dbopensvc --value collector.opensvc.com
+
 svcmgr -s opensvc-collector create --provision --interactive --template /usr/share/replication-manager/collector.linux.template
 
-# register du noeud
-nodemgr register
-nodemgr set --param node.dbopensvc --value https://127.0.0.1
+# register agent
+#apt-get install zfsutils-linux
+#apt-get install python
+#apt-get install net-tools
+#apt-get install psmisc
+#wget https://repo.opensvc.com/deb/current.1.8
+#dpkg -i current.1.8
+
+nodemgr set --param node.dbopensvc --value https://collector
+nodemgr register --user=replication-manager@localhost.localdomain --password=mariadb
+nodemgr set --param node.repocomp --value https://mrm:10001/repocomp
+
+# activer le mode pull https://docs.opensvc.com/fr/agent.architecture.html
+# Type=forking dans le dequee
+#sudo systemctl start opensvc-actions.socket
