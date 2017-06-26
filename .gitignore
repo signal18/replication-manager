@@ -7,3 +7,4 @@ copyright.*
 build
 maxscale*.rpm
 data/*
+vendor/*

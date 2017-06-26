@@ -1,5 +1,5 @@
-hash: fb1276f725f7dba031ac0efc83fa19ba12c5afa0ec7d166f80271183939c4338
-updated: 2017-03-28T07:03:58.256612032+02:00
+hash: 9bb993970c3083c6a9196291eaff0549f4260f40e95da00e0d888fddfa9369ea
+updated: 2017-06-22T23:44:15.644125845+02:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
@@ -17,6 +17,12 @@ imports:
   - memcache
 - name: github.com/BurntSushi/toml
   version: d94612f9fc140360834f9742158c70b5c5b5535b
+- name: github.com/codegangsta/martini
+  version: 49411a5b646861ad29a6ddd5351717a0a9c49b94
+- name: github.com/codegangsta/negroni
+  version: fde5e16d32adc7ad637e9cd9ad21d4ebc6192535
+- name: github.com/dgrijalva/jwt-go
+  version: a539ee1a749a2b895533f979515ac7e6e0f5b650
 - name: github.com/dgryski/carbonzipper
   version: 97f97e6bfa7b70dd3fcc7815436c8ef1485680ec
   subpackages:
@@ -189,7 +195,7 @@ imports:
   version: a3f3340b5840cee44f372bddb5880fcbc419b46a
 testImports:
 - name: github.com/davecgh/go-spew
-  version: 346938d642f2ec3594ed81d874461961cd0faa76
+  version: 04cdfd42973bb9c8589fd6a731800cf222fde1a9
   subpackages:
   - spew
 - name: github.com/lomik/go-carbon
@@ -202,7 +208,7 @@ testImports:
   subpackages:
   - helpers
 - name: github.com/pmezard/go-difflib
-  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:
   - difflib
 - name: github.com/stretchr/testify

@@ -33,7 +33,7 @@ type HandlerManager struct {
 	AuthGuard *authguard.AuthGuard
 }
 
-type settings struct {
+type Settings struct {
 	Enterprise          string   `json:"enterprise"`
 	Interactive         string   `json:"interactive"`
 	FailoverCtr         string   `json:"failoverctr"`
@@ -472,7 +472,7 @@ func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
-	s := new(settings)
+	s := new(Settings)
 	s.Enterprise = fmt.Sprintf("%v", currentCluster.GetConf().Enterprise)
 	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
 	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
