@@ -3,7 +3,9 @@ go:
 - 1.7
 - tip
 install: true
-script: go test -v .
+script:
+- go test -v .
+- mkdir bin
 before_deploy:
 - GOARCH=arm GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
 - GOARCH=386 GOOS=linux go build -o bin/replication-manager-$GOOS-$GOARCH
