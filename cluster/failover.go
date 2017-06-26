@@ -30,11 +30,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if fail == false {
 		cluster.LogPrintf("INFO", "Checking long running updates on master %d", cluster.conf.SwitchWaitWrite)
 		if cluster.master == nil {
-			cluster.LogPrintf("ERROR", "Can not switchover without a master")
+			cluster.LogPrintf("ERROR", "Cannot switchover without a master")
 			return false
 		}
 		if cluster.master.Conn == nil {
-			cluster.LogPrintf("ERROR", "Can not switchover without a master connection")
+			cluster.LogPrintf("ERROR", "Cannot switchover without a master connection")
 			return false
 		}
 		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.conf.SwitchWaitWrite) > 0 {
@@ -171,18 +171,18 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
 	if cluster.conf.MxsBinlogOn || cluster.conf.MultiTierSlave {
-		cluster.LogPrintf("INFO", "Candidate master have to catch with relay server log pos")
+		cluster.LogPrintf("INFO", "Candidate master has to catch up with relay server log position")
 		relaymaster = cluster.GetRelayServer()
 		if relaymaster != nil {
 			relaymaster.Refresh()
 
 			binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
-			cluster.LogPrintf("INFO", "Relay server log pos reach %d", binlogfiletoreach)
+			cluster.LogPrintf("INFO", "Relay server log pos reached %d", binlogfiletoreach)
 			dbhelper.ResetMaster(cluster.master.Conn)
-			cluster.LogPrintf("INFO", "Reset Master en candidate Master ")
+			cluster.LogPrintf("INFO", "Reset Master on candidate Master")
 			ctbinlog := 0
 			for ctbinlog < binlogfiletoreach {
-				ctbinlog += 1
+				ctbinlog++
 				cluster.LogPrintf("INFO", "Flush Log on new Master %d", ctbinlog)
 				dbhelper.FlushLogs(cluster.master.Conn)
 			}
@@ -513,7 +513,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
 		if prm != nil {
-			cluster.LogPrintf("INFO", "Not on Prefered Master after failover")
+			cluster.LogPrintf("INFO", "Not on Preferred Master after failover")
 			cluster.MasterFailover(false)
 		}
 	}

@@ -256,7 +256,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				}
 				err = a.Email()
 				if err != nil {
-					server.ClusterGroup.LogPrintf("ERROR", "Could not send econf.Mail alert:%s ", err)
+					server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
 				}
 			}
 		}
@@ -285,7 +285,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				if server.ClusterGroup.conf.Autorejoin {
 					server.RejoinMaster()
 				} else {
-					server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disable")
+					server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 				}
 
 			} else if server.State != stateMaster {
@@ -314,7 +314,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	if server.Conn.Unsafe() == nil {
 		server.State = stateFailed
-		return errors.New("Connection is close server Unreachable ")
+		return errors.New("Connection is closed, server unreachable")
 	}
 	conn, err := sqlx.Connect("mysql", server.DSN)
 	defer conn.Close()
@@ -339,7 +339,8 @@ func (server *ServerMonitor) Refresh() error {
 
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) {
 		// maxscale don't support show variables
-		sv, err := dbhelper.GetVariables(server.Conn)
+		var sv map[string]string
+		sv, err = dbhelper.GetVariables(server.Conn)
 		if err != nil {
 			return err
 		}
@@ -398,9 +399,10 @@ func (server *ServerMonitor) Refresh() error {
 		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 		server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
 		server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
-		sid, err := strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+		var sid uint64
+		sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not parse server_id, reason:%s", err)
+			server.ClusterGroup.LogPrintf("ERROR", "Could not parse server_id, reason: %s", err)
 		}
 		server.ServerID = uint(sid)
 		err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
@@ -752,10 +754,8 @@ func (server *ServerMonitor) HasCycling(ServerID uint) bool {
 	if mycurrentmaster != nil {
 		if mycurrentmaster.ServerID == ServerID {
 			return true
-		} else {
-			mycurrentmaster.HasCycling(ServerID)
 		}
-
+		mycurrentmaster.HasCycling(ServerID)
 	}
 	return false
 }

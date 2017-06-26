@@ -182,7 +182,7 @@ func (cluster *Cluster) Run() {
 						cluster.MasterFailover(false)
 						cluster.switchoverCond.Send <- true
 					} else {
-						cluster.LogPrintf("INFO", "Not in mode active cancel switchover %s", cluster.runStatus)
+						cluster.LogPrintf("INFO", "Not in active mode, cancel switchover %s", cluster.runStatus)
 					}
 				}
 
@@ -203,7 +203,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
 		var err error
 		cluster.logPtr, err = os.Create(conf.LogFile)
 		if err != nil {
-			log.Error("Cannot open logfile, disabling for the rest of the session.")
+			log.Error("Cannot open logfile, disabling for the rest of the session")
 			conf.LogFile = ""
 		}
 	}

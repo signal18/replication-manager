@@ -48,13 +48,13 @@ func (cluster *Cluster) CheckFailed() {
 					}
 				}
 			} else {
-				cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
+				cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 			}
 		}
 
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("WARN", "Undiscovered master skip failover check")
+			cluster.LogPrintf("WARN", "Undiscovered master, skipping failover check")
 		}
 	}
 }
@@ -64,7 +64,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
 	// no illimited failed count
 
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
-		cluster.sme.AddState("WARN00023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Need failover, number of failed master ping reached"), ErrFrom: "CHECK"})
+		cluster.sme.AddState("WARN00023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Failover needed, number of failed master pings has been reached"), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -158,11 +158,11 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 		} else {
 			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrintf("DEGUG", "Getting Maxscale monitor via maxadmin")
+				cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxadmin")
 			}
-			_, err := m.ListMonitors()
+			_, err = m.ListMonitors()
 			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could list monitors monitor:%s", err)
+				cluster.LogPrintf("ERROR", "MaxScale client could not list monitors: %s", err)
 				return false
 			}
 			monitor = m.GetStoppedMonitor()
@@ -172,7 +172,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 			cluster.LogPrintf("INFO : %s", cmd)
 			err = m.RestartMonitor(monitor)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor:%s", err)
+				cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor: %s", err)
 				return false
 			}
 		} else {
