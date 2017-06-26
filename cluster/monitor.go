@@ -189,10 +189,12 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		// LogPrint("DEBUG: Checking server", server.Host)
 	}
 
+	var conn *sqlx.DB
 	var err error
 	switch server.ClusterGroup.conf.CheckType {
 	case "tcp":
-		err = server.Conn.Ping()
+		conn, err = sqlx.Connect("mysql", server.DSN)
+		defer conn.Close()
 	case "agent":
 		var resp *http.Response
 		resp, err = http.Get("http://" + server.Host + ":10001/check/")
@@ -258,8 +260,6 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				}
 			}
 		}
-		//return
-
 	}
 	// Reset FailCount
 
@@ -267,37 +267,43 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
-	var ss dbhelper.SlaveStatus
-	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
-	// We have no replicatieon can this be the old master
-	if errss == sql.ErrNoRows {
-		// If we reached this stage with a previously failed server, reintroduce
-		// it as unconnected server.
-		if server.PrevState == stateFailed {
-			if server.ClusterGroup.conf.LogLevel > 1 {
-				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
-			}
-			server.State = stateUnconn
-			server.FailCount = 0
-			if server.ClusterGroup.conf.Autorejoin {
-				server.RejoinMaster()
-			} else {
-				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disable")
+
+	// We don't need to test the slave status if the State is Failed or Suspect
+	if !server.IsDown() {
+		var ss dbhelper.SlaveStatus
+		ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+		// We have no replicatieon can this be the old master
+		if errss == sql.ErrNoRows {
+			// If we reached this stage with a previously failed server, reintroduce
+			// it as unconnected server.
+			if server.PrevState == stateFailed {
+				if server.ClusterGroup.conf.LogLevel > 1 {
+					server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
+				}
+				server.State = stateUnconn
+				server.FailCount = 0
+				if server.ClusterGroup.conf.Autorejoin {
+					server.RejoinMaster()
+				} else {
+					server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disable")
+				}
+
+			} else if server.State != stateMaster {
+				if server.ClusterGroup.conf.LogLevel > 1 {
+					server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
+				}
+				server.State = stateUnconn
 			}
 
-		} else if server.State != stateMaster {
-			if server.ClusterGroup.conf.LogLevel > 1 {
-				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
+			if server.PrevState != server.State {
+				server.PrevState = server.State
 			}
-			server.State = stateUnconn
+			return
+		} else if errss == nil && server.PrevState == stateFailed {
+			server.rejoinSlave(ss)
 		}
-		if server.PrevState != server.State {
-			server.PrevState = server.State
-		}
-		return
-	} else if errss == nil && server.PrevState == stateFailed {
-		server.rejoinSlave(ss)
 	}
+
 	if server.PrevState != server.State {
 		server.PrevState = server.State
 	}
@@ -310,7 +316,8 @@ func (server *ServerMonitor) Refresh() error {
 		server.State = stateFailed
 		return errors.New("Connection is close server Unreachable ")
 	}
-	err := server.Conn.Ping()
+	conn, err := sqlx.Connect("mysql", server.DSN)
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
@@ -749,6 +756,13 @@ func (server *ServerMonitor) HasCycling(ServerID uint) bool {
 			mycurrentmaster.HasCycling(ServerID)
 		}
 
+	}
+	return false
+}
+
+func (server *ServerMonitor) IsDown() bool {
+	if server.State == stateFailed || server.State == stateSuspect {
+		return true
 	}
 	return false
 }

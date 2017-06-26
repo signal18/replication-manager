@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
@@ -118,7 +119,8 @@ func (cluster *Cluster) pingServerList() {
 			defer wg.Done()
 			//	tcpAddr, err := net.ResolveTCPAddr("tcp4", sv.)
 			if sv.Conn != nil {
-				err := sv.Conn.Ping()
+				conn, err := sqlx.Connect("mysql", sv.DSN)
+				defer conn.Close()
 				if err != nil {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						if driverErr.Number == 1045 {
@@ -213,7 +215,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if cluster.conf.LogLevel > 2 {
 			cluster.LogPrintf("DEBUG", "Privilege check on %s", sv.URL)
 		}
-		if sv.State != "" && sv.State != stateFailed && sv.IsRelay == false {
+		if sv.State != "" && !sv.IsDown() && sv.IsRelay == false {
 			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
@@ -238,7 +240,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			// Check replication user has correct privs.
 			for _, sv2 := range cluster.servers {
-				if sv2.URL != sv.URL && sv2.IsRelay == false && sv2.State != stateFailed {
+				if sv2.URL != sv.URL && sv2.IsRelay == false && !sv2.IsDown() {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
@@ -264,7 +266,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if sl.IsRelay == false && sl.State != stateFailed {
+			if sl.IsRelay == false && !sl.IsDown() {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
 					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.DSN)
 					dbhelper.InstallSemiSync(sl.Conn)
@@ -373,7 +375,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						break
 					}
 				}
-				if cluster.conf.MultiMaster == true && cluster.servers[k].State != stateFailed {
+				if cluster.conf.MultiMaster == true && !cluster.servers[k].IsDown() {
 					if s.ReadOnly == "OFF" {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
@@ -411,7 +413,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
-		if cluster.master.State != stateFailed {
+		if !cluster.master.IsDown() {
 			if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
 				cluster.LogPrintf("INFO", "Enforce semisync on Master %s", cluster.master.DSN)
 				dbhelper.InstallSemiSync(cluster.master.Conn)
@@ -463,7 +465,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		// State also check in failover_check false positive
-		if cluster.master.State == stateFailed && cluster.slaves.checkAllSlavesRunning() {
+		if cluster.master.IsDown() && cluster.slaves.checkAllSlavesRunning() {
 			cluster.sme.AddState("ERR00016", state.State{
 				ErrType: "ERROR",
 				ErrDesc: clusterError["ERR00016"],
