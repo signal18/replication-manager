@@ -98,7 +98,6 @@ func apiserver() {
 
 	//PROTECTED ENDPOINTS
 	router.Handle("/api/clusters", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
 	))
 

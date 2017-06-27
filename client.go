@@ -85,11 +85,11 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliToken, _ = cliLogin()
 		cliClusters = cliGetClusters()
+		cliToken, _ = cliLogin()
 		allCLusters, _ := cliGetAllClusters()
 		if len(cliClusters) != 1 {
-			err := errors.New("No cluster specify")
+			err := errors.New("No cluster specified")
 			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
 		}
 		cliClusterCmd("failover")
@@ -105,9 +105,8 @@ var switchoverCmd = &cobra.Command{
 	Long: `Performs an online master switch by promoting a slave to master
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
-
-		cliToken, _ = cliLogin()
 		cliClusters = cliGetClusters()
+		cliToken, _ = cliLogin()
 		allCLusters, _ := cliGetAllClusters()
 		if len(cliClusters) != 1 {
 			err := errors.New("No cluster specify")
@@ -134,8 +133,8 @@ var topologyCmd = &cobra.Command{
 	Short: "Print replication topology",
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliToken, _ = cliLogin()
 		cliClusters = cliGetClusters()
+		cliToken, _ = cliLogin()
 		allCLusters, _ := cliGetAllClusters()
 		if len(cliClusters) != 1 {
 			err := errors.New("No cluster specify")
@@ -170,7 +169,7 @@ var clientCmd = &cobra.Command{
 		cliToken, _ = cliLogin()
 		cliClusters = cliGetClusters()
 		loglen := cliTermlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
-		cliTlog = termlog.NewTermLog(loglen)
+
 		termboxChan := cliNewTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
@@ -182,7 +181,9 @@ var clientCmd = &cobra.Command{
 				cliSettings, _ = cliGetSettings()
 				cliServers, _ = cliGetServers()
 				cliMaster, _ = cliGetMaster()
-				cliTlog.Buffer, _ = cliGetLogs()
+				dlogs, _ := cliGetLogs()
+				cliTlog = termlog.NewTermLog(loglen)
+				cliAddTlog(dlogs)
 				cliDisplay()
 			case event := <-termboxChan:
 				switch event.Type {
@@ -262,7 +263,7 @@ var clientCmd = &cobra.Command{
 
 func cliGetClusters() []string {
 	var cl []string
-	log.Printf("config group:%s", cfgGroup)
+
 	if cfgGroup != "" {
 		cl = strings.Split(cfgGroup, ",")
 	} else {
@@ -388,6 +389,13 @@ func cliDisplay() {
 		cliTermlength = newlen
 		cliTlog.Len = cliTermlength - 9 - (len(cliClusters) * 3)
 		cliTlog.Shrink()
+	}
+}
+
+func cliAddTlog(dlogs []string) {
+	cliTlog.Shrink()
+	for _, dl := range dlogs {
+		cliTlog.Add(dl)
 	}
 }
 
