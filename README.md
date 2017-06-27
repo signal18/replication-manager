@@ -5,8 +5,8 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion _(also known as switchover)_, or electing a new master on failure detection _(also known as failover)_. It enforces best practices to get at a minimum up to zero loss in most failure cases. Multiple clusters management is the foundation to define shard groups and replication-manager can be used to deploy some MariaDB sharding solutions.
 
 * [Overview](#overview)
-* [Why using](#why-using)
-* [Replication best practice](#replication-best-practice)
+* [About](#about)
+* [Replication best practices](#replication-best-practices)
     * [Parallel replication](#parallel-replication)
     * [Semi-synchronous replication](#semi-synchronous-replication)
     * [Monitoring SLA](#monitoring-sla)
@@ -71,7 +71,7 @@ __replication-manager__ is commonly used as an arbitrator with a proxy that rout
   - [x]  With monitor-less proxies, __replication-manager__ can call scripts that set and reload the new configuration of the leader route. A common scenario is an VRRP Active Passive HAProxy sharing configuration via a network disk with the __replication-manager__ scripts           
   - [x]  Using __replication-manager__ as an API component of a group communication cluster. MRM can be called as a Pacemaker resource that moves alongside a VIP, the monitoring of the cluster is in this case already in charge of the GCC.
 
-## Why using
+## About
 
 Leader Election Cluster is best used in such scenarios:
 
@@ -84,7 +84,7 @@ Leader Election Cluster is best used in such scenarios:
   - [x] Can benefit a minimum cluster size of two data nodes
   - [x] Can benefit having different storage engines
 
-This is achieved via drawbacks:
+This is achieved via the following drawbacks:
 
   - [x] Overloading the leader can lead to data loss during failover or no failover depending of setup   
   - [x] READ on replica is eventually consistent  
@@ -109,7 +109,7 @@ We can classify SLA and failover scenario into 3 cases:
 >When the replication can be monitored in sync, the failover can be done without loss of data, provided that __replication-manager__ waits for all replicated events to be applied to the elected replica, before re-opening traffic.
 >In order to reach this state most of the time, we advise next section settings.
 
-## Replication best practice
+## Replication best practices
 
 ### Parallel replication
 
