@@ -40,6 +40,7 @@ var (
 	cliServers      []cluster.ServerMonitor
 	cliMaster       cluster.ServerMonitor
 	cliSettings     Settings
+	cliUrl          string
 )
 
 var cliConn = http.Client{
@@ -51,12 +52,22 @@ func init() {
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
 	rootCmd.AddCommand(topologyCmd)
+	rootCmd.AddCommand(apiCmd)
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	clientCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
 	clientCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	clientCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	clientCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	clientCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	apiCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	apiCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	apiCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	apiCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	apiCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:3000/api/clusters", "Url to rest API")
+
+	apiCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 
 	switchoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	switchoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
@@ -125,6 +136,24 @@ and demoting the old master to slave`,
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
 
+	},
+}
+
+var apiCmd = &cobra.Command{
+	Use:   "api",
+	Short: "Call JWT API",
+	Long:  `Performs call to jwt api served by monitoring`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cliClusters = cliGetClusters()
+		cliToken, _ = cliLogin()
+		allCLusters, _ := cliGetAllClusters()
+		if len(cliClusters) != 1 {
+			err := errors.New("No cluster specify")
+			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
+		}
+		cliAPICmd(cliUrl)
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
 	},
 }
 
@@ -642,5 +671,29 @@ func cliClusterCmd(command string) error {
 		log.Println("ERROR ", err)
 		return err
 	}*/
+	return nil
+}
+
+func cliAPICmd(urlpost string) error {
+	//var r string
+	var bearer = "Bearer " + cliToken
+	req, err := http.NewRequest("GET", urlpost, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", bearer)
+
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return err
+	}
+	log.Println(string(body))
 	return nil
 }
