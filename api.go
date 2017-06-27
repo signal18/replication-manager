@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/codegangsta/negroni"
@@ -127,7 +128,7 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxInteractive)),
 	))
-	router.Handle("/api/logs", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/logs", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxLog)),
 	))
@@ -277,7 +278,7 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mycluster.LogPrintf("INFO", "Rest API receive Switchover request")
-	mycluster.SwitchOver()
+	mycluster.SwitchoverWaitTest()
 	return
 }
 
@@ -316,8 +317,16 @@ func handlerMuxInteractive(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
+	var clusterlogs []string
+	vars := mux.Vars(r)
+	for _, slog := range tlog.Buffer {
+		if strings.Contains(slog, vars["clusterName"]) {
+			clusterlogs = append(clusterlogs, slog)
+		}
+	}
 	e := json.NewEncoder(w)
-	err := e.Encode(tlog.Buffer)
+
+	err := e.Encode(clusterlogs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

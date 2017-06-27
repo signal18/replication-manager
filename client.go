@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -49,12 +50,34 @@ func init() {
 	rootCmd.AddCommand(clientCmd)
 	rootCmd.AddCommand(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
+	rootCmd.AddCommand(topologyCmd)
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	clientCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
 	clientCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	clientCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	clientCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	clientCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	switchoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	switchoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	switchoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	switchoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	switchoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	switchoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	failoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	failoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	failoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	failoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	failoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	failoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	topologyCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	topologyCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	topologyCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	topologyCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	topologyCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	topologyCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 }
 
 var failoverCmd = &cobra.Command{
@@ -62,21 +85,17 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-
-		currentCluster = new(cluster.Cluster)
-		tlog := termlog.TermLog{}
-		err := currentCluster.Init(conf, cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
-		if err != nil {
-			log.WithError(err).Fatal("Error initializing cluster")
+		cliToken, _ = cliLogin()
+		cliClusters = cliGetClusters()
+		allCLusters, _ := cliGetAllClusters()
+		if len(cliClusters) != 1 {
+			err := errors.New("No cluster specify")
+			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
 		}
-		currentCluster.SetLogStdout()
-		currentCluster.TopologyDiscover()
-		currentCluster.FailoverForce()
-
+		cliClusterCmd("failover")
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
-		// Close connections on exit.
-		currentCluster.Close()
+
 	},
 }
 
@@ -86,20 +105,48 @@ var switchoverCmd = &cobra.Command{
 	Long: `Performs an online master switch by promoting a slave to master
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
-		currentCluster = new(cluster.Cluster)
-		tlog := termlog.TermLog{}
-		err := currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
-		if err != nil {
-			log.WithError(err).Fatal("E:rror initializing cluster")
+
+		cliToken, _ = cliLogin()
+		cliClusters = cliGetClusters()
+		allCLusters, _ := cliGetAllClusters()
+		if len(cliClusters) != 1 {
+			err := errors.New("No cluster specify")
+			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
 		}
-		currentCluster.SetLogStdout()
-		currentCluster.TopologyDiscover()
-		time.Sleep(time.Millisecond * 3000)
-		currentCluster.MasterFailover(false)
+		cliServers, _ = cliGetServers()
+
+		cliTopology()
+		cliClusterCmd("switchover")
+		cliTlog.Buffer, _ = cliGetLogs()
+		cliTlog.Print()
+		cliServers, _ = cliGetServers()
+		cliTopology()
+
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
-		currentCluster.Close()
+
+	},
+}
+
+var topologyCmd = &cobra.Command{
+	Use:   "topology",
+	Short: "Print replication topology",
+	Long:  `Print the replication topology by detecting master and slaves`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cliToken, _ = cliLogin()
+		cliClusters = cliGetClusters()
+		allCLusters, _ := cliGetAllClusters()
+		if len(cliClusters) != 1 {
+			err := errors.New("No cluster specify")
+			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
+		}
+		cliServers, _ = cliGetServers()
+
+		cliTopology()
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+
 	},
 }
 
@@ -233,6 +280,41 @@ func cliNewTbChan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
+}
+
+func cliTopology() {
+
+	headstr := ""
+
+	if cliClusters[cliClusterIndex] != "" {
+		headstr += fmt.Sprintf("| Group: %s", cliClusters[cliClusterIndex])
+	}
+	if cliSettings.Interactive == "false" {
+		headstr += " |  Mode: Automatic "
+	} else {
+		headstr += " |  Mode: Manual "
+	}
+
+	headstr += fmt.Sprintf("\n%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+
+	for _, server := range cliServers {
+		var gtidCurr string
+		var gtidSlave string
+		if server.CurrentGtid != nil {
+			gtidCurr = server.CurrentGtid.Sprint()
+		} else {
+			gtidCurr = ""
+		}
+		if server.SlaveGtid != nil {
+			gtidSlave = server.SlaveGtid.Sprint()
+		} else {
+			gtidSlave = ""
+		}
+
+		headstr += fmt.Sprintf("\n%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.UsingGtid, gtidCurr, gtidSlave, "", server.Delay.Int64, server.ReadOnly)
+
+	}
+	log.Printf(headstr)
 }
 
 func cliDisplay() {
@@ -498,7 +580,7 @@ func cliGetMaster() (cluster.ServerMonitor, error) {
 
 func cliGetLogs() ([]string, error) {
 	var r []string
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/logs"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/logs"
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {

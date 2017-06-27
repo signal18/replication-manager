@@ -85,7 +85,7 @@ func httpserver() {
 		return
 	}
 
-	if confs[cfgGroup].HttpAuth {
+	if confs[currentClusterName].HttpAuth {
 		// set authguard options
 		agOptions := authguard.Options{
 			Attempts:              3,
@@ -123,11 +123,11 @@ func httpserver() {
 		// set options
 		options := gelada.Options{
 			Path:     "/",
-			MaxAge:   confs[cfgGroup].SessionLifeTime, // 60 seconds
+			MaxAge:   confs[currentClusterName].SessionLifeTime, // 60 seconds
 			HTTPOnly: true,
 
 			SessionName:     "test-session",
-			SessionLifeTime: confs[cfgGroup].SessionLifeTime, // 60 seconds
+			SessionLifeTime: confs[currentClusterName].SessionLifeTime, // 60 seconds
 			SessionKeys:     sessionKeys,
 
 			BindUserAgent: true,
@@ -254,19 +254,18 @@ func httpserver() {
 		http.HandleFunc("/unprovision", handlerUnprovision)
 		http.HandleFunc("/rolling", handlerRollingUpgrade)
 	}
-	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
-	if confs[cfgGroup].Verbose {
-		log.Printf("INFO : Starting http monitor on port " + confs[cfgGroup].HttpPort)
+	http.Handle("/static/", http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	if confs[currentClusterName].Verbose {
+		log.Printf("INFO : Starting http monitor on port " + confs[currentClusterName].HttpPort)
 	}
-
-	log.Fatal(http.ListenAndServe(confs[cfgGroup].BindAddr+":"+confs[cfgGroup].HttpPort, nil))
+	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, nil))
 }
 
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
-	cfgGroup = r.URL.Query().Get("cluster")
-	currentCluster = clusters[cfgGroup]
+	mycluster := r.URL.Query().Get("cluster")
+	currentCluster = clusters[mycluster]
 	for _, gl := range cfgGroupList {
-		clusters[gl].SetCfgGroupDisplay(cfgGroup)
+		clusters[gl].SetCfgGroupDisplay(mycluster)
 	}
 }
 
@@ -276,11 +275,11 @@ func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/app.html")
+	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/app.html")
 }
 
 func handlerJS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/dashboard.js")
+	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/dashboard.js")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
@@ -494,7 +493,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
 	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
 	s.Status = fmt.Sprintf("%v", runStatus)
-	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
+	s.ConfGroup = fmt.Sprintf("%s", currentClusterName)
 	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
 	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
 	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
@@ -896,7 +895,7 @@ func (hm *HandlerManager) HandleMainPage(w http.ResponseWriter, r *http.Request)
 		LogoutRoute:  "/logout",
 	}
 	indexTmpl := template.New("app.html").Delims("{{%", "%}}")
-	indexTmpl, _ = indexTmpl.ParseFiles(confs[cfgGroup].HttpRoot + "/app.html")
+	indexTmpl, _ = indexTmpl.ParseFiles(confs[currentClusterName].HttpRoot + "/app.html")
 
 	indexTmpl.Execute(w, pageData)
 

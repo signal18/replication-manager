@@ -60,9 +60,7 @@ func init() {
 	mysql.SetLogger(errLog)
 
 	rootCmd.AddCommand(monitorCmd)
-	rootCmd.AddCommand(topologyCmd)
-	//	initRepmgrFlags(switchoverCmd)
-	//	initRepmgrFlags(failoverCmd)
+
 	initRepmgrFlags(monitorCmd)
 	monitorCmd.Flags().StringVar(&conf.User, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
@@ -115,7 +113,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MailFrom, "mail-from", "mrm@localhost", "Alert email sender")
 	monitorCmd.Flags().StringVar(&conf.MailTo, "mail-to", "", "Alert email recipients, separated by commas")
 	monitorCmd.Flags().StringVar(&conf.MailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
-	monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", false, "Daemon mode. Do not start the Termbox console")
+	monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
 	monitorCmd.Flags().BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Turn on maxscale binlog server detection")
@@ -245,27 +243,6 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.ProvProxNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
 	viper.BindPFlags(cmd.Flags())
 
-}
-
-var topologyCmd = &cobra.Command{
-	Use:   "topology",
-	Short: "Print replication topology",
-	Long:  `Print the replication topology by detecting master and slaves`,
-	Run: func(cmd *cobra.Command, args []string) {
-		currentCluster = new(cluster.Cluster)
-		err := currentCluster.Init(confs[currentClusterName], currentClusterName, &termlog.TermLog{}, termlength, runUUID, Version, repmgrHostname, nil)
-		if err != nil {
-			log.WithError(err).Fatal("Error initializing cluster")
-		}
-		currentCluster.SetLogStdout()
-		currentCluster.TopologyDiscover()
-		currentCluster.PrintTopology()
-
-	},
-	PostRun: func(cmd *cobra.Command, args []string) {
-		// Close connections on exit.
-		currentCluster.Close()
-	},
 }
 
 var monitorCmd = &cobra.Command{
