@@ -160,6 +160,8 @@ http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
+api-user = "admin:mariadb"
+api-port = "3000"
 
 # ALERTS
 # ------

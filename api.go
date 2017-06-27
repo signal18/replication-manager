@@ -18,6 +18,7 @@ import (
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
 	"github.com/tanji/replication-manager/cluster"
+	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/regtest"
 )
 
@@ -152,10 +153,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println(user.Username, user.Password)
+	apiuser, apipass := misc.SplitPair(conf.APIUser)
 
 	//validate user credentials
-	if user.Username != "admin" || user.Password != "mariadb" {
+	if user.Username != apiuser || user.Password != apipass {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Println("Error logging in")
 		fmt.Fprint(w, "Invalid credentials")
