@@ -108,6 +108,7 @@ type ServerMonitor struct {
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
 	GTIDExecuted                string
+	ReplicationHealth           string
 }
 
 type serverList []*ServerMonitor
@@ -467,7 +468,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
 		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
-
+	server.ReplicationHealth = server.replicationCheck()
 	// if MaxScale exit the variables and status part
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
