@@ -108,7 +108,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
 	monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "3000", "Rest API isten on this port")
-	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "root:mariadb", "Rest API user:password")
+	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:mariadb", "Rest API user:password")
 	monitorCmd.Flags().BoolVar(&conf.HttpAuth, "http-auth", false, "Authenticate to web server")
 	monitorCmd.Flags().BoolVar(&conf.HttpBootstrapButton, "http-bootstrap-button", false, "Deprecate for the test flag. Get a boostrap option to init replication")
 	monitorCmd.Flags().IntVar(&conf.SessionLifeTime, "http-session-lifetime", 3600, "Http Session life time ")

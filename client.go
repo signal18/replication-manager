@@ -47,6 +47,29 @@ var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 }
 
+func cliInit(needcluster bool) {
+	var err error
+	cliClusters, err = cliGetClusters()
+	if err != nil {
+		log.WithError(err).Fatal()
+		return
+	}
+	cliToken, err = cliLogin()
+	if err != nil {
+		log.WithError(err).Fatal()
+		return
+	}
+	allCLusters, _ := cliGetAllClusters()
+	if len(cliClusters) != 1 && needcluster {
+		err = errors.New("No cluster specify")
+		log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
+	}
+	cliServers, err = cliGetServers()
+	if err != nil {
+		log.WithError(err).Fatal()
+		return
+	}
+}
 func init() {
 	rootCmd.AddCommand(clientCmd)
 	rootCmd.AddCommand(switchoverCmd)
@@ -96,13 +119,8 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliClusters = cliGetClusters()
-		cliToken, _ = cliLogin()
-		allCLusters, _ := cliGetAllClusters()
-		if len(cliClusters) != 1 {
-			err := errors.New("No cluster specified")
-			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
-		}
+		cliInit(true)
+		cliTopology()
 		cliClusterCmd("failover")
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -116,15 +134,8 @@ var switchoverCmd = &cobra.Command{
 	Long: `Performs an online master switch by promoting a slave to master
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliClusters = cliGetClusters()
-		cliToken, _ = cliLogin()
-		allCLusters, _ := cliGetAllClusters()
-		if len(cliClusters) != 1 {
-			err := errors.New("No cluster specify")
-			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
-		}
-		cliServers, _ = cliGetServers()
 
+		cliInit(true)
 		cliTopology()
 		cliClusterCmd("switchover")
 		cliTlog.Buffer, _ = cliGetLogs()
@@ -144,13 +155,7 @@ var apiCmd = &cobra.Command{
 	Short: "Call JWT API",
 	Long:  `Performs call to jwt api served by monitoring`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliClusters = cliGetClusters()
-		cliToken, _ = cliLogin()
-		allCLusters, _ := cliGetAllClusters()
-		if len(cliClusters) != 1 {
-			err := errors.New("No cluster specify")
-			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
-		}
+		cliInit(true)
 		cliAPICmd(cliUrl)
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -162,15 +167,7 @@ var topologyCmd = &cobra.Command{
 	Short: "Print replication topology",
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliClusters = cliGetClusters()
-		cliToken, _ = cliLogin()
-		allCLusters, _ := cliGetAllClusters()
-		if len(cliClusters) != 1 {
-			err := errors.New("No cluster specify")
-			log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
-		}
-		cliServers, _ = cliGetServers()
-
+		cliInit(true)
 		cliTopology()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -183,22 +180,19 @@ var clientCmd = &cobra.Command{
 	Short: "Starts the interactive replication-manager client",
 	Long:  "Connect to replication-manager in stateful TLS JWT mode.",
 	Run: func(cmd *cobra.Command, args []string) {
+		cliInit(false)
 
 		err := termbox.Init()
 		if err != nil {
 			log.WithError(err).Fatal("Termbox initialization error")
 		}
-
 		_, cliTermlength = termbox.Size()
 		if cliTermlength == 0 {
 			cliTermlength = 120
 		} else if cliTermlength < 18 {
 			log.Fatal("Terminal too small, please increase window size")
 		}
-		cliToken, _ = cliLogin()
-		cliClusters = cliGetClusters()
 		loglen := cliTermlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
-
 		termboxChan := cliNewTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
@@ -290,16 +284,19 @@ var clientCmd = &cobra.Command{
 	},
 }
 
-func cliGetClusters() []string {
+func cliGetClusters() ([]string, error) {
 	var cl []string
-
+	var err error
 	if cfgGroup != "" {
 		cl = strings.Split(cfgGroup, ",")
 	} else {
-		cl, _ = cliGetAllClusters()
+		cl, err = cliGetAllClusters()
 		//		log.Printf("%s", cl)
+		if err != nil {
+			return cl, err
+		}
 	}
-	return cl
+	return cl, nil
 }
 
 func cliNewTbChan() chan termbox.Event {
@@ -484,6 +481,10 @@ func cliLogin() (string, error) {
 		log.Println("ERROR ", err)
 		return "", err
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return "", errors.New("Wrong credentential")
+	}
+
 	type Result struct {
 		Token string `json:"token"`
 	}
@@ -546,6 +547,9 @@ func cliGetSettings() (Settings, error) {
 		log.Println("ERROR ", err)
 		return r, err
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return r, errors.New("Wrong credentential")
+	}
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
@@ -576,6 +580,9 @@ func cliGetServers() ([]cluster.ServerMonitor, error) {
 	if err != nil {
 		log.Println("ERROR ", err)
 		return r, err
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return r, errors.New("Wrong credentential")
 	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
@@ -634,6 +641,9 @@ func cliGetLogs() ([]string, error) {
 	if err != nil {
 		log.Println("ERROR ", err)
 		return r, err
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return r, errors.New("Wrong credentential")
 	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
