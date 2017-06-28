@@ -119,9 +119,14 @@ var failoverCmd = &cobra.Command{
 	Short: "Failover a dead master",
 	Long:  `Trigger failover on a dead master by promoting a slave.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		var slogs []string
 		cliInit(true)
 		cliTopology()
 		cliClusterCmd("failover")
+		slogs, _ = cliGetLogs()
+		cliPrintLog(slogs)
+		cliServers, _ = cliGetServers()
+		cliTopology()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 
@@ -134,12 +139,12 @@ var switchoverCmd = &cobra.Command{
 	Long: `Performs an online master switch by promoting a slave to master
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
-
+		var slogs []string
 		cliInit(true)
 		cliTopology()
 		cliClusterCmd("switchover")
-		cliTlog.Buffer, _ = cliGetLogs()
-		cliTlog.Print()
+		slogs, _ = cliGetLogs()
+		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
 		cliTopology()
 
@@ -436,6 +441,12 @@ func cliDisplayHelp() {
 	cliLogPrint("HELP : Ctrl-Q  Quit")
 	cliLogPrint("HELP : Ctrl-C  Quit")
 	cliLogPrint("HELP : Ctrl-W  Set slaves read-write")
+}
+
+func cliPrintLog(msg []string) {
+	for _, c := range msg {
+		log.Printf(c)
+	}
 }
 
 func cliPrintTb(x, y int, fg, bg termbox.Attribute, msg string) {

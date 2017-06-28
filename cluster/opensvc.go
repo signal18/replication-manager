@@ -631,11 +631,9 @@ tags = pod` + pod + `
 type = docker
 run_image = {env.maxscale_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
-    -e MYSQL_ROOT_PASSWORD=undefined
     -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
-    -v {env.base_dir}/pod` + pod + `/conf/keepalived.conf:/etc/keepalived/keepalived.conf:rw
-		`
+    -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
+`
 	}
 	return vm
 }
