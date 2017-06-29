@@ -3,7 +3,6 @@ package carbon
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -60,7 +59,7 @@ func (app *App) DumpStop() error {
 	logger.Info("grace stop with dump inited")
 
 	filenamePostfix := fmt.Sprintf("%d.%d", os.Getpid(), time.Now().UnixNano())
-	dumpFilename := path.Join(app.Config.Dump.Path, fmt.Sprintf("cache.%s", filenamePostfix))
+	dumpFilename := path.Join(app.Config.Dump.Path, fmt.Sprintf("cache.%s.bin", filenamePostfix))
 	xlogFilename := path.Join(app.Config.Dump.Path, fmt.Sprintf("input.%s", filenamePostfix))
 
 	// start dumpers
@@ -79,7 +78,7 @@ func (app *App) DumpStop() error {
 	if err != nil {
 		return err
 	}
-	xlogWriter := &SyncWriter{w: bufio.NewWriterSize(xlog, 1048576)} // 1Mb
+	xlogWriter := &SyncWriter{w: bufio.NewWriterSize(xlog, 4096)} // 4kb
 
 	app.Cache.DivertToXlog(xlogWriter)
 
@@ -88,8 +87,9 @@ func (app *App) DumpStop() error {
 	cacheSize := app.Cache.Size()
 
 	// dump cache
-	err = app.Cache.Dump(dumpWriter)
+	err = app.Cache.DumpBinary(dumpWriter)
 	if err != nil {
+		logger.Info("dump failed", zap.Error(err))
 		return err
 	}
 
@@ -99,29 +99,48 @@ func (app *App) DumpStop() error {
 	)
 
 	if err = dumpWriter.Flush(); err != nil {
+		logger.Info("dump flush failed", zap.Error(err))
 		return err
 	}
 
 	if err = dump.Close(); err != nil {
+		logger.Info("dump close failed", zap.Error(err))
 		return err
 	}
 
 	// cache dump finished
-	logger.Info("stop listeners")
-	app.stopListeners()
-
-	if err = xlogWriter.Flush(); err != nil {
-		return err
-	}
-
-	if err = xlog.Close(); err != nil {
-		return err
-	}
 
 	logger.Info("dump finished")
 
-	logger.Info("stop all")
-	app.stopAll()
+	logger.Info("stop listeners")
+
+	stopped := make(chan struct{})
+
+	go func() {
+		app.stopListeners()
+
+		if err := xlogWriter.Flush(); err != nil {
+			logger.Info("xlog flush failed", zap.Error(err))
+			return
+		}
+
+		if err := xlog.Close(); err != nil {
+			logger.Info("xlog close failed", zap.Error(err))
+			return
+		}
+
+		close(stopped)
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		logger.Info("stop listeners timeout, force stop daemon")
+	case <-stopped:
+		logger.Info("listeners stopped")
+	}
+
+	// logger.Info("stop all")
+	// app.stopAll()
 
 	return nil
 }
@@ -136,44 +155,17 @@ func (app *App) RestoreFromFile(filename string, storeFunc func(*points.Points))
 
 	defer func() {
 		logger.Info("restore finished",
-			zap.Int("point", pointsCount),
+			zap.Int("points", pointsCount),
 			zap.Duration("runtime", time.Since(startTime)),
 		)
 	}()
 
-	file, err := os.Open(filename)
-	if err != nil {
-		logger.Error("open failed", zap.Error(err))
-		return err
-	}
-	defer file.Close()
+	err := points.ReadFromFile(filename, func(p *points.Points) {
+		pointsCount += len(p.Data)
+		storeFunc(p)
+	})
 
-	reader := bufio.NewReaderSize(file, 1024*1024)
-
-	for {
-		line, _, err := reader.ReadLine()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			logger.Error("read failed", zap.Error(err))
-			return err
-		}
-
-		if len(line) > 0 {
-			p, err := points.ParseText(string(line))
-
-			if err != nil {
-				logger.Warn("bad message", zap.String("value", string(line)))
-			} else {
-				pointsCount++
-				storeFunc(p)
-			}
-		}
-	}
-
-	return nil
+	return err
 }
 
 // RestoreFromDir cache and input dumps from disk to memory
@@ -253,7 +245,9 @@ func (app *App) Restore(storeFunc func(*points.Points), path string, rps int) {
 		defer ticker.Stop()
 
 		throttledStoreFunc := func(p *points.Points) {
-			<-ticker.C
+			for i := 0; i < len(p.Data); i++ {
+				<-ticker.C
+			}
 			storeFunc(p)
 		}
 

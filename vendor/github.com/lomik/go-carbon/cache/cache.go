@@ -86,12 +86,12 @@ func (c *Cache) SetWriteStrategy(s string) (err error) {
 	switch s {
 	case "max":
 		c.writeStrategy = MaximumLength
-	case "sort":
+	case "sorted":
 		c.writeStrategy = TimestampOrder
 	case "noop":
 		c.writeStrategy = Noop
 	default:
-		return fmt.Errorf("Unknown write strategy '%s', should be one of: max, sort, noop", s)
+		return fmt.Errorf("Unknown write strategy '%s', should be one of: max, sorted, noop", s)
 	}
 	return nil
 }
@@ -115,34 +115,6 @@ func (c *Cache) Stat(send helper.StatCallback) {
 	helper.SendAndSubstractUint32("queueBuildCount", &c.stat.queueBuildCnt, send)
 	helper.SendAndSubstractUint32("queueBuildTimeMs", &c.stat.queueBuildTimeMs, send)
 	helper.SendUint32("queueWriteoutTime", &c.stat.queueWriteoutTime, send)
-
-	// confirm tracker stats
-	notConfirmedUsedTotal := 0
-	notConfirmedLenTotal := 0
-	notConfirmedShardUsedMax := 0
-	notConfirmedShardLenMax := 0
-
-	for i := 0; i < shardCount; i++ {
-		shard := c.data[i]
-		shard.Lock()
-
-		l := len(shard.notConfirmed)
-
-		notConfirmedUsedTotal += shard.notConfirmedUsed
-		notConfirmedLenTotal += l
-		if shard.notConfirmedUsed > notConfirmedShardUsedMax {
-			notConfirmedShardUsedMax = shard.notConfirmedUsed
-		}
-		if l > notConfirmedShardLenMax {
-			notConfirmedShardLenMax = l
-		}
-		shard.Unlock()
-	}
-
-	send("notConfirmedUsedTotal", float64(notConfirmedUsedTotal))
-	send("notConfirmedLenTotal", float64(notConfirmedLenTotal))
-	send("notConfirmedShardUsedMax", float64(notConfirmedShardUsedMax))
-	send("notConfirmedShardLenMax", float64(notConfirmedShardLenMax))
 }
 
 // hash function
@@ -227,32 +199,6 @@ func (c *Cache) Size() int32 {
 
 func (c *Cache) DivertToXlog(w io.Writer) {
 	c.xlog.Store(w)
-}
-
-func (c *Cache) Dump(w io.Writer) error {
-	for i := 0; i < shardCount; i++ {
-		shard := c.data[i]
-		shard.Lock()
-
-		for _, p := range shard.notConfirmed[:shard.notConfirmedUsed] {
-			if p == nil {
-				continue
-			}
-			if _, err := p.WriteTo(w); err != nil {
-				return err
-			}
-		}
-
-		for _, p := range shard.items {
-			if _, err := p.WriteTo(w); err != nil {
-				return err
-			}
-		}
-
-		shard.Unlock()
-	}
-
-	return nil
 }
 
 // Sets the given value under the specified key.

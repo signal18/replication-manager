@@ -1,7 +1,0 @@
-[
-    {
-        "name" : "uses_internetexplorer",
-        "condition" : "hdr_sub(user-agent) MSIE",
-        "destination" : "test_be_1_b"
-    }
-  ] 
