@@ -1,0 +1,60 @@
+#!/bin/bash
+
+PATH_LIB=$OSVC_PATH_COMP/com.replication-manager
+PREFIX=OSVC_COMP_OPENSVC_DEQUEUE_ACTIONS
+
+typeset -i r=0
+
+function post_file_sunos {
+	echo "svccfg delete -f $OSVC_COMP_OPENSVC_DEQUEUE_ACTIONS_SERVICE_NAME"
+	svccfg delete -f $OSVC_COMP_OPENSVC_DEQUEUE_ACTIONS_SERVICE_NAME || exit 1
+	echo "svccfg import $OSVC_COMP_OPENSVC_DEQUEUE_ACTIONS_MANIFEST_PATH"
+	svccfg import $OSVC_COMP_OPENSVC_DEQUEUE_ACTIONS_MANIFEST_PATH || exit 1
+}
+
+function post_file_linux {
+	which systemctl >/dev/null 2>&1 && post_file_linux_systemd
+	which xinetd >/dev/null 2>&1 && post_file_linux_xinetd
+}
+
+function post_file_linux_xinetd {
+	which service >/dev/null 2>&1 && service xinetd reload
+}
+
+function post_file_linux_systemd {
+	echo "systemctl enable opensvc-actions.socket"
+	systemctl enable opensvc-actions.socket || exit 1
+	echo "systemctl restart opensvc-actions.socket"
+	systemctl restart opensvc-actions.socket || exit 1
+}
+
+function post_file {
+	[ "$(uname -s)" == "SunOS" ] && post_file_sunos
+	[ "$(uname -s)" == "Linux" ] && post_file_linux
+}
+
+case $1 in
+check)
+	$OSVC_PYTHON $PATH_LIB/fileinc.py ${PREFIX}_FILEINC_ check
+	[ $? -eq 1 ] && r=1
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE_ check
+	[ $? -eq 1 ] && r=1
+	exit $r
+	;;
+fix)
+	$OSVC_PYTHON $PATH_LIB/fileinc.py ${PREFIX}_FILEINC_ check >/dev/null 2>&1
+	[ $? -eq 1 ] && POST_FILE=1
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE_ check >/dev/null 2>&1
+	[ $? -eq 1 ] && POST_FILE=1
+	$OSVC_PYTHON $PATH_LIB/fileinc.py ${PREFIX}_FILEINC_ fix
+	[ $? -eq 1 ] && exit 1
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE_ fix
+	[ $? -eq 1 ] && exit 1
+
+	[ "$POST_FILE" -eq 1 ] && post_file
+	exit 0
+	;;
+fixable)
+	exit 2
+	;;
+esac

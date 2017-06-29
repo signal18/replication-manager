@@ -168,13 +168,13 @@
                               <td>{{server.SemiSyncMasterStatus}}</td>
                               <td>{{server.SemiSyncSlaveStatus}}</td>
                               <td>
-                                 <button width=15 height=15	type="button"  ng-click="maintenance(server.ServerID)">
+                                 <button width=15 height=15	type="button"  ng-click="maintenance(server.Id)">
                                  <img width=15 height=15 src="/static/maintenance.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="stop(server.ServerID)">
+                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="stop(server.Id)">
                                  <img width=15 height=15 src="/static/stop.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="start(server.ServerID)">
+                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="start(server.Id)">
                                  <img width=15 height=15 src="/static/start.png">
                                  </button >
                               </td>
@@ -188,6 +188,8 @@
                                  <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
                                  <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
                                  <button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button>
+                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
                                  <label for="test" action="/runonetest" >
@@ -254,7 +256,7 @@
 
 														<tr >
 
-															<td rowspan="2" style="vertical-align:middle;"><p class="sectionheader">{{proxy.Name}}</p></td>
+															<td rowspan="2" style="vertical-align:middle;"><p class="sectionheader">{{proxy.Type}}</p></td>
 															<td>{{proxy.Host}}</td>
                               <td>{{proxy.Port}}</td>
 															<td>{{proxy.WritePort}}</td>
