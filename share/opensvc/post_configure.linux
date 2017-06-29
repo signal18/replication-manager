@@ -14,10 +14,14 @@ docker image load -i/usr/share/replication-manager/opensvc/collector_web2py.tar.
 svcmgr -s opensvc-collector create --provision --interactive --template /usr/share/replication-manager/collector.linux.template
 
 # register agent
-#apt-get install zfsutils-linux
-#apt-get install python
-#apt-get install net-tools
-#apt-get install psmisc
+
+#apt-get install -y python
+#apt-get install -y net-tools
+#apt-get install -y psmisc
+#apt-get install -y zfsutils-linux
+#apt-get install -y system-config-lvm
+#apt-get install -y wget
+
 #wget https://repo.opensvc.com/deb/current.1.8
 #dpkg -i current.1.8
 

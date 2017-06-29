@@ -10,7 +10,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 38,
+            "id": 344,
             "responsibles": [
                 "replication-manager"
             ]
@@ -30,7 +30,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 39,
+            "id": 345,
             "responsibles": [
                 "replication-manager"
             ]
@@ -39,7 +39,7 @@
     "filtersets": [
         {
             "fset_stats": false,
-            "id": 1,
+            "id": 253,
             "filters": [
                 {
                     "filter": {
@@ -47,7 +47,7 @@
                         "f_field": "os_name",
                         "f_value": "linux",
                         "f_table": "nodes",
-                        "id": 1
+                        "id": 207
                     },
                     "f_order": 0,
                     "f_log_op": "AND",
@@ -58,7 +58,7 @@
         },
         {
             "fset_stats": false,
-            "id": 2,
+            "id": 254,
             "filters": [
                 {
                     "filter": {
@@ -66,7 +66,7 @@
                         "f_field": "os_name",
                         "f_value": "darwin",
                         "f_table": "nodes",
-                        "id": 2
+                        "id": 208
                     },
                     "f_order": 0,
                     "f_log_op": "AND",
@@ -77,7 +77,7 @@
         },
         {
             "fset_stats": false,
-            "id": 3,
+            "id": 255,
             "filters": [
                 {
                     "filter": {
@@ -85,7 +85,7 @@
                         "f_field": "res_type",
                         "f_value": "container.docker",
                         "f_table": "resmon",
-                        "id": 3
+                        "id": 209
                     },
                     "f_order": 0,
                     "f_log_op": "AND",
@@ -96,7 +96,7 @@
         },
         {
             "fset_stats": false,
-            "id": 4,
+            "id": 256,
             "filters": [
                 {
                     "filter": null,
@@ -124,7 +124,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 52,
+            "id": 988,
             "responsibles": [
                 "replication-manager"
             ]
@@ -142,7 +142,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 53,
+            "id": 989,
             "responsibles": [
                 "replication-manager"
             ]
@@ -155,9 +155,9 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "/svc/%%ENV:SERVICES_SVCNAME%%",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "base_dir",
-                    "id": 301
+                    "id": 5873
                 }
             ],
             "ruleset_public": false,
@@ -166,7 +166,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 54,
+            "id": 990,
             "responsibles": [
                 "replication-manager"
             ]
@@ -179,9 +179,9 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "/Users/%%ENV:SVC_USERNAME%%/%%ENV:SERVICES_SVCNAME%%",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "base_dir",
-                    "id": 302
+                    "id": 5874
                 }
             ],
             "ruleset_public": false,
@@ -190,7 +190,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 55,
+            "id": 991,
             "responsibles": [
                 "replication-manager"
             ]
@@ -203,25 +203,25 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "999",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_gid",
-                    "id": 303
+                    "id": 5875
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "999",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_uid",
-                    "id": 304
+                    "id": 5876
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "660",
-                    "var_updated": "2017-06-06 18:47:58",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "cnf_perms",
-                    "id": 312
+                    "id": 5877
                 }
             ],
             "ruleset_public": false,
@@ -234,7 +234,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 56,
+            "id": 992,
             "responsibles": [
                 "replication-manager"
             ]
@@ -247,9 +247,9 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "777",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "binded_dir_perms",
-                    "id": 305
+                    "id": 5878
                 }
             ],
             "ruleset_public": false,
@@ -260,7 +260,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 57,
+            "id": 993,
             "responsibles": [
                 "replication-manager"
             ]
@@ -273,9 +273,9 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "775",
-                    "var_updated": "2017-06-06 11:52:11",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "binded_dir_perms",
-                    "id": 306
+                    "id": 5879
                 }
             ],
             "ruleset_public": false,
@@ -286,7 +286,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 58,
+            "id": 994,
             "responsibles": [
                 "replication-manager"
             ]
@@ -299,17 +299,17 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-06 18:52:48",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_gid",
-                    "id": 308
+                    "id": 5880
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-06 13:01:17",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_uid",
-                    "id": 309
+                    "id": 5881
                 }
             ],
             "ruleset_public": false,
@@ -318,7 +318,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 59,
+            "id": 995,
             "responsibles": [
                 "replication-manager"
             ]
@@ -331,17 +331,17 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-07 07:29:18",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_gid",
-                    "id": 313
+                    "id": 5882
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-07 07:29:18",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "mysql_uid",
-                    "id": 314
+                    "id": 5883
                 }
             ],
             "ruleset_public": false,
@@ -350,7 +350,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 60,
+            "id": 996,
             "responsibles": [
                 "replication-manager"
             ]
@@ -360,12 +360,12 @@
             "ruleset_name": "mariadb.svc.mrm.db.cnf.docker",
             "variables": [
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\nserver_id = %%ENV:SERVER_ID%%\\nuser = mysql\\nignore_db_dirs=.system\\n\\n#!include /etc/mysql/tokudb.cnf\\n#!include /etc/mysql/compress.cnf\\n#!include /etc/mysql/spider.cnf\\n#!include /etc/mysql/wsrep.cnf\\n#!include /etc/mysql/audit.cnf\\n!include /etc/mysql/security.cnf\\n!include /etc/mysql/noquerycache.cnf\\n!include /etc/mysql/logs.cnf\\n!include /etc/mysql/semisync.cnf\\n!include /etc/mysql/network.cnf\\n!include /etc/mysql/sharedpool.cnf\\n!include /etc/mysql/optimizer.cnf\\n!include /etc/mysql/threadpool.cnf\\n!include /etc/mysql/innodb.cnf\\n!include /etc/mysql/aria.cnf\\n\\n\\n\\n\"}",
-                    "var_updated": "2017-06-11 10:41:07",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\nserver_id = %%ENV:SERVER_ID%%\\nuser = mysql\\nignore_db_dirs=.system\\n\\n#!include /etc/mysql/tokudb.cnf\\n#!include /etc/mysql/compress.cnf\\n#!include /etc/mysql/spider.cnf\\n#!include /etc/mysql/wsrep.cnf\\n#!include /etc/mysql/audit.cnf\\n!include /etc/mysql/security.cnf\\n!include /etc/mysql/noquerycache.cnf\\n!include /etc/mysql/logs.cnf\\n!include /etc/mysql/semisync.cnf\\n!include /etc/mysql/network.cnf\\n!include /etc/mysql/sharedpool.cnf\\n!include /etc/mysql/optimizer.cnf\\n!include /etc/mysql/threadpool.cnf\\n!include /etc/mysql/innodb.cnf\\n!include /etc/mysql/aria.cnf\\n!includedir /etc/mysql/custom\\n\\n\\n\\n\"}",
+                    "var_updated": "2017-06-28 11:04:23",
                     "var_name": "db_cnf_server",
-                    "id": 316
+                    "id": 5884
                 }
             ],
             "ruleset_public": false,
@@ -374,7 +374,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 61,
+            "id": 997,
             "responsibles": [
                 "replication-manager"
             ]
@@ -384,12 +384,12 @@
             "ruleset_name": "mariadb.svc.mrm.db.cnf.package",
             "variables": [
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\nserver_id = %%ENV:SERVER_ID%%\\nuser = mysql\\nignore_db_dirs=.system\\n\\n#!include ../etc/mysql/tokudb.cnf\\n#!include ../etc/mysql/compress.cnf\\n#!include ../etc/mysql/spider.cnf\\n#!include ../etc/mysql/wsrep.cnf\\n#!include ../etc/mysql/audit.cnf\\n!include ../etc/mysql/security.cnf\\n!include ../etc/mysql/noquerycache.cnf\\n!include ../etc/mysql/logs.cnf\\n!include ../etc/mysql/semisync.cnf\\n!include ../etc/mysql/network.cnf\\n!include ../etc/mysql/sharedpool.cnf\\n!include ../etc/mysql/optimizer.cnf\\n!include ../etc/mysql/threadpool.cnf\\n!include ../etc/mysql/innodb.cnf\\n!include ../etc/mysql/aria.cnf\\n\\n\\n\\n\"}",
-                    "var_updated": "2017-06-11 10:42:08",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\nserver_id = %%ENV:SERVER_ID%%\\nuser = mysql\\nignore_db_dirs=.system\\n\\n#!include ../etc/mysql/tokudb.cnf\\n#!include ../etc/mysql/compress.cnf\\n#!include ../etc/mysql/spider.cnf\\n#!include ../etc/mysql/wsrep.cnf\\n#!include ../etc/mysql/audit.cnf\\n!include ../etc/mysql/security.cnf\\n!include ../etc/mysql/noquerycache.cnf\\n!include ../etc/mysql/logs.cnf\\n!include ../etc/mysql/semisync.cnf\\n!include ../etc/mysql/network.cnf\\n!include ../etc/mysql/sharedpool.cnf\\n!include ../etc/mysql/optimizer.cnf\\n!include ../etc/mysql/threadpool.cnf\\n!include ../etc/mysql/innodb.cnf\\n!include ../etc/mysql/aria.cnf\\n!includedir ../etc/mysql/custom\\n\\n\\n\\n\"}",
+                    "var_updated": "2017-06-28 11:05:36",
                     "var_name": "db_cnf_server",
-                    "id": 317
+                    "id": 5885
                 }
             ],
             "ruleset_public": false,
@@ -398,7 +398,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 62,
+            "id": 998,
             "responsibles": [
                 "replication-manager"
             ]
@@ -411,265 +411,249 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/wsrep.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.1]\\n##\\n## WSREP options\\n##\\nwsrep_on=ON\\n\\n# Full path to wsrep provider library or 'none'\\nwsrep_provider=/usr/lib/libgalera_smm.so\\n\\n#wsrep_node_address=10.0.0.%%ENV:SERVER_ID%% \\n# Provider specific configuration options\\nwsrep_provider_options=\\\"gcache.size=2G; gmcast.segment=0\\\"\\n\\n# Logical cluster name. Should be the same for all nodes.\\nwsrep_cluster_name=\\\"mariadb_poc_cluster\\\"\\n\\n# Group communication system handle\\nwsrep_cluster_address=gcomm://%%ENV:GCOMM%%\\n\\n\\n\\n# Human_readable node name (non-unique). Hostname by default.\\n#wsrep_node_name=\\n\\n# Address for incoming client connections. Autodetect by default.\\n#wsrep_node_incoming_address=\\n\\n# How many threads will process writesets from other nodes\\nwsrep_slave_threads=%%ENV:CORES%%\\n\\n# DBUG options for wsrep provider\\n#wsrep_dbug_option\\n\\n# Generate fake primary keys for non-PK tables (required for multi-master\\n# and parallel applying   svar  operation)\\nwsrep_certify_nonPK=1\\n\\n# Location of the directory with data files. Needed for non-mysqldump\\n# state snapshot transfers. Defaults to mysql_real_data_home.\\n#wsrep_data_home_dir=\\n\\n# Maximum number of rows in write set\\nwsrep_max_ws_rows=131072\\n\\n# Maximum size of write set\\nwsrep_max_ws_size=1073741824\\n\\n# to enable debug level logging, set this to 1\\nwsrep_debug=0\\n\\n# convert locking sessions into transactions\\nwsrep_convert_LOCK_to_trx=0\\n\\n# how many times to retry deadlocked autocommits\\nwsrep_retry_autocommit=10\\n\\n# change auto_increment_increment and auto_increment_offset automatically\\nwsrep_auto_increment_control=0\\n\\n# replicate myisam\\nwsrep_replicate_myisam=1\\n# retry autoinc insert, which failed for duplicate key error\\nwsrep_drupal_282555_workaround=1\\n\\n# enable \\\"strictly synchronous\\\" semantics for read operations\\n#wsrep_causal_reads=0\\nwsrep_causal_reads=1\\n\\n# Command to call when node status or cluster membership changes.\\n# Will be passed all or some of the following options:\\n# --status  - new status of this node\\n# --uuid    - UUID of the cluster\\n# --primary - whether the component is primary or not (\\\"yes\\\"/\\\"no\\\")\\n# --members - comma-separated list of members\\n# --index   - index of this node in the list\\n#wsrep_notify_cmd=\\n\\n##\\n## WSREP State Transfer options\\n##\\n# State Snapshot Transfer method\\n\\n#wsrep_sst_method=xtrabackup-v2\\nwsrep_sst_method=rsync\\n\\n# Address on THIS node to receive SST at. DON'T SET IT TO DONOR ADDRESS!!!\\n# (SST method dependent. Defaults to the first IP of the first interface)\\n#wsrep_sst_receive_address=\\n\\n\\n[xtrabackup]\\nparallel=4\\n\\n\\n# SST authentication string. This will be used to send SST to joining nodes.\\n# Depends on SST method. For mysqldump method it is root:<root password>\\nwsrep_sst_auth=root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\n# Desired SST donor name.\\n#wsrep_sst_donor= \"}",
-                    "var_updated": "2017-06-11 11:55:23",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_wsrep",
-                    "id": 318
+                    "id": 5886
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/tokudb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nplugin_load_add=ha_tokudb\\nloose_tokudb_cache_size=128M\\nloose_tokudb_prelock_empty=0\"}",
-                    "var_updated": "2017-06-11 11:55:28",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_tokudb",
-                    "id": 319
+                    "id": 5887
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/threadpool.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# THREAD POOL\\n# ----------- \\n\\n[mysqld]\\n\\nthread_handling = pool-of-threads\\nextra_port = 3307\\nextra_max_connections = 10\"}",
-                    "var_updated": "2017-06-11 11:55:32",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_thread_pool",
-                    "id": 320
+                    "id": 5888
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/spider.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_spider_auto_increment_mode=1\\nloose_spider_semi_table_lock  = 0\\nloose_spider_support_xa=0\\nloose_spider_direct_dup_insert = 1\\nloose_spider_remote_sql_log_off=1\\nloose_spider_casual_read=0\\nloose_spider_bka_mode = 0\\nloose_spider_quick_mode=3 \\nloose_spider_quick_page_size=1000\\nloose_spider_sync_trx_isolation=1\\nloose_spider_sync_autocommit=1\\n\\nloose_spider_sts_sync=1\\nloose_spider_sts_bg_mode=0\\nloose_spider_sts_mode=1 \\nloose_spider_sts_interval=3600\\n#show table  \\n\\n\\nloose_spider_reset_sql_alloc=1\\nloose_spider_bgs_mode=0\\nloose_spider_use_pushdown_udf=0\\n\\nloose_spider_crd_mode=1\\nloose_spider_crd_sync=1\\nloose_spider_crd_bg_mode=0\\nloose_spider_crd_interval=3600\\n\\nloose_spider_connect_mutex = 0\\nloose_spider_conn_recycle_mode=0\\nloose_spider_conn_recycle_strict = 0\\nloose_spider_local_lock_table=0\\nloose_spider_connect_retry_count = 10   \\nloose_spider_connect_retry_interval = 1000 \\n\\npartition_skip_pk_sort_for_non_clustered_pk_table=1\"}",
-                    "var_updated": "2017-06-11 11:55:38",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_spider",
-                    "id": 321
+                    "id": 5889
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/sharedpool.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n# SQL \\n# --- \\n\\ntmpdir = ./.system/tmp\\nopen_files_limit = 65000\\ntmp_table_size = 256M\\nmax_heap_table_size = 256M\\nkey_buffer_size = 1000M\\ntable_open_cache = 1024\\ntable_definition_cache = 1024\\nmax_allowed_packet = 512M\\nsort_buffer_size = 1M\\nread_buffer_size = 256K\\n\\njoin_buffer_space_limit = 1G\\njoin_buffer_size = 128M\\njoin_cache_level = 6\\nmrr_buffer_size = 96M\"}",
-                    "var_updated": "2017-06-11 11:55:43",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_sharedpool",
-                    "id": 322
+                    "id": 5890
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/security.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# SECURITY\\n# --------\\n\\n[mysqld]\\n# Disabling symbolic-links is recommended to prevent assorted security risks\\n# symbolic-links = 0\\nsysdate_is_now = 1\\nconnect_timeout = 10\\nbind-address = %%ENV:SERVER_IP%%\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\nlocal_infile = 0\\nmax_connect_errors = 1000000\\n# pam_use_cleartext_plugin = ON \\n# secure_auth = 1\\nskip_show_database = 1\"}",
-                    "var_updated": "2017-06-11 11:55:58",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_security",
-                    "id": 324
+                    "id": 5891
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/semisync.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n[mysqld]\\nserver_id = %%ENV:SERVER_ID%%\\n#skip_slave_start = 1\\n\\nrelay_log = ./.system/repl/relay-bin\\nrelay_log_index=./.system/repl/relay-bin.index\\nrelay_log_space_limit = 1G\\nlog_bin= ./.system/repl/mariadb-bin\\nlog_bin_index= ./.system/repl/mariadb-bin.index \\n \\nbinlog_format = ROW\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = 5 \\nsync_binlog = 1\\nreplicate_annotate_row_events = 1\\nreport_host='host_%%ENV:SERVER_ID%%'\\nlog_slave_updates = ON\\n[mariadb-10.1]\\nslave_parallel_mode = optimistic\\n[mariadb]\\nplugin_load_add =\\\"semisync_master.so\\\"\\nplugin_load_add =\\\"semisync_slave.so\\\"\\n\\nloose_rpl_semi_sync_master = ON\\nloose_rpl_semi_sync_slave = ON\\nloose_rpl_semi_sync_master_enabled = ON\\nloose_rpl_semi_sync_slave_enabled = ON\\n\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\"}",
-                    "var_updated": "2017-06-11 11:56:03",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_rpl_semisync",
-                    "id": 325
-                },
-                {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
-                    "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/semisync.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n[mysqld]\\nserver_id = %%ENV:SERVER_ID%%\\n#skip_slave_start = 1\\n\\nrelay_log = ./.system/repl/relay-bin\\nrelay_log_index=./.system/repl/relay-bin.index\\nrelay_log_space_limit = 1G\\nlog_bin= ./.system/repl/mariadb-bin\\nlog_bin_index= ./.system/repl/mariadb-bin.index \\n \\nbinlog_format = ROW\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = 5 \\nsync_binlog = 1\\nreplicate_annotate_row_events = 1\\nreport_host='host_%%ENV:SERVER_ID%%'\\nlog_slave_updates = ON\\n[mariadb-10.1]\\nslave_parallel_mode = optimistic\\n[mariadb]\\nplugin_load_add =\\\"semisync_master.so\\\"\\nplugin_load_add =\\\"semisync_slave.so\\\"\\n\\nloose_rpl_semi_sync_master = ON\\nloose_rpl_semi_sync_slave = ON\\nloose_rpl_semi_sync_master_enabled = ON\\nloose_rpl_semi_sync_slave_enabled = ON\\n\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\"}",
-                    "var_updated": "2017-06-11 11:56:09",
-                    "var_name": "db_cnf_rpl_semisync",
-                    "id": 326
+                    "id": 5892
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\"}",
-                    "var_updated": "2017-06-11 11:56:15",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_optimizer",
-                    "id": 327
+                    "id": 5893
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/noquerycache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# QUERY CACHE\\n# -----------\\n\\n[mysqld]\\n#query_cache_limit = 2M\\nquery_cache_size = 0\\nquery_cache_type = 0\"}",
-                    "var_updated": "2017-06-11 11:56:22",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_no_querycache",
-                    "id": 328
+                    "id": 5894
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n[mysqld]\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = 500\\nmax_user_connections = 450\\nthread_cache_size = 32\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\n\"}",
-                    "var_updated": "2017-06-11 11:56:29",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_network",
-                    "id": 329
+                    "id": 5895
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/logs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# LOGS\\n# ---- \\n\\n[mariadb]\\nplugin_load_add =\\\"sql_errlog.so;metadata_lock_info.so\\\"\\n\\nloose_sql_error_log_filename = ./.system/logs/sql-errors \\nloose_sql_error_log_rotate = 1\\n\\n[mysqld]\\n\\nlog_error = ./.system/logs/error.log\\nslow_query_log_file = ./.system/logs/sql-slow\\nslow_query_log = 1\\nlog_slow_admin_statements = 1\\nlog_slow_slave_statements = 1\\nlog_slow_verbosity=query_plan,explain\\ninnodb_print_all_deadlocks = 1\\nlog_warnings = 2 \\nlong_query_time = 10\\n\\ngeneral_log=0\\ngeneral_log_file= ./.system/logs/sql-all \\n\\n\\n\"}",
-                    "var_updated": "2017-06-11 11:56:36",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_logs",
-                    "id": 330
+                    "id": 5896
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------ \\n\\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\ninnodb_defragment = 1\\n[mysqld]\\ntransaction-isolation=READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_buffer_pool_instances = 8\\ninnodb_flush_log_at_trx_commit = 1\\ninnodb_file_per_table=1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = 10\\ninnodb_flush_neighbors = 1\\ninnodb_doublewrite = 1\\ninnodb_log_file_size = 1024M\\ninnodb_log_buffer_size = 256M\\ninnodb_log_files_in_group = 4\\ninnodb_thread_concurrency = 0\\ninnodb_file_format = barracuda\\ninnodb_flush_method = O_DIRECT\\ninnodb_data_home_dir = ./.system/innodb\\ninnodb_log_group_home_dir = ./.system/innodb/redo\\ninnodb_undo_directory  = ./.system/innodb/undo\\ninnodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 8\\ninnodb_buffer_pool_populate=0  \\ninnodb_change_buffering=none\\ninnodb_concurrency_tickets =5000\\n\\n\"}",
-                    "var_updated": "2017-06-11 11:56:46",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_innodb",
-                    "id": 331
+                    "id": 5897
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/start\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nset -eo pipefail\\nshopt -s nullglob\\nif [ -f %%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/MYSQL_ROOT_PASSWORD ]; then \\n  . %%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/MYSQL_ROOT_PASSWORD\\nfi\\n# if command starts with an option, prepend mysqld\\nif [ \\\"${1:0:1}\\\" = '-' ]; then\\n\\tset -- mysqld \\\"$@\\\"\\nfi\\n\\n# skip setup if they want an option that stops mysqld\\nwantHelp=\\nfor arg; do\\n\\tcase \\\"$arg\\\" in\\n\\t\\t-'?'|--help|--print-defaults|-V|--version)\\n\\t\\t\\twantHelp=1\\n\\t\\t\\tbreak\\n\\t\\t\\t;;\\n\\tesac\\ndone\\n\\n# usage: file_env VAR [DEFAULT]\\n#    ie: file_env 'XYZ_DB_PASSWORD' 'example'\\n# (will allow for \\\"$XYZ_DB_PASSWORD_FILE\\\" to fill in the value of\\n#  \\\"$XYZ_DB_PASSWORD\\\" from a file, especially for Docker's secrets feature)\\nfile_env() {\\n\\tlocal var=\\\"$1\\\"\\n\\tlocal fileVar=\\\"${var}_FILE\\\"\\n\\tlocal def=\\\"${2:-}\\\"\\n\\tif [ \\\"${!var:-}\\\" ] && [ \\\"${!fileVar:-}\\\" ]; then\\n\\t\\techo >&2 \\\"error: both $var and $fileVar are set (but are exclusive)\\\"\\n\\t\\texit 1\\n\\tfi\\n\\tlocal val=\\\"$def\\\"\\n\\tif [ \\\"${!var:-}\\\" ]; then\\n\\t\\tval=\\\"${!var}\\\"\\n\\telif [ \\\"${!fileVar:-}\\\" ]; then\\n\\t\\tval=\\\"$(< \\\"${!fileVar}\\\")\\\"\\n\\tfi\\n\\texport \\\"$var\\\"=\\\"$val\\\"\\n\\tunset \\\"$fileVar\\\"\\n}\\n\\n_check_config() {\\n\\ttoRun=( \\\"$@\\\" --verbose --help --log-bin-index=\\\"$(mktemp -u)\\\" )\\n\\tif ! errors=\\\"$(\\\"${toRun[@]}\\\" 2>&1 >/dev/null)\\\"; then\\n\\t\\tcat >&2 <<-EOM\\n\\n\\t\\t\\tERROR: mysqld failed while attempting to check config\\n\\t\\t\\tcommand was: \\\"${toRun[*]}\\\"\\n\\n\\t\\t\\t$errors\\n\\t\\tEOM\\n\\t\\texit 1\\n\\tfi\\n}\\n\\n_datadir() {\\n\\t\\\"$@\\\" --verbose --help --log-bin-index=\\\"$(mktemp -u)\\\" 2>/dev/null | awk '$1 == \\\"datadir\\\" { print $2; exit }'\\n}\\n\\n# allow the container to be started with `--user`\\nif [ \\\"$1\\\" = 'mysqld' -a -z \\\"$wantHelp\\\" -a \\\"$(id -u)\\\" = '0' ]; then\\n\\t_check_config \\\"$@\\\"\\n\\tDATADIR=\\\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data\\\"\\n\\tchown -R mysql:mysql \\\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data\\\"\\n\\nfi\\n\\nif [ \\\"$1\\\" = 'mysqld' -a -z \\\"$wantHelp\\\" ]; then\\n\\t# still need to check config, container may have started with --user\\n\\t_check_config \\\"$@\\\"\\n\\t# Get config\\n\\tDATADIR=\\\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data\\\"\\n\\n\\tif [ ! -d \\\"$DATADIR/mysql\\\" ]; then\\n\\t\\tfile_env 'MYSQL_ROOT_PASSWORD'\\n\\t\\tif [ -z \\\"$MYSQL_ROOT_PASSWORD\\\" -a -z \\\"$MYSQL_ALLOW_EMPTY_PASSWORD\\\" -a -z \\\"$MYSQL_RANDOM_ROOT_PASSWORD\\\" ]; then\\n\\t\\t\\techo >&2 'error: database is uninitialized and password option is not specified '\\n\\t\\t\\techo >&2 '  You need to specify one of MYSQL_ROOT_PASSWORD, MYSQL_ALLOW_EMPTY_PASSWORD and MYSQL_RANDOM_ROOT_PASSWORD'\\n\\t\\t\\texit 1\\n\\t\\tfi\\n\\n\\t\\tmkdir -p \\\"$DATADIR\\\"\\n\\n\\t\\techo 'Initializing database'\\n\\t\\tmysql_install_db --defaults-file=\\\"$DATADIR/../etc/mysql/my.cnf\\\" --datadir=\\\"$DATADIR\\\" --rpm\\n\\t\\techo 'Database initialized'\\n\\n\\t\\t \\\"$@\\\" --datadir=\\\"$DATADIR\\\" --socket=\\\"$DATADIR/.system/mysqld.sock\\\" &\\n\\t\\tpid=\\\"$!\\\"\\n\\n\\t\\tmysql=( mysql --protocol=socket -uroot -hlocalhost --socket=\\\"$DATADIR/.system/mysqld.sock\\\" )\\n\\n\\t\\tfor i in {30..0}; do\\n\\t\\t\\tif echo 'SELECT 1' | mysql --protocol=socket -uroot -hlocalhost --socket=\\\"$DATADIR/.system/mysqld.sock\\\" &> /dev/null; then\\n\\t\\t\\t\\tbreak\\n\\t\\t\\tfi\\n\\t\\t\\techo 'MySQL init process in progress...'\\n\\t\\t\\tsleep 1\\n\\t\\tdone\\n\\t\\tif [ \\\"$i\\\" = 0 ]; then\\n\\t\\t\\techo >&2 'MySQL init process failed.'\\n\\t\\t\\texit 1\\n\\t\\tfi\\n\\n\\t\\n\\t\\tif [ ! -z \\\"$MYSQL_RANDOM_ROOT_PASSWORD\\\" ]; then\\n\\t\\t\\texport MYSQL_ROOT_PASSWORD=\\\"$(pwgen -1 32)\\\"\\n\\t\\t\\techo \\\"GENERATED ROOT PASSWORD: $MYSQL_ROOT_PASSWORD\\\"\\n\\t\\tfi\\n\\t\\t\\\"${mysql[@]}\\\" <<-EOSQL\\n\\t\\t\\t-- What's done in this file shouldn't be replicated\\n\\t\\t\\t--  or products like mysql-fabric won't work\\n\\t\\t\\tSET @@SESSION.SQL_LOG_BIN=0;\\n\\n\\t\\t\\tDELETE FROM mysql.user ;\\n\\t\\t\\tCREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;\\n\\t\\t\\tGRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;\\n\\t\\t\\tDROP DATABASE IF EXISTS test ;\\n\\t\\t\\tFLUSH PRIVILEGES ;\\n\\t\\tEOSQL\\n\\n\\t\\tif [ ! -z \\\"$MYSQL_ROOT_PASSWORD\\\" ]; then\\n\\t\\t\\tmysql+=( -p\\\"${MYSQL_ROOT_PASSWORD}\\\" )\\n\\t\\tfi\\n\\n\\t\\tfile_env 'MYSQL_DATABASE'\\n\\t\\tif [ \\\"$MYSQL_DATABASE\\\" ]; then\\n\\t\\t\\techo \\\"CREATE DATABASE IF NOT EXISTS \\\\`$MYSQL_DATABASE\\\\` ;\\\" | \\\"${mysql[@]}\\\"\\n\\t\\t\\tmysql+=( \\\"$MYSQL_DATABASE\\\" )\\n\\t\\tfi\\n\\n\\t\\tfile_env 'MYSQL_USER'\\n\\t\\tfile_env 'MYSQL_PASSWORD'\\n\\t\\tif [ \\\"$MYSQL_USER\\\" -a \\\"$MYSQL_PASSWORD\\\" ]; then\\n\\t\\t\\techo \\\"CREATE USER '$MYSQL_USER'@'%' IDENTIFIED BY '$MYSQL_PASSWORD' ;\\\" | \\\"${mysql[@]}\\\"\\n\\n\\t\\t\\tif [ \\\"$MYSQL_DATABASE\\\" ]; then\\n\\t\\t\\t\\techo \\\"GRANT ALL ON \\\\`$MYSQL_DATABASE\\\\`.* TO '$MYSQL_USER'@'%' ;\\\" | \\\"${mysql[@]}\\\"\\n\\t\\t\\tfi\\n\\n\\t\\t\\techo 'FLUSH PRIVILEGES ;' | \\\"${mysql[@]}\\\"\\n\\t\\tfi\\n\\n\\t\\techo\\n\\t\\tfor f in /docker-entrypoint-initdb.d/*; do\\n\\t\\t\\tcase \\\"$f\\\" in\\n\\t\\t\\t\\t*.sh)     echo \\\"$0: running $f\\\"; . \\\"$f\\\" ;;\\n\\t\\t\\t\\t*.sql)    echo \\\"$0: running $f\\\"; \\\"${mysql[@]}\\\" < \\\"$f\\\"; echo ;;\\n\\t\\t\\t\\t*.sql.gz) echo \\\"$0: running $f\\\"; gunzip -c \\\"$f\\\" | \\\"${mysql[@]}\\\"; echo ;;\\n\\t\\t\\t\\t*)        echo \\\"$0: ignoring $f\\\" ;;\\n\\t\\t\\tesac\\n\\t\\t\\techo\\n\\t\\tdone\\n\\n\\t\\tif ! kill -s TERM \\\"$pid\\\" || ! wait \\\"$pid\\\"; then\\n\\t\\t\\techo >&2 'MySQL init process failed.'\\n\\t\\t\\texit 1\\n\\t\\tfi\\n\\n\\t\\techo\\n\\t\\techo 'MySQL init process done. Ready for start up.'\\n\\t\\techo\\n\\tfi\\nfi\\n\\nexec \\\"$@\\\" --datadir=\\\"$DATADIR\\\" --socket=\\\"$DATADIR/.system/mysqld.sock\\\" & \"}",
-                    "var_updated": "2017-06-11 11:56:51",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_init_start",
-                    "id": 332
+                    "id": 5898
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/MYSQL_ROOT_PASSWORD\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"export MYSQL_ROOT_PASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\"}",
-                    "var_updated": "2017-06-11 11:56:57",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_init_password",
-                    "id": 333
+                    "id": 5899
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/launcher\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nBASE_DIR=%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%\\n[ -f $BASE_DIR/init/MYSQL_ROOT_PASSWORD ] && . $BASE_DIR/init/MYSQL_ROOT_PASSWORD\\nSERVER_IP=%%ENV:SERVER_IP%%\\nSERVER_PORT=%%ENV:SERVER_PORT%%\\nUSER=root\\n\\nfunction _status {\\n        mysqladmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MYSQL_ROOT_PASSWORD status\\n}\\n\\nfunction _stop {\\n        mysqladmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MYSQL_ROOT_PASSWORD shutdown\\n}\\n\\nfunction _start {\\n\\tcd $BASE_DIR/init\\n\\t$BASE_DIR/init/start --defaults-file=$BASE_DIR/etc/mysql/my.cnf\\n}\\n\\ncase $1 in\\nstart)\\n        _status && {\\n                echo \\\"already started\\\"\\n                exit 0\\n        }\\n        _start\\n        ;;\\nstop)\\n        _status || {\\n                echo \\\"already stopped\\\"\\n                exit 0\\n        }\\n        _stop\\n        ;;\\nstatus)\\n        _status\\n        exit $?\\n        ;;\\ninfo)\\n        ;;\\nesac\\n\\n\"}",
-                    "var_updated": "2017-06-11 11:57:02",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_init_launcher",
-                    "id": 334
+                    "id": 5900
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:05",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_init",
-                    "id": 335
+                    "id": 5901
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/tokudb/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:09",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_tokudb",
-                    "id": 336
+                    "id": 5902
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/tmp/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:13",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_tmp",
-                    "id": 337
+                    "id": 5903
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/repl/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:18",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_repl",
-                    "id": 338
-                },
-                {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
-                    "var_class": "fileprop",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/repl/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:22",
-                    "var_name": "db_cnf_dir_data_system_repl",
-                    "id": 339
+                    "id": 5904
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/logs/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:27",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_logs",
-                    "id": 340
+                    "id": 5905
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/innodb/undo/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:33",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_innodb_undo",
-                    "id": 341
+                    "id": 5906
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/innodb/redo/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:38",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_innodb_redo",
-                    "id": 342
+                    "id": 5907
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "fileprop",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/innodb/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:42",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_innodb",
-                    "id": 343
+                    "id": 5908
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/aria/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:51",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system_aria",
-                    "id": 344
+                    "id": 5909
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:57:58",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data_system",
-                    "id": 345
+                    "id": 5910
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:58:03",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_data",
-                    "id": 346
+                    "id": 5911
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/custom/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:58:08",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_conf_custom",
-                    "id": 347
+                    "id": 5912
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-11 11:58:12",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_dir_conf",
-                    "id": 348
+                    "id": 5913
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/compress.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.1]\\ninnodb_compression_default=1\\ninnodb_compression_algorithm=bzip2\\ninnodb_use_fallocate = 1\\ninnodb_use_trim = 1\\ninnodb_mtflush_threads = 16\\n[mariadb-10.2]\\nlog_bin_compress=1\"}",
-                    "var_updated": "2017-06-11 11:58:20",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_compression",
-                    "id": 349
+                    "id": 5914
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/audit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n\\n[mysqld]\\nserver_audit  = FORCE_PLUS_PERMANENT\\nserver_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML\\nserver_audit_file_path =  ./.system/logs/mariadb_audit.log\\nserver_audit_logging = ON\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n# server_audit_incl_users = include,users,here\\nserver_audit_output_type = SYSLOG\\nserver_audit_query_log_limit = 1024\\nserver_audit_syslog_facility = LOG_USER\\nserver_audit_syslog_ident = mysql-server_auditing\\n#server_audit_syslog_infod =\\nserver_audit_syslog_priority = LOG_INFO\"}",
-                    "var_updated": "2017-06-11 11:58:24",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_audit",
-                    "id": 350
+                    "id": 5915
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/aria.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# ARIA\\n# ----\\n\\n[mysqld]\\n\\naria_pagecache_buffer_size = 256M\\naria_group_commit = hard\\n#aria_used_for_temp_tables = 1\\naria_pagecache_file_hash_size = 1024\\naria_log_dir_path = ./.system/aria\"}",
-                    "var_updated": "2017-06-11 11:58:28",
+                    "var_updated": "2017-06-21 17:04:14",
                     "var_name": "db_cnf_aria",
-                    "id": 351
+                    "id": 5916
                 }
             ],
             "ruleset_public": false,
@@ -678,7 +662,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 63,
+            "id": 999,
             "responsibles": [
                 "replication-manager"
             ]

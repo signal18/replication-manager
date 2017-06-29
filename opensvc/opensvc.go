@@ -24,9 +24,9 @@ type Addr struct {
 	Net_broadcast string `json:"net_broadcast"`
 	Net_gateway   string `json:"net_gateway"`
 	Net_name      string `json:"net_name"`
-	Net_netmask   string `json:"net_netmask"`
+	Net_netmask   int    `json:"net_netmask"`
 	Net_network   string `json:"net_network"`
-	Net_id        string `json:"id"`
+	Net_id        int    `json:"id"`
 	Net_intf      string `json:"intf"`
 }
 

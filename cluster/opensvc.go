@@ -351,6 +351,8 @@ backend_ips = ` + servers + `
 port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
 port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
 `
 	log.Println(conf)
 	return conf, nil
@@ -643,13 +645,13 @@ func (cluster *Cluster) GetPodPackageTemplate(collector opensvc.Collector, pod s
 
 	if collector.ProvMicroSrv == "package" {
 		vm = vm + `
-		[app#` + pod + `]
-		script = {env.base_dir}/pod` + pod + `/init/launcher
-		start = 50
-		stop = 50
-		check = 50
-		info = 50
-		`
+[app#` + pod + `]
+script = {env.base_dir}/pod` + pod + `/init/launcher
+start = 50
+stop = 50
+check = 50
+info = 50
+`
 	}
 	return vm
 }

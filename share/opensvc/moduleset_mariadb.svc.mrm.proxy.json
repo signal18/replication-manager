@@ -358,9 +358,9 @@
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/log/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
                     "var_updated": "2017-06-21 17:04:15",
-                    "var_name": "proxy_cnf_dir_log",
+                    "var_name": "proxy_cnf_dir_init",
                     "id": 5919
                 },
                 {
@@ -374,8 +374,8 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mysqlmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\n \\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\n\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\n\\n\\n[Debug Listener]\\ntype=listener\\nservice=Debug Interface\\nprotocol=telnetd\\nport=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\n\\n%%ENV:SERVERS%%\\n\"}",
-                    "var_updated": "2017-06-27 16:49:12",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mysqlmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\ndetect_stale_slave=true\\n\\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\n\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\n\\n\\n#[Debug Listener]\\n#type=listener\\n#service=Debug Interface\\n#protocol=telnetd\\n#port=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\n\\n%%ENV:SERVERS%%\\n\"}",
+                    "var_updated": "2017-06-28 21:30:45",
                     "var_name": "proxy_cnf_maxscale",
                     "id": 5921
                 },
@@ -394,6 +394,14 @@
                     "var_updated": "2017-06-21 17:04:15",
                     "var_name": "proxy_cnf_mrm_mx",
                     "id": 5923
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/launcher\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nBASE_DIR=%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%\\nSERVER_IP=%%ENV:SERVER_IP%%\\nSERVER_PORT=%%ENV:SERVER_PORT%%\\nUSER=%%ENV:USER_ADMIN%%\\nMAXSCALE_ROOT_PASSWORD=%%ENV:PASSWORD_ADMIN%%\\nfunction _status {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD help\\n}\\n\\nfunction _stop {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD shutdown maxscale\\n}\\n\\nfunction _start {\\n\\tmaxscale -d --config=$BASE_DIR/conf/maxscale.cnf --datadir=$BASE_DIR/data --logdir==$BASE_DIR/data\\n}\\n\\ncase $1 in\\nstart)\\n        _status && {\\n                echo \\\"already started\\\"\\n                exit 0\\n        }\\n        _start\\n        ;;\\nstop)\\n        _status || {\\n                echo \\\"already stopped\\\"\\n                exit 0\\n        }\\n        _stop\\n        ;;\\nstatus)\\n        _status\\n        exit $?\\n        ;;\\ninfo)\\n        ;;\\nesac\\n\\n\"}",
+                    "var_updated": "2017-06-28 23:21:45",
+                    "var_name": "proxy_cnf_launcher",
+                    "id": 5926
                 }
             ],
             "ruleset_public": false,
