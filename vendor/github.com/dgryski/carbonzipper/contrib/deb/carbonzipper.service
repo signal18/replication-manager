@@ -1,0 +1,16 @@
+[Unit]
+Description=carbonserver proxy for graphite-web and carbonapi
+After=syslog.target network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/carbonzipper
+ExecStart=/usr/bin/carbonzipper $CARBONZIPPER_ARGS
+ExecReload=/usr/bin/kill -USR2 $MAINPID
+PIDFile=/var/run/carbonzipper/carbonzipper.pid
+LimitNOFILE=200000
+RuntimeDirectory=carbonzipper
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

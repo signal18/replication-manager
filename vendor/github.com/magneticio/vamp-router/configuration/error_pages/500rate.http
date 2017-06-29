@@ -1,0 +1,7 @@
+HTTP/1.1 500 RateLimitExceeded
+Content-Length: 142
+Content-Type: text/plain
+X-Vamp-Server: abuse
+
+You exceeded the rate limit on this server
+

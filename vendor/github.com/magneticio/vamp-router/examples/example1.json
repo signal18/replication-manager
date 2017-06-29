@@ -1,0 +1,177 @@
+{
+  "frontends": [
+    {
+      "name": "test_fe_1",
+      "bindPort": 8000,
+      "bindIp": "0.0.0.0",
+      "defaultBackend": "test_be_1",
+      "mode": "http",
+      "options": {
+        "httpClose": true
+      },
+      "filters": [
+        {
+          "name": "uses_internetexplorer",
+          "condition": "hdr_sub(user-agent) MSIE",
+          "destination": "test_be_1_b"
+        }
+      ],
+      "httpQuota": {
+        "sampleWindow": "5s",
+        "expiryTime": "10s",
+        "rate": 100
+      }
+    },
+    {
+      "name": "test_fe_1_a",
+      "mode": "http",
+      "defaultBackend": "test_be_1_a",
+      "unixSock": "/tmp/vamp_test_be_1_a.sock",
+      "sockProtocol": "accept-proxy",
+      "acls": [],
+      "filters" : []
+    }
+  ],
+  "backends": [
+    {
+      "name": "test_be_1",
+      "mode": "http",
+      "servers": [
+        {
+          "name": "test_be_1_a",
+          "unixSock": "/tmp/vamp_test_be_1_a.sock",
+          "weight": 100
+        }
+      ],
+      "proxyMode": true,
+      "options": {}
+    },
+    {
+      "name": "test_be_1_a",
+      "mode": "http",
+      "servers": [
+        {
+          "name": "test_be1_a_1",
+          "host": "192.168.59.103",
+          "port": 8081,
+          "weight": 100,
+          "maxconn": 1000,
+          "check": false,
+          "checkInterval": 10
+        },
+        {
+          "name": "test_be1_a_2",
+          "host": "192.168.59.103",
+          "port": 8082,
+          "weight": 100,
+          "maxconn": 1000,
+          "check": false,
+          "checkInterval": 10
+        }
+      ],
+      "proxyMode": false,
+      "options": {
+        "abortOnClose": false,
+        "allBackups": false,
+        "checkCache": false,
+        "forwardFor": false,
+        "httpClose": false,
+        "httpCheck": false,
+        "ldapCheck": false,
+        "mysqlCheck": false,
+        "pgsqlCheck": false,
+        "redisCheck": false,
+        "smtpCheck": false,
+        "sslHelloCheck": false,
+        "tcpKeepAlive": false,
+        "tcpLog": false,
+        "tcpSmartAccept": false,
+        "tcpSmartConnect": false,
+        "transparent": false
+      }
+    },
+    {
+      "name": "test_be_1_b",
+      "mode": "http",
+      "servers": [
+        {
+          "name": "test_be1_b_1",
+          "host": "192.168.59.103",
+          "port": 8083,
+          "weight": 100,
+          "maxconn": 1000,
+          "check": false,
+          "checkInterval": 10
+        }
+      ],
+      "proxyMode": false,
+      "options": {
+        "abortOnClose": false,
+        "allBackups": false,
+        "checkCache": false,
+        "forwardFor": false,
+        "httpClose": false,
+        "httpCheck": false,
+        "ldapCheck": false,
+        "mysqlCheck": false,
+        "pgsqlCheck": false,
+        "redisCheck": false,
+        "smtpCheck": false,
+        "sslHelloCheck": false,
+        "tcpKeepAlive": false,
+        "tcpLog": false,
+        "tcpSmartAccept": false,
+        "tcpSmartConnect": false,
+        "transparent": false
+      }
+    }
+  ],
+  "routes": [
+    {
+      "name": "test_route_1",
+      "port": 9025,
+      "protocol": "http",
+      "filters": [
+        {
+          "name": "uses_internet_explorer",
+          "condition": "hdr_sub(user-agent) MSIE",
+          "destination": "group_b"
+        }
+      ],
+      "httpQuota": {
+        "sampleWindow": "1s",
+        "rate": 10000,
+        "expiryTime": "10s"
+      },
+      "tcpQuota": {
+        "sampleWindow": "3s",
+        "rate": 10000,
+        "expiryTime": "10s"
+      },
+      "groups": [
+        {
+          "name": "group_a",
+          "weight": 45,
+          "servers": [
+            {
+              "name": "paas.55f73f0d-6087-4964-a70e-b1ca1d5b24cd",
+              "host": "192.168.2.1",
+              "port": 8081
+            }
+          ]
+        },
+        {
+          "name": "group_b",
+          "weight": 55,
+          "servers": [
+            {
+              "name": "paas.fb76ea52-098f-4e2a-abbe-0238c3d48480",
+              "host": "192.168.2.1",
+              "port": 8082
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

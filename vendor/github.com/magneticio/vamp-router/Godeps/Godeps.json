@@ -1,0 +1,55 @@
+{
+	"ImportPath": "github.com/magneticio/vamp-router",
+	"GoVersion": "go1.4.1",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/Shopify/sarama",
+			"Comment": "v1.4.3",
+			"Rev": "2b0d726b296a33715f7f970f006a80c7bfc8a2e8"
+		},
+		{
+			"ImportPath": "github.com/asaskevich/govalidator",
+			"Comment": "v1",
+			"Rev": "68d5221a67affc98529c25b1fbfeb69212a4dc8b"
+		},
+		{
+			"ImportPath": "github.com/eapache/go-resiliency/breaker",
+			"Comment": "v1.0.0-1-ged0319b",
+			"Rev": "ed0319b32e66e3295db52695ba3ee493e823fbfe"
+		},
+		{
+			"ImportPath": "github.com/eapache/queue",
+			"Comment": "v1.0.1-2-gd1df561",
+			"Rev": "d1df561eb6b9ffdac8dd98f943e9e9096c76c059"
+		},
+		{
+			"ImportPath": "github.com/gin-gonic/gin",
+			"Comment": "v0.4-16-g28b9ff9",
+			"Rev": "28b9ff9e3495dabeaea2da86c100effbf1a68346"
+		},
+		{
+			"ImportPath": "github.com/julienschmidt/httprouter",
+			"Rev": "00ce1c6a267162792c367acc43b1681a884e1872"
+		},
+		{
+			"ImportPath": "github.com/op/go-logging",
+			"Rev": "fb0230561a6ba1cab17beb95f1faedc16584fdb8"
+		},
+		{
+			"ImportPath": "github.com/samuel/go-zookeeper/zk",
+			"Rev": "9a466eec51e72221d972768a15f025bf096fc3e0"
+		},
+		{
+			"ImportPath": "github.com/satori/go.uuid",
+			"Rev": "7c7f2020c4c9491594b85767967f4619c2fa75f9"
+		},
+		{
+			"ImportPath": "gopkg.in/natefinch/lumberjack.v2",
+			"Comment": "v1.0-15-g588a21f",
+			"Rev": "588a21fb0fa0ebdfde42670fa214576b6f0f22df"
+		}
+	]
+}

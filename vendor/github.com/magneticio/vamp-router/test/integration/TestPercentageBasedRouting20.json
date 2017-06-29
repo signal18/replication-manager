@@ -1,0 +1,145 @@
+{
+    "name": "Test Percentage Based Routing 20",
+    "useCookies" : false,
+    "cases": [
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "a"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "b"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],  
+            "expect": "c"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "d"
+        },
+        {
+            "url": "http://localhost:8000/version",
+            "verb": "GET",
+            "headers": [],
+            "expect": "e"
+        }         
+
+    ],
+    "containers": [
+        {
+            "outPort": 9012,
+            "inPort": 8080,
+            "name": "monarch_a",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=a"
+        },
+        {
+            "outPort": 9013,
+            "inPort": 8080,
+            "name": "monarch_b",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=b"
+        },
+        {
+            "outPort": 9014,
+            "inPort": 8080,
+            "name": "monarch_c",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=c"
+        },
+        {
+            "outPort": 9015,
+            "inPort": 8080,
+            "name": "monarch_d",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=d"
+        },
+        {
+            "outPort": 9016,
+            "inPort": 8080,
+            "name": "monarch_e",
+            "image": "magneticio/monarch:0.2",
+            "parameters": "--version=e"
+        }                
+
+    ],
+    "config": {
+        "frontends": [],
+        "backends": [],
+        "routes": [
+            {
+                "name": "routex",
+                "port": 8000,
+                "protocol": "http",
+                "filters": [
+                ],
+                "services": [
+                    {
+                        "name": "service_a1",
+                        "weight": 20,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9012
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_b1",
+                        "weight": 20,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9013
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_c1",
+                        "weight": 20,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9014
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_d1",
+                        "weight": 20,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9015
+                            }
+                        ]
+                    },
+                    {
+                        "name": "service_e1",
+                        "weight": 20,
+                        "servers": [
+                            {
+                                "name": "server_1",
+                                "host": "192.168.59.103",
+                                "port": 9016
+                            }
+                        ]
+                    }                                                               
+                ]
+            }
+        ]
+    }
+}
