@@ -290,7 +290,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster {
+		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
 			}
