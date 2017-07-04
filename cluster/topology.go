@@ -268,51 +268,51 @@ func (cluster *Cluster) TopologyDiscover() error {
 		for _, sl := range cluster.slaves {
 			if sl.IsRelay == false && !sl.IsDown() {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
-					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.DSN)
+					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.URL)
 					dbhelper.InstallSemiSync(sl.Conn)
 				}
 				if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
 					// In non-multimaster mode, enforce read-only flag if the option is set
 					dbhelper.SetBinlogFormat(sl.Conn, "ROW")
-					cluster.LogPrintf("INFO", "Enforce binlog format ROW on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce binlog format ROW on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
 					// In non-multimaster mode, enforce read-only flag if the option is set
 					dbhelper.SetReadOnly(sl.Conn, true)
-					cluster.LogPrintf("INFO", "Enforce read only on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
 					dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
-					cluster.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
 					dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
-					cluster.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
 					dbhelper.SetSyncInnodb(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce sync InnoDB  on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce sync InnoDB  on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
 					dbhelper.SetBinlogChecksum(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce checksum on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce checksum on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
 					dbhelper.SetBinlogSlowqueries(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce log slow queries of replication on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce log slow queries of replication on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
 					dbhelper.SetBinlogAnnotate(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce annotate on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce annotate on slave %s", sl.URL)
 				}
 				if cluster.conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 					dbhelper.SetBinlogCompress(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce binlog compression on slave %s", sl.DSN)
+					cluster.LogPrintf("INFO", "Enforce binlog compression on slave %s", sl.URL)
 				}
 				/* Disable because read-only variable
 				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
-					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.DSN)
+					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.URL)
 				}*/
 				if sl.HasCycling(sl.ServerID) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
 					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
