@@ -45,6 +45,6 @@ func TestCheckAllSlavesRunning(t *testing.T) {
 func TestDelete(t *testing.T) {
 	Tservers[1].delete(&Tservers)
 	if len(Tservers) != 2 {
-		t.Fatalf("List length was %d, expected 2", len(servers))
+		t.Fatalf("List length was %d, expected 2", len(Tservers))
 	}
 }
