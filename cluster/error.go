@@ -47,8 +47,4 @@ var clusterError = map[string]string{
 	"ERR00041": "Skip slave in election %s has more than %d seconds of replication delay (%d)",
 	"ERR00042": "Skip slave in election %s SQL Thread is stopped",
 	"ERR00043": "Skip slave in election %s Semisync report unsynced",
-	"ERR00044":  "Can't connect OpenSVC collector %s",
-	"WARN00045": "Provision task is in queue",
-	"WARN00046": "Provision task is working",
-	"WARN00047": "Entreprise provision of MariaDB Sharding Cluster not yet implemented",
 }

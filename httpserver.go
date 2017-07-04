@@ -12,18 +12,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/regtest"
 	"github.com/tanji/replication-manager/state"
 )
@@ -33,7 +30,7 @@ type HandlerManager struct {
 	AuthGuard *authguard.AuthGuard
 }
 
-type Settings struct {
+type settings struct {
 	Enterprise          string   `json:"enterprise"`
 	Interactive         string   `json:"interactive"`
 	FailoverCtr         string   `json:"failoverctr"`
@@ -85,7 +82,7 @@ func httpserver() {
 		return
 	}
 
-	if confs[currentClusterName].HttpAuth {
+	if confs[cfgGroup].HttpAuth {
 		// set authguard options
 		agOptions := authguard.Options{
 			Attempts:              3,
@@ -123,11 +120,11 @@ func httpserver() {
 		// set options
 		options := gelada.Options{
 			Path:     "/",
-			MaxAge:   confs[currentClusterName].SessionLifeTime, // 60 seconds
+			MaxAge:   confs[cfgGroup].SessionLifeTime, // 60 seconds
 			HTTPOnly: true,
 
 			SessionName:     "test-session",
-			SessionLifeTime: confs[currentClusterName].SessionLifeTime, // 60 seconds
+			SessionLifeTime: confs[cfgGroup].SessionLifeTime, // 60 seconds
 			SessionKeys:     sessionKeys,
 
 			BindUserAgent: true,
@@ -207,10 +204,7 @@ func httpserver() {
 		router.HandleFunc("/dashboard.js", handlerJS)
 		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
 		router.HandleFunc("/setverbosity", handlerVerbosity)
-		router.HandleFunc("/template", handlerOpenSVCTemplate)
-		router.HandleFunc("/repocomp/current", handlerRepoComp)
-		router.HandleFunc("/unprovision", handlerUnprovision)
-		router.HandleFunc("/rolling", handlerRollingUpgrade)
+
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
@@ -249,23 +243,20 @@ func httpserver() {
 		http.HandleFunc("/setactive", handlerSetActive)
 		http.HandleFunc("/dashboard.js", handlerJS)
 		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
-		http.HandleFunc("/template", handlerOpenSVCTemplate)
-		http.HandleFunc("/repocomp/current", handlerRepoComp)
-		http.HandleFunc("/unprovision", handlerUnprovision)
-		http.HandleFunc("/rolling", handlerRollingUpgrade)
 	}
-	http.Handle("/static/", http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
-	if confs[currentClusterName].Verbose {
-		log.Printf("INFO : Starting http monitor on port " + confs[currentClusterName].HttpPort)
+	http.Handle("/static/", http.FileServer(http.Dir(confs[cfgGroup].HttpRoot)))
+	if confs[cfgGroup].Verbose {
+		log.Printf("INFO : Starting http monitor on port " + confs[cfgGroup].HttpPort)
 	}
-	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, nil))
+
+	log.Fatal(http.ListenAndServe(confs[cfgGroup].BindAddr+":"+confs[cfgGroup].HttpPort, nil))
 }
 
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
-	mycluster := r.URL.Query().Get("cluster")
-	currentCluster = clusters[mycluster]
+	cfgGroup = r.URL.Query().Get("cluster")
+	currentCluster = clusters[cfgGroup]
 	for _, gl := range cfgGroupList {
-		clusters[gl].SetCfgGroupDisplay(mycluster)
+		clusters[gl].SetCfgGroupDisplay(cfgGroup)
 	}
 }
 
@@ -275,31 +266,17 @@ func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/app.html")
+	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/app.html")
 }
 
 func handlerJS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/dashboard.js")
+	http.ServeFile(w, r, confs[cfgGroup].HttpRoot+"/dashboard.js")
 }
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
-	//marshal unmarchal for ofuscation deep copy of struc
-	data, _ := json.Marshal(currentCluster.GetServers())
-	var srvs []*cluster.ServerMonitor
 
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
 	e := json.NewEncoder(w)
-
-	err = e.Encode(srvs)
+	err := e.Encode(currentCluster.GetServers())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -318,62 +295,32 @@ func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
-
-	data, err := ioutil.ReadFile(string(conf.ShareDir + "/opensvc/current"))
-
-	if err != nil {
-		w.WriteHeader(404)
-		w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
-		return
-	}
-	w.Write(data)
-
-}
-
 func handlerStopServer(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
-	srv := r.URL.Query().Get("server")
-
-	node := currentCluster.GetServerFromName(srv)
+	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
+	if err != nil {
+		currentCluster.LogPrintf("ERROR", "Failed encoding JSON:%s ", err)
+		return
+	}
+	node := currentCluster.GetServerFromId(uint(intsrvid))
 	currentCluster.ShutdownMariaDB(node)
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
-	srv := r.URL.Query().Get("server")
-
-	node := currentCluster.GetServerFromName(srv)
+	intsrvid, err := strconv.Atoi(r.URL.Query().Get("server"))
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		return
+	}
+	node := currentCluster.GetServerFromId(uint(intsrvid))
 	node.Conf = "semisync.cnf"
 	currentCluster.StartMariaDB(node)
 }
 
-func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", currentCluster.GetName())
-	currentCluster.OpenSVCUnprovision()
-}
-
-func handlerRollingUpgrade(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request rolling upgrade cluster: %s", currentCluster.GetName())
-	currentCluster.RollingUpgrade()
-}
-
 func handlerSlaves(w http.ResponseWriter, r *http.Request) {
-	data, _ := json.Marshal(currentCluster.GetSlaves())
-	var srvs []*cluster.ServerMonitor
-
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
 	e := json.NewEncoder(w)
-	err = e.Encode(srvs)
+	err := e.Encode(currentCluster.GetSlaves())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -390,41 +337,9 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
-	svc := currentCluster.OpenSVCConnect()
-	servers := currentCluster.GetServers()
-	var iplist []string
-	var portlist []string
-	for _, s := range servers {
-		iplist = append(iplist, s.Host)
-		portlist = append(portlist, s.Port)
-
-	}
-
-	agts := svc.GetNodes()
-	var clusteragents []opensvc.Host
-
-	for _, node := range agts {
-		currentCluster.LogPrintf("INFO", "hypervisors for cluster: %s %s", svc.ProvAgents, node.Node_name)
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
-			currentCluster.LogPrintf("INFO", "hypervisors Found")
-
-			clusteragents = append(clusteragents, node)
-		}
-	}
-	res, err := currentCluster.GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
-	if err != nil {
-		log.Println("HTTP Error ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	w.Write([]byte(res))
-}
 
 func handlerProxies(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-
 	err := e.Encode(currentCluster.GetProxies())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -434,22 +349,8 @@ func handlerProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMaster(w http.ResponseWriter, r *http.Request) {
-	m := currentCluster.GetMaster()
-	var srvs *cluster.ServerMonitor
-	if m != nil {
-
-		data, _ := json.Marshal(m)
-
-		err := json.Unmarshal(data, &srvs)
-		if err != nil {
-			log.Println("Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-		srvs.Pass = "XXXXXXXX"
-	}
 	e := json.NewEncoder(w)
-	err := e.Encode(srvs)
+	err := e.Encode(currentCluster.GetMaster())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -471,7 +372,7 @@ func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
-	s := new(Settings)
+	s := new(settings)
 	s.Enterprise = fmt.Sprintf("%v", currentCluster.GetConf().Enterprise)
 	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
 	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
@@ -493,7 +394,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
 	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
 	s.Status = fmt.Sprintf("%v", runStatus)
-	s.ConfGroup = fmt.Sprintf("%s", currentClusterName)
+	s.ConfGroup = fmt.Sprintf("%s", cfgGroup)
 	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
 	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
 	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
@@ -895,7 +796,7 @@ func (hm *HandlerManager) HandleMainPage(w http.ResponseWriter, r *http.Request)
 		LogoutRoute:  "/logout",
 	}
 	indexTmpl := template.New("app.html").Delims("{{%", "%}}")
-	indexTmpl, _ = indexTmpl.ParseFiles(confs[currentClusterName].HttpRoot + "/app.html")
+	indexTmpl, _ = indexTmpl.ParseFiles(confs[cfgGroup].HttpRoot + "/app.html")
 
 	indexTmpl.Execute(w, pageData)
 

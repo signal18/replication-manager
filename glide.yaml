@@ -13,7 +13,3 @@ import:
   subpackages:
   - authguard
 - package: github.com/spf13/pflag
-- package: github.com/codegangsta/martini
-  version: ^1.0.0
-- package: github.com/codegangsta/negroni
-  version: ^0.2.0

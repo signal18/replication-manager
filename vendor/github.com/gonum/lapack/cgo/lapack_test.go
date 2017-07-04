@@ -152,10 +152,6 @@ func TestDgeqrf(t *testing.T) {
 	testlapack.DgeqrfTest(t, impl)
 }
 
-func TestDgerqf(t *testing.T) {
-	testlapack.DgerqfTest(t, impl)
-}
-
 func TestDgesvd(t *testing.T) {
 	testlapack.DgesvdTest(t, impl)
 }
@@ -174,14 +170,6 @@ func TestDgetri(t *testing.T) {
 
 func TestDgetrs(t *testing.T) {
 	testlapack.DgetrsTest(t, impl)
-}
-
-func TestDggsvd3(t *testing.T) {
-	testlapack.Dggsvd3Test(t, impl)
-}
-
-func TestDggsvp3(t *testing.T) {
-	testlapack.Dggsvp3Test(t, impl)
 }
 
 func TestDhseqr(t *testing.T) {

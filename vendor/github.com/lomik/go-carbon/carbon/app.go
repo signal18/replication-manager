@@ -140,19 +140,10 @@ func (app *App) ReloadConfig() error {
 func (app *App) stopListeners() {
 	logger := zapwriter.Logger("app")
 
-	if app.CarbonLink != nil {
-		app.CarbonLink.Stop()
-		app.CarbonLink = nil
-		logger.Debug("carbonlink stopped")
-	}
-
-	if app.Carbonserver != nil {
-		carbonserver := app.Carbonserver
-		go func() {
-			carbonserver.Stop()
-			logger.Debug("carbonserver stopped")
-		}()
-		app.Carbonserver = nil
+	if app.TCP != nil {
+		app.TCP.Stop()
+		app.TCP = nil
+		logger.Debug("tcp stopped")
 	}
 
 	if app.Pickle != nil {
@@ -161,16 +152,22 @@ func (app *App) stopListeners() {
 		logger.Debug("pickle stopped")
 	}
 
-	if app.TCP != nil {
-		app.TCP.Stop()
-		app.TCP = nil
-		logger.Debug("tcp stopped")
-	}
-
 	if app.UDP != nil {
 		app.UDP.Stop()
 		app.UDP = nil
 		logger.Debug("udp stopped")
+	}
+
+	if app.CarbonLink != nil {
+		app.CarbonLink.Stop()
+		app.CarbonLink = nil
+		logger.Debug("carbonlink stopped")
+	}
+
+	if app.Carbonserver != nil {
+		app.Carbonserver.Stop()
+		app.Carbonserver = nil
+		logger.Debug("carbonserver stopped")
 	}
 }
 
@@ -299,7 +296,7 @@ func (app *App) Start() (err error) {
 	}
 	/* PICKLE end */
 
-	/* CARBONSERVER start */
+	/* CARBONLINK start */
 	if conf.Carbonserver.Enabled {
 		if err != nil {
 			return
@@ -317,9 +314,6 @@ func (app *App) Start() (err error) {
 		carbonserver.SetQueryCacheEnabled(conf.Carbonserver.QueryCacheEnabled)
 		carbonserver.SetFindCacheEnabled(conf.Carbonserver.FindCacheEnabled)
 		carbonserver.SetQueryCacheSizeMB(conf.Carbonserver.QueryCacheSizeMB)
-		carbonserver.SetTrigramIndex(conf.Carbonserver.TrigramIndex)
-		carbonserver.SetGraphiteWeb10(conf.Carbonserver.GraphiteWeb10StrictMode)
-		carbonserver.SetInternalStatsDir(conf.Carbonserver.InternalStatsDir)
 		// carbonserver.SetQueryTimeout(conf.Carbonserver.QueryTimeout.Value())
 
 		if err = carbonserver.Listen(conf.Carbonserver.Listen); err != nil {
@@ -328,7 +322,7 @@ func (app *App) Start() (err error) {
 
 		app.Carbonserver = carbonserver
 	}
-	/* CARBONSERVER end */
+	/* CARBONLINK end */
 
 	/* CARBONLINK start */
 	if conf.Carbonlink.Enabled {

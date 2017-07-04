@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tanji/replication-manager/graphite/helper/framing"
+	"github.com/lomik/go-carbon/helper/framing"
 )
 
 func Test1BigEndian(t *testing.T) {

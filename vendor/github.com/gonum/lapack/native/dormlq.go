@@ -60,14 +60,10 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 		return
 	}
 
-	const (
-		nbmax = 64
-		ldt   = nbmax
-		tsize = nbmax * ldt
-	)
+	const nbmax = 64
 	opts := string(side) + string(trans)
 	nb := min(nbmax, impl.Ilaenv(1, "DORMLQ", opts, m, n, k, -1))
-	lworkopt := max(1, nw)*nb + tsize
+	lworkopt := max(1, nw) * nb
 	if lwork == -1 {
 		work[0] = float64(lworkopt)
 		return
@@ -75,22 +71,21 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 
 	nbmin := 2
 	if 1 < nb && nb < k {
-		iws := nw*nb + tsize
+		iws := nw * nb
 		if lwork < iws {
-			nb = (lwork - tsize) / nw
+			nb = lwork / nw
 			nbmin = max(2, impl.Ilaenv(2, "DORMLQ", opts, m, n, k, -1))
 		}
 	}
+	ldwork := nb
 	if nb < nbmin || k <= nb {
 		// Call unblocked code.
 		impl.Dorml2(side, trans, m, n, k, a, lda, tau, c, ldc, work)
 		work[0] = float64(lworkopt)
 		return
 	}
-
-	t := work[:tsize]
-	wrk := work[tsize:]
-	ldwrk := nb
+	ldt := nb
+	t := make([]float64, nb*ldt)
 
 	notran := trans == blas.NoTrans
 	transt := blas.NoTrans
@@ -110,7 +105,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				a[i*lda+i:], lda,
 				t, ldt,
 				c[i*ldc:], ldc,
-				wrk, ldwrk)
+				work, ldwork)
 		}
 
 	case left && !notran:
@@ -124,7 +119,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				a[i*lda+i:], lda,
 				t, ldt,
 				c[i*ldc:], ldc,
-				wrk, ldwrk)
+				work, ldwork)
 		}
 
 	case !left && notran:
@@ -138,7 +133,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				a[i*lda+i:], lda,
 				t, ldt,
 				c[i:], ldc,
-				wrk, ldwrk)
+				work, ldwork)
 		}
 
 	case !left && !notran:
@@ -152,7 +147,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				a[i*lda+i:], lda,
 				t, ldt,
 				c[i:], ldc,
-				wrk, ldwrk)
+				work, ldwork)
 		}
 	}
 	work[0] = float64(lworkopt)

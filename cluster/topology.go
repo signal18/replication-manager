@@ -477,14 +477,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
-	// Fecth service Status
-	/*	if cluster.conf.Enterprise {
-		status, err := cluster.GetOpenSVCSeviceStatus()
-		cluster.openSVCServiceStatus = status
-		if err != nil {
-			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
-		}
-	}*/
 	if cluster.sme.CanMonitor() {
 		return nil
 	}
@@ -571,14 +563,6 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
 	for _, server := range cluster.servers {
 		if server.ServerID == serverid {
-			return server
-		}
-	}
-	return nil
-}
-func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
-	for _, server := range cluster.servers {
-		if server.Id == name {
 			return server
 		}
 	}

@@ -151,9 +151,3 @@ func ToIntSlice(i interface{}) []int {
 	v, _ := ToIntSliceE(i)
 	return v
 }
-
-// ToDurationSlice casts an interface to a []time.Duration type.
-func ToDurationSlice(i interface{}) []time.Duration {
-	v, _ := ToDurationSliceE(i)
-	return v
-}

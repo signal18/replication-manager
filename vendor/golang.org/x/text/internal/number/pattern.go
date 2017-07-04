@@ -31,14 +31,14 @@ import (
 
 // TODO: replace special characters in affixes (-, +, ¤) with control codes.
 
-// Pattern holds information for formatting numbers. It is designed to hold
+// Format holds information for formatting numbers. It is designed to hold
 // information from CLDR number patterns.
 //
 // This pattern is precompiled  for all patterns for all languages. Even though
 // the number of patterns is not very large, we want to keep this small.
 //
 // This type is only intended for internal use.
-type Pattern struct {
+type Format struct {
 	// TODO: this struct can be packed a lot better than it is now. Should be
 	// possible to make it 32 bytes.
 
@@ -46,17 +46,16 @@ type Pattern struct {
 	Offset    uint16 // Offset into Affix for prefix and suffix
 	NegOffset uint16 // Offset into Affix for negative prefix and suffix or 0.
 
-	FormatWidth uint16
-
+	Multiplier     uint32
 	RoundIncrement uint32 // Use Min*Digits to determine scale
 	PadRune        rune
-	DigitShift     uint8 // Number of decimals to shift. Used for % and ‰.
+
+	FormatWidth uint16
 
 	GroupingSize [2]uint8
-	Flags        PatternFlag
+	Flags        FormatFlag
 
 	// Number of digits.
-	// TODO: consider using uint32
 	MinIntegerDigits     uint8
 	MaxIntegerDigits     uint8
 	MinFractionDigits    uint8
@@ -66,32 +65,11 @@ type Pattern struct {
 	MinExponentDigits    uint8
 }
 
-func (f *Pattern) needsSep(pos int) bool {
-	p := pos - 1
-	size := int(f.GroupingSize[0])
-	if size == 0 || p == 0 {
-		return false
-	}
-	if p == size {
-		return true
-	}
-	if p -= size; p < 0 {
-		return false
-	}
-	// TODO: make second groupingsize the same as first if 0 so that we can
-	// avoid this check.
-	if x := int(f.GroupingSize[1]); x != 0 {
-		size = x
-	}
-	return p%size == 0
-}
-
-// A PatternFlag is a bit mask for the flag field of a Pattern.
-type PatternFlag uint8
+// A FormatFlag is a bit mask for the flag field of a Format.
+type FormatFlag uint8
 
 const (
-	AlwaysSign PatternFlag = 1 << iota
-	ElideSign              // Use space instead of plus sign. AlwaysSign must be true.
+	AlwaysSign FormatFlag = 1 << iota
 	AlwaysExpSign
 	AlwaysDecimalSeparator
 	ParenthesisForNegative // Common pattern. Saves space.
@@ -107,7 +85,7 @@ const (
 )
 
 type parser struct {
-	*Pattern
+	*Format
 
 	leadingSharps int
 
@@ -126,8 +104,7 @@ func (p *parser) setError(err error) {
 }
 
 func (p *parser) updateGrouping() {
-	if p.hasGroup &&
-		0 < p.groupingCount && p.groupingCount < 255 {
+	if p.hasGroup && p.groupingCount < 255 {
 		p.GroupingSize[1] = p.GroupingSize[0]
 		p.GroupingSize[0] = uint8(p.groupingCount)
 	}
@@ -149,8 +126,8 @@ var (
 // ParsePattern extracts formatting information from a CLDR number pattern.
 //
 // See http://unicode.org/reports/tr35/tr35-numbers.html#Number_Format_Patterns.
-func ParsePattern(s string) (f *Pattern, err error) {
-	p := parser{Pattern: &Pattern{}}
+func ParsePattern(s string) (f *Format, err error) {
+	p := parser{Format: &Format{}}
 
 	s = p.parseSubPattern(s)
 
@@ -160,7 +137,7 @@ func ParsePattern(s string) (f *Pattern, err error) {
 			p.setError(errors.New("format: error parsing first sub pattern"))
 			return nil, p.err
 		}
-		neg := parser{Pattern: &Pattern{}} // just for extracting the affixes.
+		neg := parser{Format: &Format{}} // just for extracting the affixes.
 		s = neg.parseSubPattern(s[len(";"):])
 		p.NegOffset = uint16(len(p.buf))
 		p.buf = append(p.buf, neg.buf...)
@@ -177,7 +154,7 @@ func ParsePattern(s string) (f *Pattern, err error) {
 	} else {
 		p.Affix = affix
 	}
-	return p.Pattern, nil
+	return p.Format, nil
 }
 
 func (p *parser) parseSubPattern(s string) string {
@@ -186,7 +163,6 @@ func (p *parser) parseSubPattern(s string) string {
 	s = p.parsePad(s, PadAfterPrefix)
 
 	s = p.parse(p.number, s)
-	p.updateGrouping()
 
 	s = p.parsePad(s, PadBeforeSuffix)
 	s = p.parseAffix(s)
@@ -194,7 +170,7 @@ func (p *parser) parseSubPattern(s string) string {
 	return s
 }
 
-func (p *parser) parsePad(s string, f PatternFlag) (tail string) {
+func (p *parser) parsePad(s string, f FormatFlag) (tail string) {
 	if len(s) >= 2 && s[0] == '*' {
 		r, sz := utf8.DecodeRuneInString(s[1:])
 		if p.PadRune != 0 {
@@ -249,41 +225,26 @@ func (p *parser) affix(r rune) state {
 		'#', '@', '.', '*', ',', ';':
 		return nil
 	case '\'':
-		p.FormatWidth--
-		return p.escapeFirst
+		return p.escape
 	case '%':
-		if p.DigitShift != 0 {
+		if p.Multiplier != 0 {
 			p.setError(errDuplicatePercentSign)
 		}
-		p.DigitShift = 2
+		p.Multiplier = 100
 	case '\u2030': // ‰ Per mille
-		if p.DigitShift != 0 {
+		if p.Multiplier != 0 {
 			p.setError(errDuplicatePermilleSign)
 		}
-		p.DigitShift = 3
+		p.Multiplier = 1000
 		// TODO: handle currency somehow: ¤, ¤¤, ¤¤¤, ¤¤¤¤
 	}
 	p.buf = append(p.buf, string(r)...)
 	return p.affix
 }
 
-func (p *parser) escapeFirst(r rune) state {
-	switch r {
-	case '\'':
-		p.buf = append(p.buf, "\\'"...)
-		return p.affix
-	default:
-		p.buf = append(p.buf, '\'')
-		p.buf = append(p.buf, string(r)...)
-	}
-	return p.escape
-}
-
 func (p *parser) escape(r rune) state {
 	switch r {
 	case '\'':
-		p.FormatWidth--
-		p.buf = append(p.buf, '\'')
 		return p.affix
 	default:
 		p.buf = append(p.buf, string(r)...)
@@ -333,8 +294,6 @@ func (p *parser) integer(r rune) state {
 			next = p.exponent
 		case '.':
 			next = p.fraction
-		case ',':
-			next = p.integer
 		}
 		p.updateGrouping()
 		return next

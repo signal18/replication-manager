@@ -16,63 +16,65 @@ This library supports TOML version
 Go-toml provides the following features for using data parsed from TOML documents:
 
 * Load TOML documents from files and string data
-* Easily navigate TOML structure using Tree
-* Mashaling and unmarshaling to and from data structures
+* Easily navigate TOML structure using TomlTree
 * Line & column position data for all parsed elements
-* [Query support similar to JSON-Path](query/)
+* Query support similar to JSON-Path
 * Syntax errors contain line and column numbers
+
+Go-toml is designed to help cover use-cases not covered by reflection-based TOML parsing:
+
+* Semantic evaluation of parsed TOML
+* Informing a user of mistakes in the source document, after it has been parsed
+* Programatic handling of default values on a case-by-case basis
+* Using a TOML document as a flexible data-store
 
 ## Import
 
-```go
-import "github.com/pelletier/go-toml"
-```
+    import "github.com/pelletier/go-toml"
 
-## Usage example
+## Usage
 
-Read a TOML document:
+### Example
 
-```go
-config, _ := toml.LoadString(`
+Say you have a TOML file that looks like this:
+
+```toml
 [postgres]
 user = "pelletier"
-password = "mypassword"`)
-// retrieve data directly
-user := config.Get("postgres.user").(string)
-
-// or using an intermediate object
-postgresConfig := config.Get("postgres").(*toml.Tree)
-password = postgresConfig.Get("password").(string)
+password = "mypassword"
 ```
 
-Or use Unmarshal:
+Read the username and password like this:
 
 ```go
-type Postgres struct {
-    User     string
-    Password string
-}
-type Config struct {
-    Postgres Postgres
-}
+import (
+    "fmt"
+    "github.com/pelletier/go-toml"
+)
 
-doc := []byte(`
-[postgres]
-user = "pelletier"
-password = "mypassword"`)
+config, err := toml.LoadFile("config.toml")
+if err != nil {
+    fmt.Println("Error ", err.Error())
+} else {
+    // retrieve data directly
+    user := config.Get("postgres.user").(string)
+    password := config.Get("postgres.password").(string)
 
-config := Config{}
-Unmarshal(doc, &config)
-fmt.Println("user=", config.Postgres.User)
-```
+    // or using an intermediate object
+    configTree := config.Get("postgres").(*toml.TomlTree)
+    user = configTree.Get("user").(string)
+    password = configTree.Get("password").(string)
+    fmt.Println("User is ", user, ". Password is ", password)
 
-Or use a query:
+    // show where elements are in the file
+    fmt.Println("User position: %v", configTree.GetPosition("user"))
+    fmt.Println("Password position: %v", configTree.GetPosition("password"))
 
-```go
-// use a query to gather elements without walking the tree
-results, _ := config.Query("$..[user,password]")
-for ii, item := range results.Values() {
-    fmt.Println("Query result %d: %v", ii, item)
+    // use a query to gather elements without walking the tree
+    results, _ := config.Query("$..[user,password]")
+    for ii, item := range results.Values() {
+      fmt.Println("Query result %d: %v", ii, item)
+    }
 }
 ```
 

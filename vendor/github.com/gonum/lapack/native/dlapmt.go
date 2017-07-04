@@ -18,6 +18,8 @@ import "github.com/gonum/blas/blas64"
 //  X[0:m, j] is moved to X[0:m, k[j]] for j = 0, 1, ..., n-1.
 //
 // k must have length n, otherwise Dlapmt will panic. k is zero-indexed.
+//
+// Dlapmt is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dlapmt(forward bool, m, n int, x []float64, ldx int, k []int) {
 	checkMatrix(m, n, x, ldx)
 	if len(k) != n {
@@ -50,23 +52,20 @@ func (impl Implementation) Dlapmt(forward bool, m, n int, x []float64, ldx int, 
 				i = k[i] - 1
 			}
 		}
-	} else {
-		for i, v := range k {
-			if v >= 0 {
-				continue
-			}
-			k[i] = -v
-			j := -v - 1
-			for j != i {
-				bi.Dswap(m, x[j:], ldx, x[i:], ldx)
-
-				k[j] = -k[j]
-				j = k[j] - 1
-			}
-		}
+		return
 	}
 
-	for i := range k {
-		k[i]--
+	for i, v := range k {
+		if v >= 0 {
+			continue
+		}
+		k[i] = -v
+		j := -v - 1
+		for j != i {
+			bi.Dswap(m, x[j:], ldx, x[i:], ldx)
+
+			k[j] = -k[j]
+			j = k[j] - 1
+		}
 	}
 }

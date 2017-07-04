@@ -27,6 +27,10 @@ var (
 	cfgGroupIndex int
 	conf          config.Config
 	memprofile    string
+)
+var confs = make(map[string]config.Config)
+
+var (
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
 	// FullVersion is the semantic version number + git commit hash
@@ -34,15 +38,19 @@ var (
 	// Build is the build date of replication-manager
 	Build string
 )
-var confs = make(map[string]config.Config)
 
 func init() {
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+
 	cobra.OnInitialize(initConfig)
+
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Configuration file (default is config.toml)")
-	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
+	rootCmd.PersistentFlags().StringVar(&cfgGroup, "config-group", "", "Configuration group (default is none)")
+	rootCmd.PersistentFlags().StringVar(&conf.User, "user", "", "User for MariaDB login, specified in the [user]:[password] format")
+	rootCmd.PersistentFlags().StringVar(&conf.Hosts, "hosts", "", "List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	rootCmd.PersistentFlags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
@@ -86,8 +94,7 @@ func initConfig() {
 		log.WithError(err).Fatal("Could not parse config file")
 	}
 	m := viper.AllKeys()
-	currentClusterName = cfgGroup
-	if currentClusterName == "" {
+	if cfgGroup == "" {
 		var clusterDicovery = map[string]string{}
 		var discoveries []string
 		for _, k := range m {
@@ -106,8 +113,8 @@ func initConfig() {
 
 			}
 		}
-		currentClusterName = strings.Join(discoveries, ",")
-		log.WithField("clusters", currentClusterName).Debug("New clusters discovered")
+		cfgGroup = strings.Join(discoveries, ",")
+		log.WithField("clusters", cfgGroup).Debug("New clusters discovered")
 
 	}
 	cfgGroupIndex = 0
@@ -119,8 +126,8 @@ func initConfig() {
 
 	cf1.Unmarshal(&conf)
 
-	if currentClusterName != "" {
-		cfgGroupList = strings.Split(currentClusterName, ",")
+	if cfgGroup != "" {
+		cfgGroupList = strings.Split(cfgGroup, ",")
 
 		for _, gl := range cfgGroupList {
 
@@ -128,28 +135,28 @@ func initConfig() {
 				clusterconf := conf
 				cf2 := viper.Sub("Default")
 				cf2.Unmarshal(&clusterconf)
-				currentClusterName = gl
+				cfgGroup = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
 				cf2 = viper.Sub(gl)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
 				cf2.Unmarshal(&clusterconf)
-				confs[gl] = clusterconf
+				confs[cfgGroup] = clusterconf
 				cfgGroupIndex++
 			}
 		}
 
 		cfgGroupIndex--
 		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Debug("Default Cluster set")
-		currentClusterName = cfgGroupList[cfgGroupIndex]
+		cfgGroup = cfgGroupList[cfgGroupIndex]
 
 	} else {
 		cfgGroupList = append(cfgGroupList, "Default")
 		log.WithField("cluster", cfgGroupList[cfgGroupIndex]).Debug("Default Cluster set")
 
 		confs["Default"] = conf
-		currentClusterName = "Default"
+		cfgGroup = "Default"
 	}
 
 }

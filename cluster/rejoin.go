@@ -463,29 +463,3 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	}
 	return nil
 }
-
-func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
-	dumpCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	var err error
-	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed opening pipe: %s", err)
-		return err
-	}
-	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf("ERROR", "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
-		return err
-	}
-	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf("ERROR", "Can't start mysql client:%s at %s", err, clientCmd.Path)
-		return err
-	}
-	dumpCmd.Wait()
-	cluster.LogPrintf("INFO", "Start slave after dump")
-
-	dbhelper.StartSlave(dest.Conn)
-	return nil
-}

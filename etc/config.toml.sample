@@ -4,7 +4,6 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01,Cluster_Test_2_Nodes monitor --daemon
 
-
 [Cluster_Maxscale_MasterSlave]
 title = "ClusterTestMaxscale"
 hosts = "127.0.0.1:5055,127.0.0.1:5056"
@@ -160,8 +159,6 @@ http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
-api-user = "admin:mariadb"
-api-port = "3000"
 
 # ALERTS
 # ------

@@ -1,1 +1,0 @@
-svcmgr -s opensvc-collector create --provision --interactive --template /usr/share/replication-manager/collector.osx.template
