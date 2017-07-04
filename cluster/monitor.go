@@ -268,40 +268,37 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		server.FailSuspectHeartbeat = 0
 	}
 
-	// We don't need to test the slave status if the State is Failed or Suspect
-	if !server.IsDown() {
-		var ss dbhelper.SlaveStatus
-		ss, errss := dbhelper.GetSlaveStatus(server.Conn)
-		// We have no replicatieon can this be the old master
-		if errss == sql.ErrNoRows {
-			// If we reached this stage with a previously failed server, reintroduce
-			// it as unconnected server.
-			if server.PrevState == stateFailed {
-				if server.ClusterGroup.conf.LogLevel > 1 {
-					server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
-				}
-				server.State = stateUnconn
-				server.FailCount = 0
-				if server.ClusterGroup.conf.Autorejoin {
-					server.RejoinMaster()
-				} else {
-					server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
-				}
-
-			} else if server.State != stateMaster {
-				if server.ClusterGroup.conf.LogLevel > 1 {
-					server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
-				}
-				server.State = stateUnconn
+	var ss dbhelper.SlaveStatus
+	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+	// We have no replicatieon can this be the old master
+	if errss == sql.ErrNoRows {
+		// If we reached this stage with a previously failed server, reintroduce
+		// it as unconnected server.
+		if server.PrevState == stateFailed {
+			if server.ClusterGroup.conf.LogLevel > 1 {
+				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
+			}
+			server.State = stateUnconn
+			server.FailCount = 0
+			if server.ClusterGroup.conf.Autorejoin {
+				server.RejoinMaster()
+			} else {
+				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-			if server.PrevState != server.State {
-				server.PrevState = server.State
+		} else if server.State != stateMaster {
+			if server.ClusterGroup.conf.LogLevel > 1 {
+				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			return
-		} else if errss == nil && server.PrevState == stateFailed {
-			server.rejoinSlave(ss)
+			server.State = stateUnconn
 		}
+
+		if server.PrevState != server.State {
+			server.PrevState = server.State
+		}
+		return
+	} else if errss == nil && server.PrevState == stateFailed {
+		server.rejoinSlave(ss)
 	}
 
 	if server.PrevState != server.State {
@@ -432,7 +429,6 @@ func (server *ServerMonitor) Refresh() error {
 		server.Replications[0], _ = dbhelper.GetSlaveStatus(server.Conn)
 	}
 	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	//	slaveStatus, err := dbhelper.GetSlaveStatus(server.Conn)
 
 	if err != nil {
 		server.IsSlave = false

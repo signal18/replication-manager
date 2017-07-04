@@ -182,7 +182,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", ": Server %s is configured as a slave", sv.URL)
+				cluster.LogPrintf("DEBUG", "Server %s is configured as a slave", sv.URL)
 			}
 			sv.replicationCheck()
 			cluster.slaves = append(cluster.slaves, sv)
