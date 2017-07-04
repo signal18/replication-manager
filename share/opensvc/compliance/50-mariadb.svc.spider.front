@@ -1,0 +1,22 @@
+#!/bin/bash
+
+PATH_LIB=$OSVC_PATH_COMP/com.replication-manager
+PREFIX=OSVC_COMP_FRONT
+
+typeset -i r=0
+
+case $1 in
+check)
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE_ check
+	[ $? -eq 1 ] && r=1
+	exit $r
+	;;
+fix)
+	$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_FILE_ fix
+	[ $? -eq 1 ] && exit 1
+	exit 0
+	;;
+fixable)
+	exit 2
+	;;
+esac

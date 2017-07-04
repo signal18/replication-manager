@@ -1,0 +1,53 @@
+{
+    "modulesets": [
+        {
+            "modules": [
+                {
+                    "autofix": false,
+                    "modset_mod_name": "mariadb.node.packages"
+                }
+            ],
+            "rulesets": [
+                "mariadb.node.packages"
+            ],
+            "modset_name": "mariadb.node.packages",
+            "modulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 14,
+            "responsibles": [
+                "MariaDB"
+            ]
+        }
+    ],
+    "filtersets": [],
+    "rulesets": [
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.node.packages",
+            "variables": [
+                {
+                    "var_author": "Stéphane Varoqui",
+                    "var_class": "package",
+                    "var_value": "[\"sysstat\",\"docker.io\",\"btrfs-tools\",\"mariadb-server\"]",
+                    "var_updated": "2017-05-14 11:35:28",
+                    "var_name": "spdc_pkg",
+                    "id": 216
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [],
+            "publications": [
+                "OpenSVC",
+                "MariaDB"
+            ],
+            "id": 71,
+            "responsibles": [
+                "OpenSVC",
+                "MariaDB"
+            ]
+        }
+    ]
+}

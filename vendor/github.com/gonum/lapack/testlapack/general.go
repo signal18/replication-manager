@@ -17,8 +17,14 @@ import (
 	"github.com/gonum/lapack"
 )
 
-// dlamchE is the machine epsilon. For IEEE this is 2^-53.
-const dlamchE = 1.0 / (1 << 53)
+const (
+	// dlamchE is the machine epsilon. For IEEE this is 2^{-53}.
+	dlamchE = 1.0 / (1 << 53)
+	dlamchB = 2
+	dlamchP = dlamchB * dlamchE
+	// dlamchS is the smallest normal number. For IEEE this is 2^{-1022}.
+	dlamchS = 1.0 / (1 << 256) / (1 << 256) / (1 << 256) / (1 << 254)
+)
 
 func max(a, b int) int {
 	if a > b {
@@ -545,7 +551,7 @@ func constructQK(kind string, m, n, k int, a []float64, lda int, tau []float64) 
 	switch kind {
 	case "QR":
 		sz = m
-	case "LQ":
+	case "LQ", "RQ":
 		sz = n
 	}
 
@@ -578,25 +584,28 @@ func constructQK(kind string, m, n, k int, a []float64, lda int, tau []float64) 
 			Inc:  1,
 			Data: make([]float64, sz),
 		}
-		for j := 0; j < i; j++ {
-			vVec.Data[j] = 0
-		}
-		vVec.Data[i] = 1
 		switch kind {
 		case "QR":
+			vVec.Data[i] = 1
 			for j := i + 1; j < sz; j++ {
 				vVec.Data[j] = a[lda*j+i]
 			}
 		case "LQ":
+			vVec.Data[i] = 1
 			for j := i + 1; j < sz; j++ {
 				vVec.Data[j] = a[i*lda+j]
 			}
+		case "RQ":
+			for j := 0; j < n-k+i; j++ {
+				vVec.Data[j] = a[(m-k+i)*lda+j]
+			}
+			vVec.Data[n-k+i] = 1
 		}
 		blas64.Ger(-tau[i], vVec, vVec, h)
 		copy(qCopy.Data, q.Data)
 		// Mulitply q by the new h
 		switch kind {
-		case "QR":
+		case "QR", "RQ":
 			blas64.Gemm(blas.NoTrans, blas.NoTrans, 1, qCopy, h, 0, q)
 		case "LQ":
 			blas64.Gemm(blas.NoTrans, blas.NoTrans, 1, h, qCopy, 0, q)
@@ -1334,42 +1343,19 @@ func applyReflector(qh blas64.General, q blas64.General, v []float64) {
 // in the documentation of Dtgsja and Dggsvd3, and the result matrix in
 // the documentation for Dggsvp3.
 func constructGSVDresults(n, p, m, k, l int, a, b blas64.General, alpha, beta []float64) (zeroR, d1, d2 blas64.General) {
+	// [ 0 R ]
 	zeroR = zeros(k+l, n, n)
-	d1 = zeros(m, k+l, k+l)
-	d2 = zeros(p, k+l, k+l)
-	if m-k-l >= 0 {
+	dst := zeroR
+	dst.Rows = min(m, k+l)
+	dst.Cols = k + l
+	dst.Data = zeroR.Data[n-k-l:]
+	src := a
+	src.Rows = min(m, k+l)
+	src.Cols = k + l
+	src.Data = a.Data[n-k-l:]
+	copyGeneral(dst, src)
+	if m < k+l {
 		// [ 0 R ]
-		dst := zeroR
-		dst.Cols = k + l
-		dst.Data = zeroR.Data[n-k-l:]
-		src := a
-		src.Cols = k + l
-		src.Data = a.Data[n-k-l:]
-		copyGeneral(dst, src)
-
-		// D1
-		for i := 0; i < k; i++ {
-			d1.Data[i*d1.Stride+i] = 1
-		}
-		for i := k; i < k+l; i++ {
-			d1.Data[i*d1.Stride+i] = alpha[i]
-		}
-
-		// D2
-		for i := 0; i < l; i++ {
-			d2.Data[i*d2.Stride+i+k] = beta[k+i]
-		}
-	} else {
-		// [ 0 R ]
-		dst := zeroR
-		dst.Rows = m
-		dst.Cols = k + l
-		dst.Data = zeroR.Data[n-k-l:]
-		src := a
-		src.Rows = m
-		src.Cols = k + l
-		src.Data = a.Data[n-k-l:]
-		copyGeneral(dst, src)
 		dst.Rows = k + l - m
 		dst.Cols = k + l - m
 		dst.Data = zeroR.Data[m*zeroR.Stride+n-(k+l-m):]
@@ -1378,23 +1364,51 @@ func constructGSVDresults(n, p, m, k, l int, a, b blas64.General, alpha, beta []
 		src.Cols = k + l - m
 		src.Data = b.Data[(m-k)*b.Stride+n+m-k-l:]
 		copyGeneral(dst, src)
+	}
 
-		// D1
-		for i := 0; i < k; i++ {
-			d1.Data[i*d1.Stride+i] = 1
-		}
-		for i := k; i < m; i++ {
-			d1.Data[i*d1.Stride+i] = alpha[i]
-		}
+	// D1
+	d1 = zeros(m, k+l, k+l)
+	for i := 0; i < k; i++ {
+		d1.Data[i*d1.Stride+i] = 1
+	}
+	for i := k; i < min(m, k+l); i++ {
+		d1.Data[i*d1.Stride+i] = alpha[i]
+	}
 
-		// D2
-		for i := 0; i < m-k; i++ {
-			d2.Data[i*d2.Stride+i+k] = beta[k+i]
-		}
-		for i := m - k; i < l; i++ {
-			d2.Data[i*d2.Stride+i+k] = 1
-		}
+	// D2
+	d2 = zeros(p, k+l, k+l)
+	for i := 0; i < min(l, m-k); i++ {
+		d2.Data[i*d2.Stride+i+k] = beta[k+i]
+	}
+	for i := m - k; i < l; i++ {
+		d2.Data[i*d2.Stride+i+k] = 1
 	}
 
 	return zeroR, d1, d2
+}
+
+func constructGSVPresults(n, p, m, k, l int, a, b blas64.General) (zeroA, zeroB blas64.General) {
+	zeroA = zeros(m, n, n)
+	dst := zeroA
+	dst.Rows = min(m, k+l)
+	dst.Cols = k + l
+	dst.Data = zeroA.Data[n-k-l:]
+	src := a
+	dst.Rows = min(m, k+l)
+	src.Cols = k + l
+	src.Data = a.Data[n-k-l:]
+	copyGeneral(dst, src)
+
+	zeroB = zeros(p, n, n)
+	dst = zeroB
+	dst.Rows = l
+	dst.Cols = l
+	dst.Data = zeroB.Data[n-l:]
+	src = b
+	dst.Rows = l
+	src.Cols = l
+	src.Data = b.Data[n-l:]
+	copyGeneral(dst, src)
+
+	return zeroA, zeroB
 }

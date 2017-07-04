@@ -21,32 +21,6 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
-	dumpCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	var err error
-	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed opening pipe: %s", err)
-		return err
-	}
-	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf("ERROR", "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
-		return err
-	}
-	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf("ERROR", "Can't start mysql client:%s at %s", err, clientCmd.Path)
-		return err
-	}
-	dumpCmd.Wait()
-	cluster.LogPrintf("INFO", "Start slave after dump")
-
-	dbhelper.StartSlave(dest.Conn)
-	return nil
-}
-
 func readPidFromFile(pidfile string) (string, error) {
 	d, err := ioutil.ReadFile(pidfile)
 	if err != nil {
@@ -56,22 +30,28 @@ func readPidFromFile(pidfile string) (string, error) {
 }
 
 func (cluster *Cluster) InitClusterSemiSync() error {
+
 	cluster.sme.SetFailoverState()
-	for k, server := range cluster.servers {
-		cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
-		if server.Conn.Ping() == nil {
-			cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
-			if server.Name == "" {
-				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
-				pid, _ := readPidFromFile(pidfile)
-				pidint, _ := strconv.Atoi(pid)
-				server.Process, _ = os.FindProcess(pidint)
+	// create service template and post
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCProvision()
+	} else {
+		for k, server := range cluster.servers {
+			cluster.LogPrintf("INFO", "Starting Server %s", cluster.cfgGroup+strconv.Itoa(k))
+			if server.Conn.Ping() == nil {
+				cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
+				if server.Id == "" {
+					pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
+					pid, _ := readPidFromFile(pidfile)
+					pidint, _ := strconv.Atoi(pid)
+					server.Process, _ = os.FindProcess(pidint)
+				}
+
+				cluster.KillMariaDB(server)
 			}
 
-			cluster.KillMariaDB(server)
+			cluster.InitMariaDB(server, server.Id, "semisync.cnf")
 		}
-
-		cluster.InitMariaDB(server, server.Name, "semisync.cnf")
 	}
 	cluster.sme.RemoveFailoverState()
 
@@ -82,7 +62,9 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	if cluster.testStopCluster == false {
 		return nil
 	}
+
 	cluster.sme.SetFailoverState()
+
 	for _, server := range cluster.servers {
 		cluster.KillMariaDB(server)
 
@@ -101,11 +83,14 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	return nil
 }
 
+func (cluster *Cluster) RollingUpgrade() {
+}
+
 func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf string) error {
 	if server.Host != "127.0.0.1" {
 		cluster.LogPrintf("INFO", "Starting remote DB server will be Replication Manager Enterprise feature")
 	}
-	server.Name = name
+	server.Id = name
 	server.Conf = conf
 	path := cluster.conf.WorkingDir + "/" + name
 	os.RemoveAll(path)
@@ -132,17 +117,19 @@ func (cluster *Cluster) InitMariaDB(server *ServerMonitor, name string, conf str
 
 func (cluster *Cluster) KillMariaDB(server *ServerMonitor) error {
 
-	if server.Host != "127.0.0.1" {
-		cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCStopService(server)
+	} else {
+
+		if server.Host != "127.0.0.1" {
+			cluster.LogPrintf("INFO", "Killing remote DB server will be Replication Manager Enterprise feature")
+		}
+		cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Id, server.Process.Pid)
+		//	server.Process.Kill()
+		killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
+		killCmd.Run()
+		//cluster.waitMariaDBStop(server)
 	}
-
-	cluster.LogPrintf("TEST", "Killing MariaDB %s %d", server.Name, server.Process.Pid)
-
-	//	server.Process.Kill()
-	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
-	killCmd.Run()
-
-	//cluster.waitMariaDBStop(server)
 	return nil
 }
 
@@ -153,57 +140,61 @@ func (cluster *Cluster) ShutdownMariaDB(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartMariaDB(server *ServerMonitor) error {
 
-	cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Name)
-	if server.Name == "" {
-
-		_, err := os.Stat(server.Name)
-		if err != nil {
-			cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
-		}
-
-	}
-	path := cluster.conf.WorkingDir + "/" + server.Name
-	err := os.RemoveAll(path + "/" + server.Name + ".pid")
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		return err
-	}
-	usr, err := user.Current()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		return err
-	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Name+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Name+".log", "--pid_file="+path+"/"+server.Name+".pid", "--log-error="+path+"/"+server.Name+".err")
-	cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
-	mariadbdCmd.Start()
-	server.Process = mariadbdCmd.Process
-
-	exitloop := 0
-	for exitloop < 30 {
-		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
-		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Name + ".sock)/?timeout=1s"
-		conn, err2 := sqlx.Open("mysql", dsn)
-		if err2 == nil {
-			conn.Exec("set sql_log_bin=0")
-			grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
-			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
-			cluster.LogPrintf("INFO", "%s", grants)
-			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
-			conn.Exec(grants2)
-			exitloop = 100
-		}
-		exitloop++
-
-	}
-	if exitloop == 101 {
-		cluster.LogPrintf("INFO", "MariaDB started.")
-
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCStartService(server)
 	} else {
-		cluster.LogPrintf("INFO", "MariaDB timeout.")
-		return errors.New("Failed to start")
-	}
 
+		cluster.LogPrintf("TEST", "Starting MariaDB %s", server.Id)
+		if server.Id == "" {
+
+			_, err := os.Stat(server.Id)
+			if err != nil {
+				cluster.LogPrintf("TEST", "Starting MariaDB need bootstrap")
+			}
+
+		}
+		path := cluster.conf.WorkingDir + "/" + server.Id
+		err := os.RemoveAll(path + "/" + server.Id + ".pid")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+			return err
+		}
+		usr, err := user.Current()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+			return err
+		}
+		mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Id+".sock", "--user="+usr.Username, "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
+		cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+		mariadbdCmd.Start()
+		server.Process = mariadbdCmd.Process
+
+		exitloop := 0
+		for exitloop < 30 {
+			time.Sleep(time.Millisecond * 2000)
+			cluster.LogPrintf("INFO", "Waiting MariaDB startup ..")
+			dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Id + ".sock)/?timeout=1s"
+			conn, err2 := sqlx.Open("mysql", dsn)
+			if err2 == nil {
+				conn.Exec("set sql_log_bin=0")
+				grants := "grant all on *.* to '" + server.User + "'@'%%' identified by '" + server.Pass + "'"
+				conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
+				cluster.LogPrintf("INFO", "%s", grants)
+				grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
+				conn.Exec(grants2)
+				exitloop = 100
+			}
+			exitloop++
+
+		}
+		if exitloop == 101 {
+			cluster.LogPrintf("INFO", "MariaDB started.")
+
+		} else {
+			cluster.LogPrintf("INFO", "MariaDB timeout.")
+			return errors.New("Failed to start")
+		}
+	}
 	return nil
 }
 
@@ -399,7 +390,22 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 	return nil
 }
 
+// Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
+
+	// create service template and post
+	if cluster.conf.Enterprise {
+		cluster.InitClusterSemiSync()
+	}
+	time.Sleep(time.Millisecond * 3000)
+	err := cluster.BootstrapReplication()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) BootstrapReplication() error {
 	cluster.sme.SetFailoverState()
 	// default to master slave
 	if cluster.CleanAll {

@@ -775,7 +775,7 @@ func lexDatetime(lx *lexer) stateFn {
 		return lexDatetime
 	}
 	switch r {
-	case '-', 'T', ':', '.', 'Z':
+	case '-', 'T', ':', '.', 'Z', '+':
 		return lexDatetime
 	}
 
@@ -840,7 +840,7 @@ func lexBool(lx *lexer) stateFn {
 	var rs []rune
 	for {
 		r := lx.next()
-		if r == eof || isWhitespace(r) || isNL(r) {
+		if !unicode.IsLetter(r) {
 			lx.backup()
 			break
 		}

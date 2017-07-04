@@ -1,0 +1,69 @@
+{
+    "modulesets": [
+        {
+            "modules": [
+                {
+                    "autofix": false,
+                    "modset_mod_name": "mariadb.node.opensvc"
+                }
+            ],
+            "rulesets": [
+                "mariadb.node.opensvc"
+            ],
+            "modset_name": "mariadb.node.opensvc",
+            "modulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 15,
+            "responsibles": [
+                "MariaDB"
+            ]
+        }
+    ],
+    "filtersets": [],
+    "rulesets": [
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.node.opensvc",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/etc/systemd/system/opensvc-agent.service.d/limits.conf\",\"mode\":644,\"uid\":\"root\",\"fmt\":\"[Service]\\nLimitNOFILE=100000\\n\"}",
+                    "var_updated": "2017-02-03 12:28:45",
+                    "var_name": "spdc_opensvc_file_limits",
+                    "id": 229
+                },
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/etc/sudoers.d/opensvc\",\"mode\":644,\"uid\":\"root\",\"fmt\":\"Defaults        secure_path=\\\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/etc/opensvc\\\"\"}",
+                    "var_updated": "2017-02-03 12:28:51",
+                    "var_name": "spdc_opensvc_file_sudo",
+                    "id": 224
+                },
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "nodeconf",
+                    "var_value": "[{\"value\": \"http://repo.opensvc.com/compliance/\", \"key\": \"node.repocomp\", \"op\": \"=\"}, {\"value\": \"https://collector.opensvc.com/feed/default/call/xmlrpc\", \"key\": \"node.dbopensvc\", \"op\": \"=\"}, {\"value\": \"https://collector.opensvc.com/init/compliance/call/xmlrpc\", \"key\": \"node.dbcompliance\", \"op\": \"=\"}, {\"value\": \"true\", \"key\": \"compliance.auto_update\", \"op\": \"=\"}, {\"value\": \"@1440\", \"key\": \"compliance.schedule\", \"op\": \"=\"}, {\"value\": \"@60\", \"key\": \"stats.schedule\", \"op\": \"=\"}, {\"value\": \"http://repo.opensvc.com/\", \"key\": \"node.repopkg\", \"op\": \"=\"}]",
+                    "var_updated": "2016-02-26 20:49:08",
+                    "var_name": "spdc_opensvc_nodeconf",
+                    "id": 218
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [],
+            "publications": [
+                "OpenSVC",
+                "MariaDB"
+            ],
+            "id": 72,
+            "responsibles": [
+                "OpenSVC",
+                "MariaDB"
+            ]
+        }
+    ]
+}
