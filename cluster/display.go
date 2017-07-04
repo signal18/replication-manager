@@ -151,6 +151,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			}
 		}
 	}
+	cliformat := format
 	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
 	if cluster.conf.LogFile != "" {
 		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
@@ -162,6 +163,18 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		cluster.display()
 	}
 	if cluster.conf.Daemon {
-		log.Printf(format, args...)
+		// wrap logrus levels
+		switch level {
+		case "ERROR":
+			log.WithField("cluster", cluster.cfgGroup).Errorf(cliformat, args...)
+		case "INFO":
+			log.WithField("cluster", cluster.cfgGroup).Infof(cliformat, args...)
+		case "DEBUG":
+			log.WithField("cluster", cluster.cfgGroup).Debugf(cliformat, args...)
+		case "WARN":
+			log.WithField("cluster", cluster.cfgGroup).Warnf(cliformat, args...)
+		default:
+			log.Printf(cliformat, args...)
+		}
 	}
 }
