@@ -1,0 +1,68 @@
+{
+    "modulesets": [
+        {
+            "modules": [
+                {
+                    "autofix": false,
+                    "modset_mod_name": "mariadb.node.kernel"
+                }
+            ],
+            "rulesets": [
+                "mariadb.node.kernel"
+            ],
+            "modset_name": "mariadb.node.kernel",
+            "modulesets": [],
+            "publications": [
+                "MariaDB"
+            ],
+            "id": 19,
+            "responsibles": [
+                "MariaDB"
+            ]
+        }
+    ],
+    "filtersets": [],
+    "rulesets": [
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.node.kernel",
+            "variables": [
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/etc/default/grub.d/60-spdc.cfg\",\"mode\":644,\"uid\":\"root\",\"fmt\":\"GRUB_CMDLINE_LINUX=\\\"$GRUB_CMDLINE_LINUX transparent_hugepage=never\\\"\"}",
+                    "var_updated": "2017-02-03 12:28:13",
+                    "var_name": "spdc_kernel_file_thp",
+                    "id": 223
+                },
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/etc/security/limits.d/spdc.conf\",\"mode\":644,\"uid\":\"root\",\"fmt\":\"*        soft    nofile           1000000\\n*        hard    nofile           1000000\\n\"}",
+                    "var_updated": "2017-02-03 12:28:24",
+                    "var_name": "spdc_kernel_file_ulimit",
+                    "id": 228
+                },
+                {
+                    "var_author": "Christophe Varoqui",
+                    "var_class": "sysctl",
+                    "var_value": "[{\"key\":\"net.ipv4.ip_local_port_range\",\"index\":0,\"op\":\">=\",\"value\":1025},{\"key\":\"net.ipv4.ip_local_port_range\",\"index\":1,\"op\":\">=\",\"value\":65534},{\"key\":\"vm.max_map_count\",\"index\":0,\"op\":\">=\",\"value\":200000},{\"key\":\"vm.swappiness\",\"index\":0,\"op\":\">=\",\"value\":5},{\"key\":\"fs.file-max\",\"index\":0,\"op\":\">=\",\"value\":2097152}]",
+                    "var_updated": "2016-03-08 21:58:46",
+                    "var_name": "spdc_kernel_sysctl",
+                    "id": 222
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [],
+            "publications": [
+                "OpenSVC"
+            ],
+            "id": 75,
+            "responsibles": [
+                "OpenSVC",
+                "MariaDB"
+            ]
+        }
+    ]
+}

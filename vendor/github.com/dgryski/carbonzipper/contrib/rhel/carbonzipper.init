@@ -1,0 +1,107 @@
+#!/bin/sh
+#
+# chkconfig: - 91 35
+# description: Starts and stops the carbonzipper daemon
+#
+# pidfile: /var/run/carbonzipper.pid
+# config:  /usr/local/etc/carbon.conf
+
+carbon="/usr/bin/carbonzipper"
+prog=$(basename $carbon)
+pidfile="/var/run/carbonzipper.pid"
+config="/etc/carbonzipper/carbonzipper.conf"
+
+# Source function library.
+if [ -f /etc/init.d/functions ] ; then
+    . /etc/init.d/functions
+elif [ -f /etc/rc.d/init.d/functions ] ; then
+    . /etc/rc.d/init.d/functions
+else
+    exit 1
+fi
+
+# Avoid using root's TMPDIR
+unset TMPDIR
+
+if [ -f /etc/sysconfig/$prog ]; then
+   . /etc/sysconfig/$prog
+fi
+
+# Check that config exists.
+[ -f $config ] || exit 6
+
+RETVAL=0
+
+start() {
+    echo -n $"Starting $prog services: "
+    daemon --pidfile $pidfile $carbon -config $config -pidfile $pidfile
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch /var/lock/subsys/$prog || \
+        RETVAL=1
+    return $RETVAL
+}
+
+stop() {
+    echo -n $"Shutting down $prog services: "
+    killproc -p $pidfile
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/$prog
+    return $RETVAL
+}
+
+restart() {
+    stop
+    start
+}
+
+reload() {
+    echo -n $"Reloading $prog: "
+    killproc -p $pidfile $prog -USR2
+    RETVAL=$?
+    echo
+    return $RETVAL
+}
+
+rhstatus() {
+    status -p $pidfile
+    return $?
+}
+
+
+# Allow status as non-root.
+if [ "$1" = status ]; then
+    rhstatus
+    exit $?
+fi
+
+# Check that we can write to it... so non-root users stop here
+[ -w $config ] || exit 4
+
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    reload)
+        reload
+        ;;
+    status)
+        rhstatus
+        ;;
+    condrestart)
+        [ -f /var/lock/subsys/$prog ] && restart || :
+        ;;
+    *)
+    echo $"Usage: $0 {start|stop|restart|reload|status|condrestart}"
+    exit 2
+esac
+
+exit $?

@@ -1,0 +1,8 @@
+syntax = "proto3";
+package ipb3;
+
+// Regenerate with  protoc --gogo_out=. ipb3.proto
+
+message PathCacheEntry {
+    repeated string hosts = 1;
+};

@@ -18,12 +18,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/lomik/go-carbon/carbon"
+	"github.com/lomik/go-carbon/points"
 
 	_ "net/http/pprof"
 )
 
 // Version of go-carbon
-const Version = "0.9.1"
+const Version = "0.10.1"
 
 func httpServe(addr string) (func(), error) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
@@ -54,10 +55,24 @@ func main() {
 	isDaemon := flag.Bool("daemon", false, "Run in background")
 	pidfile := flag.String("pidfile", "", "Pidfile path (only for daemon)")
 
+	cat := flag.String("cat", "", "Print cache dump file")
+
 	flag.Parse()
 
 	if *printVersion {
 		fmt.Println(Version)
+		return
+	}
+
+	if *cat != "" {
+		err = points.ReadFromFile(*cat, func(p *points.Points) {
+			for _, d := range p.Data { // every metric point
+				fmt.Printf("%s %v %v\n", p.Metric, d.Value, d.Timestamp)
+			}
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 
@@ -159,7 +174,7 @@ func main() {
 		for {
 			<-c
 			app.DumpStop()
-			os.Exit(1)
+			os.Exit(0)
 		}
 	}()
 

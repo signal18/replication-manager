@@ -141,4 +141,35 @@ type Config struct {
 	FailForceGtid                      bool   //suspicious code
 	RegTestStopCluster                 bool   //used by regtest to stop cluster
 	Enterprise                         bool   //used to talk to opensvc collector
+	ProvHost                           string `mapstructure:"prov-host"`
+	ProvAdminUser                      string `mapstructure:"prov-admin-user"`
+	ProvUser                           string `mapstructure:"prov-user"`
+	ProvType                           string `mapstructure:"prov-db-service-type"`
+	ProvAgents                         string `mapstructure:"prov-db-agents"`
+	ProvMem                            string `mapstructure:"prov-db-memory"`
+	ProvIops                           string `mapstructure:"prov-db-disk-iops"`
+	ProvDisk                           string `mapstructure:"prov-db-disk-size"`
+	ProvDiskFS                         string `mapstructure:"prov-db-disk-fs"`
+	ProvDiskPool                       string `mapstructure:"prov-db-disk-pool"`
+	ProvDiskDevice                     string `mapstructure:"prov-db-disk-device"`
+	ProvDiskType                       string `mapstructure:"prov-db-disk-type"`
+	ProvNetIface                       string `mapstructure:"prov-db-net-iface"`
+	ProvNetmask                        string `mapstructure:"prov-db-net-mask"`
+	ProvGateway                        string `mapstructure:"prov-db-net-gateway"`
+	ProvProxType                       string `mapstructure:"prov-proxy-service-type"`
+	ProvProxAgents                     string `mapstructure:"prov-proxy-agents"`
+	ProvProxDisk                       string `mapstructure:"prov-proxy-disk-size"`
+	ProvProxDiskFS                     string `mapstructure:"prov-proxy-disk-fs"`
+	ProvProxDiskPool                   string `mapstructure:"prov-proxy-disk-pool"`
+	ProvProxDiskDevice                 string `mapstructure:"prov-proxy-disk-device"`
+	ProvProxDiskType                   string `mapstructure:"prov-proxy-disk-type"`
+	ProvProxNetIface                   string `mapstructure:"prov-proxy-net-iface"`
+	ProvProxNetmask                    string `mapstructure:"prov-proxy-net-mask"`
+	ProvProxGateway                    string `mapstructure:"prov-proxy-net-gateway"`
+	ProvMaxscaleVip                    string `mapstructure:"prov-proxy-net-maxscale-vip"`
+	ProvMdbshardproxyVip               string `mapstructure:"prov-proxy-net-mdbsproxy-vip"`
+	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
+	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
+	APIUser                            string `mapstructure:"api-user"`
+	APIPort                            string `mapstructure:"api-port"`
 }

@@ -94,18 +94,21 @@ type carbonlinkConfig struct {
 }
 
 type carbonserverConfig struct {
-	Listen            string    `toml:"listen"`
-	Enabled           bool      `toml:"enabled"`
-	ReadTimeout       *Duration `toml:"read-timeout"`
-	IdleTimeout       *Duration `toml:"idle-timeout"`
-	WriteTimeout      *Duration `toml:"write-timeout"`
-	ScanFrequency     *Duration `toml:"scan-frequency"`
-	QueryCacheEnabled bool      `toml:"query-cache-enabled"`
-	QueryCacheSizeMB  int       `toml:"query-cache-size-mb"`
-	FindCacheEnabled  bool      `toml:"find-cache-enabled"`
-	Buckets           int       `toml:"buckets"`
-	MaxGlobs          int       `toml:"max-globs"`
-	MetricsAsCounters bool      `toml:"metrics-as-counters"`
+	Listen                  string    `toml:"listen"`
+	Enabled                 bool      `toml:"enabled"`
+	ReadTimeout             *Duration `toml:"read-timeout"`
+	IdleTimeout             *Duration `toml:"idle-timeout"`
+	WriteTimeout            *Duration `toml:"write-timeout"`
+	ScanFrequency           *Duration `toml:"scan-frequency"`
+	QueryCacheEnabled       bool      `toml:"query-cache-enabled"`
+	QueryCacheSizeMB        int       `toml:"query-cache-size-mb"`
+	FindCacheEnabled        bool      `toml:"find-cache-enabled"`
+	Buckets                 int       `toml:"buckets"`
+	MaxGlobs                int       `toml:"max-globs"`
+	MetricsAsCounters       bool      `toml:"metrics-as-counters"`
+	TrigramIndex            bool      `toml:"trigram-index"`
+	GraphiteWeb10StrictMode bool      `toml:"graphite-web-10-strict-mode"`
+	InternalStatsDir        string    `toml:"internal-stats-dir"`
 }
 
 type pprofConfig struct {
@@ -150,11 +153,11 @@ func NewConfig() *Config {
 			},
 			MetricEndpoint: MetricEndpointLocal,
 			MaxCPU:         1,
-			User:           "",
+			User:           "carbon",
 		},
 		Whisper: whisperConfig{
-			DataDir:             "/data/graphite/whisper/",
-			SchemasFilename:     "/data/graphite/schemas",
+			DataDir:             "/var/lib/graphite/whisper/",
+			SchemasFilename:     "/etc/go-carbon/storage-schemas.conf",
 			AggregationFilename: "",
 			MaxUpdatesPerSecond: 0,
 			Enabled:             true,
@@ -197,9 +200,11 @@ func NewConfig() *Config {
 			WriteTimeout: &Duration{
 				Duration: 60 * time.Second,
 			},
-			QueryCacheEnabled: true,
-			QueryCacheSizeMB:  0,
-			FindCacheEnabled:  true,
+			QueryCacheEnabled:       true,
+			QueryCacheSizeMB:        0,
+			FindCacheEnabled:        true,
+			TrigramIndex:            true,
+			GraphiteWeb10StrictMode: true,
 		},
 		Carbonlink: carbonlinkConfig{
 			Listen:  "127.0.0.1:7002",
@@ -212,7 +217,9 @@ func NewConfig() *Config {
 			Listen:  "localhost:7007",
 			Enabled: false,
 		},
-		Dump:    dumpConfig{},
+		Dump: dumpConfig{
+			Path: "/var/lib/graphite/dump/",
+		},
 		Logging: nil,
 	}
 
@@ -294,9 +301,6 @@ func ReadConfig(filename string) (*Config, error) {
 // TestConfig creates config with all files in root directory
 func TestConfig(rootDir string) string {
 	cfg := NewConfig()
-
-	p := filepath.Join(rootDir, "go-carbon.log")
-	cfg.Common.Logfile = &p
 
 	cfg.Whisper.DataDir = rootDir
 	cfg.Whisper.SchemasFilename = filepath.Join(rootDir, "schemas.conf")

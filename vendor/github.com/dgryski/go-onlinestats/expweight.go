@@ -1,6 +1,7 @@
 package onlinestats
 
 // From http://queue.acm.org/detail.cfm?id=2534976
+// Note that article has a "backwards" usage of alpha; this code uses the version documented in wikipedia
 
 import "math"
 
@@ -21,9 +22,9 @@ func (e *ExpWeight) Push(x float64) {
 		e.m1 = x
 		e.v = 1
 	} else {
-		e.m1 = (1-e.alpha)*x + e.alpha*e.m1
+		e.m1 = e.alpha*x + (1-e.alpha)*e.m1
 		v := (x - e.m1)
-		e.v = (1-e.alpha)*(v*v) + e.alpha*e.v
+		e.v = e.alpha*(v*v) + (1-e.alpha)*e.v
 	}
 
 	e.n++
