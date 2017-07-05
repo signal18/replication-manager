@@ -152,8 +152,9 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
-	// Only print debug messages if loglevel > 1
 	if level == "DEBUG" && cluster.conf.LogLevel > 1 {
+		// Only print debug messages if loglevel > 1
+	} else {
 		if cluster.conf.LogFile != "" {
 			f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
 
