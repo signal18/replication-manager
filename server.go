@@ -254,8 +254,8 @@ var monitorCmd = &cobra.Command{
 Interactive console and HTTP dashboards are available for control`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		if conf.LogLevel >= 2 {
-			log.Debug("%+v", conf)
+		if conf.LogLevel > 1 {
+			log.SetLevel(log.DebugLevel)
 		}
 		if conf.Arbitration == true {
 			runStatus = "S"
