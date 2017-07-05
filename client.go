@@ -217,11 +217,11 @@ var clientCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						cliClusterCmd("switchover")
+						cliClusterCmd("actions/switchover")
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if cliMaster.State == "Failed" {
-							cliClusterCmd("failover")
+							cliClusterCmd("actions/failover")
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
@@ -241,13 +241,19 @@ var clientCmd = &cobra.Command{
 						}
 					}
 					if event.Key == termbox.KeyCtrlR {
-						// call reaonly
+						cliClusterCmd("settings/switch/readonly")
 					}
 					if event.Key == termbox.KeyCtrlW {
-						// call reaonly off
+						cliClusterCmd("settings/switch/readonly")
 					}
 					if event.Key == termbox.KeyCtrlI {
-						cliClusterCmd("interactive")
+						cliClusterCmd("settings/switch/interactive")
+					}
+					if event.Key == termbox.KeyCtrlV {
+						cliClusterCmd("settings/switch/verbosity")
+					}
+					if event.Key == termbox.KeyCtrlE {
+						cliClusterCmd("settings/reset/failovercontrol")
 					}
 					if event.Key == termbox.KeyCtrlH {
 						cliDisplayHelp()
@@ -432,15 +438,17 @@ func cliAddTlog(dlogs []string) {
 
 func cliDisplayHelp() {
 	cliLogPrint("HELP : Ctrl-D  Print debug information")
-	cliLogPrint("HELP : Ctrl-F  Manual Failover")
-	cliLogPrint("HELP : Ctrl-I  Toggle automatic/manual failover mode")
-	cliLogPrint("HELP : Ctrl-R  Set slaves read-only")
+	cliLogPrint("HELP : Ctrl-F  Failover")
 	cliLogPrint("HELP : Ctrl-S  Switchover")
 	cliLogPrint("HELP : Ctrl-N  Next Cluster")
 	cliLogPrint("HELP : Ctrl-P  Previous Cluster")
 	cliLogPrint("HELP : Ctrl-Q  Quit")
 	cliLogPrint("HELP : Ctrl-C  Quit")
-	cliLogPrint("HELP : Ctrl-W  Set slaves read-write")
+	cliLogPrint("HELP : Ctrl-I  Switch failover automatic/manual")
+	cliLogPrint("HELP : Ctrl-R  Switch slaves read-only/read-write")
+	cliLogPrint("HELP : Ctrl-V  Switch verbosity")
+	cliLogPrint("HELP : Ctrl-E  Erase failover control")
+
 }
 
 func cliPrintLog(msg []string) {
@@ -572,7 +580,7 @@ func cliGetSettings() (Settings, error) {
 
 func cliGetServers() ([]cluster.ServerMonitor, error) {
 	var r []cluster.ServerMonitor
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/servers"
 	//log.Println("INFO ", urlpost)
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
@@ -606,7 +614,7 @@ func cliGetServers() ([]cluster.ServerMonitor, error) {
 
 func cliGetMaster() (cluster.ServerMonitor, error) {
 	var r cluster.ServerMonitor
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/master"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/master"
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {
@@ -635,7 +643,7 @@ func cliGetMaster() (cluster.ServerMonitor, error) {
 
 func cliGetLogs() ([]string, error) {
 	var r []string
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/logs"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/logs"
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {

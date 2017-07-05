@@ -458,8 +458,15 @@ func (cluster *Cluster) SetReadOnly(check bool) {
 	cluster.conf.ReadOnly = check
 }
 
+func (cluster *Cluster) SwitchReadOnly() {
+	cluster.conf.ReadOnly = !cluster.conf.ReadOnly
+}
+
 func (cluster *Cluster) SetRplChecks(check bool) {
 	cluster.conf.RplChecks = check
+}
+func (cluster *Cluster) SwitchRplChecks() {
+	cluster.conf.RplChecks = !cluster.conf.RplChecks
 }
 
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
@@ -468,6 +475,9 @@ func (cluster *Cluster) SetRplMaxDelay(delay int64) {
 
 func (cluster *Cluster) SetCleanAll(check bool) {
 	cluster.CleanAll = check
+}
+func (cluster *Cluster) SwitchCleanAll() {
+	cluster.CleanAll = !cluster.CleanAll
 }
 
 func (cluster *Cluster) GetRplChecks() bool {
@@ -494,12 +504,20 @@ func (cluster *Cluster) SetFailSync(check bool) {
 	cluster.conf.FailSync = check
 }
 
+func (cluster *Cluster) SwitchFailSync() {
+	cluster.conf.FailSync = !cluster.conf.FailSync
+}
+
 func (cluster *Cluster) GetFailSync() bool {
 	return cluster.conf.FailSync
 }
 
 func (cluster *Cluster) SetSwitchSync(check bool) {
 	cluster.conf.SwitchSync = check
+}
+
+func (cluster *Cluster) SwitchSwitchoverSync() {
+	cluster.conf.SwitchSync = !cluster.conf.SwitchSync
 }
 
 func (cluster *Cluster) GetSwitchSync() bool {
@@ -509,13 +527,22 @@ func (cluster *Cluster) GetSwitchSync() bool {
 func (cluster *Cluster) SetLogLevel(level int) {
 	cluster.conf.LogLevel = level
 }
-
 func (cluster *Cluster) GetLogLevel() int {
 	return cluster.conf.LogLevel
+}
+func (cluster *Cluster) SwitchVerbosity() {
+	if cluster.GetLogLevel() > 0 {
+		cluster.SetLogLevel(0)
+	} else {
+		cluster.SetLogLevel(4)
+	}
 }
 
 func (cluster *Cluster) SetRejoin(check bool) {
 	cluster.conf.Autorejoin = check
+}
+func (cluster *Cluster) SwitchRejoin() {
+	cluster.conf.Autorejoin = !cluster.conf.Autorejoin
 }
 
 func (cluster *Cluster) GetRejoin() bool {
@@ -525,7 +552,9 @@ func (cluster *Cluster) GetRejoin() bool {
 func (cluster *Cluster) SetRejoinDump(check bool) {
 	cluster.conf.AutorejoinMysqldump = check
 }
-
+func (cluster *Cluster) SwitchRejoinDump() {
+	cluster.conf.AutorejoinMysqldump = !cluster.conf.AutorejoinMysqldump
+}
 func (cluster *Cluster) GetRejoinDump() bool {
 	return cluster.conf.AutorejoinMysqldump
 }
@@ -533,7 +562,9 @@ func (cluster *Cluster) GetRejoinDump() bool {
 func (cluster *Cluster) SetRejoinBackupBinlog(check bool) {
 	cluster.conf.AutorejoinBackupBinlog = check
 }
-
+func (cluster *Cluster) SwitchRejoinBackupBinlog() {
+	cluster.conf.AutorejoinBackupBinlog = !cluster.conf.AutorejoinBackupBinlog
+}
 func (cluster *Cluster) GetRejoinBackupBinlog() bool {
 	return cluster.conf.AutorejoinBackupBinlog
 }
@@ -541,13 +572,18 @@ func (cluster *Cluster) GetRejoinBackupBinlog() bool {
 func (cluster *Cluster) SetRejoinSemisync(check bool) {
 	cluster.conf.AutorejoinSemisync = check
 }
-
+func (cluster *Cluster) SwitchRejoinSemisync() {
+	cluster.conf.AutorejoinSemisync = !cluster.conf.AutorejoinSemisync
+}
 func (cluster *Cluster) GetRejoinSemisync() bool {
 	return cluster.conf.AutorejoinSemisync
 }
 
 func (cluster *Cluster) SetRejoinFlashback(check bool) {
 	cluster.conf.AutorejoinFlashback = check
+}
+func (cluster *Cluster) SwitchRejoinFlashback() {
+	cluster.conf.AutorejoinFlashback = !cluster.conf.AutorejoinFlashback
 }
 
 // topology setter

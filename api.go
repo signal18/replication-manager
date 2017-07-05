@@ -101,46 +101,87 @@ func apiserver() {
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
 	))
-
-	router.Handle("/api/clusters/{clusterName}/switchover", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/switch/interactive", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchInteractive)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/readonly", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchReadOnly)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/verbosity", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchVerbosity)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/autorejoin", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoin)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/rejoinflashback", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoinFlashback)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/rejoinmysqldump", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoinMysqldump)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/failoversync", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchFailoverSync)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/switch/swithoversync", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSwitchoverSync)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/reset/failovercontrol", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxResetFailoverControl)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchover)),
 	))
-	router.Handle("/api/clusters/{clusterName}/failover", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/failover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxFailover)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/tests", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/tests/{testName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServers)),
 	))
-	router.Handle("/api/clusters/{clusterName}/master", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/master", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxMaster)),
 	))
-
-	router.Handle("/api/clusters/{clusterName}/interactive", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/slaves", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxInteractive)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSlaves)),
 	))
-	router.Handle("/api/clusters/{clusterName}/logs", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/logs", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxLog)),
 	))
-	router.Handle("/api/clusters/{clusterName}/proxies", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/proxies", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxies)),
 	))
-	router.Handle("/api/clusters/{clusterName}/alerts", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxAlerts)),
 	))
-	router.Handle("/api/clusters/{clusterName}/crashes", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/crashes", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxCrashes)),
 	))
@@ -283,6 +324,34 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
+	//marshal unmarchal for ofuscation deep copy of struc
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+
+	data, _ := json.Marshal(mycluster.GetSlaves())
+	var srvs []*cluster.ServerMonitor
+
+	err := json.Unmarshal(data, &srvs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+	for i := range srvs {
+		srvs[i].Pass = "XXXXXXXX"
+	}
+	e := json.NewEncoder(w)
+
+	err = e.Encode(srvs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
 func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
@@ -352,6 +421,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	}
 	return
 }
+
 func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -362,6 +432,15 @@ func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	return
+}
+
+func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.ResetFailoverCtr()
+
 	return
 }
 
@@ -405,7 +484,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxInteractive(w http.ResponseWriter, r *http.Request) {
+func handlerMuxSwitchInteractive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
@@ -413,6 +492,69 @@ func handlerMuxInteractive(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func handlerMuxSwitchVerbosity(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchVerbosity()
+	return
+}
+func handlerMuxSwitchRejoin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchRejoin()
+	return
+}
+func handlerMuxSwitchRejoinMysqldump(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchRejoinDump()
+	return
+}
+func handlerMuxSwitchRejoinFlashback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchRejoinFlashback()
+	return
+}
+func handlerMuxSwitchRejoinSemisync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchRejoinSemisync()
+	return
+}
+func handlerMuxSwitchRplchecks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchRplChecks()
+	return
+}
+func handlerMuxSwitchSwitchoverSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchSwitchoverSync()
+	return
+}
+func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchFailSync()
+	return
+}
+func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SwitchReadOnly()
+	return
+}
 func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 	var clusterlogs []string
 	vars := mux.Vars(r)
@@ -442,6 +584,32 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+}
+
+func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	regtest := new(regtest.RegTest)
+
+	err := regtest.RunAllTests(mycluster, vars["testName"])
+	if err == false {
+		mycluster.LogPrintf("ERROR", "Test failed")
+	}
+	return
+}
+
+func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	regtest := new(regtest.RegTest)
+
+	err := regtest.RunAllTests(mycluster, "ALL")
+	if err == false {
+		mycluster.LogPrintf("ERROR", "Some tests failed")
+	}
+	return
 }
 
 func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {

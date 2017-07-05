@@ -27,10 +27,10 @@ func (server *ServerMonitor) RejoinMaster() error {
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
-			server.ClusterGroup.LogPrintf("INFO: Rejoining failed server %s to master %s", server.URL, server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining failed server %s to master %s", server.URL, server.ClusterGroup.master.URL)
 			crash := server.ClusterGroup.getCrash(server.URL)
 			if crash == nil {
-				server.ClusterGroup.LogPrintf("INFO: Rejoin found no crash infos, promoting full state transfer %s", server.URL)
+				server.ClusterGroup.LogPrintf("INFO", "Rejoin found no crash infos, promoting full state transfer %s", server.URL)
 				server.RejoinMasterSST()
 				return errors.New("No crash")
 			}
@@ -244,6 +244,8 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 }
 
 func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
+	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
+	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 
 	server.Refresh()
 	if server.ClusterGroup.conf.ReadOnly {
@@ -253,7 +255,8 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 
 	if crash.FailoverIOGtid != nil {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-		server.ClusterGroup.LogPrintf("INFO", "Saved GTID sequence %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d for master id %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)), uint64(server.ServerID))
+
 	}
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
@@ -401,11 +404,11 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		// FailoverIOGtid is fetch at failover from show slave status of the new master
 		// If server-id can't be found in FailoverIOGtid can state cascading master failover
 		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
-			server.ClusterGroup.LogPrintf("INFO", "Cascading failover found empty GTID, forcing full state transfer")
+			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, found empty GTID, forcing full state transfer")
 			return true
 		}
 		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
 			return true
 		}
 		return false
