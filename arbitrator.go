@@ -229,6 +229,7 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 func fHeartbeat() {
 	if cfgGroup == "arbitrator" {
+		currentCluster.LogPrintf("ERROR", "Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 	bcksplitbrain := splitBrain
@@ -238,6 +239,8 @@ func fHeartbeat() {
 	if conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(conf.ArbitrationPeerHosts, ",")
 	} else {
+		currentCluster.LogPrintf("ERROR", "Arbitration peer not specified. Disabling arbitration")
+		conf.Arbitration = false
 		return
 	}
 	splitBrain = true
@@ -251,6 +254,7 @@ func fHeartbeat() {
 		// Do sends an HTTP request and
 		// returns an HTTP response
 		// Build the request
+		currentCluster.LogPrintf("DEBUG", "Heartbeat: Sending peer request to node %s", peer)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			if bcksplitbrain == false {
@@ -266,10 +270,6 @@ func fHeartbeat() {
 			}
 			continue
 		}
-
-		// Callers should close resp.Body
-		// when done reading from it
-		// Defer the closing of the body
 		defer resp.Body.Close()
 		monjson, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -281,12 +281,14 @@ func fHeartbeat() {
 			currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
 		} else {
 			splitBrain = false
-			if conf.LogLevel > 2 {
+			if conf.LogLevel > 1 {
 				currentCluster.LogPrintf("DEBUG", "RETURN: %v", h)
 			}
 			if h.Status == "S" {
+				currentCluster.LogPrintf("DEBUG", "Peer node is Standby, I am Active")
 				runStatus = "A"
 			} else {
+				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
 				runStatus = "S"
 			}
 		}
@@ -315,6 +317,7 @@ func fHeartbeat() {
 			req.Header.Set("Content-Type", "application/json")
 
 			client := &http.Client{Timeout: timeout}
+			currentCluster.LogPrintf("DEBUG", "Sending message to Arbitrator server")
 			resp, err := client.Do(req)
 			if err != nil {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
