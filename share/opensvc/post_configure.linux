@@ -20,6 +20,7 @@ svcmgr -s opensvc-collector create --provision --interactive --template /usr/sha
 #apt-get install -y psmisc
 #apt-get install -y zfsutils-linux
 #apt-get install -y system-config-lvm
+#apt-get install -y xfsprogs
 #apt-get install -y wget
 
 #wget https://repo.opensvc.com/deb/current.1.8

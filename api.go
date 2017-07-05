@@ -132,7 +132,30 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxLog)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/proxies", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxies)),
+	))
+	router.Handle("/api/clusters/{clusterName}/alerts", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxAlerts)),
+	))
+	router.Handle("/api/clusters/{clusterName}/crashes", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxCrashes)),
+	))
+	router.Handle("/api/clusters/{clusterName}/bootstrap", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrap)),
+	))
+	router.Handle("/api/clusters/{clusterName}/bootstrap/replication", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplication)),
+	))
+	router.Handle("/api/clusters/{clusterName}/bootstrap/services", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
+	))
 	log.Println("Now listening localhost:3000")
 	http.ListenAndServeTLS("0.0.0.0:3000", conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 }
@@ -260,11 +283,85 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
+	//marshal unmarchal for ofuscation deep copy of struc
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	data, _ := json.Marshal(mycluster.GetProxies())
+	var prxs []*cluster.Proxy
+	err := json.Unmarshal(data, &prxs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+	e := json.NewEncoder(w)
+	err = e.Encode(prxs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
+func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
+	a := new(alerts)
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	a.Errors = mycluster.GetStateMachine().GetOpenErrors()
+	a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
+	e := json.NewEncoder(w)
+	err := e.Encode(a)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
 func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	mycluster.MasterFailover(true)
+	return
+}
+
+func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	err := mycluster.BootstrapReplication()
+	if err != nil {
+		log.Println("Error Bootstrap Replication: ", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	return
+}
+
+func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	err := mycluster.BootstrapServices()
+	if err != nil {
+		log.Println("Error Bootstrap Replication: ", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	return
+}
+func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	err := mycluster.Bootstrap()
+	if err != nil {
+		log.Println("Error Bootstrap Replication: ", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
 	return
 }
 
@@ -327,6 +424,19 @@ func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 
 	err := e.Encode(clusterlogs)
+	if err != nil {
+		log.Println("Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
+func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	e := json.NewEncoder(w)
+	err := e.Encode(mycluster.GetCrashes())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

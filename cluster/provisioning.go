@@ -31,7 +31,7 @@ func readPidFromFile(pidfile string) (string, error) {
 
 func (cluster *Cluster) InitClusterSemiSync() error {
 
-	cluster.sme.SetFailoverState()
+	//cluster.sme.SetFailoverState()
 	// create service template and post
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCProvision()
@@ -53,7 +53,7 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 			cluster.InitMariaDB(server, server.Id, "semisync.cnf")
 		}
 	}
-	cluster.sme.RemoveFailoverState()
+	//	cluster.sme.RemoveFailoverState()
 
 	return nil
 }
@@ -77,7 +77,6 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	cluster.master = nil
 	cluster.sme.UnDiscovered()
 	cluster.newServerList()
-
 	cluster.sme.RemoveFailoverState()
 
 	return nil
@@ -392,16 +391,30 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 
 // Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
-
+	var err error
 	// create service template and post
-	if cluster.conf.Enterprise {
-		cluster.InitClusterSemiSync()
-	}
-	time.Sleep(time.Millisecond * 3000)
-	err := cluster.BootstrapReplication()
+	err = cluster.BootstrapServices()
 	if err != nil {
 		return err
 	}
+	time.Sleep(time.Millisecond * 3000)
+	err = cluster.BootstrapReplication()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) BootstrapServices() error {
+
+	// create service template and post
+	if cluster.conf.Enterprise {
+		err := cluster.InitClusterSemiSync()
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
