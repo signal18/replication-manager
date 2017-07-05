@@ -142,7 +142,6 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 }
 
 func (cluster *Cluster) LogPrintf(level string, format string, args ...interface{}) {
-
 	padright := func(str, pad string, lenght int) string {
 		for {
 			str += pad
@@ -153,14 +152,17 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
-	if cluster.conf.LogFile != "" {
-		f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
+	// Only print debug messages if loglevel > 1
+	if level == "DEBUG" && cluster.conf.LogLevel > 1 {
+		if cluster.conf.LogFile != "" {
+			f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
 
-		io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
-	}
-	if cluster.tlog != nil && cluster.tlog.Len > 0 {
-		cluster.tlog.Add(fmt.Sprintf(format, args...))
-		cluster.display()
+			io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
+		}
+		if cluster.tlog != nil && cluster.tlog.Len > 0 {
+			cluster.tlog.Add(fmt.Sprintf(format, args...))
+			cluster.display()
+		}
 	}
 	if cluster.conf.Daemon {
 		// wrap logrus levels
