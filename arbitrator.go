@@ -173,6 +173,9 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	currentCluster = new(cluster.Cluster)
 	var send string
 	db, err := dbhelper.MemDBConnect()
+	if err != nil {
+		currentCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+	}
 	defer db.Close()
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	if res == nil {

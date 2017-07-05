@@ -87,7 +87,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 	var count int
 	tx, err := db.Beginx()
 	if err != nil {
-		log.Error(err)
+		log.Error("(dbhelper.RequestArbitration) Error opening transaction: ", err)
 		return false
 	}
 	// count the number of replication manager Elected that is not me for this cluster
@@ -106,30 +106,22 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
       VALUES(?,?,?,?,DATETIME('now'),DATETIME('now'),?,?,?,'E')`
 			_, err = tx.Exec(stmt, secret, uuid, uid, master, cluster, hosts, failed, secret, cluster, uid)
 			if err != nil {
-				log.Error(err)
-				err = tx.Commit()
-				if err != nil {
-					log.Error(err)
-					return false
-				}
+				log.Error("(dbhelper.RequestArbitration) Error executing transaction: ", err)
+				tx.Rollback()
+				return false
 			}
 			err = tx.Commit()
 			if err != nil {
-				log.Error(err)
+				log.Error("(dbhelper.RequestArbitration) Error committing transaction: ", err)
+				tx.Rollback()
 				return false
 			}
 			return true
 		}
-		log.Error(err)
-		err = tx.Commit()
-		if err != nil {
-			log.Error(err)
-			return false
-		}
+		tx.Commit()
 		return false
-
 	}
-	log.Error(err)
+	tx.Commit()
 	return false
 }
 
