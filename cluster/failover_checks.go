@@ -147,38 +147,37 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		return false
 	}
 	//disable monitoring
-	if cluster.conf.MxsMonitor == false {
-		var monitor string
-		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxinfo")
-			}
-			m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
-			monitor = m.GetMaxInfoStoppedMonitor()
 
-		} else {
-			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxadmin")
-			}
-			_, err = m.ListMonitors()
-			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could not list monitors: %s", err)
-				return false
-			}
-			monitor = m.GetStoppedMonitor()
+	var monitor string
+	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+		if cluster.conf.LogLevel > 1 {
+			cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxinfo")
 		}
-		if monitor != "" {
-			cmd := "Restart monitor \"" + monitor + "\""
-			cluster.LogPrintf("INFO : %s", cmd)
-			err = m.RestartMonitor(monitor)
-			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor: %s", err)
-				return false
-			}
-		} else {
-			cluster.LogPrintf("INFO", "MaxScale Monitor not found")
+		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
+		monitor = m.GetMaxInfoStoppedMonitor()
+
+	} else {
+		if cluster.conf.LogLevel > 1 {
+			cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxadmin")
+		}
+		_, err = m.ListMonitors()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "MaxScale client could not list monitors: %s", err)
 			return false
 		}
+		monitor = m.GetStoppedMonitor()
+	}
+	if monitor != "" {
+		cmd := "Restart monitor \"" + monitor + "\""
+		cluster.LogPrintf("INFO : %s", cmd)
+		err = m.RestartMonitor(monitor)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor: %s", err)
+			return false
+		}
+	} else {
+		cluster.LogPrintf("INFO", "MaxScale Monitor not found")
+		return false
 	}
 
 	time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
