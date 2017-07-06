@@ -221,7 +221,7 @@ func (SM *StateMachine) GetStates() []string {
 	for key2, value2 := range *SM.OldState {
 		if SM.CurState.Search(key2) == false {
 			//log = append(log, fmt.Sprintf("%-5s %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
-			log = append(log, fmt.Sprintf("CLOSING %s %s", key2, value2.ErrDesc))
+			log = append(log, fmt.Sprintf("%s CLOSING %s", key2, value2.ErrDesc))
 		}
 	}
 
