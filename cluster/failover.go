@@ -261,15 +261,17 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
+	// Insert a bogus transaction in order to have a new GTID pos on master
+	cluster.LogPrintf("INFO", "Inject fake transaction on new master %s ", cluster.master.URL)
+	err = dbhelper.FlushTables(cluster.master.Conn)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not flush tables on new master for fake trx %s", err)
+	}
 
 	if fail == false {
 		// Get latest GTID pos
 		oldMaster.Refresh()
-		// Insert a bogus transaction in order to have a new GTID pos on master
-		err = dbhelper.FlushTables(cluster.master.Conn)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not flush tables on new master %s", err)
-		}
+
 		// Phase 4: Demote old master to slave
 		cluster.LogPrintf("INFO", "Switching old master as a slave")
 		err = dbhelper.UnlockTables(oldMaster.Conn)
