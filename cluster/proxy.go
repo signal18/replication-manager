@@ -158,12 +158,12 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
-			for _, server := range cluster.servers {
-				if server.PrevState != server.State {
-					cluster.initMaxscale(nil, pr)
-					break
-				}
-			}
+			//			for _, server := range cluster.servers {
+			//			if server.PrevState != server.State {
+			//	cluster.initMaxscale(nil, pr)
+			//			break
+			//		}
+			//	}
 		}
 		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {

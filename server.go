@@ -216,7 +216,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 
 	cmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Use SSL encryption to replicate from master")
-	cmd.Flags().BoolVar(&conf.Enterprise, "enterprise", false, "Enterpise release")
+	cmd.Flags().BoolVar(&conf.Enterprise, "opensvc", false, "Provisioning via opensvc")
 	cmd.Flags().StringVar(&conf.ProvHost, "prov-host", "127.0.0.1:443", "OpenSVC collector API")
 	cmd.Flags().StringVar(&conf.ProvAdminUser, "prov-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
 	cmd.Flags().StringVar(&conf.ProvUser, "prov-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
@@ -249,9 +249,15 @@ func initRepmgrFlags(cmd *cobra.Command) {
 
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
-	Short: "Starts the interactive replication monitor",
-	Long: `Starts replication-manager in stateful monitor daemon mode.
-Interactive console and HTTP dashboards are available for control`,
+	Short: "Starts monitoring server",
+	Long: `Starts replication-manager server in stateful monitor daemon mode.
+
+For interacting with this daemon use,
+- Interactive console client: "replication-manager client".
+- Command line clients: "replication-manager switchover|failover|topology|test".
+- HTTP dashboards on port 10001
+
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if conf.LogLevel > 1 {

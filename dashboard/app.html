@@ -246,8 +246,9 @@
 												 <tbody ng-repeat="proxy in proxies">
 
 													<tr  bgcolor="#fcf9ed">
-													   <th>Proxy</th>
-														 <th>Host</th>
+                             <th>Proxy</th>
+                             <th>Id</th>
+													   <th>Host</th>
 														 <th>Port</th>
 														 <th>WritePort</th>
 														 <th>ReadPort</th>
@@ -256,8 +257,9 @@
 
 														<tr >
 
-															<td rowspan="2" style="vertical-align:middle;"><p class="sectionheader">{{proxy.Type}}</p></td>
-															<td>{{proxy.Host}}</td>
+															<td><p class="sectionheader">{{proxy.Type}}</p></td>
+                              <td>{{proxy.Id}}</td>
+                              <td>{{proxy.Host}}</td>
                               <td>{{proxy.Port}}</td>
 															<td>{{proxy.WritePort}}</td>
                               <td>{{proxy.ReadPort}}</td>
@@ -265,8 +267,8 @@
 
                            </tr>
 													<tr>
-
-														<td colspan="5">
+                            <td ></td>
+														<td colspan="6">
 
                         <table ng-if="servers"   class="table" ng-style="width:400">
                            <tr>

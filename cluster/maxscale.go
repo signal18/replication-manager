@@ -46,7 +46,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 			}
 			_, err := m.ListMonitors()
 			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could list monitors monitor:%s", err)
+				cluster.LogPrintf("ERROR", "MaxScale client could not list monitors %s", err)
 			}
 			monitor = m.GetMonitor()
 		}
