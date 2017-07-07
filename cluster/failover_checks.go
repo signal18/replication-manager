@@ -238,7 +238,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogPrintf("INFO", "Arbitrator says: winner")
+		cluster.LogPrintf("INFO", "Arbitration check: replication-manager node is active")
 		return true
 	}
 	cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
