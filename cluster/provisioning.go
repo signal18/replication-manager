@@ -477,7 +477,7 @@ func (cluster *Cluster) Bootstrap() error {
 				continue
 			} else {
 
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[masterKey].IP, cluster.servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[masterKey].Host, cluster.servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
@@ -506,7 +506,7 @@ func (cluster *Cluster) Bootstrap() error {
 			} else {
 
 				err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-					Host:      cluster.servers[masterKey].IP,
+					Host:      cluster.servers[masterKey].Host,
 					Port:      cluster.servers[masterKey].Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
@@ -545,7 +545,7 @@ func (cluster *Cluster) Bootstrap() error {
 				dbhelper.ResetAllSlaves(server.Conn)
 
 				if relaykey == key {
-					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[masterKey].IP, cluster.servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[masterKey].Host, cluster.servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 					_, err := server.Conn.Exec(stmt)
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
@@ -557,7 +557,7 @@ func (cluster *Cluster) Bootstrap() error {
 						return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
 					}
 				} else {
-					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[relaykey].IP, cluster.servers[relaykey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[relaykey].Host, cluster.servers[relaykey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 					_, err := server.Conn.Exec(stmt)
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
@@ -579,7 +579,7 @@ func (cluster *Cluster) Bootstrap() error {
 		for key, server := range cluster.servers {
 			if key == 0 {
 
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[1].IP, cluster.servers[1].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[1].Host, cluster.servers[1].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
@@ -594,7 +594,7 @@ func (cluster *Cluster) Bootstrap() error {
 			}
 			if key == 1 {
 
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[0].IP, cluster.servers[0].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[0].Host, cluster.servers[0].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()

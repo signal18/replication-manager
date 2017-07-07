@@ -145,7 +145,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		dbhelper.MasterWaitGTID(cluster.master.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
 	} else if !cluster.master.DBVersion.IsMySQL57() {
-		cluster.LogPrintf("INFO", "Waiting for candidate Master to apply relay log")
+		cluster.LogPrintf("INFO", "Waiting for candidate master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Error while reading relay logs on candidate: %s", err)
@@ -294,7 +294,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 			cluster.LogPrint("INFO : Doing positional switch")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -315,7 +315,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			// We can do MySQL 5.7 style failover
 			cluster.LogPrintf("INFO", "Doing MySQL GTID switch")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -333,7 +333,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		} else if cluster.conf.MxsBinlogOn == false {
 			cluster.LogPrintf("INFO", "Doing GTID switch")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -353,7 +353,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf("INFO", "Pointing old master to relay server")
 			if relaymaster.MxsHaveGtid {
 				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-					Host:      relaymaster.IP,
+					Host:      relaymaster.Host,
 					Port:      relaymaster.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
@@ -363,7 +363,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				})
 			} else {
 				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-					Host:      relaymaster.IP,
+					Host:      relaymaster.Host,
 					Port:      relaymaster.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
@@ -431,7 +431,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		var changeMasterErr error
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -443,7 +443,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			})
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -453,7 +453,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			})
 		} else if cluster.conf.MxsBinlogOn == false {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.IP,
+				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
@@ -462,10 +462,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:      "SLAVE_POS",
 			})
 		} else {
-			cluster.LogPrintf("INFO", "Pointing relay to the new master: %s:%s", cluster.master.IP, cluster.master.Port)
+			cluster.LogPrintf("INFO", "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-					Host:      cluster.master.IP,
+					Host:      cluster.master.Host,
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
@@ -475,7 +475,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				})
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-					Host:      cluster.master.IP,
+					Host:      cluster.master.Host,
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
