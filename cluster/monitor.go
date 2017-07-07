@@ -686,15 +686,15 @@ func (server *ServerMonitor) freeze() bool {
 }
 
 func (server *ServerMonitor) ReadAllRelayLogs() error {
-	ss, err := dbhelper.GetSlaveStatus(server.Conn)
-	if err != nil {
-		return err
-	}
+
 	server.ClusterGroup.LogPrintf("INFO", "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() {
-
-		for ss.Gtid_IO_Pos != ss.Gtid_Slave_Pos && ss.Using_Gtid != "" {
-			ss, err = dbhelper.GetSlaveStatus(server.Conn)
+		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "")
+		if err != nil {
+			return err
+		}
+		for ss.Gtid_IO_Pos != ss.Gtid_Slave_Pos && ss.Using_Gtid != "" && ss.Gtid_Slave_Pos != "" {
+			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
@@ -702,6 +702,10 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.Gtid_IO_Pos, ss.Gtid_Slave_Pos)
 		}
 	} else {
+		ss, err := dbhelper.GetSlaveStatus(server.Conn)
+		if err != nil {
+			return err
+		}
 		for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
 			ss, err = dbhelper.GetSlaveStatus(server.Conn)
 			if err != nil {
