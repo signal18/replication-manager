@@ -106,7 +106,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	}
 	if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -116,7 +116,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		})
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -169,7 +169,7 @@ func (server *ServerMonitor) rejoinMasterFashBack(crash *Crash) error {
 	var err2 error
 	if server.MxsHaveGtid || server.IsMaxscale == false {
 		err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -179,7 +179,7 @@ func (server *ServerMonitor) rejoinMasterFashBack(crash *Crash) error {
 		})
 	} else {
 		err2 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -211,7 +211,7 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || server.IsMaxscale == false {
 		err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -221,7 +221,7 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 		})
 	} else {
 		err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -292,7 +292,7 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	err := dbhelper.SetReadOnly(server.Conn, true)
 	if err == nil {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.IP,
+			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
@@ -334,7 +334,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 						err := dbhelper.StopSlave(server.Conn)
 						if err == nil {
 							err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-								Host:      realmaster.IP,
+								Host:      realmaster.Host,
 								Port:      realmaster.Port,
 								User:      server.ClusterGroup.rplUser,
 								Password:  server.ClusterGroup.rplPass,

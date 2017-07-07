@@ -696,13 +696,26 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		return err
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Reading all relay logs on %s", server.URL)
-	for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
-		ss, err = dbhelper.GetSlaveStatus(server.Conn)
-		if err != nil {
-			return err
+	if server.DBVersion.IsMariaDB() {
+
+		for ss.Gtid_IO_Pos != ss.Gtid_Slave_Pos && ss.Using_Gtid != "" {
+			ss, err = dbhelper.GetSlaveStatus(server.Conn)
+			if err != nil {
+				return err
+			}
+			time.Sleep(500 * time.Millisecond)
+			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.Gtid_IO_Pos, ss.Gtid_Slave_Pos)
 		}
-		time.Sleep(500 * time.Millisecond)
+	} else {
+		for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
+			ss, err = dbhelper.GetSlaveStatus(server.Conn)
+			if err != nil {
+				return err
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
+
 	return nil
 }
 
