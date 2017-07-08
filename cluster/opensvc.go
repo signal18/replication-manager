@@ -209,10 +209,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
 		if status == "Q" {
-			cluster.sme.AddState("WARN00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.sme.AddState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+			cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			break
@@ -265,10 +265,10 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 					time.Sleep(2 * time.Second)
 					status := svc.GetActionStatus(strconv.Itoa(idaction))
 					if status == "Q" {
-						cluster.sme.AddState("WARN00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+						cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 					}
 					if status == "W" {
-						cluster.sme.AddState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00045"]), ErrFrom: "TOPO"})
+						cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 					}
 					if status == "T" {
 						break

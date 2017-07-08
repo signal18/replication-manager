@@ -137,7 +137,7 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) {
 	}
 
 	if cluster.conf.Enterprise {
-		cluster.sme.AddState("WARN00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN00047"]), ErrFrom: "TOPO"})
+		cluster.sme.AddState("WARN0047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0047"]), ErrFrom: "TOPO"})
 		return
 	} else {
 		cluster.InitMariaDB(srv, srv.Id, "mdbsproxy.cnf")

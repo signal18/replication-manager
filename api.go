@@ -157,6 +157,18 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/bootstrap", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrap)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/bootstrap/replication/{topology}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplication)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/bootstrap/services", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServers)),
@@ -185,18 +197,7 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxCrashes)),
 	))
-	router.Handle("/api/clusters/{clusterName}/bootstrap", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrap)),
-	))
-	router.Handle("/api/clusters/{clusterName}/bootstrap/replication", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplication)),
-	))
-	router.Handle("/api/clusters/{clusterName}/bootstrap/services", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
-	))
+
 	log.Println("Now listening localhost:3000")
 	http.ListenAndServeTLS("0.0.0.0:3000", conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 }
@@ -306,7 +307,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 
 	err := json.Unmarshal(data, &srvs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -318,7 +319,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 
 	err = e.Encode(srvs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -334,7 +335,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 
 	err := json.Unmarshal(data, &srvs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -346,7 +347,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 
 	err = e.Encode(srvs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -360,14 +361,14 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 	var prxs []*cluster.Proxy
 	err := json.Unmarshal(data, &prxs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
 	e := json.NewEncoder(w)
 	err = e.Encode(prxs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -382,7 +383,7 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	err := e.Encode(a)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -400,9 +401,38 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.CleanAll = cleanall
+	switch vars["topology"] {
+	case "master-slave":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+	case "master-slave-no-gtid":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(true)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+	case "multi-master":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(true)
+		mycluster.SetBinlogServer(false)
+	case "multi-tier-slave":
+		mycluster.SetMultiTierSlave(true)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+	case "maxscale-binlog":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(true)
+	case "multi-master-ring":
+	}
 	err := mycluster.BootstrapReplication()
 	if err != nil {
-		log.Println("Error Bootstrap Replication: ", err)
+		mycluster.LogPrintf("ERROR", "API Error Bootstrap Replication: ", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -415,7 +445,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	err := mycluster.BootstrapServices()
 	if err != nil {
-		log.Println("Error Bootstrap Replication: ", err)
+		mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services: ", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -428,7 +458,7 @@ func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	err := mycluster.Bootstrap()
 	if err != nil {
-		log.Println("Error Bootstrap Replication: ", err)
+		mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services + replication ", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -469,7 +499,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			log.Println("Error encoding JSON: ", err)
+			mycluster.LogPrintf("ERROR", "API Error decoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -478,7 +508,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	err := e.Encode(srvs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -567,7 +597,6 @@ func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 
 	err := e.Encode(clusterlogs)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}
@@ -591,10 +620,13 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	regtest := new(regtest.RegTest)
-
-	err := regtest.RunAllTests(mycluster, vars["testName"])
-	if err == false {
-		mycluster.LogPrintf("ERROR", "Test failed")
+	res := regtest.RunAllTests(mycluster, vars["testName"])
+	e := json.NewEncoder(w)
+	err := e.Encode(res)
+	if err != nil {
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
 	}
 	return
 }
@@ -605,9 +637,13 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	regtest := new(regtest.RegTest)
 
-	err := regtest.RunAllTests(mycluster, "ALL")
-	if err == false {
-		mycluster.LogPrintf("ERROR", "Some tests failed")
+	res := regtest.RunAllTests(mycluster, "ALL")
+	e := json.NewEncoder(w)
+	err := e.Encode(res)
+	if err != nil {
+		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+		http.Error(w, "Encoding error", 500)
+		return
 	}
 	return
 }
@@ -668,7 +704,6 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
-
 	s := new(Settings)
 	s.Clusters = cfgGroupList
 	regtest := new(regtest.RegTest)
@@ -676,7 +711,6 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	err := e.Encode(s)
 	if err != nil {
-		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
 		return
 	}

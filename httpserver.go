@@ -670,11 +670,9 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	regtest := new(regtest.RegTest)
+	res := regtest.RunAllTests(currentCluster, "ALL")
+	currentCluster.LogPrintf("INFO", "Some tests failed %s", res)
 
-	err := regtest.RunAllTests(currentCluster, "ALL")
-	if err == false {
-		currentCluster.LogPrintf("ERROR", "Some tests failed")
-	}
 	return
 }
 

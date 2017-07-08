@@ -8,12 +8,7 @@
 
 package main
 
-import (
-	log "github.com/Sirupsen/logrus"
-
-	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/cluster"
-)
+import "github.com/spf13/cobra"
 
 var (
 	source      string
@@ -22,59 +17,14 @@ var (
 )
 
 func init() {
-	rootCmd.AddCommand(bootstrapCmd)
+
 	rootCmd.AddCommand(provisionCmd)
 	provisionCmd.Flags().StringVar(&source, "source", "", "Source server")
 	provisionCmd.Flags().StringVar(&destination, "destination", "", "Source server")
-	bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
-	bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
-	bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
-	bootstrapCmd.Flags().StringVar(&conf.Topology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
-	bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
-}
-
-var bootstrapCmd = &cobra.Command{
-	Use:   "bootstrap",
-	Short: "Bootstrap a replication environment",
-	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
-	Run: func(cmd *cobra.Command, args []string) {
-		currentCluster = new(cluster.Cluster)
-
-		currentCluster.Init(confs[cfgGroup], cfgGroup, &tlog, termlength, runUUID, Version, repmgrHostname, nil)
-		currentCluster.CleanAll = cleanall
-		switch conf.Topology {
-		case "master-slave":
-			currentCluster.SetMultiTierSlave(false)
-			currentCluster.SetForceSlaveNoGtid(false)
-			currentCluster.SetMultiMaster(false)
-			currentCluster.SetBinlogServer(false)
-		case "master-slave-no-gtid":
-			currentCluster.SetMultiTierSlave(false)
-			currentCluster.SetForceSlaveNoGtid(true)
-			currentCluster.SetMultiMaster(false)
-			currentCluster.SetBinlogServer(false)
-		case "multi-master":
-			currentCluster.SetMultiTierSlave(false)
-			currentCluster.SetForceSlaveNoGtid(false)
-			currentCluster.SetMultiMaster(true)
-			currentCluster.SetBinlogServer(false)
-		case "multi-tier-slave":
-			currentCluster.SetMultiTierSlave(true)
-			currentCluster.SetForceSlaveNoGtid(false)
-			currentCluster.SetMultiMaster(false)
-			currentCluster.SetBinlogServer(false)
-		case "maxscale-binlog":
-			currentCluster.SetMultiTierSlave(false)
-			currentCluster.SetForceSlaveNoGtid(false)
-			currentCluster.SetMultiMaster(false)
-			currentCluster.SetBinlogServer(true)
-		case "multi-master-ring":
-		}
-		err := currentCluster.Bootstrap()
-		if err != nil {
-			log.WithError(err).Error("Error bootstrapping replication")
-		}
-	},
+	//bootstrapCmd.Flags().BoolVar(&cleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	//bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
+	//bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
+	//bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 }
 
 var provisionCmd = &cobra.Command{

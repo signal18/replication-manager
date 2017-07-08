@@ -26,21 +26,26 @@ import (
 )
 
 var (
-	cliUser         string
-	cliPassword     string
-	cliHost         string
-	cliPort         string
-	cliCert         string
-	cliNoCheckCert  bool
-	cliToken        string
-	cliClusters     []string
-	cliClusterIndex int
-	cliTlog         termlog.TermLog
-	cliTermlength   int
-	cliServers      []cluster.ServerMonitor
-	cliMaster       cluster.ServerMonitor
-	cliSettings     Settings
-	cliUrl          string
+	cliUser             string
+	cliPassword         string
+	cliHost             string
+	cliPort             string
+	cliCert             string
+	cliNoCheckCert      bool
+	cliToken            string
+	cliClusters         []string
+	cliClusterIndex     int
+	cliTlog             termlog.TermLog
+	cliTermlength       int
+	cliServers          []cluster.ServerMonitor
+	cliMaster           cluster.ServerMonitor
+	cliSettings         Settings
+	cliUrl              string
+	cliRuntests         string
+	cliShowtests        bool
+	cliTeststopcluster  bool
+	cliTeststartcluster bool
+	cliTopology         string
 )
 
 var cliConn = http.Client{
@@ -76,6 +81,8 @@ func init() {
 	rootCmd.AddCommand(failoverCmd)
 	rootCmd.AddCommand(topologyCmd)
 	rootCmd.AddCommand(apiCmd)
+	rootCmd.AddCommand(testCmd)
+
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	clientCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
 	clientCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
@@ -112,6 +119,41 @@ func init() {
 	topologyCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	topologyCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	topologyCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	testCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	testCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	testCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	testCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	testCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	testCmd.Flags().StringVar(&cliRuntests, "run-tests", "", "tests list to be run ")
+	testCmd.Flags().BoolVar(&cliShowtests, "show-tests", false, "display tests list")
+	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-start-cluster", true, "start the cluster between tests")
+	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-stop-cluster", true, "stop the cluster between tests")
+
+	rootCmd.AddCommand(bootstrapCmd)
+	bootstrapCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	bootstrapCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	bootstrapCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	bootstrapCmd.Flags().StringVar(&cliTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
+
+}
+
+var bootstrapCmd = &cobra.Command{
+	Use:   "bootstrap",
+	Short: "Bootstrap a replication environment",
+	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cliInit(true)
+		cliGetTopology()
+		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/bootstrap/replication/" + cliTopology
+		res, _ := cliAPICmd(urlpost)
+		log.Println(res)
+		slogs, _ := cliGetLogs()
+		cliPrintLog(slogs)
+		cliGetTopology()
+	},
 }
 
 var failoverCmd = &cobra.Command{
@@ -121,12 +163,12 @@ var failoverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var slogs []string
 		cliInit(true)
-		cliTopology()
+		cliGetTopology()
 		cliClusterCmd("failover")
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
-		cliTopology()
+		cliGetTopology()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 
@@ -141,12 +183,12 @@ and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var slogs []string
 		cliInit(true)
-		cliTopology()
+		cliGetTopology()
 		cliClusterCmd("switchover")
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
-		cliTopology()
+		cliGetTopology()
 
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
@@ -161,7 +203,12 @@ var apiCmd = &cobra.Command{
 	Long:  `Performs call to jwt api served by monitoring`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cliInit(true)
-		cliAPICmd(cliUrl)
+		res, err := cliAPICmd(cliUrl)
+		if err != nil {
+			log.Fatal("Error in API call")
+		} else {
+			log.Println(res)
+		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 	},
@@ -173,10 +220,41 @@ var topologyCmd = &cobra.Command{
 	Long:  `Print the replication topology by detecting master and slaves`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cliInit(true)
-		cliTopology()
+		cliGetTopology()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 
+	},
+}
+
+var testCmd = &cobra.Command{
+	Use:   "test",
+	Short: "Perform regression test",
+	Long:  `Perform named tests passed with argument --run-tests=test1,test2`,
+	Run: func(cmd *cobra.Command, args []string) {
+
+		cliInit(true)
+		cliGetTopology()
+
+		if cliShowtests == true {
+			cliSettings, _ = cliGetSettings()
+			log.Println(cliSettings.RegTests)
+		}
+		if cliShowtests == false {
+			todotests := strings.Split(cliRuntests, ",")
+			for _, test := range todotests {
+				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/tests/" + test
+				res, err := cliAPICmd(urlpost)
+				if err != nil {
+					log.Fatal("Error in API call")
+				} else {
+					log.Println(res)
+				}
+			}
+		}
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+		// Close connections on exit.
 	},
 }
 
@@ -320,7 +398,7 @@ func cliNewTbChan() chan termbox.Event {
 	return termboxChan
 }
 
-func cliTopology() {
+func cliGetTopology() {
 
 	headstr := ""
 
@@ -703,26 +781,26 @@ func cliClusterCmd(command string) error {
 	return nil
 }
 
-func cliAPICmd(urlpost string) error {
+func cliAPICmd(urlpost string) (string, error) {
 	//var r string
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Authorization", bearer)
 
 	resp, err := cliConn.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return err
+		return "", err
 	}
-	log.Println(string(body))
-	return nil
+
+	return string(body), nil
 }
