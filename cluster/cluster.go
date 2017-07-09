@@ -6,8 +6,11 @@
 package cluster
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -71,6 +74,7 @@ type Cluster struct {
 	lastmaster           *ServerMonitor //saved when all cluster down
 	benchmarkType        string
 	openSVCServiceStatus int
+	tlsconf              *tls.Config
 }
 
 // Init initial cluster definition
@@ -100,7 +104,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	if err != nil {
 		return err
 	}
-
+	cluster.loadDBCertificate()
 	cluster.newServerList()
 	if cluster.conf.Interactive {
 		cluster.LogPrintf("INFO", "Failover in interactive mode")
@@ -264,6 +268,38 @@ func (cluster *Cluster) FailoverForce() error {
 
 func (cluster *Cluster) SwitchOver() {
 	cluster.switchoverChan <- true
+}
+
+func (cluster *Cluster) loadDBCertificate() error {
+
+	if cluster.conf.HostsTLSCA == "" {
+		return errors.New("No given CA certificate")
+	}
+	if cluster.conf.HostsTLSCLI == "" {
+		return errors.New("No given Client certificate")
+	}
+	if cluster.conf.HostsTLSKEY == "" {
+		return errors.New("No given Key certificate")
+	}
+	rootCertPool := x509.NewCertPool()
+	pem, err := ioutil.ReadFile(cluster.conf.HostsTLSCA)
+	if err != nil {
+		return errors.New("Can not load database TLS Authority CA")
+	}
+	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
+		return errors.New("Failed to append PEM.")
+	}
+	clientCert := make([]tls.Certificate, 0, 1)
+	certs, err := tls.LoadX509KeyPair(cluster.conf.HostsTLSCLI, cluster.conf.HostsTLSKEY)
+	if err != nil {
+		return errors.New("Can not load database TLS X509 key pair")
+	}
+	clientCert = append(clientCert, certs)
+	cluster.tlsconf = &tls.Config{
+		RootCAs:      rootCertPool,
+		Certificates: clientCert,
+	}
+	return nil
 }
 
 // Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
