@@ -151,23 +151,22 @@ var bootstrapCmd = &cobra.Command{
 
 		if cliCleanall == true {
 			urlclean := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/cleanup"
-			res, err := cliAPICmd(urlclean)
+			_, err := cliAPICmd(urlclean)
 			if err != nil {
 				log.Fatal(err)
 			} else {
-				log.Println(res)
+				log.Println("Replication cleanup done")
 			}
 		}
 		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/bootstrap/" + cliTopology
-		res, err := cliAPICmd(urlpost)
+		_, err := cliAPICmd(urlpost)
 		if err != nil {
 			log.Fatal(err)
 		} else {
-			log.Println(res)
+			log.Println("Replication bootsrap done")
 		}
-		slogs, _ := cliGetLogs()
-
-		cliPrintLog(slogs)
+		//		slogs, _ := cliGetLogs()
+		//	cliPrintLog(slogs)
 		cliGetTopology()
 	},
 }

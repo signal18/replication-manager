@@ -676,6 +676,25 @@ To print the help and option flags for each command, use `replication-manager [c
 
 Flags help for the monitor command is given below.
 
+#### Monitor in daemon mode
+
+Start replication-manager in background to monitor the cluster, using the http server to control the daemon
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
+
+The internal http server is accessible on http://localhost:10001 by default, and looks like this:
+
+![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
+
+> The http dashboard is an angularjs application, it has no protected access for now use creativity to restrict access to it.
+Some login protection using http-auth = true can be enable and use the database password giving in the replication-manager config file but it is reported to leak memory when a browser is still connected and constantly refresh the display. We advice not to used it but to protect via a web proxying authentication instead.   
+
+Start replication-manager in automatic daemon mode:
+
+`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --interactive=false`
+
+This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
+
 #### Monitor options
 
 ```
@@ -722,28 +741,28 @@ Global Flags:
 
 #### Command line switchover
 
-Run replication-manager in switchover mode with master host db1 and slaves db2 and db3:
+Trigger replication-manager client to perform a switchover
 
-`replication-manager switchover --hosts=db1,db2,db3 --user=root --rpluser=replicator --interactive`
+`replication-manager switchover --cluster=test_cluster`
 
 #### Command line failover
 
-Run replication-manager in non-interactive failover mode, using full host and port syntax, using root login for management and repl login for replication switchover, with failover scripts and added verbosity. Accept a maximum slave delay of 15 seconds before performing switchover:
+Trigger replication-manager in non-interactive to perform a failover ,
 
-`replication-manager failover --hosts=db1:3306,db2:3306,db3:3306 --user=root:pass --rpluser=repl:pass --pre-failover-script="/usr/local/bin/vipdown.sh" -post-failover-script="/usr/local/bin/vipup.sh" --verbose --maxdelay=15`
+`replication-manager failover --cluster="test_cluster"`
 
 #### Command line bootstrap
 
-With some already exiting database nodes but no replication  setup replication-manager enable you to init the replication on various topology
+With some already exiting database nodes but no replication setup in place replication-manager enable you to init the replication on various topology
 master-slave | master-slave-no-gtid | maxscale-binlog | multi-master | multi-tier-slave
 
-`replication-manager --config-group=cluster_test_3_nodes bootstrap --clean-all --topology="multi-tier-slave"`
+`replication-manager --cluster="cluster_test_3_nodes" bootstrap --clean-all --topology="multi-tier-slave"`
 
 #### Command line monitor
 
-Start replication-manager in console mode to monitor the cluster:
+Start replication-manager in console mode to visualize and perform actions on all or one cluster:
 
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass`
+`replication-manager client`
 
 ![mrmconsole](https://cloud.githubusercontent.com/assets/971260/16738035/45f2bbf2-4794-11e6-8286-65f9a3179e31.png)
 
@@ -759,25 +778,6 @@ Ctrl-Q  Quit
 Ctrl-W  Set slaves read-write
 Ctrl-P Ctrl-N switch between clusters
 ```
-
-#### Monitor in daemon mode
-
-Start replication-manager in background to monitor the cluster, using the http server to control the daemon
-
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
-
-The internal http server is accessible on http://localhost:10001 by default, and looks like this:
-
-![mrmdash](https://cloud.githubusercontent.com/assets/971260/16737848/807d6106-4793-11e6-9e65-cd86fdca3b68.png)
-
-> The http dashboard is an angularjs application, it has no protected access for now use creativity to restrict access to it.
-Some login protection using http-auth = true can be enable and use the database password giving in the replication-manager config file but it is reported to leak memory when a browser is still connected and constantly refresh the display. We advice not to used it but to protect via a web proxying authentication instead.   
-
-Start replication-manager in automatic daemon mode:
-
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --interactive=false`
-
-This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
 
 ## Topology
 
