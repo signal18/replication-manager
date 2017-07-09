@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -122,20 +121,8 @@ func (cluster *Cluster) Run() {
 
 		select {
 		case <-ticker.C:
-			/*	if cluster.sme.IsDiscovered() == false {
-				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrint("DEBUG: Discovering topology loop")
-				}
-				cluster.pingServerList()
-				cluster.TopologyDiscover()
-				states := cluster.sme.GetStates()
-				for i := range states {
-					cluster.LogPrint(states[i])
-				}
-			} */
-			cluster.display()
-			//	if cluster.sme.CanMonitor() {
-			// run once
+
+			//cluster.display()
 
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Monitoring server loop")
@@ -149,13 +136,7 @@ func (cluster *Cluster) Run() {
 					}
 				}
 			}
-			wg := new(sync.WaitGroup)
-			for _, server := range cluster.servers {
-				wg.Add(1)
-				go server.check(wg)
-			}
-			wg.Wait()
-			cluster.pingServerList()
+
 			cluster.TopologyDiscover()
 
 			if cluster.runOnceAfterTopology {
@@ -191,9 +172,6 @@ func (cluster *Cluster) Run() {
 			default:
 				//do nothing
 			}
-
-			//	}
-
 		}
 	}
 }

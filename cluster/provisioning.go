@@ -418,54 +418,63 @@ func (cluster *Cluster) BootstrapServices() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapReplication() error {
+func (cluster *Cluster) BootstrapReplicationCleanup() error {
+
+	cluster.LogPrintf("INFO", "Cleaning up replication on existing servers")
 	cluster.sme.SetFailoverState()
-	// default to master slave
-	if cluster.CleanAll {
-		cluster.LogPrintf("INFO", "Cleaning up replication on existing servers")
-		for _, server := range cluster.servers {
-			if cluster.conf.Verbose {
-				cluster.LogPrintf("INFO : SetDefaultMasterConn on server %s ", server.URL)
-			}
-			err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
-			if err != nil {
-				if cluster.conf.Verbose {
-					cluster.LogPrintf("INFO : RemoveFailoverState on server %s ", server.URL)
-				}
-				cluster.sme.RemoveFailoverState()
-				return err
-			}
-			if cluster.conf.Verbose {
-				cluster.LogPrintf("INFO : ResetMaster on server %s ", server.URL)
-			}
-			err = dbhelper.ResetMaster(server.Conn)
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
-			}
-			err = dbhelper.StopAllSlaves(server.Conn)
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
-			}
-			err = dbhelper.ResetAllSlaves(server.Conn)
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
-			}
-			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
-			}
+	for _, server := range cluster.servers {
+		if cluster.conf.Verbose {
+			cluster.LogPrintf("INFO", "SetDefaultMasterConn on server %s ", server.URL)
 		}
-	} else {
-		err := cluster.TopologyDiscover()
-		if err == nil {
+		err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
+		if err != nil {
+			if cluster.conf.Verbose {
+				cluster.LogPrintf("INFO", "RemoveFailoverState on server %s ", server.URL)
+			}
 			cluster.sme.RemoveFailoverState()
-			return errors.New("ERROR: Environment already has an existing master/slave setup")
+			return err
+		}
+		if cluster.conf.Verbose {
+			cluster.LogPrintf("INFO", "ResetMaster on server %s ", server.URL)
+		}
+		err = dbhelper.ResetMaster(server.Conn)
+		if err != nil {
+			cluster.sme.RemoveFailoverState()
+			return err
+		}
+		err = dbhelper.StopAllSlaves(server.Conn)
+		if err != nil {
+			cluster.sme.RemoveFailoverState()
+			return err
+		}
+		err = dbhelper.ResetAllSlaves(server.Conn)
+		if err != nil {
+			cluster.sme.RemoveFailoverState()
+			return err
+		}
+		_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
+		if err != nil {
+			cluster.sme.RemoveFailoverState()
+			return err
 		}
 	}
+	cluster.master = nil
+	cluster.slaves = nil
+	cluster.sme.RemoveFailoverState()
+	return nil
+}
+
+func (cluster *Cluster) BootstrapReplication() error {
+
+	// default to master slave
+	if cluster.CleanAll {
+		cluster.BootstrapReplicationCleanup()
+	}
+	err := cluster.TopologyDiscover()
+	if err == nil {
+		return errors.New("Environment already has an existing master/slave setup")
+	}
+	cluster.sme.SetFailoverState()
 	masterKey := 0
 	if cluster.conf.PrefMaster != "" {
 		masterKey = func() int {
@@ -480,9 +489,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 		}()
 	}
 	if masterKey == -1 {
-		return errors.New("ERROR: Preferred master could not be found in existing servers")
+		return errors.New("Preferred master could not be found in existing servers")
 	}
-	_, err := cluster.servers[masterKey].Conn.Exec("RESET MASTER")
+	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
 	if err != nil {
 		cluster.LogPrintf("INFO", "RESET MASTER failed on master")
 	}
@@ -500,12 +509,12 @@ func (cluster *Cluster) BootstrapReplication() error {
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR:", stmt, err))
+					return errors.New(fmt.Sprintln(stmt, err))
 				}
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
@@ -537,12 +546,12 @@ func (cluster *Cluster) BootstrapReplication() error {
 				})
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR:", err))
+					return err
 				}
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
@@ -568,24 +577,24 @@ func (cluster *Cluster) BootstrapReplication() error {
 					_, err := server.Conn.Exec(stmt)
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("ERROR:", stmt, err))
+						return errors.New(fmt.Sprintln(stmt, err))
 					}
 					_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+						return errors.New(fmt.Sprintln("Can't start slave: ", err))
 					}
 				} else {
 					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[relaykey].Host, cluster.servers[relaykey].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 					_, err := server.Conn.Exec(stmt)
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("ERROR:", stmt, err))
+						return errors.New(fmt.Sprintln(stmt, err))
 					}
 					_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+						return errors.New(fmt.Sprintln("Can't start slave: ", err))
 					}
 
 				}
@@ -602,12 +611,12 @@ func (cluster *Cluster) BootstrapReplication() error {
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR:", stmt, err))
+					return errors.New(fmt.Sprintln(stmt, err))
 				}
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
@@ -622,7 +631,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("ERROR: Start slave: ", err))
+					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 			}
 			dbhelper.SetReadOnly(server.Conn, true)
@@ -630,6 +639,10 @@ func (cluster *Cluster) BootstrapReplication() error {
 	}
 
 	cluster.sme.RemoveFailoverState()
+	err = cluster.TopologyDiscover()
+	if err != nil {
+		return errors.New("Can't found topology after bootstrap")
+	}
 	//bootstrapChan <- true
 	return nil
 }

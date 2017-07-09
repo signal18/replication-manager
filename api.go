@@ -157,15 +157,15 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/bootstrap", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrap)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/bootstrap/replication/{topology}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplication)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/bootstrap/services", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/replication/cleanup", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplicationCleanup)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/services/bootstrap", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
 	))
@@ -397,11 +397,24 @@ func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	err := mycluster.BootstrapReplicationCleanup()
+	if err != nil {
+		mycluster.LogPrintf("ERROR", "API Error Cleanup Replication: %s", err)
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	return
+}
+
 func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.CleanAll = cleanall
+
 	switch vars["topology"] {
 	case "master-slave":
 		mycluster.SetMultiTierSlave(false)
@@ -432,7 +445,7 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	}
 	err := mycluster.BootstrapReplication()
 	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error Bootstrap Replication: ", err)
+		mycluster.LogPrintf("ERROR", "API Error Bootstrap Replication: %s", err)
 		http.Error(w, err.Error(), 500)
 		return
 	}

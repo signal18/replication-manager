@@ -46,6 +46,7 @@ var (
 	cliTeststopcluster  bool
 	cliTeststartcluster bool
 	cliTopology         string
+	cliCleanall         bool
 )
 
 var cliConn = http.Client{
@@ -137,7 +138,7 @@ func init() {
 	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	bootstrapCmd.Flags().StringVar(&cliTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
-
+	bootstrapCmd.Flags().BoolVar(&cliCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -145,12 +146,27 @@ var bootstrapCmd = &cobra.Command{
 	Short: "Bootstrap a replication environment",
 	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
 	Run: func(cmd *cobra.Command, args []string) {
+		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
-		cliGetTopology()
-		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/bootstrap/replication/" + cliTopology
-		res, _ := cliAPICmd(urlpost)
-		log.Println(res)
+
+		if cliCleanall == true {
+			urlclean := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/cleanup"
+			res, err := cliAPICmd(urlclean)
+			if err != nil {
+				log.Fatal(err)
+			} else {
+				log.Println(res)
+			}
+		}
+		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/bootstrap/" + cliTopology
+		res, err := cliAPICmd(urlpost)
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			log.Println(res)
+		}
 		slogs, _ := cliGetLogs()
+
 		cliPrintLog(slogs)
 		cliGetTopology()
 	},
@@ -784,6 +800,7 @@ func cliClusterCmd(command string) error {
 func cliAPICmd(urlpost string) (string, error) {
 	//var r string
 	var bearer = "Bearer " + cliToken
+	var err error
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {
 		return "", err
@@ -795,12 +812,15 @@ func cliAPICmd(urlpost string) (string, error) {
 		log.Println("ERROR ", err)
 		return "", err
 	}
+
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return "", err
 	}
-
+	if resp.StatusCode != 200 {
+		return "", errors.New(string(body))
+	}
 	return string(body), nil
 }

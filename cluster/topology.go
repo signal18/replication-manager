@@ -154,12 +154,20 @@ func (cluster *Cluster) pingServerList() {
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("INFO", "In Failover skip topology detection")
-		return nil
+		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
+		return errors.New("In Failover skip topology detection")
 	}
 	if cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf("DEBUG", "Entering topology detection")
 	}
+	wg := new(sync.WaitGroup)
+	for _, server := range cluster.servers {
+		wg.Add(1)
+		go server.check(wg)
+	}
+	wg.Wait()
+	cluster.pingServerList()
+
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	if cluster.conf.MxsOn {
 		err := m.Connect()
