@@ -200,6 +200,10 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 	cluster.cfgGroupDisplay = cfgGroup
 }
 
+func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	cluster.conf = conf
+}
+
 func (cluster *Cluster) FailoverForce() error {
 	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
 	err := sf.access()

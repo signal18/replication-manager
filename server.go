@@ -346,7 +346,6 @@ For interacting with this daemon use,
 			go httpserver()
 		}
 		go apiserver()
-		termboxChan := newTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
 		for exit == false {
@@ -358,77 +357,6 @@ For interacting with this daemon use,
 				}
 				if conf.Enterprise {
 					//			agents = svc.GetNodes()
-				}
-			case event := <-termboxChan:
-				switch event.Type {
-				case termbox.EventKey:
-					if event.Key == termbox.KeyCtrlS {
-						if currentCluster.IsMasterFailed() == false || currentCluster.GetMasterFailCount() > 0 {
-							currentCluster.MasterFailover(false)
-						} else {
-							currentCluster.LogPrintf("ERROR", "Master failed, cannot initiate switchover")
-						}
-					}
-					if event.Key == termbox.KeyCtrlF {
-						if currentCluster.IsMasterFailed() {
-							currentCluster.MasterFailover(true)
-						} else {
-							currentCluster.LogPrintf("ERROR", "Master not failed, cannot initiate failover")
-						}
-					}
-					if event.Key == termbox.KeyCtrlD {
-						currentCluster.PrintTopology()
-					}
-					if event.Key == termbox.KeyCtrlN {
-						cfgGroupIndex++
-						if cfgGroupIndex >= len(cfgGroupList) {
-							cfgGroupIndex = 0
-						}
-						currentClusterName = cfgGroupList[cfgGroupIndex]
-						currentCluster = clusters[currentClusterName]
-						for _, gl := range cfgGroupList {
-							clusters[gl].SetCfgGroupDisplay(currentClusterName)
-						}
-					}
-					if event.Key == termbox.KeyCtrlP {
-						cfgGroupIndex--
-						if cfgGroupIndex < 0 {
-							cfgGroupIndex = len(cfgGroupList) - 1
-						}
-						currentClusterName = cfgGroupList[cfgGroupIndex]
-						currentCluster = clusters[currentClusterName]
-						for _, gl := range cfgGroupList {
-							clusters[gl].SetCfgGroupDisplay(currentClusterName)
-						}
-					}
-					if event.Key == termbox.KeyCtrlR {
-						currentCluster.LogPrintf("INFO", "Setting slaves read-only")
-						currentCluster.SetSlavesReadOnly(true)
-					}
-					if event.Key == termbox.KeyCtrlW {
-						currentCluster.LogPrint("INFO", "Setting slaves read-write")
-						currentCluster.SetSlavesReadOnly(false)
-					}
-					if event.Key == termbox.KeyCtrlI {
-						currentCluster.ToggleInteractive()
-					}
-					if event.Key == termbox.KeyCtrlH {
-						currentCluster.DisplayHelp()
-					}
-					if event.Key == termbox.KeyCtrlQ {
-						currentCluster.LogPrintf("INFO", "Quitting monitor")
-						exit = true
-						currentCluster.Stop()
-					}
-					if event.Key == termbox.KeyCtrlC {
-						currentCluster.LogPrintf("INFO", "Quitting monitor")
-						exit = true
-						currentCluster.Stop()
-					}
-				}
-				switch event.Ch {
-				case 's':
-					termbox.Sync()
 				}
 			}
 

@@ -725,7 +725,7 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	initConfig()
-	mycluster.SetConf(cfgGroupList[vars["clusterName"]])
+	mycluster.ReloadConfig(confs[vars["clusterName"]])
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
