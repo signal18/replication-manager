@@ -105,6 +105,10 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/reload", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/switch/interactive", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchInteractive)),
@@ -714,6 +718,14 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+}
+
+func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	initConfig()
+	mycluster.SetConf(cfgGroupList[vars["clusterName"]])
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
