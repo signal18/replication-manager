@@ -20,7 +20,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/tanji/replication-manager/alert"
 	"github.com/tanji/replication-manager/dbhelper"
@@ -165,6 +166,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 		return server, errmsg
 	}
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
@@ -175,7 +177,12 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 		return dsn
 	}
 	server.DSN = mydsn()
+	if cluster.haveDBTLSCert {
+		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
+		server.DSN = server.DSN + ",tls=tlsconfig"
+	}
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
+
 	return server, err
 }
 

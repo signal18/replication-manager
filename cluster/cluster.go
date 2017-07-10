@@ -9,10 +9,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +72,7 @@ type Cluster struct {
 	lastmaster           *ServerMonitor //saved when all cluster down
 	benchmarkType        string
 	openSVCServiceStatus int
+	haveDBTLSCert        bool
 	tlsconf              *tls.Config
 }
 
@@ -104,8 +103,17 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	if err != nil {
 		return err
 	}
-	cluster.loadDBCertificate()
+	cluster.LogPrintf("INFO", "Loading database TLS certificates")
+	err = cluster.loadDBCertificate()
+	if err != nil {
+		cluster.haveDBTLSCert = false
+		cluster.LogPrintf("INFO", "Don't Have database TLS certificates")
+	} else {
+		cluster.haveDBTLSCert = true
+		cluster.LogPrintf("INFO", "Have database TLS certificates")
+	}
 	cluster.newServerList()
+
 	if cluster.conf.Interactive {
 		cluster.LogPrintf("INFO", "Failover in interactive mode")
 	} else {
@@ -296,8 +304,9 @@ func (cluster *Cluster) loadDBCertificate() error {
 	}
 	clientCert = append(clientCert, certs)
 	cluster.tlsconf = &tls.Config{
-		RootCAs:      rootCertPool,
-		Certificates: clientCert,
+		RootCAs:            rootCertPool,
+		Certificates:       clientCert,
+		InsecureSkipVerify: true,
 	}
 	return nil
 }
@@ -669,37 +678,6 @@ func (cluster *Cluster) Close() {
 
 func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
-}
-
-func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	var proxyHost string
-	var proxyPort string
-	proxyHost = ""
-	if cluster.conf.MxsOn {
-		proxyHost = cluster.conf.MxsHost
-		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
-
-	}
-	if cluster.conf.HaproxyOn {
-		proxyHost = "127.0.0.1"
-		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
-	}
-
-	_, err := dbhelper.CheckHostAddr(proxyHost)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
-		return nil, errmsg
-	}
-
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
-
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if proxyHost != "" {
-		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
-	}
-	cluster.LogPrint(dsn)
-	return sqlx.Open("mysql", dsn)
-
 }
 
 func (cluster *Cluster) agentFlagCheck() {
