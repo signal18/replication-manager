@@ -196,6 +196,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			cluster.WaitMariaDBStart(s)
 		}
 
 	}

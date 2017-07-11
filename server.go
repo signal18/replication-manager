@@ -337,7 +337,6 @@ For interacting with this daemon use,
 			clusters[gl] = currentCluster
 			go currentCluster.Run()
 			currentClusterName = gl
-
 		}
 		currentCluster.SetCfgGroupDisplay(currentClusterName)
 

@@ -137,7 +137,6 @@ func (cluster *Cluster) pingServerList() {
 							}
 							sv.State = stateFailed
 						}
-
 					}
 				}
 			} else {

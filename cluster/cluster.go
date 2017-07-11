@@ -202,6 +202,7 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.conf = conf
+	cluster.newServerList()
 }
 
 func (cluster *Cluster) FailoverForce() error {

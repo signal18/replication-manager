@@ -258,7 +258,7 @@ var testCmd = &cobra.Command{
 		if cliShowtests == false {
 			todotests := strings.Split(cliRuntests, ",")
 			for _, test := range todotests {
-				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/tests/" + test
+				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
 				res, err := cliAPICmd(urlpost)
 				if err != nil {
 					log.Fatal("Error in API call")

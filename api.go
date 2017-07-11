@@ -96,11 +96,11 @@ func apiserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.HandleFunc("/api/login", loginHandler)
-
-	//PROTECTED ENDPOINTS
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
 	))
+
+	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
@@ -145,6 +145,9 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxResetFailoverControl)),
 	))
+
+	//PROTECTED ENDPOINTS FOR CLUSTERS
+
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchover)),
@@ -152,14 +155,6 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/actions/failover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxFailover)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/tests", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/tests/{testName}", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
@@ -200,6 +195,31 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/topology/crashes", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxCrashes)),
+	))
+
+	//PROTECTED ENDPOINTS FOR TESTS
+
+	router.Handle("/api/clusters/{clusterName}/tests", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
+	))
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
+	))
+
+	//PROTECTED ENDPOINTS FOR SERVERS
+	router.Handle("/api/clusters/{clusterName}/servers/actions/add/{host}/{port}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersStop)),
 	))
 
 	log.Println("Now listening localhost:3000")
@@ -726,6 +746,31 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	initConfig()
 	mycluster.ReloadConfig(confs[vars["clusterName"]])
+
+}
+
+func handlerMuxServersAdd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+
+}
+
+func handlerMuxServersStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetServerFromName(vars["serverName"])
+	mycluster.ShutdownMariaDB(node)
+}
+
+func handlerMuxServersStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetServerFromName(vars["serverName"])
+	mycluster.StartMariaDB(node)
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {

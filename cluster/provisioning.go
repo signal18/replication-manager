@@ -202,6 +202,11 @@ func (cluster *Cluster) StartAllNodes() error {
 	return nil
 }
 
+func (cluster *Cluster) AddSeededServer(srv string) error {
+	cluster.conf.Hosts += "," + srv
+	return nil
+}
+
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
@@ -308,10 +313,10 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	}
 	if exitloop < 30 {
-		cluster.LogPrintf("TEST", "Rejoin Finished")
+		cluster.LogPrintf("INFO", "Rejoin Finished")
 
 	} else {
-		cluster.LogPrintf("TEST", "Rejoin timeout")
+		cluster.LogPrintf("INFO", "Rejoin timeout")
 		return
 	}
 	return
@@ -323,7 +328,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST", "Waiting MariaDB shutdown")
+			cluster.LogPrint("INFO", "Waiting MariaDB shutdown")
 			exitloop++
 			_, err := os.FindProcess(server.Process.Pid)
 			if err != nil {
@@ -333,10 +338,35 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST", "MariaDB shutdown")
+		cluster.LogPrintf("INFO", "MariaDB shutdown")
 	} else {
-		cluster.LogPrintf("TEST", "MariaDB shutdown timeout")
+		cluster.LogPrintf("INFO", "MariaDB shutdown timeout")
 		return errors.New("Failed to Stop MariaDB")
+	}
+	return nil
+}
+
+func (cluster *Cluster) WaitMariaDBStart(server *ServerMonitor) error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	for exitloop < 30 {
+		select {
+		case <-ticker.C:
+			cluster.LogPrint("INFO", "Waiting MariaDB start")
+			exitloop++
+
+			dbhelper.GetStatus(server.Conn)
+			if server.IsDown() == false {
+				exitloop = 100
+			}
+		default:
+		}
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("INFO", "MariaDB started")
+	} else {
+		cluster.LogPrintf("INFO", "MariaDB start timeout")
+		return errors.New("Failed to Start MariaDB")
 	}
 	return nil
 }
