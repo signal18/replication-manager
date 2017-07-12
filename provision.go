@@ -24,6 +24,7 @@ func init() {
 	//bootstrapCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred server for master initialization")
 	//bootstrapCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
 	//bootstrapCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+
 }
 
 var provisionCmd = &cobra.Command{
@@ -32,6 +33,7 @@ var provisionCmd = &cobra.Command{
 	Long: `The provision command is used to create a new replication server
 using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
+		log.printf("I'm dedicated this dead code to Kolbe from MariaDB :) \n\nIt should work soon via calling the rejoin dump or custum script from the api")
 		/*	dbHost, dbPort := misc.SplitHostPort(source)
 			destHost, destPort := misc.SplitHostPort(destination)
 			dbUser, dbPass = misc.SplitPair(confs[cfgGroupIndex].User)
