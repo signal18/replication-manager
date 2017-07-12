@@ -30,9 +30,15 @@ type topologyError struct {
 
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
+	var err error
+	err = cluster.repmgrFlagCheck()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Failed to validate config: %s", err)
+		return err
+	}
+	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
-		var err error
 		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
@@ -41,13 +47,12 @@ func (cluster *Cluster) newServerList() error {
 		if cluster.conf.Verbose {
 			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
 		}
-
 	}
 	// Spider shard discover
 	if cluster.conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
 	}
-	err := cluster.newProxyList()
+	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
 	}

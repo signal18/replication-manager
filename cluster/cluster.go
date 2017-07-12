@@ -96,11 +96,6 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.runStatus = "A"
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
-	err := cluster.repmgrFlagCheck()
-	if err != nil {
-		return err
-	}
-
 	cluster.newServerList()
 	if cluster.conf.Interactive {
 		cluster.LogPrintf("INFO", "Failover in interactive mode")
@@ -288,19 +283,19 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
 		cluster.LogPrintf("ERROR", "No hosts list specified")
-		return errors.New("ERROR: No hosts list specified")
+		return errors.New("No hosts list specified")
 	}
 
 	// validate users
 	if cluster.conf.User == "" {
 		cluster.LogPrintf("ERROR", "No master user/pair specified")
-		return errors.New("ERROR: No master user/pair specified")
+		return errors.New("No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 
 	if cluster.conf.RplUser == "" {
 		cluster.LogPrintf("ERROR", "No replication user/pair specified")
-		return errors.New("ERROR: No replication user/pair specified")
+		return errors.New("No replication user/pair specified")
 	}
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
 
@@ -322,7 +317,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	pfa := strings.Split(cluster.conf.PrefMaster, ",")
 	if len(pfa) > 1 {
 		cluster.LogPrintf("ERROR", "Prefmaster option takes exactly one argument")
-		return errors.New("ERROR: prefmaster option takes exactly one argument")
+		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
 		for _, v := range cluster.hostList {
@@ -334,7 +329,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	}
 	if ret() == false && cluster.conf.PrefMaster != "" {
 		cluster.LogPrintf("ERROR", "Preferred master is not included in the hosts option")
-		return errors.New("ERROR: prefmaster option takes exactly one argument")
+		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	return nil
 }

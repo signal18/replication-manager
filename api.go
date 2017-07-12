@@ -520,7 +520,7 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
-	mycluster.LogPrintf("INFO", "Rest API receive Switchover request")
+	mycluster.LogPrintf("INFO", "Rest API receive switchover request")
 	mycluster.SwitchoverWaitTest()
 	return
 }
@@ -753,6 +753,7 @@ func handlerMuxServersAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.LogPrintf("INFO", "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
 	mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 
 }
