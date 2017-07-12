@@ -197,7 +197,10 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.conf = conf
+	cluster.sme.SetFailoverState()
 	cluster.newServerList()
+	cluster.TopologyDiscover()
+	cluster.sme.RemoveFailoverState()
 }
 
 func (cluster *Cluster) FailoverForce() error {
