@@ -8,7 +8,11 @@
 
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"log"
+
+	"github.com/spf13/cobra"
+)
 
 var (
 	source      string
@@ -33,7 +37,7 @@ var provisionCmd = &cobra.Command{
 	Long: `The provision command is used to create a new replication server
 using mysqldump or xtrabackup`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.printf("I'm dedicated this dead code to Kolbe from MariaDB :) \n\nIt should work soon via calling the rejoin dump or custum script from the api")
+		log.Println("I'm dedicated this dead code to Kolbe from MariaDB :) \n\nIt should work soon via calling the rejoin dump or custum script from the api")
 		/*	dbHost, dbPort := misc.SplitHostPort(source)
 			destHost, destPort := misc.SplitHostPort(destination)
 			dbUser, dbPass = misc.SplitPair(confs[cfgGroupIndex].User)
