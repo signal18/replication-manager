@@ -203,7 +203,11 @@ func (cluster *Cluster) StartAllNodes() error {
 }
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
-	cluster.conf.Hosts += "," + srv
+	cluster.conf.Hosts = cluster.conf.Hosts + "," + srv
+	cluster.sme.SetFailoverState()
+	cluster.newServerList()
+	cluster.TopologyDiscover()
+	cluster.sme.RemoveFailoverState()
 	return nil
 }
 

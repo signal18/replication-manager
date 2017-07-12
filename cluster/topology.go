@@ -113,10 +113,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 }
 
 func (cluster *Cluster) pingServerList() {
-	if cluster.sme.IsInState("WARN00008") {
-		cluster.LogPrintf("INFO", "In Failover skip ping server list")
-		return
-	}
+
 	wg := new(sync.WaitGroup)
 	for _, sv := range cluster.servers {
 		wg.Add(1)
@@ -157,13 +154,7 @@ func (cluster *Cluster) pingServerList() {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
-	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
-		return errors.New("In Failover skip topology detection")
-	}
-	if cluster.conf.LogLevel > 2 {
-		cluster.LogPrintf("DEBUG", "Entering topology detection")
-	}
+
 	wg := new(sync.WaitGroup)
 	for _, server := range cluster.servers {
 		wg.Add(1)
@@ -171,6 +162,13 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	wg.Wait()
 	cluster.pingServerList()
+	if cluster.sme.IsInFailover() {
+		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
+		return errors.New("In Failover skip topology detection")
+	}
+	if cluster.conf.LogLevel > 2 {
+		cluster.LogPrintf("DEBUG", "Entering topology detection")
+	}
 
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	if cluster.conf.MxsOn {
