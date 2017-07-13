@@ -64,7 +64,7 @@ List agents services resources
 /api/clusters/{clusterName}/settings
 /api/clusters/{clusterName}/settings/reload
 /api/clusters/{clusterName}/settings/switch/interactive
-/api/clusters/{clusterName}/settings/switch/readonly
+/api/clusters/{clusterName}/settings/switch/readonly 
 /api/clusters/{clusterName}/settings/switch/verbosity
 /api/clusters/{clusterName}/settings/switch/autorejoin
 /api/clusters/{clusterName}/settings/switch/rejoinflashback
