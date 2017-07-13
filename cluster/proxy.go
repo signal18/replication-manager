@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
+	"github.com/tanji/mariadb-tools/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
@@ -191,4 +193,35 @@ func (cluster *Cluster) initProxies() {
 			cluster.initMdbsproxy(nil, pr)
 		}
 	}
+}
+
+func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
+	var proxyHost string
+	var proxyPort string
+	proxyHost = ""
+	if cluster.conf.MxsOn {
+		proxyHost = cluster.conf.MxsHost
+		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
+
+	}
+	if cluster.conf.HaproxyOn {
+		proxyHost = "127.0.0.1"
+		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
+	}
+
+	_, err := dbhelper.CheckHostAddr(proxyHost)
+	if err != nil {
+		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
+		return nil, errmsg
+	}
+
+	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+
+	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	if proxyHost != "" {
+		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
+	}
+	cluster.LogPrint(dsn)
+	return sqlx.Open("mysql", dsn)
+
 }

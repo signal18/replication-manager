@@ -13,6 +13,9 @@ type Config struct {
 	ShareDir                           string `mapstructure:"share-directory"`
 	User                               string `mapstructure:"user"`
 	Hosts                              string `mapstructure:"hosts"`
+	HostsTLSCA                         string `mapstructure:"hosts-tls-ca-cert"`
+	HostsTLSKEY                        string `mapstructure:"hosts-tls-client-key"`
+	HostsTLSCLI                        string `mapstructure:"hosts-tls-client-cert"`
 	Socket                             string `mapstructure:"socket"`
 	RplUser                            string `mapstructure:"rpluser"`
 	Interactive                        bool   `mapstructure:"interactive"`

@@ -6,10 +6,11 @@
 package cluster
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
-	"fmt"
+	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,8 @@ type Cluster struct {
 	lastmaster           *ServerMonitor //saved when all cluster down
 	benchmarkType        string
 	openSVCServiceStatus int
+	haveDBTLSCert        bool
+	tlsconf              *tls.Config
 }
 
 // Init initial cluster definition
@@ -96,6 +99,16 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.runStatus = "A"
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
+
+	cluster.LogPrintf("INFO", "Loading database TLS certificates")
+	err := cluster.loadDBCertificate()
+	if err != nil {
+		cluster.haveDBTLSCert = false
+		cluster.LogPrintf("INFO", "Don't Have database TLS certificates")
+	} else {
+		cluster.haveDBTLSCert = true
+		cluster.LogPrintf("INFO", "Have database TLS certificates")
+	}
 	cluster.newServerList()
 	if cluster.conf.Interactive {
 		cluster.LogPrintf("INFO", "Failover in interactive mode")
@@ -267,6 +280,39 @@ func (cluster *Cluster) FailoverForce() error {
 
 func (cluster *Cluster) SwitchOver() {
 	cluster.switchoverChan <- true
+}
+
+func (cluster *Cluster) loadDBCertificate() error {
+
+	if cluster.conf.HostsTLSCA == "" {
+		return errors.New("No given CA certificate")
+	}
+	if cluster.conf.HostsTLSCLI == "" {
+		return errors.New("No given Client certificate")
+	}
+	if cluster.conf.HostsTLSKEY == "" {
+		return errors.New("No given Key certificate")
+	}
+	rootCertPool := x509.NewCertPool()
+	pem, err := ioutil.ReadFile(cluster.conf.HostsTLSCA)
+	if err != nil {
+		return errors.New("Can not load database TLS Authority CA")
+	}
+	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
+		return errors.New("Failed to append PEM.")
+	}
+	clientCert := make([]tls.Certificate, 0, 1)
+	certs, err := tls.LoadX509KeyPair(cluster.conf.HostsTLSCLI, cluster.conf.HostsTLSKEY)
+	if err != nil {
+		return errors.New("Can not load database TLS X509 key pair")
+	}
+	clientCert = append(clientCert, certs)
+	cluster.tlsconf = &tls.Config{
+		RootCAs:            rootCertPool,
+		Certificates:       clientCert,
+		InsecureSkipVerify: true,
+	}
+	return nil
 }
 
 // Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
@@ -636,37 +682,6 @@ func (cluster *Cluster) Close() {
 
 func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
-}
-
-func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	var proxyHost string
-	var proxyPort string
-	proxyHost = ""
-	if cluster.conf.MxsOn {
-		proxyHost = cluster.conf.MxsHost
-		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
-
-	}
-	if cluster.conf.HaproxyOn {
-		proxyHost = "127.0.0.1"
-		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
-	}
-
-	_, err := dbhelper.CheckHostAddr(proxyHost)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
-		return nil, errmsg
-	}
-
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
-
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if proxyHost != "" {
-		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
-	}
-	cluster.LogPrint(dsn)
-	return sqlx.Open("mysql", dsn)
-
 }
 
 func (cluster *Cluster) agentFlagCheck() {
