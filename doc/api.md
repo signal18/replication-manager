@@ -1,13 +1,15 @@
 The rest API is using JWT TLS and is served by default on port 3000 by the  replication-manager monitor
-One can customize  default port and credential via setting your own user password in config file  
 
+One can customize and credential via setting your own user password in config file  
+
+```
 api-port ="3000"
 api-user = "admin:mariadb"
+```
 
+At startup of the monitor some x509 certificates are loaded from the replication-manager share directory to ensure TLS https secure communication.
 
-At startup of the monitor some x509 certificates are loaded from the replication-manager from the share directory to ensure TLS https secure communication.
-
-Replace those file with your own to make sure your deployment is secured
+Replace those files with your own certificate to make sure your deployment is secured.
 
 ```
 # Key considerations for algorithm "RSA" ≥ 2048-bit
@@ -21,7 +23,13 @@ openssl req -new -x509 -sha256 -key server.key -out server.crt -days 3650
 
 At startup replication-manager monitor will generate in memory extra self signed RSA certificate to ensure token encryption exchange for JWT   
 
+# Calling API via client
 
+API can be call via command line client to simplify curl syntax with JWT token
+
+```
+./replication-manager api  --url="https://127.0.0.1:3000/api/clusters/ux_dck_zpool_loop/servers/actions/add/192.168.1.73/3306"   --cluster="ux_dck_zpool_loop"
+```
 
 # API unprotected endpoints
 
@@ -64,7 +72,7 @@ List agents services resources
 /api/clusters/{clusterName}/settings
 /api/clusters/{clusterName}/settings/reload
 /api/clusters/{clusterName}/settings/switch/interactive
-/api/clusters/{clusterName}/settings/switch/readonly 
+/api/clusters/{clusterName}/settings/switch/readonly
 /api/clusters/{clusterName}/settings/switch/verbosity
 /api/clusters/{clusterName}/settings/switch/autorejoin
 /api/clusters/{clusterName}/settings/switch/rejoinflashback
