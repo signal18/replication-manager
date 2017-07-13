@@ -47,36 +47,69 @@ OUTUT:
 # API protected endpoints
 
 /api/clusters/{clusterName}/actions/switchover
+
 /api/clusters/{clusterName}/actions/failover
+
 /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}
+
 /api/clusters/{clusterName}/actions/replication/cleanup
+
 /api/clusters/{clusterName}/actions/services todo
+
 /api/clusters/{clusterName}/actions/start-traffic todo
+
 /api/clusters/{clusterName}/actions/stop-traffic todo
+
 List agents services resources
+
 /api/clusters/{clusterName}/actions/services/bootstrap
+
 /api/clusters/{clusterName}/servers/actions/add/{host}/{port}
+
 /api/clusters/{clusterName}/servers/{serverName}/actions/start
+
 /api/clusters/{clusterName}/servers/{serverName}/actions/stop
+
 /api/clusters/{clusterName}/servers/{serverName}/actions/backup todo
+
 /api/clusters/{clusterName}/servers/{serverName}/actions/maintenance todo
+
 /api/clusters/{clusterName}/topology/servers
+
 /api/clusters/{clusterName}/topology/master
+
 /api/clusters/{clusterName}/topology/slaves
+
 /api/clusters/{clusterName}/topology/proxies
+
 /api/clusters/{clusterName}/topology/logs
+
 /api/clusters/{clusterName}/topology/alerts
+
 /api/clusters/{clusterName}/topology/crashes
+
 /api/clusters/{clusterName}/tests
+
 /api/clusters/{clusterName}/tests/actions/run/{testName}
+
 /api/clusters/{clusterName}/settings
+
 /api/clusters/{clusterName}/settings/reload
+
 /api/clusters/{clusterName}/settings/switch/interactive
+
 /api/clusters/{clusterName}/settings/switch/readonly
+
 /api/clusters/{clusterName}/settings/switch/verbosity
+
 /api/clusters/{clusterName}/settings/switch/autorejoin
+
 /api/clusters/{clusterName}/settings/switch/rejoinflashback
+
 /api/clusters/{clusterName}/settings/switch/rejoinmysqldump
+
 /api/clusters/{clusterName}/settings/switch/failoversync
+
 /api/clusters/{clusterName}/settings/switch/swithoversync
+
 /api/clusters/{clusterName}/settings/reset/failovercontrol
