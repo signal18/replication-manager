@@ -34,12 +34,13 @@ Product goals are topology detection and topology monitoring, enable on-demand s
     * [Usage](#usage)
         * [Command line switchover](#command-line-switchover)
         * [Command line failover](#command-line-failover)
-        * [Command line monitor](#Command-line-monitor)
-        * [Command line bootstrap](#Command-line-bootstrap)
+        * [Command line monitor](#command-line-monitor)
+        * [Command line bootstrap](#command-line-bootstrap)
         * [Monitor in daemon mode](#daemon-monitoring)
 * [Metrics](#metrics)
 * [Security](#security)
         * [JWT Rest API](doc/api.md)
+        * [SSL/TLS databases](#ssl/tls-databases)
 * [Features](#features)
 * [Faq](doc/FAQ.md)
 * [Community](#community)
@@ -929,7 +930,7 @@ When an encryption key is detected at `replication-manager monitor` start, the e
 
 All cients See [JWT Rest API](doc/api.md)
 
-###  SSL/TLS to backend databases
+###  SSL/TLS databases
 
 Some extra variables can be set in the configuration file for all databases in a cluster or in default section for all clusters
 

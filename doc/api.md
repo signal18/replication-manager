@@ -8,6 +8,8 @@ api-user = "admin:mariadb"
 At startup of the monitor some x509 certificates are loaded from the replication-manager from the share directory to ensure TLS https secure communication.
 
 Replace those file with your own to make sure your deployment is secured
+
+```
 # Key considerations for algorithm "RSA" ≥ 2048-bit
 openssl genrsa -out server.key 2048
 
@@ -15,13 +17,13 @@ openssl genrsa -out server.key 2048
 # List ECDSA the supported curves (openssl ecparam -list_curves)
 openssl ecparam -genkey -name secp384r1 -out server.key
 openssl req -new -x509 -sha256 -key server.key -out server.crt -days 3650
-
+```
 
 At startup replication-manager monitor will generate in memory extra self signed RSA certificate to ensure token encryption exchange for JWT   
 
-API:
 
-# OPEN ENDPOINTS
+
+# API unprotected endpoints
 
 /api/login
 INPUT:
@@ -34,7 +36,8 @@ OUTPUT:
 OUTUT:
 {"clusters":["ux_pkg_lvm_loop","ux_dck_zpool_loop","ux_dck_lvm_loop","ux_dck_nopool_loop","ux_pkg_nopool_loop","osx_pkg_nopool_loop","osx_dck_nopool_loop"]}
 
-# PROTECTED ENDPOINTS
+# API protected endpoints
+
 /api/clusters/{clusterName}/actions/switchover
 /api/clusters/{clusterName}/actions/failover
 /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}
