@@ -39,8 +39,8 @@ Product goals are topology detection and topology monitoring, enable on-demand s
         * [Monitor in daemon mode](#daemon-monitoring)
 * [Metrics](#metrics)
 * [Security](#security)
-        * [JWT Rest API](doc/api.md)
-        * [SSL/TLS databases](#ssl/tls-databases)
+    * [JWT Rest API](doc/api.md)
+    * [SSL databases](#ssl-databases)
 * [Features](#features)
 * [Faq](doc/FAQ.md)
 * [Community](#community)
@@ -926,11 +926,11 @@ user = "root:50711adb2ef2a959577edbda5cbe3d2ace844e750b20629a9bcb"
 
 When an encryption key is detected at `replication-manager monitor` start, the encrypted passwords will be automatically decrypted by the application. There is no further configuration change required.
 
-###  JWT Rest API
+### JWT Rest API
 
-All cients See [JWT Rest API](doc/api.md)
+All replications-manager clients use secure TLS protocol found specifications of API here: [JWT Rest API](doc/api.md)
 
-###  SSL/TLS databases
+### SSL databases
 
 Some extra variables can be set in the configuration file for all databases in a cluster or in default section for all clusters
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"strconv"
+	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -285,8 +286,8 @@ For interacting with this daemon use,
 				log.Fatal("Terminal too small, please increase window size")
 			}
 		}
-		//loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
-		//tlog = termlog.NewTermLog(loglen)
+		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
+		tlog = termlog.NewTermLog(loglen)
 		// Initialize go-carbon
 		var svc opensvc.Collector
 

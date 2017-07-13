@@ -23,79 +23,9 @@ func (cluster *Cluster) display() {
 	if cluster.cfgGroup != cluster.cfgGroupDisplay {
 		return
 	}
-	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" Replication Monitor and Health Checker for MariaDB and MySQL version %s ", cluster.repmgrVersion)
-	if cluster.cfgGroup != "" {
-		headstr += fmt.Sprintf("| Group: %s", cluster.cfgGroup)
-	}
-	if cluster.conf.Interactive == false {
-		headstr += " |  Mode: Automatic "
-	} else {
-		headstr += " |  Mode: Manual "
-	}
-	cluster.printfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	cluster.printfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-	cluster.tlog.Line = 3
-	for _, server := range cluster.servers {
-		// server.refresh()
-		var gtidCurr string
-		var gtidSlave string
-		if server.CurrentGtid != nil {
-			gtidCurr = server.CurrentGtid.Sprint()
-		} else {
-			gtidCurr = ""
-		}
-		if server.SlaveGtid != nil {
-			gtidSlave = server.SlaveGtid.Sprint()
-		} else {
-			gtidSlave = ""
-		}
-		repHeal := server.replicationCheck()
-		var fgCol termbox.Attribute
-		switch server.State {
-		case "Master":
-			fgCol = termbox.ColorGreen
-		case "Failed":
-			fgCol = termbox.ColorRed
-		case "Unconnected":
-			fgCol = termbox.ColorBlue
-		case "Suspect":
-			fgCol = termbox.ColorMagenta
-		case "SlaveErr":
-			fgCol = termbox.ColorMagenta
-		case "SlaveLate":
-			fgCol = termbox.ColorYellow
-		default:
-			fgCol = termbox.ColorWhite
-		}
-		cluster.printfTb(0, cluster.tlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.UsingGtid, gtidCurr, gtidSlave, repHeal, server.Delay.Int64, server.ReadOnly)
-		cluster.tlog.Line++
-	}
-	cluster.tlog.Line++
-	if cluster.master != nil {
-		if cluster.master.State != stateFailed {
-			cluster.printTb(0, cluster.tlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-S to switchover")
-		} else {
-			cluster.printTb(0, cluster.tlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover, Ctrl-(N|P) to change Cluster,Ctrl-H to help")
-		}
-	}
-	cluster.tlog.Line = cluster.tlog.Line + 3
+
 	cluster.tlog.Print()
-	if !cluster.conf.Daemon {
-		termbox.Flush()
-		_, newlen := termbox.Size()
-		if newlen == 0 {
-			// pass
-		} else if newlen > cluster.termlength {
-			cluster.termlength = newlen
-			cluster.tlog.Len = cluster.termlength - 9 - (len(cluster.hostList) * 3)
-			cluster.tlog.Extend()
-		} else if newlen < cluster.termlength {
-			cluster.termlength = newlen
-			cluster.tlog.Len = cluster.termlength - 9 - (len(cluster.hostList) * 3)
-			cluster.tlog.Shrink()
-		}
-	}
+
 }
 
 func (cluster *Cluster) DisplayHelp() {
