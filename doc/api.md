@@ -34,15 +34,23 @@ API can be call via command line client to simplify curl syntax with JWT token
 # API unprotected endpoints
 
 /api/login
-INPUT:
-{"username":"admin", "password":"mariadb"}
-OUTPUT:
-{"token":"hash"}
 
-/api/status todo
+INPUT:
+```
+{"username":"admin", "password":"mariadb"}
+```
+OUTPUT:
+```
+{"token":"hash"}
+```
+
 /api/clusters
-OUTUT:
+
+OUPUT:
+```
 {"clusters":["ux_pkg_lvm_loop","ux_dck_zpool_loop","ux_dck_lvm_loop","ux_dck_nopool_loop","ux_pkg_nopool_loop","osx_pkg_nopool_loop","osx_dck_nopool_loop"]}
+/api/status todo
+```
 
 # API protected endpoints
 
