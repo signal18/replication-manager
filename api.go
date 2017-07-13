@@ -18,13 +18,14 @@ import (
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
 	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/regtest"
 )
 
 //RSA KEYS AND INITIALISATION
 
 var signingKey, verificationKey []byte
+var apiPass string
+var apiUser string
 
 func initKeys() {
 	var (
@@ -242,10 +243,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiuser, apipass := misc.SplitPair(conf.APIUser)
-
 	//validate user credentials
-	if user.Username != apiuser || user.Password != apipass {
+	if user.Username != apiUser || user.Password != apiPass {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Println("Error logging in")
 		fmt.Fprint(w, "Invalid credentials")

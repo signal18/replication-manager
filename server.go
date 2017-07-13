@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tanji/replication-manager/cluster"
+	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/opensvc"
@@ -162,9 +163,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "88.191.151.84:80", "Arbitrator address")
 	monitorCmd.Flags().IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
 	monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10002", "Peer replication-manager hosts http port")
-
 	viper.BindPFlags(monitorCmd.Flags())
-
 	viper.RegisterAlias("mariadb-binary-path", "mariadb-mysqlbinlog-path")
 
 	var err error
@@ -172,6 +171,7 @@ func init() {
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
+
 }
 
 // initRepmgrFlags function is used to initialize flags that are common to several subcommands
@@ -308,16 +308,14 @@ For interacting with this daemon use,
 				"httpport":   conf.GraphiteCarbonServerPort,
 			}).Info("Carbon server started")
 
-			/*
-				carbonServer string host:port
-				carbonApiPort int
-				cacheType  default "mem"  "cache type to use"
-				mc default "" "comma separated memcached server list"
-				memsize int default 0 "in-memory cache size in MB (0 is unlimited)"
-				cpus int default 0 "number of CPUs to use"
-				tz string default "" "timezone,offset to use for dates with no timezone"
-				logdir string "logging directory"
-			*/
+			//	carbonServer string host:port
+			//	carbonApiPort int
+			//	cacheType  default "mem"  "cache type to use"
+			//	mc default "" "comma separated memcached server list"
+			//	memsize int default 0 "in-memory cache size in MB (0 is unlimited)"
+			//	cpus int default 0 "number of CPUs to use"
+			//	tz string default "" "timezone,offset to use for dates with no timezone"
+			//	logdir string "logging directory"
 
 			time.Sleep(2 * time.Second)
 			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.WorkingDir)
@@ -329,6 +327,13 @@ For interacting with this daemon use,
 		if err != nil {
 			log.WithError(err).Info("No existing password encryption scheme")
 			k = nil
+		}
+		apiUser, apiPass = misc.SplitPair(conf.APIUser)
+		if k != nil {
+			p := crypto.Password{Key: k}
+			p.CipherText = apiPass
+			p.Decrypt()
+			apiPass = p.PlainText
 		}
 		for _, gl := range cfgGroupList {
 			currentCluster = new(cluster.Cluster)
