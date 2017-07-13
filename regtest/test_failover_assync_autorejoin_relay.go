@@ -34,7 +34,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(SaveMaster)
+	cluster.StopDatabaseService(SaveMaster)
 	wg.Wait()
 	/// give time to start the failover
 
@@ -47,7 +47,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {

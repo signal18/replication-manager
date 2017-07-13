@@ -38,7 +38,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 	SaveMaster2 := cluster.GetMaster()
 
@@ -46,7 +46,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 
 	if cluster.GetMaster().URL == SaveMasterURL {
@@ -58,7 +58,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	//Recovered as slave first wait that it trigger master failover
 	time.Sleep(5 * time.Second)
@@ -66,7 +66,7 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster2)
+	cluster.StartDatabaseService(SaveMaster2)
 	wg2.Wait()
 
 	for _, s := range cluster.GetSlaves() {

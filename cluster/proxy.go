@@ -93,6 +93,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadPort = cluster.conf.HaproxyReadPort
 		prx.WritePort = cluster.conf.HaproxyWritePort
 		prx.ReadWritePort = cluster.conf.HaproxyWritePort
+		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -110,6 +111,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)

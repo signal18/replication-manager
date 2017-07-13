@@ -2,7 +2,7 @@
 # Example replication-manager configuration file
 
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
-# replication-manager  --config=./etc/config.toml.sample  --config-group=Cluster01,Cluster_Test_2_Nodes monitor --daemon
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
 
 [Cluster_Maxscale_MasterSlave]

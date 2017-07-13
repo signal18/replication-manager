@@ -31,7 +31,7 @@ func testFailoverAssyncAutoRejoinNowrites(cluster *cluster.Cluster, conf string,
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 	/// give time to start the failover
 
@@ -44,7 +44,7 @@ func testFailoverAssyncAutoRejoinNowrites(cluster *cluster.Cluster, conf string,
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)

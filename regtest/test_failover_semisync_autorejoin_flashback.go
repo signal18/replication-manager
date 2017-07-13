@@ -34,7 +34,7 @@ func testFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf stri
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 	/// give time to start the failover
 
@@ -47,7 +47,7 @@ func testFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf stri
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 	if cluster.CheckTableConsistency("test.sbtest") != true {

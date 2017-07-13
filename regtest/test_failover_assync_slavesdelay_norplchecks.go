@@ -42,7 +42,7 @@ func testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cluster *cluster.Cluster, c
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 

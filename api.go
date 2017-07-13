@@ -762,7 +762,7 @@ func handlerMuxServersStop(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.ShutdownMariaDB(node)
+	mycluster.StopDatabaseService(node)
 }
 
 func handlerMuxServersStart(w http.ResponseWriter, r *http.Request) {
@@ -770,7 +770,7 @@ func handlerMuxServersStart(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.StartMariaDB(node)
+	mycluster.StartDatabaseService(node)
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {

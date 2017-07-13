@@ -36,14 +36,14 @@ func testFailoverSemisyncAutoRejoinSafeMSMXMS(cluster *cluster.Cluster, conf str
 	time.Sleep(4 * time.Second)
 	SaveMaster2 := cluster.GetSlaves()[0]
 
-	cluster.KillMariaDB(cluster.GetSlaves()[0])
+	cluster.StopDatabaseService(cluster.GetSlaves()[0])
 
 	cluster.RunBench()
 
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster2)
+	cluster.StartDatabaseService(SaveMaster2)
 	wg2.Wait()
 	//Recovered as slave first wait that it trigger master failover
 	time.Sleep(5 * time.Second)

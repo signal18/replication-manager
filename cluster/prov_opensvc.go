@@ -62,7 +62,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 	}
 }
 
-func (cluster *Cluster) OpenSVCStopService(server *ServerMonitor) {
+func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
@@ -101,12 +101,10 @@ func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) {
 	}
 }
 
-func (cluster *Cluster) OpenSVCProvision() error {
+func (cluster *Cluster) OpenSVCProvisionCluster() error {
 
-	//	err :=  cluster.OpenSVCProvisionOneSrv()
 	err := cluster.OpenSVCProvisionOneSrvPerDB()
 	err = cluster.OpenSVCProvisionProxies()
-
 	return err
 }
 
@@ -116,14 +114,14 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
 	for _, node := range agents {
-		cluster.LogPrintf("ERROR", "Searching %s %s ", svc.ProvProxAgents, node.Node_name)
+		cluster.LogPrintf("INFO", "Searching %s %s ", svc.ProvProxAgents, node.Node_name)
 
 		if strings.Contains(svc.ProvProxAgents, node.Node_name) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
 	if len(clusteragents) == 0 {
-		cluster.LogPrintf("ERROR", "No agent found")
+		cluster.LogPrintf("ERROR", "No agent found for proxy provision")
 		return errors.New("No agent found for Proxy on this cluster")
 	}
 	srvlist := make([]string, len(cluster.servers))
@@ -138,6 +136,24 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 				if err != nil {
 					return err
 				}
+				idtemplate, err := svc.CreateTemplate(prx.Id, res)
+				if err != nil {
+					return err
+				}
+
+				idaction, _ := svc.ProvisionTemplate(idtemplate, clusteragents[i%len(clusteragents)].Node_id, prx.Id)
+				cluster.OpenSVCWaitDequeue(svc, idaction)
+				task := svc.GetAction(strconv.Itoa(idaction))
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			}
+		}
+		if prx.Type == proxySpider {
+			if strings.Contains(svc.ProvAgents, clusteragents[i%len(clusteragents)].Node_name) {
+				res, err := cluster.GenerateDBTemplate(svc, []string{prx.Host}, []string{prx.Port}, []opensvc.Host{clusteragents[i%len(clusteragents)]}, prx.Id, clusteragents[i%len(clusteragents)].Node_name)
+				if err != nil {
+					return err
+				}
+
 				idtemplate, err := svc.CreateTemplate(prx.Id, res)
 				if err != nil {
 					return err
@@ -196,7 +212,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			cluster.LogPrintf("INFO", "%s", task.Stderr)
-			cluster.WaitMariaDBStart(s)
+			cluster.WaitDatabaseStart(s)
 		}
 
 	}

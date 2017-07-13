@@ -336,7 +336,7 @@ func handlerStopServer(w http.ResponseWriter, r *http.Request) {
 	srv := r.URL.Query().Get("server")
 
 	node := currentCluster.GetServerFromName(srv)
-	currentCluster.ShutdownMariaDB(node)
+	currentCluster.StopDatabaseService(node)
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +345,7 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 
 	node := currentCluster.GetServerFromName(srv)
 	node.Conf = "semisync.cnf"
-	currentCluster.StartMariaDB(node)
+	currentCluster.StartDatabaseService(node)
 }
 
 func handlerUnprovision(w http.ResponseWriter, r *http.Request) {

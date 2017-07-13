@@ -38,19 +38,19 @@ func testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cluster *cluster.Cluster, co
 	SaveMaster2 := cluster.GetSlaves()[0]
 	wg := new(sync.WaitGroup)
 
-	cluster.KillMariaDB(cluster.GetSlaves()[0])
+	cluster.StopDatabaseService(cluster.GetSlaves()[0])
 
 	cluster.RunBench()
 
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster2)
+	cluster.StartDatabaseService(SaveMaster2)
 	wg2.Wait()
 	//Recovered as slave first wait that it trigger master failover
 	time.Sleep(5 * time.Second)
@@ -58,7 +58,7 @@ func testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cluster *cluster.Cluster, co
 
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 
 	for _, s := range cluster.GetSlaves() {

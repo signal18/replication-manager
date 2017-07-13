@@ -28,13 +28,13 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	SaveMasterURL := SaveMaster.URL
 	//clusteruster.DelayAllSlaves()
 	killedSlave := cluster.GetSlaves()[0]
-	cluster.KillMariaDB(killedSlave)
+	cluster.StopDatabaseService(killedSlave)
 
 	time.Sleep(5 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
-	cluster.KillMariaDB(cluster.GetMaster())
+	cluster.StopDatabaseService(cluster.GetMaster())
 	wg.Wait()
 	/// give time to start the failover
 
@@ -45,12 +45,12 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	}
 	cluster.PrepareBench()
 
-	cluster.StartMariaDB(killedSlave)
+	cluster.StartDatabaseService(killedSlave)
 	time.Sleep(12 * time.Second)
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartMariaDB(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 
