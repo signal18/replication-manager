@@ -32,7 +32,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvFSPool = cluster.conf.ProvDiskPool
 	svc.ProvFSMode = cluster.conf.ProvDiskType
 	svc.ProvFSPath = cluster.conf.ProvDiskDevice
-
+	svc.ProvDockerImg = cluster.conf.ProvDbImg
 	svc.ProvProxAgents = cluster.conf.ProvProxAgents
 	svc.ProvProxDisk = cluster.conf.ProvProxDisk
 	svc.ProvProxNetMask = cluster.conf.ProvProxNetmask
@@ -43,6 +43,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxFSPool = cluster.conf.ProvProxDiskPool
 	svc.ProvProxFSMode = cluster.conf.ProvProxDiskType
 	svc.ProvProxFSPath = cluster.conf.ProvProxDiskDevice
+	svc.ProvProxDockerImg = cluster.conf.ProvProxImg
 	svc.Verbose = 1
 
 	return svc
@@ -356,7 +357,7 @@ mysql_root_password = ` + collector.ProvPwd + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img =  asosso/maxscale:latest
+maxscale_img = ` + collector.ProvProxDockerImg + `
 vip_addr =  ` + prx.Host + `
 vip_netmask =  ` + collector.ProvProxNetMask + `
 port_rw = ` + strconv.Itoa(prx.WritePort) + `
@@ -427,7 +428,7 @@ show_disabled = false
 [env]
 nodes = ` + agent + `
 size = ` + collector.ProvDisk + `
-db_img = mariadb:latest
+db_img = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
 mysql_root_password = ` + collector.ProvPwd + `

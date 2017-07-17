@@ -173,6 +173,9 @@ type Config struct {
 	ProvMdbshardproxyVip               string `mapstructure:"prov-proxy-net-mdbsproxy-vip"`
 	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
-	APIUser                            string `mapstructure:"api-user"`
-	APIPort                            string `mapstructure:"api-port"`
+	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
+	ProvProxImg                        string `mapstructure:"prov-proxy-docker-img"`
+
+	APIUser string `mapstructure:"api-user"`
+	APIPort string `mapstructure:"api-port"`
 }

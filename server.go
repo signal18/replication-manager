@@ -228,6 +228,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
 	cmd.Flags().StringVar(&conf.ProvDisk, "prov-db-disk-size", "20g", "Disk in g for micro service VM")
 	cmd.Flags().StringVar(&conf.ProvIops, "prov-db-disk-iops", "300", "Rnd IO/s in for micro service VM")
+	cmd.Flags().StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
 	cmd.Flags().StringVar(&conf.ProvDiskFS, "prov-db-disk-fs", "ext4", "[zfs|xfs|ext4]")
 	cmd.Flags().StringVar(&conf.ProvDiskPool, "prov-db-disk-pool", "none", "[none|zpool|lvm]")
 	cmd.Flags().StringVar(&conf.ProvDiskType, "prov-db-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
@@ -246,6 +247,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.ProvProxNetIface, "prov-proxy-net-iface", "eth0", "HBA Device to hold Ips")
 	cmd.Flags().StringVar(&conf.ProvProxGateway, "prov-proxy-net-gateway", "192.168.0.254", "Micro Service network gateway")
 	cmd.Flags().StringVar(&conf.ProvProxNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
+	cmd.Flags().StringVar(&conf.ProvProxImg, "prov-proxy-docker-img", "asosso/maxscale:latest", "Docker image for proxy")
+
 	viper.BindPFlags(cmd.Flags())
 
 }

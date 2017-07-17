@@ -82,6 +82,7 @@ type Collector struct {
 	ProvFSPool         string
 	ProvFSMode         string
 	ProvFSPath         string
+	ProvDockerImg      string
 	ProvProxAgents     string
 	ProvProxDisk       string
 	ProvProxNetMask    string
@@ -92,8 +93,8 @@ type Collector struct {
 	ProvProxFSPool     string
 	ProvProxFSMode     string
 	ProvProxFSPath     string
-
-	Verbose int
+	ProvProxDockerImg  string
+	Verbose            int
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]

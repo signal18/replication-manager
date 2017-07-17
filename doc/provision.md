@@ -166,5 +166,3 @@ On Unix systems, if the root account has no rsa key, a 2048 bits rsa key is gene
 Micro services placement will follow a round robin mode against the agents listed for a cluster  
 
 A bootstap, and unprovision command is printed in the web interface
-
-The a
