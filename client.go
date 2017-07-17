@@ -217,7 +217,7 @@ var apiCmd = &cobra.Command{
 	Short: "Call JWT API",
 	Long:  `Performs call to jwt api served by monitoring`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliInit(true)
+		cliInit(false)
 		res, err := cliAPICmd(cliUrl)
 		if err != nil {
 			log.Fatal("Error in API call")

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -99,6 +100,9 @@ func apiserver() {
 	router.HandleFunc("/api/login", loginHandler)
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
+	))
+	router.Handle("/api/status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
 	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
@@ -784,4 +788,10 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+}
+
+func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, `{"alive": true}`)
 }

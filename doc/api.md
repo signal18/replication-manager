@@ -52,6 +52,14 @@ OUPUT:
 /api/status todo
 ```
 
+/api/status
+
+OUPUT:
+```
+{"alive": true}      
+./replication-manager api  --url="https://127.0.0.1:3000/api/status"  
+```
+
 # API protected endpoints
 
 /api/clusters/{clusterName}/actions/switchover
