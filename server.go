@@ -201,7 +201,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
 
 	cmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover")
-	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write MRM messages to a log file")
+	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write output messages to log file")
 	cmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
 	cmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
