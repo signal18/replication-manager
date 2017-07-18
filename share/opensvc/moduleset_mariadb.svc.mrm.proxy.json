@@ -1,21 +1,6 @@
 {
     "modulesets": [
         {
-            "modules": [],
-            "rulesets": [],
-            "modset_name": "mariadb.svc.mrm.proxy",
-            "modulesets": [
-                "mariadb.svc.mrm.proxy.cnf"
-            ],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 346,
-            "responsibles": [
-                "replication-manager"
-            ]
-        },
-        {
             "modules": [
                 {
                     "autofix": false,
@@ -396,10 +381,10 @@
                     "id": 5923
                 },
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/launcher\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nBASE_DIR=%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%\\nSERVER_IP=%%ENV:SERVER_IP%%\\nSERVER_PORT=%%ENV:SERVER_PORT%%\\nUSER=%%ENV:USER_ADMIN%%\\nMAXSCALE_ROOT_PASSWORD=%%ENV:PASSWORD_ADMIN%%\\nfunction _status {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD help\\n}\\n\\nfunction _stop {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD shutdown maxscale\\n}\\n\\nfunction _start {\\n\\tmaxscale -d --config=$BASE_DIR/conf/maxscale.cnf --datadir=$BASE_DIR/data --logdir==$BASE_DIR/data\\n}\\n\\ncase $1 in\\nstart)\\n        _status && {\\n                echo \\\"already started\\\"\\n                exit 0\\n        }\\n        _start\\n        ;;\\nstop)\\n        _status || {\\n                echo \\\"already stopped\\\"\\n                exit 0\\n        }\\n        _stop\\n        ;;\\nstatus)\\n        _status\\n        exit $?\\n        ;;\\ninfo)\\n        ;;\\nesac\\n\\n\"}",
-                    "var_updated": "2017-06-29 11:14:53",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/launcher\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nBASE_DIR=%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%\\nSERVER_IP=%%ENV:SERVER_IP%%\\nSERVER_PORT=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\nUSER=admin\\nMAXSCALE_ROOT_PASSWORD=mariadb\\nfunction _status {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD help\\n}\\n\\nfunction _stop {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD shutdown maxscale\\n}\\n\\nfunction _start {\\n\\tmaxscale -d --config=$BASE_DIR/conf/maxscale.cnf --datadir=$BASE_DIR/data --logdir=$BASE_DIR/data --piddir=$BASE_DIR/data &\\n}\\n\\ncase $1 in\\nstart)\\n        _status && {\\n                echo \\\"already started\\\"\\n                exit 0\\n        }\\n        _start\\n        ;;\\nstop)\\n        _status || {\\n                echo \\\"already stopped\\\"\\n                exit 0\\n        }\\n        _stop\\n        ;;\\nstatus)\\n        _status\\n        exit $?\\n        ;;\\ninfo)\\n        ;;\\nesac\\n\\n\"}",
+                    "var_updated": "2017-07-17 12:13:07",
                     "var_name": "proxy_cnf_launcher",
                     "id": 5926
                 },

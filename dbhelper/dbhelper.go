@@ -512,7 +512,7 @@ func GetTables(db *sqlx.DB) ([]Table, error) {
 
 func GetSchemas(db *sqlx.DB) ([]string, error) {
 	sch := []string{}
-	err := db.Select(&sch, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema','replication_manager_schema')")
+	err := db.Select(&sch, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
 	if err != nil {
 		return nil, errors.New("Could not get table lis")
 	}
@@ -1064,6 +1064,15 @@ func InjectLongTrx(db *sqlx.DB, time int) error {
 	benchWarmup(db)
 	_, err := db.Exec("set binlog_format='STATEMENT'")
 	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val)  select  sleep(" + fmt.Sprintf("%d", time) + ") from dual")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func InjectTrx(db *sqlx.DB) error {
+
+	_, err := db.Exec("INSERT INTO replication_manager_schema.bench(val)  VALUES(1)")
 	if err != nil {
 		return err
 	}

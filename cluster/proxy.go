@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/mariadb-tools/dbhelper"
+	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
 	"github.com/tanji/replication-manager/state"
@@ -159,6 +159,22 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 	}
 }
 
+func (cluster *Cluster) InjectTraffic() {
+	// Found server from ServerId
+	for _, pr := range cluster.proxies {
+		db, err := cluster.GetClusterThisProxyConn(pr)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+		} else {
+			err := dbhelper.InjectTrx(db)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "%s", err.Error())
+			}
+			db.Close()
+		}
+	}
+}
+
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
@@ -224,6 +240,18 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
 	}
 	cluster.LogPrint(dsn)
+	return sqlx.Open("mysql", dsn)
+
+}
+
+func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
+
+	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	if prx.Host != "" {
+		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+	}
+
 	return sqlx.Open("mysql", dsn)
 
 }

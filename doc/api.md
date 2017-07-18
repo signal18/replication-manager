@@ -72,9 +72,9 @@ OUPUT:
 
 /api/clusters/{clusterName}/actions/services todo
 
-/api/clusters/{clusterName}/actions/start-traffic todo
+/api/clusters/{clusterName}/actions/start-traffic
 
-/api/clusters/{clusterName}/actions/stop-traffic todo
+/api/clusters/{clusterName}/actions/stop-traffic 
 
 List agents services resources
 

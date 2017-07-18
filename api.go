@@ -151,7 +151,7 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxResetFailoverControl)),
 	))
 
-	//PROTECTED ENDPOINTS FOR CLUSTERS
+	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
 
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
@@ -173,6 +173,17 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/start-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStopTraffic)),
+	))
+
+	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
+
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServers)),
@@ -421,6 +432,22 @@ func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	mycluster.MasterFailover(true)
+	return
+}
+
+func handlerMuxStartTraffic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SetTraffic(true)
+	return
+}
+
+func handlerMuxStopTraffic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	mycluster.SetTraffic(false)
 	return
 }
 

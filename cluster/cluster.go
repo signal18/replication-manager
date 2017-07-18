@@ -74,6 +74,7 @@ type Cluster struct {
 	openSVCServiceStatus int
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
+	haveTraffic          bool
 }
 
 // Init initial cluster definition
@@ -154,6 +155,9 @@ func (cluster *Cluster) Run() {
 				}
 			} else {
 				cluster.refreshProxies()
+				if cluster.haveTraffic {
+					go cluster.InjectTraffic()
+				}
 			}
 			// switchover / failover only on Active
 			cluster.CheckFailed()
@@ -395,6 +399,16 @@ func (cluster *Cluster) ToggleInteractive() {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.conf.Interactive = check
+}
+
+func (cluster *Cluster) SetTraffic(traffic bool) {
+	cluster.SetBenchMethod("table")
+	cluster.PrepareBench()
+	cluster.haveTraffic = traffic
+}
+
+func (cluster *Cluster) GetTraffic() bool {
+	return cluster.haveTraffic
 }
 
 func (cluster *Cluster) SetBenchMethod(m string) {

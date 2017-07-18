@@ -140,7 +140,8 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) {
 	} else {
 		cluster.LocalhostInitDatabase(srv, srv.Id, "mdbsproxy.cnf")
 	}
-	if !srv.IsDown() {
+
+	if srv.Conn != nil {
 		query := `create table if not exists mysql.spider_xa(
     format_id int not null default 0,
     gtrid_length int not null default 0,
