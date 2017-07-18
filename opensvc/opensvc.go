@@ -60,6 +60,11 @@ type Service struct {
 	Svc_id     string `json:"svc_id"`
 }
 
+type Tag struct {
+	Tag_name string `json:"tag_name"`
+	Tag_id   string `json:"tag_id"`
+}
+
 type HostList []*Host
 
 type Collector struct {
@@ -72,6 +77,7 @@ type Collector struct {
 	ProvAgents         string
 	ProvMem            string
 	ProvIops           string
+	ProvTags           string
 	ProvDisk           string
 	ProvPwd            string
 	ProvNetMask        string
@@ -366,6 +372,40 @@ func (collector *Collector) SetAppCodeResponsible(appid int, groupid int) (strin
 
 }
 
+func (collector *Collector) SetServiceTag(tag_id string, service_id string) (string, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags/" + tag_id + "/services/" + service_id
+	log.Println("INFO ", urlpost)
+	data := url.Values{}
+	b := bytes.NewBuffer([]byte(data.Encode()))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	req.SetBasicAuth(collector.User, collector.Pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	type response struct {
+		Info string `json:"info"`
+	}
+	var r response
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		return "", err
+	}
+	log.Println(string(body))
+	return string(body), nil
+
+}
+
 func (collector *Collector) SetAppCodePublication(appid int, groupid int) (string, error) {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
@@ -437,6 +477,75 @@ func (collector *Collector) CreateAppCode(code string) (int, error) {
 	log.Println(string(body))
 	return m.Data[0].Id, nil
 
+}
+
+func (collector *Collector) CreateTag(tag string) (string, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags"
+	log.Println("INFO ", urlpost)
+	data := url.Values{}
+	data.Add("tag_name", tag)
+	b := bytes.NewBuffer([]byte(data.Encode()))
+	req, err := http.NewRequest("POST", urlpost, b)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	type Message struct {
+		Data []Tag `json:"data"`
+	}
+	var m Message
+
+	err = json.Unmarshal(body, &m)
+	if err != nil {
+		return "", err
+	}
+	log.Println(string(body))
+	return m.Data[0].Tag_id, nil
+}
+
+func (collector *Collector) CreateService(service string, app string) (string, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services"
+	log.Println("INFO ", urlpost)
+	data := url.Values{}
+	data.Add("svcname", service)
+	data.Add("svc_app", app)
+	b := bytes.NewBuffer([]byte(data.Encode()))
+	req, err := http.NewRequest("POST", urlpost, b)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	type Message struct {
+		Data []Service `json:"data"`
+	}
+	var m Message
+
+	err = json.Unmarshal(body, &m)
+	if err != nil {
+		return "", err
+	}
+	log.Println(string(body))
+	return m.Data[0].Svc_id, nil
 }
 
 func (collector *Collector) SetPrimaryGroup(groupid int, userid int) (string, error) {
@@ -661,6 +770,53 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 		return nil, err
 	}
 	return r.Groups, nil
+}
+
+func (collector *Collector) GetTagIdFromTags(tags []Tag, name string) (string, error) {
+	for _, tag := range tags {
+		if tag.Tag_name == name {
+			return tag.Tag_id, nil
+		}
+	}
+	return "", errors.New("No tag found")
+}
+
+func (collector *Collector) GetTags() ([]Tag, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags?limit=0"
+	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+
+	type Message struct {
+		Tags []Tag `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	return r.Tags, nil
 }
 
 func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {

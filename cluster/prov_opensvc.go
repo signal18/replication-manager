@@ -23,6 +23,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvMem = cluster.conf.ProvMem
 	svc.ProvPwd = cluster.GetDbPass()
 	svc.ProvIops = cluster.conf.ProvIops
+	svc.ProvTags = cluster.conf.ProvTags
 	svc.ProvDisk = cluster.conf.ProvDisk
 	svc.ProvNetMask = cluster.conf.ProvNetmask
 	svc.ProvNetGateway = cluster.conf.ProvGateway
@@ -154,7 +155,6 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 				if err != nil {
 					return err
 				}
-
 				idtemplate, err := svc.CreateTemplate(prx.Id, res)
 				if err != nil {
 					return err
@@ -191,6 +191,10 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		return errors.New("No agent found for this cluster")
 	}
 
+	// create the db tags
+	var taglist []string
+	taglist = strings.Split(svc.ProvTags, ",")
+	svctags, _ := svc.GetTags()
 	var iplist []string
 	var portlist []string
 	for i, s := range servers {
@@ -208,12 +212,28 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 			if err != nil {
 				return err
 			}
+			mysrv, err := svc.GetServiceFromName(s.Id)
+			idsrv := mysrv.Svc_id
+			if idsrv == "" || err != nil {
+				idsrv, err = svc.CreateService(s.Id, "MariaDB")
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Can't create service")
+				}
+			}
+			for _, tag := range taglist {
+				idtag, err := svc.GetTagIdFromTags(svctags, tag)
+				if err != nil {
+					idtag, _ = svc.CreateTag(tag)
+				}
+				svc.SetServiceTag(idtag, idsrv)
+			}
 			idtemplate, _ := svc.CreateTemplate(s.Id, res)
 			idaction, _ := svc.ProvisionTemplate(idtemplate, clusteragents[i%len(clusteragents)].Node_id, s.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			cluster.LogPrintf("INFO", "%s", task.Stderr)
 			cluster.WaitDatabaseStart(s)
+
 		}
 
 	}
