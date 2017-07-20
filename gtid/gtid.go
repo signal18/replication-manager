@@ -95,3 +95,11 @@ func (gl List) Sprint() string {
 	}
 	return strings.Join(sl, ",")
 }
+
+func (gl List) Equal(glcomp List) bool {
+	//	var sl []string
+	//	for _, g := range gl {
+
+	//	}
+	return true
+}

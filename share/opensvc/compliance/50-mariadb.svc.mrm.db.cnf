@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PATH_LIB=$OSVC_PATH_COMP/com.replication-manager
-PREFIX=OSVC_COMP_DB_CNF
+PREFIX=OSVC_COMP_DB
 
 typeset -i r=0
 typeset -i OSVC_COMP_CHECKPOINTIOPS OSVC_COMP_IBPINSTANCES
@@ -27,7 +27,9 @@ check)
 		IFS=. read -r a b c d <<< "${!server_ip}"
 		export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
 
-		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX} check
+		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_CNF check
+		[ $? -eq 1 ] && r=1
+		$OSVC_PYTHON $PATH_LIB/symlink.py ${PREFIX}_LINK check
 		[ $? -eq 1 ] && r=1
 	done
 	exit $r
@@ -45,7 +47,9 @@ fix)
 		export OSVC_COMP_SERVER_IP=${!server_ip}
 		IFS=. read -r a b c d <<< "${!server_ip}"
 		export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
-		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX} fix
+		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_CNF fix
+		[ $? -eq 1 ] && exit 1
+		$OSVC_PYTHON $PATH_LIB/symlink.py ${PREFIX}_LINK fix
 		[ $? -eq 1 ] && exit 1
 	done
 	exit 0
