@@ -64,43 +64,50 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 	}
 }
 
-func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) {
+func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
-	agents := svc.GetNodes()
-	var clusteragents []opensvc.Host
-
-	for _, node := range agents {
-
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
-			clusteragents = append(clusteragents, node)
-		}
+	service, err := svc.GetServiceFromName(server.Id)
+	if err != nil {
+		return err
 	}
-	for i, srv := range cluster.servers {
-		agenti := i % len(clusteragents)
-		service, _ := svc.GetServiceFromName(srv.Id)
-		if srv.Id == server.Id {
-			svc.StopService(strconv.Itoa(clusteragents[agenti].Id), strconv.Itoa(service.Id))
-		}
+	agent, err := cluster.FoundDatabaseAgent(server)
+	if err != nil {
+		return err
 	}
+	svc.StopService(agent.Node_id, service.Svc_id)
+	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) {
+func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
-
+	var agent opensvc.Host
 	for _, node := range agents {
 		if strings.Contains(svc.ProvAgents, node.Node_name) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
 	for i, srv := range cluster.servers {
-		agenti := i % len(clusteragents)
 		if srv.Id == server.Id {
-			service, _ := svc.GetServiceFromName(srv.Id)
-			svc.StartService(clusteragents[agenti].Node_id, service.Svc_id)
+			return clusteragents[i%len(clusteragents)], nil
 		}
 	}
+	return agent, errors.New("Indice not found in database agent list")
+}
+
+func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	service, err := svc.GetServiceFromName(server.Id)
+	if err != nil {
+		return err
+	}
+	agent, err := cluster.FoundDatabaseAgent(server)
+	if err != nil {
+		return err
+	}
+	svc.StartService(agent.Node_id, service.Svc_id)
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCProvisionCluster() error {
@@ -116,8 +123,6 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
 	for _, node := range agents {
-		cluster.LogPrintf("INFO", "Searching %s %s ", svc.ProvProxAgents, node.Node_name)
-
 		if strings.Contains(svc.ProvProxAgents, node.Node_name) {
 			clusteragents = append(clusteragents, node)
 		}

@@ -705,12 +705,20 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
-		for ss.Gtid_IO_Pos != ss.Gtid_Slave_Pos && ss.Using_Gtid != "" && ss.Gtid_Slave_Pos != "" {
+		myGtid_IO_Pos := gtid.NewList(ss.Gtid_IO_Pos)
+		myGtid_Slave_Pos := gtid.NewList(ss.Gtid_Slave_Pos)
+
+		//server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s equal: %s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint(), myGtid_Slave_Pos.Equal(myGtid_IO_Pos))
+
+		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.Using_Gtid != "" && ss.Gtid_Slave_Pos != "" {
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
+			myGtid_IO_Pos = gtid.NewList(ss.Gtid_IO_Pos)
+			myGtid_Slave_Pos = gtid.NewList(ss.Gtid_Slave_Pos)
+
 			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.Gtid_IO_Pos, ss.Gtid_Slave_Pos)
 		}
 	} else {

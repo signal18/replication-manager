@@ -307,7 +307,7 @@ autorejoin = true
 autorejoin-semisync = true
 autorejoin-flashback = true
 autorejoin-mysqldump = false
-
+autorejoin-backup-binlog = true
 
 # ETCD CLUSTER
 # ------------
