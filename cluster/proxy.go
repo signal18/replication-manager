@@ -178,17 +178,11 @@ func (cluster *Cluster) InjectTraffic() {
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
-			//for _, server := range cluster.servers {
-			//	if server.PrevState != server.State {
-			//		cluster.initMaxscale(nil, pr)
-			//		break
-			//	}
-			//}
+			cluster.refreshMaxscale(pr)
 		}
 		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {
 				cluster.refreshMdbsproxy(nil, pr)
-
 			}
 		}
 	}

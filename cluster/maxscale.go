@@ -8,11 +8,49 @@
 package cluster
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/state"
 )
+
+func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
+	if cluster.conf.MxsOn == false {
+		return
+	}
+
+	m := maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
+	if cluster.conf.MxsOn {
+		err := m.Connect()
+		if err != nil {
+			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
+			return
+		}
+	}
+	for _, server := range cluster.servers {
+		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/servers")
+			if err != nil {
+				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
+			}
+			srvport, _ := strconv.Atoi(server.Port)
+			server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
+		} else {
+			_, err := m.ListServers()
+			if err != nil {
+				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
+			} else {
+				//		server.ClusterGroup.LogPrint("get MaxScale server list")
+				var connections string
+				server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+				server.MxsServerConnections, _ = strconv.Atoi(connections)
+				//server.ClusterGroup.LogPrintf("INFO", "Affect for server %s, %s %s  ", server.IP, server.MxsServerName, server.MxsServerStatus)
+			}
+		}
+	}
+	m.Close()
+}
 
 func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 	if cluster.conf.MxsOn == false {

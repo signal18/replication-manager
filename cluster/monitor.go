@@ -27,8 +27,6 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/graphite"
 	"github.com/tanji/replication-manager/gtid"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
 
 	"github.com/tanji/replication-manager/misc"
 )
@@ -541,34 +539,6 @@ func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveSt
 		}
 	}
 	return nil, errors.New("Empty replications channels")
-}
-
-func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
-	if server.ClusterGroup.conf.MxsOn == false {
-		return
-	}
-	if server.ClusterGroup.conf.MxsGetInfoMethod == "maxinfo" {
-
-		_, err := m.GetMaxInfoServers("http://" + server.ClusterGroup.conf.MxsHost + ":" + strconv.Itoa(server.ClusterGroup.conf.MxsMaxinfoPort) + "/servers")
-		if err != nil {
-			server.ClusterGroup.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
-		}
-		srvport, _ := strconv.Atoi(server.Port)
-		server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
-	} else {
-
-		_, err := m.ListServers()
-		if err != nil {
-			server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
-		} else {
-			//		server.ClusterGroup.LogPrint("get MaxScale server list")
-			var connections string
-			server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
-			server.MxsServerConnections, _ = strconv.Atoi(connections)
-			//server.ClusterGroup.LogPrintf("INFO", "Affect for server %s, %s %s  ", server.IP, server.MxsServerName, server.MxsServerStatus)
-		}
-	}
-
 }
 
 /* Check replication health and return status string */
