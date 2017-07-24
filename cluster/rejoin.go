@@ -47,6 +47,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 				}
 			}
 			crash.delete(&server.ClusterGroup.crashes)
+			server.ClusterGroup.Save()
 			server.ClusterGroup.rejoinCond.Send <- true
 		}
 	} else {

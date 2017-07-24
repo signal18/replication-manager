@@ -216,6 +216,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 	cluster.crashes = append(cluster.crashes, crash)
+	cluster.Save()
 	// Call post-failover script before unlocking the old master.
 	if cluster.conf.PostScript != "" {
 		cluster.LogPrintf("INFO", "Calling post-failover script")

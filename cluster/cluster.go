@@ -8,6 +8,7 @@ package cluster
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"os"
@@ -116,6 +117,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	} else {
 		cluster.LogPrintf("INFO", "Failover in automatic mode")
 	}
+	cluster.ReloadFromSave()
 	return nil
 }
 
@@ -188,6 +190,46 @@ func (cluster *Cluster) Run() {
 	}
 }
 
+func (cluster *Cluster) Save() error {
+
+	type Save struct {
+		Servers string    `json:"servers"`
+		Crashes crashList `json:"crashes"`
+	}
+
+	var clsave Save
+	clsave.Crashes = cluster.crashes
+	clsave.Servers = cluster.conf.Hosts
+	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
+	err := ioutil.WriteFile(cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json", saveJson, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) ReloadFromSave() error {
+
+	type Save struct {
+		Servers string    `json:"servers"`
+		Crashes crashList `json:"crashes"`
+	}
+
+	var clsave Save
+	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".json")
+	if err != nil {
+		cluster.LogPrintf("ERROR", "File error: %v\n", err)
+		return err
+	}
+	err = json.Unmarshal(file, &clsave)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "File error: %v\n", err)
+		return err
+	}
+	cluster.crashes = clsave.Crashes
+	return nil
+}
+
 func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
 	cluster.conf = conf
 	cluster.agentFlagCheck()
@@ -224,11 +266,11 @@ func (cluster *Cluster) FailoverForce() error {
 	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
 	err := sf.access()
 	if err != nil {
-		cluster.LogPrint("WARN : Could not create state file")
+		cluster.LogPrintf("WARNING", "Could not create state file")
 	}
 	err = sf.read()
 	if err != nil {
-		cluster.LogPrint("WARN : Could not read values from state file:", err)
+		cluster.LogPrintf("WARNING", "Could not read values from state file:", err)
 	} else {
 		cluster.failoverCtr = int(sf.Count)
 		cluster.failoverTs = sf.Timestamp

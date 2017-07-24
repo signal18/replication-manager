@@ -298,6 +298,7 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 		srvs[i].Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 
 	err = e.Encode(srvs)
 	if err != nil {
@@ -373,6 +374,7 @@ func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 		srvs[i].Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err = e.Encode(srvs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -383,6 +385,7 @@ func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 
 func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(agents)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -424,7 +427,7 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 
 func handlerProxies(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-
+	e.SetIndent("", "\t")
 	err := e.Encode(currentCluster.GetProxies())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -449,6 +452,7 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 		srvs.Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(srvs)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -462,6 +466,7 @@ func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 	a.Errors = currentCluster.GetStateMachine().GetOpenErrors()
 	a.Warnings = currentCluster.GetStateMachine().GetOpenWarnings()
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(a)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)

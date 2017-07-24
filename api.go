@@ -373,7 +373,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 		srvs[i].Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
-
+	e.SetIndent("", "\t")
 	err = e.Encode(srvs)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -401,7 +401,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 		srvs[i].Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
-
+	e.SetIndent("", "\t")
 	err = e.Encode(srvs)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -423,6 +423,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err = e.Encode(prxs)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -438,6 +439,7 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 	a.Errors = mycluster.GetStateMachine().GetOpenErrors()
 	a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(a)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -592,6 +594,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 		srvs.Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(srvs)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -680,7 +683,7 @@ func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	e := json.NewEncoder(w)
-
+	e.SetIndent("", "\t")
 	err := e.Encode(clusterlogs)
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
@@ -693,6 +696,7 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(mycluster.GetCrashes())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -708,6 +712,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	regtest := new(regtest.RegTest)
 	res := regtest.RunAllTests(mycluster, vars["testName"])
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(res)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -725,6 +730,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 
 	res := regtest.RunAllTests(mycluster, "ALL")
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(res)
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
@@ -781,6 +787,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Topology = mycluster.GetTopology()
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(s)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -861,6 +868,7 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(s)
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
