@@ -74,7 +74,7 @@ OUPUT:
 
 /api/clusters/{clusterName}/actions/start-traffic
 
-/api/clusters/{clusterName}/actions/stop-traffic 
+/api/clusters/{clusterName}/actions/stop-traffic
 
 List agents services resources
 
@@ -90,6 +90,14 @@ List agents services resources
 
 /api/clusters/{clusterName}/servers/{serverName}/actions/maintenance todo
 
+/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision
+
+/api/clusters/{clusterName}/servers/{serverName}/actions/provision
+
+/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision
+
+/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision
+  
 /api/clusters/{clusterName}/topology/servers
 
 /api/clusters/{clusterName}/topology/master

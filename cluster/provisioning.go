@@ -25,16 +25,31 @@ func (cluster *Cluster) InitClusterSemiSync() error {
 	return nil
 }
 
+func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCProvisionDatabaseService(server)
+	} else {
+		cluster.LocalhostProvisionDatabaseService(server)
+	}
+	return nil
+}
+
+func (cluster *Cluster) InitProxyService(prx *Proxy) error {
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCProvisionProxyService(prx)
+	} else {
+		//cluster.LocalhostProvisionProxyService(server)
+	}
+	return nil
+}
+
 func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	if cluster.testStopCluster == false {
 		return nil
 	}
-
 	cluster.sme.SetFailoverState()
-
 	for _, server := range cluster.servers {
 		cluster.StopDatabaseService(server)
-
 	}
 	cluster.servers = nil
 	cluster.slaves = nil
@@ -42,7 +57,31 @@ func (cluster *Cluster) ShutdownClusterSemiSync() error {
 	cluster.sme.UnDiscovered()
 	cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
+	return nil
+}
 
+func (cluster *Cluster) Unprovision() {
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCUnprovision()
+	}
+}
+
+func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCUnprovisionProxyService(prx)
+	} else {
+		//		cluster.LocalhostUnprovisionProxyService(prx)
+	}
+	return nil
+}
+
+func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
+
+	if cluster.conf.Enterprise {
+		cluster.OpenSVCUnprovisionDatabaseService(server)
+	} else {
+		cluster.LocalhostUnprovisionDatabaseService(server)
+	}
 	return nil
 }
 

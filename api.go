@@ -227,15 +227,34 @@ func apiserver() {
 	//PROTECTED ENDPOINTS FOR SERVERS
 	router.Handle("/api/clusters/{clusterName}/servers/actions/add/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersAdd)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersStart)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStart)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersStop)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStop)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/provision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
+	))
+
+	//PROTECTED ENDPOINTS FOR PROXIES
+
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
+	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 
 	log.Println("Now listening localhost:3000")
@@ -779,7 +798,7 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handlerMuxServersAdd(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
@@ -788,7 +807,7 @@ func handlerMuxServersAdd(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handlerMuxServersStop(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
@@ -796,12 +815,44 @@ func handlerMuxServersStop(w http.ResponseWriter, r *http.Request) {
 	mycluster.StopDatabaseService(node)
 }
 
-func handlerMuxServersStart(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	node := mycluster.GetServerFromName(vars["serverName"])
 	mycluster.StartDatabaseService(node)
+}
+
+func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetServerFromName(vars["serverName"])
+	mycluster.InitDatabaseService(node)
+}
+
+func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetServerFromName(vars["serverName"])
+	mycluster.UnprovisionDatabaseService(node)
+}
+
+func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetProxyFromName(vars["proxyName"])
+	mycluster.InitProxyService(node)
+}
+
+func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	node := mycluster.GetProxyFromName(vars["proxyName"])
+	mycluster.UnprovisionProxyService(node)
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {

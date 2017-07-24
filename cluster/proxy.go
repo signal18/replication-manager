@@ -249,3 +249,12 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 	return sqlx.Open("mysql", dsn)
 
 }
+
+func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
+	for _, pr := range cluster.proxies {
+		if pr.Id == name {
+			return pr
+		}
+	}
+	return nil
+}

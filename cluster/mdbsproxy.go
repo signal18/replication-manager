@@ -138,7 +138,7 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) {
 	if cluster.conf.Enterprise {
 
 	} else {
-		cluster.LocalhostInitDatabase(srv, srv.Id, "mdbsproxy.cnf")
+		cluster.LocalhostProvisionDatabaseService(srv)
 	}
 
 	if srv.Conn != nil {

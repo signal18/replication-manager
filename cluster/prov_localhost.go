@@ -43,17 +43,21 @@ func (cluster *Cluster) LocalhostProvisionDatabases() error {
 			cluster.LocalhostStopDatabaseService(server)
 		}
 
-		cluster.LocalhostInitDatabase(server, server.Id, "semisync.cnf")
+		cluster.LocalhostProvisionDatabaseService(server)
 	}
 	return nil
 
 }
 
-func (cluster *Cluster) LocalhostInitDatabase(server *ServerMonitor, name string, conf string) error {
+func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
+	cluster.LocalhostStopDatabaseService(server)
+	return nil
 
-	server.Id = name
-	server.Conf = conf
-	path := cluster.conf.WorkingDir + "/" + name
+}
+func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor) error {
+
+	server.Conf = "semisync.cnf"
+	path := cluster.conf.WorkingDir + "/" + server.Id
 	os.RemoveAll(path)
 	mvCommand := exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data", path)
 	mvCommand.Run()

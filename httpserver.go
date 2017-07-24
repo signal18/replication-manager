@@ -350,7 +350,7 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 
 func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
 	currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", currentCluster.GetName())
-	currentCluster.OpenSVCUnprovision()
+	currentCluster.Unprovision()
 }
 
 func handlerRollingUpgrade(w http.ResponseWriter, r *http.Request) {
