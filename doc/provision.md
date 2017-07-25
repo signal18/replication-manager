@@ -48,9 +48,19 @@ Database Micro Service bootstrap some configurations files adapted to the replic
    Disk in g for micro service VM (default "20g")
 ```
 
-We will provide on the long run the following scope of extra database tags:
+Extra database tags:
 
-aria,audit,compress,innodb,logs,myrocks,network,noquerycache,optimizer,security,semisync,sharedpool,spider,threadpool,tokudb
+Storage:
+
+innodb, myrocks, tokudb, spider
+
+Logs:
+
+logaudit, logslow, logsqlerrors, loggeneral,
+
+Features:
+
+compress, noquerycache, semisync, threadpool
 
 ## Install
 

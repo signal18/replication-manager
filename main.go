@@ -29,6 +29,20 @@ var (
 	memprofile    string
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
+	// Provisoning to add flags for compile
+	WithProvisioning      string
+	WithArbitration       string
+	WithProxysql          string
+	WithHaproxy           string
+	WithMaxscale          string
+	WithMariadbshardproxy string
+	WithMonitoring        string
+	WithMail              string
+	WithHttp              string
+	WithSpider            string
+	WithEnforce           string
+	WithDeprecate         string
+
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager

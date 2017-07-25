@@ -6,3 +6,21 @@
 * Clone the source: `go get github.com/tanji/replication-manager`
 * Compile and install: `go install github.com/tanji/replication-manager`
 * Add the go binaries directory to your path: `export PATH=$PATH:~/go/bin`
+
+
+## Compilation flags
+
+It is possible to disable features via the following tags
+
+WithProvisioning      ON/OFF
+WithArbitration       ON/OFF
+WithProxysql          ON/OFF
+WithHaproxy           ON/OFF
+WithMaxscale          ON/OFF
+WithMariadbshardproxy ON/OFF
+WithMonitoring        ON/OFF
+WithMail              ON/OFF
+WithHttp              ON/OFF
+WithSpider            ON/OFF
+WithEnforce           ON/OFF
+WithDeprecate         ON/OFF
