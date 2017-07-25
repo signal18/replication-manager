@@ -54,7 +54,7 @@ func initKeys() {
 	//done
 	signingKey = privKeyPEMBuffer.Bytes()
 
-	fmt.Println(string(signingKey))
+	//fmt.Println(string(signingKey))
 
 	// create verificationKey from pubKey. Also in PEM-format
 	pubKeyBytes, err = x509.MarshalPKIXPublicKey(pubKey) //serialize key bytes
@@ -73,7 +73,7 @@ func initKeys() {
 	// done
 	verificationKey = pubKeyPEMBuffer.Bytes()
 
-	fmt.Println(string(verificationKey))
+	//	fmt.Println(string(verificationKey))
 }
 
 //STRUCT DEFINITIONS

@@ -3,26 +3,30 @@
 
 ## Overview
 
-Since version 1.1 replication-manager can use agent base cluster provisioning using the OpenSVC provisioning framework.
+Since version 1.1 replication-manager can use agent base cluster provisioning using the OpenSVC provisioning framework. All provisioning integration is provided via different binary
 
-As of today following software provisioning are possible for:
+```
+./replication-manager-pro monitor
+```
+
+As of today following software stack can be provisioned
   - [x] MariaDB
   - [x] MaxScale proxy
 
-We enable those type of micro-services:
+We enable following type of micro-services:
   - [x] Docker
   - [x] Package
 
 Each micro-service define some collection of resources:
-  - [x] An existing disk device if none a loopback device for service data
-  - [x] An existing disk device if none a loopback device for the docker db
-  - [x] A file system of type zfs|ext4|xfs|hfs|aufs
-  - [x] A file system pool of type lvm|zpool|none
-  - [x] IP address that need to be unused in the network
+  - [x] An existing disk device if none a loopback device to store service data
+  - [x] An existing disk device if none a loopback device to store the docker db data
+  - [x] A file system type zfs|ext4|xfs|hfs|aufs
+  - [x] A file system pool type lvm|zpool|none
+  - [x] An IP address that need to be unused in the network
 
-OpenSVC drivers can provision disk device on all kine of external SAN arrays, contact them if you need other type of disk provisioning on your architecture.
+OpenSVC drivers can provision disk device on all kine of external SAN arrays, contact opensvc if you need custom type of disk provisioning on your architecture.
 
-Provisioning resources should be defined in the configuration file cluster section and as of today are uniform over the full cluster.
+Provisioning options can be defined in the configuration file cluster section and as of today are uniform over a full cluster.
 ```
 prov-db-service-type = "docker"
 prov-db-disk-fs = "zfs"
@@ -34,7 +38,7 @@ prov0-db-net-gateway = "192.168.1.254"
 prov-db-net-mask = "255.255.255.0"
 ```
 
-Database Micro Service bootstrap some configurations files adapted to the replication-manager cluster parameters:
+Database Micro Service bootstrap some database configurations files adapted to following cluster parameters:
 ```
  prov-db-memory                           
   Memory in M for micro service VM (default "256")

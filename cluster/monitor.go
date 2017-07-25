@@ -94,6 +94,8 @@ type ServerMonitor struct {
 	HaveBinlogAnnotate          bool
 	HaveBinlogSlowqueries       bool
 	HaveBinlogCompress          bool
+	HaveLogSlaveUpdates         bool
+	HaveGtidStrictMode          bool
 	Version                     int
 	IsMaxscale                  bool
 	IsRelay                     bool
@@ -370,6 +372,16 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveBinlogCompress = false
 		} else {
 			server.HaveBinlogCompress = true
+		}
+		if sv["GTID_STRICT_MODE"] != "ON" {
+			server.HaveGtidStrictMode = false
+		} else {
+			server.HaveGtidStrictMode = true
+		}
+		if sv["LOG_SLAVE_UPDATES"] != "ON" {
+			server.HaveLogSlaveUpdates = false
+		} else {
+			server.HaveLogSlaveUpdates = true
 		}
 		if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
 			server.HaveInnodbTrxCommit = false
@@ -781,4 +793,12 @@ func (server *ServerMonitor) delete(sl *serverList) {
 		}
 	}
 	*sl = lsm
+}
+
+func (server *ServerMonitor) IsIgnored() bool {
+
+	if misc.Contains(server.ClusterGroup.ignoreList, server.URL) {
+		return true
+	}
+	return false
 }
