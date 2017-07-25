@@ -46,7 +46,7 @@ start()
   fi
   fi
 su $MRMUSER <<EOF
-nohup $CMD monitor --daemon  < /dev/null > $MRMDATADIR/out.log 2>&1 &
+nohup $CMD monitor  < /dev/null > $MRMDATADIR/out.log 2>&1 &
 pidof -s replication-manager >  $PIDFILE
 EOF
 }

@@ -244,11 +244,12 @@ func initRepmgrFlags(cmd *cobra.Command) {
 		monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")
 		monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "mariadb-binary-path", "/usr/sbin/", "MariaDB 10.2 Bindir for binary logs backup of ahead trx ")
 		monitorCmd.Flags().MarkDeprecated("mariadb-binary-path", "mariadb-binary-path is deprecated, please replace by mariadb-mysqlbinlog-path")
-
-		cmd.Flags().BoolVar(&conf.Enterprise, "opensvc", false, "Provisioning via opensvc")
-		cmd.Flags().StringVar(&conf.ProvHost, "prov-host", "127.0.0.1:443", "OpenSVC collector API")
-		cmd.Flags().StringVar(&conf.ProvAdminUser, "prov-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
-		cmd.Flags().StringVar(&conf.ProvUser, "prov-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
+		if WithOpenSVC == "ON" {
+			cmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
+			cmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "127.0.0.1:443", "OpenSVC collector API")
+			cmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
+			cmd.Flags().StringVar(&conf.ProvUser, "opensvc-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
+		}
 		cmd.Flags().StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker]")
 		cmd.Flags().StringVar(&conf.ProvAgents, "prov-db-agents", "", "Comma seperated list of agents for micro services provisionning")
 		cmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")

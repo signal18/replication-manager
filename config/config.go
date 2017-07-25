@@ -144,9 +144,9 @@ type Config struct {
 	FailForceGtid                      bool   //suspicious code
 	RegTestStopCluster                 bool   //used by regtest to stop cluster
 	Enterprise                         bool   //used to talk to opensvc collector
-	ProvHost                           string `mapstructure:"prov-host"`
-	ProvAdminUser                      string `mapstructure:"prov-admin-user"`
-	ProvUser                           string `mapstructure:"prov-user"`
+	ProvHost                           string `mapstructure:"opensvc-host"`
+	ProvAdminUser                      string `mapstructure:"opensvc-admin-user"`
+	ProvUser                           string `mapstructure:"opensvc-user"`
 	ProvType                           string `mapstructure:"prov-db-service-type"`
 	ProvAgents                         string `mapstructure:"prov-db-agents"`
 	ProvMem                            string `mapstructure:"prov-db-memory"`

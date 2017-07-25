@@ -25,7 +25,7 @@ PROCNAME=replication-manager
 case "$1" in
   start)
         echo -n "Starting replication-manager: "
-        /usr/bin/replication-manager monitor --daemon > /dev/null 2>&1 &
+        /usr/bin/replication-manager monitor  > /dev/null 2>&1 &
         sleep 1
         pkill -0 -f "/usr/bin/replication-manager monitor"
         RETVAL=$?

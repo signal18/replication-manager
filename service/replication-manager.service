@@ -3,7 +3,7 @@ Description=MariaDB replication-manager
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/replication-manager monitor --daemon
+ExecStart=/usr/bin/replication-manager monitor
 
 [Install]
 WantedBy=multi-user.target

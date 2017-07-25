@@ -71,8 +71,8 @@ replication-manager have a secure client API that talk to the collector and use 
 We will need  to install the evaluation version of the collector. It can be install local to replication-manager or install on a remote hardware this is settable in the replication-manager config files via following parameters
 
 ```
-prov-host = "127.0.0.1:443"
-prov-admin-user = "root@localhost.localdomain:opensvc"
+opensvc-host = "127.0.0.1:443"
+opensvc-admin-user = "root@localhost.localdomain:opensvc"
 ```    
 
 ### First step
