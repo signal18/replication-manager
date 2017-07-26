@@ -57,14 +57,14 @@
          background-color: transparent !important; }
          .tabsdemoDynamicHeight md-content md-tabs {
          background: #ffffff;
-         border: 1px solid #e1e1e1; }
+         border: 1px solid #dcdcdc; }
          .tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
          background: white; }
          .tabsdemoDynamicHeight md-content h1:first-child {
          margin-top: 0; }
          .title {
          font-size: 24px;
-         text-transform: uppercase;
+         color: #282828  ;
          padding-left: 20px;
          padding-top: 20px;
          padding-bottom: 20px;
@@ -77,19 +77,20 @@
             <table width="100%">
                <tr>
                   <td>
-                     <div class="title">Replication Manager</div>
+                     <h1><span class="title"><img src="/static/logo.png"/>Replication Manager</span></h1>
                   </td>
-                  <td>
+                  <td >
                      <form align=right action="/logout" method="post">
                         <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
                      </form>
+                     <BR>
                      <form name="myForm">
                         <label for="cluster" action="/setcluster" >
-                           <p class="sectionheader">Clusters: </p>
-                        </label>
+                           <span></span>
+
                         <select name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()" >
                            <option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters"  value="{{element}}">{{element}}</option>
-                        </select>
+                        </select></label>
                      </form>
                   </td>
                </tr>

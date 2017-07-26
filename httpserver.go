@@ -13,12 +13,12 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
@@ -256,7 +256,7 @@ func httpserver() {
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	if confs[currentClusterName].Verbose {
-		log.Printf("INFO : Starting http monitor on port " + confs[currentClusterName].HttpPort)
+		log.Printf("Starting http monitor on port " + confs[currentClusterName].HttpPort)
 	}
 	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, nil))
 }

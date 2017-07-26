@@ -222,7 +222,7 @@ var apiCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("Error in API call")
 		} else {
-			log.Println(res)
+			fmt.Printf(res)
 		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
