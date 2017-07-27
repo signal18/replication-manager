@@ -319,7 +319,7 @@ All the options above are settable in a configuration file that must be located 
 It is strongly advice to create a dedicated user for the management user !  
 Management user (given by the --user option) and Replication user (given by the --repluser option) need to be given privileges to the host from which `replication-manager` runs. Users with wildcards are accepted as well.
 
-The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT` and `RELOAD`
+The management user needs at least the following privileges: `PROCESS`, `SUPER`, `REPLICATION CLIENT` and `RELOAD`
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
