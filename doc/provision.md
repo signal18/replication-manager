@@ -46,14 +46,15 @@ Database Micro Service bootstrap some database configurations files adapted to f
   Rnd IO/s in for micro service VM (default "300")
  prov-db-disk-size                        
   Disk in g for micro service VM (default "20g")
- prov-db-tags                             
-  Tags for configuration  (todo)
  prov-proxy-disk-size                    
    Disk in g for micro service VM (default "20g")
 ```
 
 Extra database tags:
-
+```
+prov-db-tags                             
+ Tags for configuration (default  
+```
 Storage:
 
 innodb, myrocks, tokudb, spider

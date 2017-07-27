@@ -345,10 +345,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 				}
 			}
 			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
-				if sl.HasSlaves(cluster.slaves) == true {
+				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
 					sl.IsRelay = true
 					sl.State = stateRelay
-				} else if sl.IsSlave {
+				} else if sl.IsRelay {
 					sl.IsRelay = false
 				}
 			}

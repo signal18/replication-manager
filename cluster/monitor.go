@@ -446,11 +446,10 @@ func (server *ServerMonitor) Refresh() error {
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, _ = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
-		server.Replications = make([]dbhelper.SlaveStatus, 1)
-		server.Replications[0], _ = dbhelper.GetSlaveStatus(server.Conn)
+		//server.Replications = make([]dbhelper.SlaveStatus, 1)
+		server.Replications, _ = dbhelper.GetChannelSlaveStatus(server.Conn)
 	}
 	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
-
 	if err != nil {
 		server.IsSlave = false
 		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)

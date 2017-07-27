@@ -331,6 +331,14 @@ func GetSlaveStatus(db *sqlx.DB) (SlaveStatus, error) {
 	return ss, err
 }
 
+func GetChannelSlaveStatus(db *sqlx.DB) ([]SlaveStatus, error) {
+	db.MapperFunc(strings.Title)
+	udb := db.Unsafe()
+	ss := []SlaveStatus{}
+	err := udb.Get(&ss, "SHOW SLAVE STATUS")
+	return ss, err
+}
+
 func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 	s := SlaveStatus{}
 	ss, err := GetAllSlavesStatus(db)
