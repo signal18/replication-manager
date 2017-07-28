@@ -215,7 +215,7 @@ func apiserver() {
 
 	//PROTECTED ENDPOINTS FOR TESTS
 
-	router.Handle("/api/clusters/{clusterName}/tests", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/all", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
 	))
