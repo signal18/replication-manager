@@ -291,7 +291,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	//set claims
 	claims["iss"] = "admin"
 	claims["iat"] = time.Now().Unix()
-	claims["exp"] = time.Now().Add(time.Minute * 20).Unix()
+	claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
 	claims["jti"] = "1" // should be user ID(?)
 	claims["CustomUserInfo"] = struct {
 		Name string
@@ -879,5 +879,9 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	io.WriteString(w, `{"alive": true}`)
+	if isStarted {
+		io.WriteString(w, `{"alive": "running"}`)
+	} else {
+		io.WriteString(w, `{"alive": "starting"}`)
+	}
 }

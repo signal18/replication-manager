@@ -240,7 +240,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	err := cluster.Bootstrap()
 	if err != nil {
 		cluster.LogPrintf("TEST", "Abording test, bootstrap failed, %s", err)
-		cluster.ShutdownClusterSemiSync()
+		cluster.Unprovision()
 		return false
 	}
 	//cluster.waitFailoverEndState()
@@ -248,13 +248,13 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	cluster.initProxies()
 	if cluster.master == nil {
 		cluster.LogPrintf("TEST", "Abording test, no master found")
-		cluster.ShutdownClusterSemiSync()
+		cluster.Unprovision()
 		return false
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
-		cluster.ShutdownClusterSemiSync()
+		cluster.Unprovision()
 	}
 	time.Sleep(2 * time.Second)
 
@@ -264,7 +264,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 
 func (cluster *Cluster) CloseTestCluster(conf string, test string) bool {
 	if cluster.testStopCluster {
-		cluster.ShutdownClusterSemiSync()
+		cluster.Unprovision()
 	}
 	cluster.RestoreConf()
 

@@ -683,13 +683,14 @@ run_command = /bin/sh
 tags = pod` + pod + `
 type = docker
 run_image = {env.db_img}
-run_args = --net=container:{svcname}.container.00` + pod + `
+run_args =  --net=container:{svcname}.container.00` + pod + `
  -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+ --rm
 `
 	}
 	return vm
@@ -713,6 +714,7 @@ run_image = {env.maxscale_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
+		--rm
 `
 	}
 	return vm

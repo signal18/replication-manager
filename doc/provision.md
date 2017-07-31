@@ -65,7 +65,10 @@ logaudit, logslow, logsqlerrors, loggeneral,
 
 Features:
 
-compress, noquerycache, semisync, threadpool
+compress, noquerycache,  threadpool
+
+Replication
+multidomains, nologslaveupdates, mysqlgtid
 
 ## Install
 

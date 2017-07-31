@@ -45,6 +45,7 @@ var (
 	currentClusterName string
 	clusters           = map[string]*cluster.Cluster{}
 	agents             []opensvc.Host
+	isStarted          bool
 )
 
 func getClusterByName(clname string) *cluster.Cluster {
@@ -115,7 +116,7 @@ func init() {
 	}
 
 	if WithHttp == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", false, "Start the HTTP monitor")
+		monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP monitor")
 		monitorCmd.Flags().StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 		monitorCmd.Flags().StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
 		monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
@@ -319,39 +320,27 @@ For interacting with this daemon use,
 		}
 		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 		tlog = termlog.NewTermLog(loglen)
-		// Initialize go-carbon
+
+		go apiserver()
+
 		var svc opensvc.Collector
-
 		if conf.Enterprise {
-
 			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
 			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
 			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
-			//if false {
 			err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
 			if err != nil {
 				log.Printf("%s", err)
 			}
-			//}
 			agents = svc.GetNodes()
-
 		}
+		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
 			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
 			log.WithFields(log.Fields{
 				"metricport": conf.GraphiteCarbonPort,
 				"httpport":   conf.GraphiteCarbonServerPort,
 			}).Info("Carbon server started")
-
-			//	carbonServer string host:port
-			//	carbonApiPort int
-			//	cacheType  default "mem"  "cache type to use"
-			//	mc default "" "comma separated memcached server list"
-			//	memsize int default 0 "in-memory cache size in MB (0 is unlimited)"
-			//	cpus int default 0 "number of CPUs to use"
-			//	tz string default "" "timezone,offset to use for dates with no timezone"
-			//	logdir string "logging directory"
-
 			time.Sleep(2 * time.Second)
 			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.WorkingDir)
 			log.WithField("apiport", conf.GraphiteCarbonApiPort).Info("Carbon server API started")
@@ -383,9 +372,9 @@ For interacting with this daemon use,
 		if conf.HttpServ {
 			go httpserver()
 		}
-		go apiserver()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
+		isStarted = true
 		for exit == false {
 
 			select {

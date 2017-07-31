@@ -207,6 +207,8 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 		if myver.IsMariaDB() {
 			cm += ", MASTER_USE_GTID=NO"
 		}
+	case "MASTER_AUTO_POSITION":
+		cm += ", MASTER_AUTO_POSITION = 1"
 	}
 	if opt.SSL {
 		cm += ", MASTER_USE_SSL=1"
@@ -335,7 +337,7 @@ func GetChannelSlaveStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
-	err := udb.Get(&ss, "SHOW SLAVE STATUS")
+	err := udb.Select(&ss, "SHOW SLAVE STATUS")
 	return ss, err
 }
 

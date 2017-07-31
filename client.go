@@ -263,7 +263,7 @@ var testCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal("Error in API call")
 				} else {
-					log.Println(res)
+					fmt.Printf(res)
 				}
 			}
 		}

@@ -49,6 +49,14 @@ func (cluster *Cluster) LocalhostProvisionDatabases() error {
 
 }
 
+func (cluster *Cluster) LocalhostUnprovision() error {
+
+	for _, server := range cluster.servers {
+		cluster.StopDatabaseService(server)
+	}
+	return nil
+}
+
 func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.LocalhostStopDatabaseService(server)
 	return nil
