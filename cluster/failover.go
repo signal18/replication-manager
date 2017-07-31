@@ -144,7 +144,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			oldMaster.log()
 		}
 		dbhelper.MasterWaitGTID(cluster.master.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
-	} else if !cluster.master.DBVersion.IsMySQL57() {
+	} else {
+
 		cluster.LogPrintf("INFO", "Waiting for candidate master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
@@ -158,16 +159,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 		crash.FailoverMasterLogFile = cluster.master.MasterLogFile
 		crash.FailoverMasterLogPos = cluster.master.MasterLogPos
-		if cluster.conf.MxsBinlogOn {
-			cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
-			crash.FailoverIOGtid = cluster.master.CurrentGtid
-		} else {
-			cluster.master.FailoverIOGtid = cluster.master.IOGtid
-			crash.FailoverIOGtid = cluster.master.IOGtid
+		if cluster.master.DBVersion.IsMariaDB() {
+			if cluster.conf.MxsBinlogOn {
+				cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
+				crash.FailoverIOGtid = cluster.master.CurrentGtid
+			} else {
+				cluster.master.FailoverIOGtid = cluster.master.IOGtid
+				crash.FailoverIOGtid = cluster.master.IOGtid
+			}
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	}
+
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
 	if cluster.conf.MxsBinlogOn || cluster.conf.MultiTierSlave {
@@ -230,11 +234,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.failoverProxies()
 	if cluster.conf.MultiMaster == false {
 		cluster.LogPrintf("INFO", "Resetting slave on new master and set read/write mode on")
-		if cluster.master.DBVersion.IsMySQL57() {
-			// Need to stop all threads to reset on 57
+		if cluster.master.DBVersion.IsMySQL() {
+			// Need to stop all threads to reset on MySQL
 			dbhelper.StopSlave(cluster.master.Conn)
 		}
+
 		err = dbhelper.ResetSlave(cluster.master.Conn, true)
+
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Reset slave failed on new master, reason:%s ", err)
 		}
@@ -293,7 +299,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		var changeMasterErr error
 		// Do positional switch if we are an old MySQL version
 		if oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
-			cluster.LogPrint("INFO : Doing positional switch")
+			cluster.LogPrint("INFO", "Doing positional switch of old Master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -314,7 +320,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
 			// We can do MySQL 5.7 style failover
-			cluster.LogPrintf("INFO", "Doing MySQL GTID switch")
+			cluster.LogPrintf("INFO", "Doing MySQL GTID switch of the old master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -332,7 +338,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogPrintf("ERROR", "Start slave failed on old master %s", err)
 			}
 		} else if cluster.conf.MxsBinlogOn == false {
-			cluster.LogPrintf("INFO", "Doing GTID switch")
+			cluster.LogPrintf("INFO", "Doing MariaDB GTID switch of the old master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -428,22 +434,23 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
-		hasMyGTID, err := dbhelper.HasMySQLGTID(sl.Conn)
+		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.master.Conn)
 		var changeMasterErr error
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
-			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+			cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
+			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
-				Logfile:   cluster.master.FailoverMasterLogFile,
-				Logpos:    cluster.master.FailoverMasterLogPos,
+				Logfile:   cluster.master.BinaryLogFile,
+				Logpos:    cluster.master.MasterLogPos,
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "POSITIONAL",
 			})
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
-			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,

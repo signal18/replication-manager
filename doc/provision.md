@@ -68,7 +68,7 @@ Features:
 compress, noquerycache,  threadpool
 
 Replication
-multidomains, nologslaveupdates, mysqlgtid
+multidomains, nologslaveupdates, mysqlgtid, smallredolog
 
 ## Install
 
@@ -154,7 +154,15 @@ Usage of ubuntu server is preferred because better support for ZFS and docker in
 
 It's a loose of time to try some Docker deployments on OSX and may be Windows(not experimented myself) for  deployments, docker is not mature enough on those distributions. It looks it can work but you will quickly hit some network and performance degradations.   
 
-You will need to instruct you cluster agents where to found your fresh collector and replication-manager modules
+Docker will require a minimum version to make provision in daemon mode works with the --rm flag. Using older versions provision is fine but software upgrade will need a manual remove of images in the docker registry before re-provisioning with different docker images.
+
+```
+docker-io >=1.13
+or
+docker-ce = 17.06.0-ce
+```
+
+Instruct you cluster agents where to found your fresh collector and replication-manager modules
 
 ```
 nodemgr set --param node.dbopensvc --value https://collector-host

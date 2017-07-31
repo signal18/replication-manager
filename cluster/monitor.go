@@ -350,6 +350,7 @@ func (server *ServerMonitor) Refresh() error {
 		var sv map[string]string
 		sv, err = dbhelper.GetVariables(server.Conn)
 		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "Could not get varaibles %s", err)
 			return err
 		}
 		server.Version = dbhelper.MariaDBVersion(sv["VERSION"]) // Deprecated
@@ -769,10 +770,12 @@ func (server *ServerMonitor) HasCycling(ServerID uint) bool {
 
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 	if mycurrentmaster != nil {
+		//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%s me id:%s", mycurrentmaster.ServerID, ServerID)
 		if mycurrentmaster.ServerID == ServerID {
 			return true
+		} else {
+			mycurrentmaster.HasCycling(server.ServerID)
 		}
-		mycurrentmaster.HasCycling(ServerID)
 	}
 	return false
 }

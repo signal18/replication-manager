@@ -394,10 +394,12 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
-		_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
-		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
+		if server.DBVersion.IsMariaDB() {
+			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				return err
+			}
 		}
 	}
 	cluster.master = nil
@@ -446,6 +448,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 				dbhelper.SetReadOnly(server.Conn, false)
 				continue
 			} else {
+				var hasMyGTID bool
+				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
 				if cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.servers[masterKey].Host,
@@ -457,6 +461,20 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Mode:      "CURRENT_POS",
 					})
 					cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
+				} else if hasMyGTID {
+
+					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:      cluster.servers[masterKey].Host,
+						Port:      cluster.servers[masterKey].Port,
+						User:      cluster.rplUser,
+						Password:  cluster.rplPass,
+						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+						Mode:      "MASTER_AUTO_POSITION",
+					})
+					//  Missing  multi source cluster.conf.MasterConn
+					cluster.LogPrintf("INFO", "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
+
 				} else {
 
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -474,6 +492,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf("INFO", "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
 
 				}
+
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
 					return errors.New(fmt.Sprintln(err))

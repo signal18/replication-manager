@@ -485,6 +485,7 @@ func SetBinlogCompress(db *sqlx.DB) error {
 }
 
 func ResetAllSlaves(db *sqlx.DB) error {
+	myver, _ := GetDBVersion(db)
 	ss, err := GetAllSlavesStatus(db)
 	if err != nil {
 		return err
@@ -494,7 +495,14 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		if err != nil {
 			return err
 		}
-		err = ResetSlave(db, true)
+		if myver.IsMariaDB() {
+			err = ResetSlave(db, true)
+		}
+		if myver.IsMySQL() {
+			err = StopSlave(db)
+			err = ResetSlave(db, true)
+
+		}
 		if err != nil {
 			return err
 		}
