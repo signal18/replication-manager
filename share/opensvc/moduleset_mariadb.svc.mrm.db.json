@@ -1007,8 +1007,8 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/mysqlgtid.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld-5.7]\\ngtid_mode=1\\nenforce-gtid-consistency=1\\n[mysqld-5.6]\\ngtid_mode=1\\nenforce-gtid-consistency=1\"}",
-                    "var_updated": "2017-07-31 09:56:04",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/mysqlgtid.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld-5.7]\\ngtid_mode=ON\\nenforce-gtid-consistency=1\\n[mysqld-5.6]\\ngtid_mode=ON\\nenforce-gtid-consistency=1\"}",
+                    "var_updated": "2017-08-01 07:15:28",
                     "var_name": "db_cnf_mysqlgtid",
                     "id": 5950
                 },
@@ -1377,9 +1377,9 @@
                     "var_author": " Manager",
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/mysqlgtid.cnf\",\"target\":\"../mysqlgtid.cnf\"}",
-                    "var_updated": "2017-07-31 09:46:32",
-                    "var_name": "db_link_compression",
-                    "id": 5951
+                    "var_updated": "2017-08-01 08:36:26",
+                    "var_name": "db_link_mysqlgtid",
+                    "id": 5957
                 }
             ],
             "ruleset_public": false,
@@ -1425,9 +1425,9 @@
                     "var_author": " Manager",
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/smallredolog.cnf\",\"target\":\"../smallredolog.cnf\"}",
-                    "var_updated": "2017-07-31 12:49:23",
-                    "var_name": "db_link_compression",
-                    "id": 5955
+                    "var_updated": "2017-08-01 08:21:39",
+                    "var_name": "db_link_smallredolog",
+                    "id": 5956
                 }
             ],
             "ruleset_public": false,

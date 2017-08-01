@@ -1136,7 +1136,11 @@ func benchWarmup(db *sqlx.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("CREATE OR REPLACE TABLE replication_manager_schema.bench(id bigint unsigned primary key auto_increment, val bigint unsigned  )")
+	_, err = db.Exec("DROP TABLE IF EXISTS replication_manager_schema.bench")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.bench(id bigint unsigned primary key auto_increment, val bigint unsigned  )")
 	if err != nil {
 		return err
 	}

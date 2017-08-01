@@ -1135,3 +1135,32 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	return string(body), nil
 
 }
+
+func (collector *Collector) DeleteService(serviceid string) (string, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + serviceid
+	log.Println("INFO ", urlpost)
+
+	req, err := http.NewRequest("DELETE", urlpost, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	log.Println("INFO ", string(body))
+	return string(body), nil
+
+}

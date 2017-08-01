@@ -76,6 +76,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 		for _, svc := range node.Svc {
 			if db.Id == svc.Svc_name {
 				opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				opensvc.DeleteService(svc.Svc_id)
 			}
 		}
 	}

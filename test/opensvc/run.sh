@@ -1,8 +1,8 @@
 #!/bin/bash
 version=$(git describe --tags)
-echo  "{\"Build\"=\"$version\", \"setups\"=[" > result-$version.json
+echo  "{\"Build\":\"$version\", \"setups\":[" > result-$version.json
 for i in $(find . -name "*.conf") ; do
-  echo "{\"name\"=\"$i\", \"results\"=[" >> result-$version.json
+  echo "{\"name\":\"$i\", \"results\":[" >> result-$version.json
   testdir=$(dirname "${i}")
   echo $testdir
   tests=`cat $testdir/tests.todo`

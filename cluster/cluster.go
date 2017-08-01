@@ -78,6 +78,14 @@ type Cluster struct {
 	haveTraffic          bool
 }
 
+const (
+	stateClusterStart string = "Running starting"
+	stateClusterDown  string = "Running cluster down"
+	stateClusterErr   string = "Running with errors"
+	stateClusterWarn  string = "Running with warnings"
+	stateClusterRun   string = "Running"
+)
+
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.

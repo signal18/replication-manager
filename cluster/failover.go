@@ -299,7 +299,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		var changeMasterErr error
 		// Do positional switch if we are an old MySQL version
 		if oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
-			cluster.LogPrint("INFO", "Doing positional switch of old Master")
+			cluster.LogPrintf("INFO", "Doing positional switch of old Master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
