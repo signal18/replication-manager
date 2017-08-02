@@ -176,7 +176,7 @@ type Config struct {
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
 	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
 	ProvProxImg                        string `mapstructure:"prov-proxy-docker-img"`
-
-	APIUser string `mapstructure:"api-user"`
-	APIPort string `mapstructure:"api-port"`
+	APIUser                            string `mapstructure:"api-user"`
+	APIPort                            string `mapstructure:"api-port"`
+	ConfigFile                         string `mapstructure:"config"`
 }

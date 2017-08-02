@@ -7,7 +7,7 @@ package regtest
 
 import "github.com/tanji/replication-manager/cluster"
 
-func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, test string) bool {
+func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}

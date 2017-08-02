@@ -12,7 +12,7 @@ import (
 	"github.com/tanji/replication-manager/cluster"
 )
 
-func testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cluster *cluster.Cluster, conf string, test string) bool {
+func testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	if cluster.InitTestCluster(conf, test) == false {
 		return false

@@ -7,7 +7,7 @@ package regtest
 
 import "github.com/tanji/replication-manager/cluster"
 
-func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test string) bool {
+func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}

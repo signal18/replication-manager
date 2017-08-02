@@ -58,11 +58,13 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 			for _, db := range cluster.servers {
 				if db.Id == svc.Svc_name {
 					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 			for _, prx := range cluster.proxies {
 				if prx.Id == svc.Svc_name {
 					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 		}
@@ -77,6 +79,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 			if db.Id == svc.Svc_name {
 				opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				opensvc.DeleteService(svc.Svc_id)
+
 			}
 		}
 	}
@@ -89,6 +92,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 		for _, svc := range node.Svc {
 			if prx.Id == svc.Svc_name {
 				opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				opensvc.DeleteService(svc.Svc_id)
 			}
 		}
 	}

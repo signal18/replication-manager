@@ -264,7 +264,9 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 		return nil
 	}
 	if crash.FailoverIOGtid != nil {
-		if server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+		// server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0
+		// lookup in crash recorded is the current master
+		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ClusterGroup.master.ServerID)) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, consider we cannot flashback")
 			server.ClusterGroup.canFlashBack = false
 		} else {

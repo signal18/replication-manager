@@ -11,7 +11,7 @@ import (
 	"github.com/tanji/replication-manager/cluster"
 )
 
-func testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cluster *cluster.Cluster, conf string, test string) bool {
+func testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}

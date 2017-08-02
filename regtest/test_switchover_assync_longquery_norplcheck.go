@@ -12,7 +12,7 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test string) bool {
+func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}

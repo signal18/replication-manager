@@ -11,7 +11,7 @@ import (
 	"github.com/tanji/replication-manager/cluster"
 )
 
-func testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test string) bool {
+func testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
 	}

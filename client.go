@@ -249,7 +249,7 @@ var testCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 		cliInit(true)
-		cliGetTopology()
+		//cliGetTopology()
 
 		if cliShowtests == true {
 			cliSettings, _ = cliGetSettings()

@@ -713,7 +713,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	res := regtest.RunAllTests(mycluster, vars["testName"])
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(res)
+	err := e.Encode(res[0])
 	if err != nil {
 		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

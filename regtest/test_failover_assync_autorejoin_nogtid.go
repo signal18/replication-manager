@@ -12,7 +12,7 @@ import (
 	"github.com/tanji/replication-manager/cluster"
 )
 
-func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, test string) bool {
+func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetForceSlaveNoGtid(true)
 	if cluster.InitTestCluster(conf, test) == false {
 		return false
@@ -22,7 +22,7 @@ func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, t
 	cluster.SetRplChecks(false)
 	cluster.SetRejoin(true)
 	cluster.SetRejoinFlashback(true)
-	cluster.SetRejoinDump(false)
+	cluster.SetRejoinDump(true)
 	cluster.DisableSemisync()
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL

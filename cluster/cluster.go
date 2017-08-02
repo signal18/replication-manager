@@ -78,6 +78,13 @@ type Cluster struct {
 	haveTraffic          bool
 }
 
+type Test struct {
+	Name       string        `json:"name"`
+	Result     string        `json:"result"`
+	ConfigFile string        `json:"config-file"`
+	Config     config.Config `json:"config"`
+}
+
 const (
 	stateClusterStart string = "Running starting"
 	stateClusterDown  string = "Running cluster down"

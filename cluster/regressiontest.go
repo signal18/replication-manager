@@ -229,7 +229,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	return nil
 }
 
-func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
+func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	savedConf = cluster.conf
 	savedFailoverCtr = cluster.failoverCtr
 	savedFailoverTs = cluster.failoverTs
@@ -258,11 +258,12 @@ func (cluster *Cluster) InitTestCluster(conf string, test string) bool {
 	}
 	time.Sleep(2 * time.Second)
 
-	cluster.LogPrintf("TEST", "Starting Test %s", test)
+	cluster.LogPrintf("TEST", "Starting Test %s", test.Name)
 	return true
 }
 
-func (cluster *Cluster) CloseTestCluster(conf string, test string) bool {
+func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
+	test.Config = cluster.conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
 	}

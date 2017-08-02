@@ -21,7 +21,6 @@ import (
 )
 
 var (
-	cfgFile       string
 	cfgGroup      string
 	cfgGroupList  []string
 	cfgGroupIndex int
@@ -56,7 +55,7 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Configuration file (default is config.toml)")
+	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
@@ -76,10 +75,10 @@ func init() {
 func initConfig() {
 	// call after init if configuration file is provide
 	viper.SetConfigType("toml")
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
-		if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
-			log.Fatal("No config file " + cfgFile)
+	if conf.ConfigFile != "" {
+		viper.SetConfigFile(conf.ConfigFile)
+		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
+			log.Fatal("No config file " + conf.ConfigFile)
 		}
 	} else {
 		viper.SetConfigName("config")
