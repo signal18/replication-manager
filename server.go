@@ -240,6 +240,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	}
 	if WithProvisioning == "ON" {
 		cmd.Flags().BoolVar(&conf.Test, "test", false, "Enable non regression tests")
+		cmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 		monitorCmd.Flags().IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 		monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 		monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/sbin/sysbench", "Sysbench Wrapper in test mode")

@@ -75,7 +75,6 @@ type Cluster struct {
 	openSVCServiceStatus int
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
-	haveTraffic          bool
 }
 
 type Test struct {
@@ -173,7 +172,7 @@ func (cluster *Cluster) Run() {
 				}
 			} else {
 				cluster.refreshProxies()
-				if cluster.haveTraffic {
+				if cluster.conf.TestInjectTraffic {
 					go cluster.InjectTraffic()
 				}
 			}
@@ -462,11 +461,11 @@ func (cluster *Cluster) SetInteractive(check bool) {
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	cluster.SetBenchMethod("table")
 	cluster.PrepareBench()
-	cluster.haveTraffic = traffic
+	cluster.conf.TestInjectTraffic = traffic
 }
 
 func (cluster *Cluster) GetTraffic() bool {
-	return cluster.haveTraffic
+	return cluster.conf.TestInjectTraffic
 }
 
 func (cluster *Cluster) SetBenchMethod(m string) {

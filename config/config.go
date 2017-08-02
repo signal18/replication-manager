@@ -121,6 +121,7 @@ type Config struct {
 	KeyPath                            string `mapstructure:"keypath"`
 	LogLevel                           int    `mapstructure:"log-level"`
 	Test                               bool   `mapstructure:"test"`
+	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`
 	GraphiteEmbedded                   bool   `mapstructure:"graphite-embedded"`
