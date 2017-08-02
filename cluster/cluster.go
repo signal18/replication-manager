@@ -82,7 +82,8 @@ type Test struct {
 	Name       string        `json:"name"`
 	Result     string        `json:"result"`
 	ConfigFile string        `json:"config-file"`
-	Config     config.Config `json:"config"`
+	ConfigInit config.Config `json:"config-init"`
+	ConfigTest config.Config `json:"config-test"`
 }
 
 const (

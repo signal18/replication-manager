@@ -1106,7 +1106,7 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 
 }
 
-func (collector *Collector) UnprovisionService(nodeid string, serviceid string) (string, error) {
+func (collector *Collector) UnprovisionService(nodeid string, serviceid string) (int, error) {
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
@@ -1116,24 +1116,39 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "unprovision"}]`)
 	req, err := http.NewRequest("PUT", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return "", err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return "", err
+		return 0, err
+	}
+	type Message struct {
+		Data []Action `json:"data"`
+	}
+	var m Message
+	err = json.Unmarshal(body, &m)
+	if err != nil {
+		log.Println(string(body))
+		return 0, err
+
+	}
+	var actionid int
+	if len(m.Data) > 0 {
+		actionid = m.Data[0].Id
+	} else {
+		log.Println(string(body))
 	}
 	log.Println("INFO ", string(body))
-	return string(body), nil
-
+	return actionid, nil
 }
 
 func (collector *Collector) DeleteService(serviceid string) (string, error) {
@@ -1141,7 +1156,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + serviceid
-	log.Println("INFO ", urlpost)
+	log.Println("INFO Delete service: ", urlpost)
 
 	req, err := http.NewRequest("DELETE", urlpost, nil)
 	if err != nil {

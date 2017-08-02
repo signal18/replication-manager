@@ -230,6 +230,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 }
 
 func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
+	test.ConfigInit = cluster.conf
 	savedConf = cluster.conf
 	savedFailoverCtr = cluster.failoverCtr
 	savedFailoverTs = cluster.failoverTs
@@ -263,7 +264,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 }
 
 func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
-	test.Config = cluster.conf
+	test.ConfigTest = cluster.conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
 	}

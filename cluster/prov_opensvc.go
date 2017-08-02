@@ -57,14 +57,14 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		for _, svc := range node.Svc {
 			for _, db := range cluster.servers {
 				if db.Id == svc.Svc_name {
-					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					opensvc.DeleteService(svc.Svc_id)
+					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				}
 			}
 			for _, prx := range cluster.proxies {
 				if prx.Id == svc.Svc_name {
-					opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					opensvc.DeleteService(svc.Svc_id)
+					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				}
 			}
 		}
@@ -77,9 +77,8 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	for _, node := range agents {
 		for _, svc := range node.Svc {
 			if db.Id == svc.Svc_name {
-				opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				opensvc.DeleteService(svc.Svc_id)
-
+				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			}
 		}
 	}
@@ -91,8 +90,9 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	for _, node := range agents {
 		for _, svc := range node.Svc {
 			if prx.Id == svc.Svc_name {
-				opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				opensvc.DeleteService(svc.Svc_id)
+				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				cluster.OpenSVCWaitDequeue(opensvc, idaction)
+
 			}
 		}
 	}
@@ -250,13 +250,16 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 			return err
 		}
 		mysrv, err := svc.GetServiceFromName(s.Id)
-		idsrv := mysrv.Svc_id
-		if idsrv == "" || err != nil {
-			idsrv, err = svc.CreateService(s.Id, "MariaDB")
-			if err != nil {
-				cluster.LogPrintf("ERROR", "Can't create service")
-			}
+		if mysrv.Svc_id == "" || err != nil {
+			svc.DeleteService(mysrv.Svc_id)
 		}
+		//	idsrv := mysrv.Svc_id
+		//	if idsrv == "" || err != nil {
+		idsrv, err := svc.CreateService(s.Id, "MariaDB")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Can't create service")
+		}
+		//	}
 		for _, tag := range taglist {
 			idtag, err := svc.GetTagIdFromTags(svctags, tag)
 			if err != nil {

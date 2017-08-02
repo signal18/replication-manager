@@ -245,6 +245,7 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 }
 
 func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
+
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
 	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 
@@ -270,7 +271,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, consider we cannot flashback")
 			server.ClusterGroup.canFlashBack = false
 		} else {
-			server.ClusterGroup.LogPrintf("INFO", "Found ahead old server GTID %s and elected GTID %s on current master %s", server.CurrentGtid.Sprint(), server.ClusterGroup.master.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO", "Found server ID in rejoining ID %s and crash FailoverIOGtid %s Master %s", server.ServerID, crash.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
 		}
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "Old server GTID for flashback not found")
