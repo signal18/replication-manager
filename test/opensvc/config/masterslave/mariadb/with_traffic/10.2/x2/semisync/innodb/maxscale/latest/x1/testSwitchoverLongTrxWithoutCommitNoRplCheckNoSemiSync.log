@@ -1,0 +1,6 @@
+2017/08/03 00:36:42 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/03 00:36:42 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/03 00:36:42 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/03 00:36:42 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/03 00:36:44 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/03 00:36:44 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync

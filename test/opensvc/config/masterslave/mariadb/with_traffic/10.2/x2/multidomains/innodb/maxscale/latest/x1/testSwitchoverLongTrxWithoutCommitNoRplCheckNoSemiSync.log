@@ -1,0 +1,7 @@
+2017/08/02 22:32:45 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/02 22:32:45 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/02 22:32:45 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/02 22:32:45 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/02 22:32:45 [ux_dck_zpool_loop] ERROR - Dashboard app.html file missing - will not start http server open ./dashboard/app.html: no such file or directory
+2017/08/02 22:32:45 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/02 22:32:45 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
