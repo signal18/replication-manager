@@ -161,16 +161,18 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 
 func (cluster *Cluster) InjectTraffic() {
 	// Found server from ServerId
-	for _, pr := range cluster.proxies {
-		db, err := cluster.GetClusterThisProxyConn(pr)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err)
-		} else {
-			err := dbhelper.InjectTrx(db)
+	if cluster.master != nil {
+		for _, pr := range cluster.proxies {
+			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "%s", err.Error())
+				cluster.LogPrintf("ERROR", "%s", err)
+			} else {
+				err := dbhelper.InjectTrx(db)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "%s", err.Error())
+				}
+				db.Close()
 			}
-			db.Close()
 		}
 	}
 }

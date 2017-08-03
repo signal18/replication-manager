@@ -344,6 +344,17 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
+	if cluster.conf.Test {
+		cluster.WaitBootstrapDiscovery()
+		cluster.initProxies()
+		if cluster.master == nil {
+			return errors.New("Abording test, no master found")
+		}
+		err = cluster.InitBenchTable()
+		if err != nil {
+			return errors.New("Abording test, can't create bench table")
+		}
+	}
 	return nil
 }
 

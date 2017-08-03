@@ -329,9 +329,12 @@ For interacting with this daemon use,
 			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
 			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
 			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
-			err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
-			if err != nil {
-				log.Printf("%s", err)
+			//don't Bootstrap opensvc to speedup test
+			if !conf.Test {
+				err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
+				if err != nil {
+					log.Printf("%s", err)
+				}
 			}
 			agents = svc.GetNodes()
 		}

@@ -7,7 +7,8 @@ for i in $(find ./$1 -name "*.conf") ; do
   echo $testdir
   tests=`cat $testdir/tests.todo`
   for test in $tests ; do
-   ../../replication-manager-pro --logfile=$testdir/$test.log --config=./$i monitor  &
+   > $testdir/$test.log
+   ../../replication-manager-pro --test --logfile=$testdir/$test.log --config=./$i monitor  &
    pid="$!"
    sleep 3
    while [[ $(../../replication-manager-pro api --url=https://127.0.0.1:3000/api/status) != "{\"alive\": \"running\"}" ]] ; do
@@ -16,10 +17,10 @@ for i in $(find ./$1 -name "*.conf") ; do
    done
     ../../replication-manager-pro test --run-tests="$test" >> $testdir/result-$version.json
    kill $pid
-   echo ","  >> result-$version.json
+   echo ","  >> $testdir/result-$version.json
 
   done
-  echo "]},"  >> result-$version.json
-  echo "]}" >> result-$version.json
+  echo "]},"  >> $testdir/result-$version.json
+  echo "]}" >> $testdir/result-$version.json
 
 done
