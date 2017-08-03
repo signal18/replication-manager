@@ -239,42 +239,37 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 		return err
 	}
 
-	srvStatus, err := svc.GetServiceStatus(cluster.GetName())
+	// create template && bootstrap
+	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 	if err != nil {
 		return err
 	}
-	if srvStatus == 0 {
-		// create template && bootstrap
-		res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
-		if err != nil {
-			return err
-		}
-		mysrv, err := svc.GetServiceFromName(s.Id)
-		if mysrv.Svc_id == "" || err != nil {
-			svc.DeleteService(mysrv.Svc_id)
-		}
-		//	idsrv := mysrv.Svc_id
-		//	if idsrv == "" || err != nil {
-		idsrv, err := svc.CreateService(s.Id, "MariaDB")
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Can't create service")
-		}
-		//	}
-		for _, tag := range taglist {
-			idtag, err := svc.GetTagIdFromTags(svctags, tag)
-			if err != nil {
-				idtag, _ = svc.CreateTag(tag)
-			}
-			svc.SetServiceTag(idtag, idsrv)
-		}
-		idtemplate, _ := svc.CreateTemplate(s.Id, res)
-		idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)
-		cluster.OpenSVCWaitDequeue(svc, idaction)
-		task := svc.GetAction(strconv.Itoa(idaction))
-		cluster.LogPrintf("INFO", "%s", task.Stderr)
-		cluster.WaitDatabaseStart(s)
-
+	mysrv, err := svc.GetServiceFromName(s.Id)
+	if err == nil {
+		cluster.LogPrintf("INFO", "Provisioning delete service %s", mysrv.Svc_id)
+		svc.DeleteService(mysrv.Svc_id)
 	}
+	//	idsrv := mysrv.Svc_id
+	//	if idsrv == "" || err != nil {
+	idsrv, err := svc.CreateService(s.Id, "MariaDB")
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Can't create service")
+	}
+	//	}
+	for _, tag := range taglist {
+		idtag, err := svc.GetTagIdFromTags(svctags, tag)
+		if err != nil {
+			idtag, _ = svc.CreateTag(tag)
+		}
+		svc.SetServiceTag(idtag, idsrv)
+	}
+	idtemplate, _ := svc.CreateTemplate(s.Id, res)
+	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)
+	cluster.OpenSVCWaitDequeue(svc, idaction)
+	task := svc.GetAction(strconv.Itoa(idaction))
+	cluster.LogPrintf("INFO", "%s", task.Stderr)
+	cluster.WaitDatabaseStart(s)
+
 	return nil
 }
 
