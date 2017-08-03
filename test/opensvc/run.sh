@@ -4,12 +4,12 @@ for i in $(find ./$1 -name "*.conf") ; do
   testdir=$(dirname "${i}")
   destdir=$testdir/$version
   mkdir $destdir
-
-  echo "{\"results\":[" >> $destdir/result.json
   echo $testdir
+  echo "{\"results\":[" >> $destdir/result.json
+
   tests=`cat $testdir/tests.todo`
   for test in $tests ; do
-   > $testdir/$test.log
+   > $desdir/$test.log
    ../../replication-manager-pro --test --logfile=$destdir/$test.log --config=./$i monitor  &
    pid="$!"
    sleep 3
@@ -17,7 +17,7 @@ for i in $(find ./$1 -name "*.conf") ; do
     echo "waiting start service"
     sleep 1
    done
-    ../../replication-manager-pro test --run-tests="$test" >> $testdir/result.json
+    ../../replication-manager-pro test --run-tests="$test" >> $destdir/result.json
    kill $pid
    echo ","  >> $destdir/result.json
 
