@@ -1,0 +1,60 @@
+2017/08/04 08:22:26 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 08:22:26 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 08:22:26 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 08:22:26 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 08:22:26 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 08:22:27 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:22:28 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:45:11 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 08:45:11 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 08:45:11 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 08:45:11 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 08:45:11 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 08:45:12 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:45:12 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:11:58 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 09:11:58 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 09:11:58 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 09:11:58 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 09:11:58 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 09:11:59 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:11:59 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:40:32 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 09:40:32 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 09:40:32 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 09:40:32 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 09:40:32 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 09:40:34 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:40:34 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 11:48:35 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 11:48:35 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 11:48:35 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 11:48:35 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 11:48:35 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 11:48:37 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 13:09:13 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 13:09:13 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 13:09:13 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 13:09:13 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 13:09:13 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 13:09:15 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 15:55:35 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 15:55:35 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 15:55:35 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 15:55:35 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 15:55:35 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 15:55:36 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay
+2017/08/04 17:00:02 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 17:00:02 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 17:00:02 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 17:00:02 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 17:00:02 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 17:00:04 [ux_dck_zpool_loop] TESTI - testSwitchoverReplAllDelay

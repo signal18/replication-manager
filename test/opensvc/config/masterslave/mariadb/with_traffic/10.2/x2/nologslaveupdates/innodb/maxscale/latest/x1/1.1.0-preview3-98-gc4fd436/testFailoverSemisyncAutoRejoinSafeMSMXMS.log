@@ -1,0 +1,707 @@
+2017/08/03 16:58:35 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/03 16:58:35 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/03 16:58:35 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/03 16:58:35 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/03 16:58:35 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/03 16:58:37 [ux_dck_zpool_loop] TESTI - testFailoverSemisyncAutoRejoinSafeMSMXMS
+2017/08/03 16:58:37 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
+2017/08/03 16:58:38 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
+2017/08/03 16:58:38 [ux_dck_zpool_loop] INFO  - Provisioning delete service f21586cd-2937-4ea3-b092-082d8f52f61d
+2017/08/03 16:58:41 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/03 16:58:41 [ux_dck_zpool_loop] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 16:58:41 [ux_dck_zpool_loop] STATE - ERR00012 Could not find a master in topology
+2017/08/03 16:58:41 [ux_dck_zpool_loop] STATE - ERR00021 All cluster down in non-interactive mode
+2017/08/03 16:58:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 16:58:45 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.70 as failed
+2017/08/03 16:58:45 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from Suspect to Failed
+2017/08/03 16:58:46 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.71 as failed
+2017/08/03 16:58:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Suspect to Failed
+2017/08/03 16:58:52 [ux_dck_zpool_loop] INFO  - 14:58:42,534 disk#00        INFO    create file /srv/4832677178583133704_docker.dsk, size 1G
+14:58:42,535 disk#00        INFO    provisioned
+14:58:42,538 disk#00        INFO    /sbin/losetup -f /srv/4832677178583133704_docker.dsk
+14:58:42,595 disk#00        INFO    /dev/loop0 now loops to /srv/4832677178583133704_docker.dsk
+14:58:42,616 disk#0000      INFO    zpool create -m legacy zp4832677178583133704_00 /srv/4832677178583133704_docker.dsk
+14:58:42,670 disk#0000      INFO    provisioned
+14:58:42,677 disk#0000      INFO    zp4832677178583133704_00 is already up
+14:58:42,684 disk#01        INFO    create file /srv/4832677178583133704_pod01.dsk, size 1G
+14:58:42,685 disk#01        INFO    provisioned
+14:58:42,703 disk#01        INFO    /sbin/losetup -f /srv/4832677178583133704_pod01.dsk
+14:58:42,776 disk#01        INFO    /dev/loop1 now loops to /srv/4832677178583133704_pod01.dsk
+14:58:42,817 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
+14:58:42,872 disk#1001      INFO    provisioned
+14:58:42,880 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+14:58:42,891 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+14:58:42,917 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+14:58:42,926 fs#00          INFO    provisioned
+14:58:42,943 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
+14:58:42,966 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+14:58:42,996 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+14:58:43,006 fs#01          INFO    provisioned
+14:58:43,024 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+14:58:43,034 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+14:58:45,363 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/aria/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/repl/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/launcher does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/init/start does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/logs/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/rc.d/
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tmp/
+file /srv/4832677178583133704/pod01/data/.system/tmp/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/aria/
+file /srv/4832677178583133704/pod01/data/.system/aria/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/repl/
+file /srv/4832677178583133704/pod01/data/.system/repl/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/custom/
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/redo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/init/
+file /srv/4832677178583133704/pod01/init/ mode set to 775
+file /srv/4832677178583133704/pod01/init/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/ mode set to 775
+file /srv/4832677178583133704/pod01/data/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tokudb/
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/undo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/launcher rewritten
+file /srv/4832677178583133704/pod01/init/launcher mode set to 755
+file /srv/4832677178583133704/pod01/init/launcher ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/innodb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/start rewritten
+file /srv/4832677178583133704/pod01/init/start mode set to 755
+file /srv/4832677178583133704/pod01/init/start ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/logs/
+file /srv/4832677178583133704/pod01/data/.system/logs/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.534211
+14:58:45,442 container#0001 INFO    docker start c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+14:58:45,623 container#0001 INFO    output:
+c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+14:58:45,637 container#0001 INFO    wait for up status
+14:58:45,663 container#0001 INFO    wait for container operational
+14:58:45,709 ip#01          INFO    skip allocate: an ip is already defined
+14:58:45,779 ip#01          INFO    checking 192.168.100.70 availability
+14:58:48,866 ip#01          INFO    bridge mode
+14:58:48,892 ip#01          INFO    create symlink /var/run/netns/21034 -> /proc/21034/ns/net
+14:58:48,956 ip#01          INFO    /sbin/ip link add name veth1pl21034 mtu 1500 type veth peer name veth1pg21034 mtu 1500
+14:58:48,961 ip#01          INFO    /sbin/ip link set veth1pl21034 master br0
+14:58:48,964 ip#01          INFO    /sbin/ip link set veth1pl21034 up
+14:58:48,967 ip#01          INFO    /sbin/ip link set veth1pg21034 netns 21034
+14:58:48,984 ip#01          INFO    /sbin/ip netns exec 21034 ip link set veth1pg21034 name eth1
+14:58:49,036 ip#01          INFO    /sbin/ip netns exec 21034 ip addr add 192.168.100.70/24 dev eth1
+14:58:49,108 ip#01          INFO    /sbin/ip netns exec 21034 ip link set eth1 up
+14:58:49,152 ip#01          INFO    /sbin/ip netns exec 21034 ip route replace default via 192.168.100.254
+14:58:49,197 ip#01          INFO    remove /var/run/netns/21034
+14:58:49,331 container#2001 INFO    docker run -d --name=4832677178583133704.container.2001 --net=container:4832677178583133704.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/4832677178583133704/pod01/data:/var/lib/mysql:rw -v /srv/4832677178583133704/pod01/etc/mysql:/etc/mysql:rw -v /srv/4832677178583133704/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /4832677178583133704/container.docker/container.2001 mariadb:10.2
+14:58:49,525 container#2001 INFO    output:
+59686de6c39b89570f09c359a752fd57d6fcaa495eee044265fa91de8df0d701
+14:58:49,539 container#2001 INFO    wait for up status
+14:58:49,572 container#2001 INFO    wait for container operational
+14:58:49,782                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+14:58:49,783                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 16:58:54 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:58:56 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:58:57 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 16:58:58 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:00 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:02 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:04 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:06 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:08 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 16:59:08 [ux_dck_zpool_loop] INFO  - Database started
+2017/08/03 16:59:09 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.70
+2017/08/03 16:59:10 [ux_dck_zpool_loop] INFO  - Provisioning delete service 51f0ac1f-5728-4f21-934d-db2b48dd0866
+2017/08/03 16:59:15 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 16:59:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 16:59:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 16:59:43 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 16:59:45 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:00:01 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:00:07 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:00:13 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:00:15 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:00:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:00:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:00:43 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:00:45 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:01:01 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:01:07 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:01:13 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:01:15 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:01:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:01:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:01:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:01:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:02:03 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:02:05 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:02:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:02:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:02:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:02:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:03:03 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:03:05 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:03:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:03:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:03:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:03:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:04:03 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:04:05 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:04:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:04:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:04:25 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:04:27 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:04:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:04:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:05:05 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:05:07 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:05:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:05:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:05:25 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:05:27 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:05:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:05:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:06:05 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:06:07 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:06:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:06:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:06:27 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:06:29 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:06:38 [ux_dck_zpool_loop] INFO  - 
+2017/08/03 17:06:40 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:42 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:44 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:45 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:06:46 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:48 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:50 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:52 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:54 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:56 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:06:58 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:00 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:02 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:04 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:06 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:08 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:10 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:12 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:14 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:16 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:18 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:20 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:22 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:24 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:26 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:28 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:30 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:32 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:34 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:36 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:38 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:07:38 [ux_dck_zpool_loop] INFO  - Database start timeout
+2017/08/03 17:07:45 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:07:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:07:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:08:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:08:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:08:33 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:08:35 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:08:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:08:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:09:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:09:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:09:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:09:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:09:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:09:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:10:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:10:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:10:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:10:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:10:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:10:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:10:55 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:10:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:11:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:11:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:11:37 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:11:39 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:11:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:11:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:11:57 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:11:59 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:12:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:12:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:12:39 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:12:45 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:12:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:12:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:12:59 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:13:01 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:13:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:13:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:13:39 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:13:45 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:13:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:13:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:14:01 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:14:03 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:14:21 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:14:23 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:14:51 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:14:53 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:15:01 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:15:03 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:15:05 [ux_dck_zpool_loop] INFO  - 
+2017/08/03 17:15:08 [ux_dck_zpool_loop] INFO  - Cleaning up replication on existing servers
+2017/08/03 17:15:09 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:15:21 [ux_dck_zpool_loop] TESTI - testFailoverSemisyncAutoRejoinSafeMSMXMS
+2017/08/03 17:15:23 [ux_dck_zpool_loop] INFO  - Provisioning delete service f4b5a25b-9133-4e4e-8aaf-013675639eb4
+2017/08/03 17:15:29 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 17:15:33 [ux_dck_zpool_loop] INFO  - 15:15:27,429 disk#00        INFO    already provisionned
+15:15:27,464 disk#00        INFO    loop /srv/4832677178583133704_docker.dsk is already up
+15:15:27,508 disk#0000      INFO    already provisionned
+15:15:27,515 disk#0000      INFO    zp4832677178583133704_00 is already up
+15:15:27,523 disk#01        INFO    already provisionned
+15:15:27,560 disk#01        INFO    loop /srv/4832677178583133704_pod01.dsk is already up
+15:15:27,601 disk#1001      INFO    already provisionned
+15:15:27,608 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+15:15:27,623 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+15:15:27,648 fs#00          INFO    provisioned
+15:15:27,660 fs#00          INFO    zfs zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
+15:15:27,676 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+15:15:27,703 fs#01          INFO    provisioned
+15:15:27,714 fs#01          INFO    zfs zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
+15:15:27,714 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+15:15:29,855 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf is ok
+STATUS:   ok
+check passed, skip fix
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.208030
+15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on agent1
+15:15:29,972 ip#01          INFO    skip allocate: an ip is already defined
+15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br0
+15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on agent1
+15:15:30,442                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+15:15:30,442                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 17:15:33 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 17:15:35 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:15:35 [ux_dck_zpool_loop] INFO  - Database started
+2017/08/03 17:15:36 [ux_dck_zpool_loop] INFO  - Provisioning delete service 95389fad-d785-43fa-ae8e-3cb2b2d09c86
+2017/08/03 17:15:47 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:15:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:15:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:16:01 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:16:03 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:16:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:16:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:16:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:16:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:17:03 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:17:05 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:17:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:17:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:17:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:17:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:18:05 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:18:07 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:18:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:18:27 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:18:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:18:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:19:07 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:19:09 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:19:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:19:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:19:27 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:19:29 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:19:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:19:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:20:09 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:20:11 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:20:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:20:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:20:29 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:20:31 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:20:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:20:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:21:11 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:21:17 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:21:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:21:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:21:31 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:21:33 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:21:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:21:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:22:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:22:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:22:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:22:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:22:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:22:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:23:04 [ux_dck_zpool_loop] INFO  - 
+2017/08/03 17:23:06 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:07 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:23:08 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:10 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:12 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:14 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:16 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:18 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:20 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:22 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:24 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:26 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:28 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:30 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:32 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:34 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:36 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:38 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:40 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:42 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:44 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:46 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:48 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:50 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:52 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:54 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:56 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:23:58 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:24:00 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:24:02 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:24:04 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 17:24:04 [ux_dck_zpool_loop] INFO  - Database start timeout
+2017/08/03 17:24:09 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:24:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:24:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:24:39 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:24:41 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:24:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:24:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:24:57 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:24:59 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:25:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:25:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:25:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:25:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:25:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:25:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:26:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:26:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:26:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:26:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:26:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:26:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:27:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:27:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:27:35 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:27:37 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:27:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:27:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:28:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:28:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:28:31 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:28:33 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:28:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:28:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:29:11 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:29:17 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:29:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:29:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:29:31 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:29:33 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:29:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:29:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:30:11 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:30:17 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:30:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:30:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:30:31 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:30:33 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:30:53 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:30:55 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:31:11 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:31:17 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:31:23 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:31:25 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:31:31 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 17:31:33 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
+2017/08/03 17:31:33 [ux_dck_zpool_loop] INFO  - 
+2017/08/03 17:31:36 [ux_dck_zpool_loop] INFO  - Cleaning up replication on existing servers
+2017/08/03 17:31:37 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue

@@ -1,0 +1,1115 @@
+2017/08/03 23:08:36 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/03 23:08:36 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/03 23:08:36 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/03 23:08:36 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/03 23:08:36 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/03 23:08:38 [ux_dck_zpool_loop] TESTI - testFailoverAllSlavesDelayNoRplChecksNoSemiSync
+2017/08/03 23:08:38 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
+2017/08/03 23:08:39 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
+2017/08/03 23:08:39 [ux_dck_zpool_loop] INFO  - Provisioning delete service 5f6a3537-25dc-44f2-8e46-2684f72dd265
+2017/08/03 23:08:43 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/03 23:08:43 [ux_dck_zpool_loop] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 23:08:43 [ux_dck_zpool_loop] STATE - ERR00012 Could not find a master in topology
+2017/08/03 23:08:43 [ux_dck_zpool_loop] STATE - ERR00021 All cluster down in non-interactive mode
+2017/08/03 23:08:48 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:08:49 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.71 as failed
+2017/08/03 23:08:49 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Suspect to Failed
+2017/08/03 23:08:49 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.70 as failed
+2017/08/03 23:08:49 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from Suspect to Failed
+2017/08/03 23:08:51 [ux_dck_zpool_loop] INFO  - 21:08:42,993 disk#00        INFO    create file /srv/4832677178583133704_docker.dsk, size 1G
+21:08:42,994 disk#00        INFO    provisioned
+21:08:42,997 disk#00        INFO    /sbin/losetup -f /srv/4832677178583133704_docker.dsk
+21:08:43,023 disk#00        INFO    /dev/loop0 now loops to /srv/4832677178583133704_docker.dsk
+21:08:43,061 disk#0000      INFO    zpool create -m legacy zp4832677178583133704_00 /srv/4832677178583133704_docker.dsk
+21:08:43,121 disk#0000      INFO    provisioned
+21:08:43,130 disk#0000      INFO    zp4832677178583133704_00 is already up
+21:08:43,138 disk#01        INFO    create file /srv/4832677178583133704_pod01.dsk, size 1G
+21:08:43,138 disk#01        INFO    provisioned
+21:08:43,155 disk#01        INFO    /sbin/losetup -f /srv/4832677178583133704_pod01.dsk
+21:08:43,197 disk#01        INFO    /dev/loop1 now loops to /srv/4832677178583133704_pod01.dsk
+21:08:43,233 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
+21:08:43,290 disk#1001      INFO    provisioned
+21:08:43,298 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+21:08:43,310 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+21:08:43,332 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+21:08:43,342 fs#00          INFO    provisioned
+21:08:43,362 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
+21:08:43,386 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+21:08:43,415 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+21:08:43,426 fs#01          INFO    provisioned
+21:08:43,444 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+21:08:43,453 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+21:08:45,778 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/aria/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/repl/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/launcher does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/init/start does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/logs/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/rc.d/
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tmp/
+file /srv/4832677178583133704/pod01/data/.system/tmp/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/aria/
+file /srv/4832677178583133704/pod01/data/.system/aria/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/repl/
+file /srv/4832677178583133704/pod01/data/.system/repl/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/custom/
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/redo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/init/
+file /srv/4832677178583133704/pod01/init/ mode set to 775
+file /srv/4832677178583133704/pod01/init/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/ mode set to 775
+file /srv/4832677178583133704/pod01/data/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tokudb/
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/undo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/launcher rewritten
+file /srv/4832677178583133704/pod01/init/launcher mode set to 755
+file /srv/4832677178583133704/pod01/init/launcher ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/innodb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/start rewritten
+file /srv/4832677178583133704/pod01/init/start mode set to 755
+file /srv/4832677178583133704/pod01/init/start ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/logs/
+file /srv/4832677178583133704/pod01/data/.system/logs/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.539130
+21:08:45,857 container#0001 INFO    docker start c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+21:08:46,035 container#0001 INFO    output:
+c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+21:08:46,049 container#0001 INFO    wait for up status
+21:08:46,077 container#0001 INFO    wait for container operational
+21:08:46,121 ip#01          INFO    skip allocate: an ip is already defined
+21:08:46,192 ip#01          INFO    checking 192.168.100.70 availability
+21:08:49,283 ip#01          INFO    bridge mode
+21:08:49,311 ip#01          INFO    create symlink /var/run/netns/22029 -> /proc/22029/ns/net
+21:08:49,383 ip#01          INFO    /sbin/ip link add name veth1pl22029 mtu 1500 type veth peer name veth1pg22029 mtu 1500
+21:08:49,388 ip#01          INFO    /sbin/ip link set veth1pl22029 master br0
+21:08:49,392 ip#01          INFO    /sbin/ip link set veth1pl22029 up
+21:08:49,395 ip#01          INFO    /sbin/ip link set veth1pg22029 netns 22029
+21:08:49,412 ip#01          INFO    /sbin/ip netns exec 22029 ip link set veth1pg22029 name eth1
+21:08:49,464 ip#01          INFO    /sbin/ip netns exec 22029 ip addr add 192.168.100.70/24 dev eth1
+21:08:49,544 ip#01          INFO    /sbin/ip netns exec 22029 ip link set eth1 up
+21:08:49,584 ip#01          INFO    /sbin/ip netns exec 22029 ip route replace default via 192.168.100.254
+21:08:49,628 ip#01          INFO    remove /var/run/netns/22029
+21:08:49,774 container#2001 INFO    docker run -d --name=4832677178583133704.container.2001 --net=container:4832677178583133704.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/4832677178583133704/pod01/data:/var/lib/mysql:rw -v /srv/4832677178583133704/pod01/etc/mysql:/etc/mysql:rw -v /srv/4832677178583133704/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /4832677178583133704/container.docker/container.2001 mariadb:10.2
+21:08:49,989 container#2001 INFO    output:
+9e9221a9011bd14841f0a93aaa1f913716bf45ba659d6335e772b6a749c85c43
+21:08:50,002 container#2001 INFO    wait for up status
+21:08:50,030 container#2001 INFO    wait for container operational
+21:08:50,254                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+21:08:50,255                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 23:08:53 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:08:55 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:08:56 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:08:57 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:08:59 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:01 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:03 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:05 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:07 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:08 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.70
+2017/08/03 23:09:09 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:09 [ux_dck_zpool_loop] INFO  - Database started
+2017/08/03 23:09:10 [ux_dck_zpool_loop] INFO  - Provisioning delete service c4c25ac2-2aa6-419f-9734-cf343293d27d
+2017/08/03 23:09:16 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:09:22 [ux_dck_zpool_loop] INFO  - 21:09:14,071 disk#00        INFO    create file /srv/17311646700765639015_docker.dsk, size 1G
+21:09:14,072 disk#00        INFO    provisioned
+21:09:14,075 disk#00        INFO    /sbin/losetup -f /srv/17311646700765639015_docker.dsk
+21:09:14,134 disk#00        INFO    /dev/loop0 now loops to /srv/17311646700765639015_docker.dsk
+21:09:14,155 disk#0000      INFO    zpool create -m legacy zp17311646700765639015_00 /srv/17311646700765639015_docker.dsk
+21:09:14,206 disk#0000      INFO    provisioned
+21:09:14,214 disk#0000      INFO    zp17311646700765639015_00 is already up
+21:09:14,221 disk#01        INFO    create file /srv/17311646700765639015_pod01.dsk, size 1G
+21:09:14,222 disk#01        INFO    provisioned
+21:09:14,246 disk#01        INFO    /sbin/losetup -f /srv/17311646700765639015_pod01.dsk
+21:09:14,334 disk#01        INFO    /dev/loop1 now loops to /srv/17311646700765639015_pod01.dsk
+21:09:14,380 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
+21:09:14,444 disk#1001      INFO    provisioned
+21:09:14,452 disk#1001      INFO    zp17311646700765639015_pod01 is already up
+21:09:14,463 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+21:09:14,483 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+21:09:14,493 fs#00          INFO    provisioned
+21:09:14,511 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
+21:09:14,535 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+21:09:14,555 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+21:09:14,564 fs#01          INFO    provisioned
+21:09:14,581 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+21:09:14,591 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
+21:09:16,877 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/aria/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/repl/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/launcher does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/init/start does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/logs/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/rc.d/
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tmp/
+file /srv/17311646700765639015/pod01/data/.system/tmp/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/aria/
+file /srv/17311646700765639015/pod01/data/.system/aria/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/repl/
+file /srv/17311646700765639015/pod01/data/.system/repl/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/custom/
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/redo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/init/
+file /srv/17311646700765639015/pod01/init/ mode set to 775
+file /srv/17311646700765639015/pod01/init/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/ mode set to 775
+file /srv/17311646700765639015/pod01/data/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tokudb/
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/undo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/launcher rewritten
+file /srv/17311646700765639015/pod01/init/launcher mode set to 755
+file /srv/17311646700765639015/pod01/init/launcher ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/innodb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/start rewritten
+file /srv/17311646700765639015/pod01/init/start mode set to 755
+file /srv/17311646700765639015/pod01/init/start ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/logs/
+file /srv/17311646700765639015/pod01/data/.system/logs/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tmp/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/aria/ is ok
+file /srv/17311646700765639015/pod01/data/.system/repl/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf is ok
+file /srv/17311646700765639015/pod01/init/ is ok
+file /srv/17311646700765639015/pod01/data/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf is ok
+file /srv/17311646700765639015/pod01/init/launcher is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/ is ok
+file /srv/17311646700765639015/pod01/init/start is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/logs/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.538535
+21:09:16,958 container#0001 INFO    docker start 83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+21:09:17,155 container#0001 INFO    output:
+83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+21:09:17,169 container#0001 INFO    wait for up status
+21:09:17,197 container#0001 INFO    wait for container operational
+21:09:17,242 ip#01          INFO    skip allocate: an ip is already defined
+21:09:17,309 ip#01          INFO    checking 192.168.100.71 availability
+21:09:20,397 ip#01          INFO    bridge mode
+21:09:20,425 ip#01          INFO    create symlink /var/run/netns/26747 -> /proc/26747/ns/net
+21:09:20,494 ip#01          INFO    /sbin/ip link add name veth1pl26747 mtu 1500 type veth peer name veth1pg26747 mtu 1500
+21:09:20,499 ip#01          INFO    /sbin/ip link set veth1pl26747 master br0
+21:09:20,504 ip#01          INFO    /sbin/ip link set veth1pl26747 up
+21:09:20,507 ip#01          INFO    /sbin/ip link set veth1pg26747 netns 26747
+21:09:20,518 ip#01          INFO    /sbin/ip netns exec 26747 ip link set veth1pg26747 name eth1
+21:09:20,574 ip#01          INFO    /sbin/ip netns exec 26747 ip addr add 192.168.100.71/24 dev eth1
+21:09:20,658 ip#01          INFO    /sbin/ip netns exec 26747 ip link set eth1 up
+21:09:20,694 ip#01          INFO    /sbin/ip netns exec 26747 ip route replace default via 192.168.100.254
+21:09:20,743 ip#01          INFO    remove /var/run/netns/26747
+21:09:20,885 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
+21:09:21,087 container#2001 INFO    output:
+eeef8d45ba08c41f1e38eee808243a232f0604b7673c4f69fdc121c71bdd236c
+21:09:21,101 container#2001 INFO    wait for up status
+21:09:21,131 container#2001 INFO    wait for container operational
+21:09:21,363                INFO    send /etc/opensvc/17311646700765639015.conf to collector
+21:09:21,364                INFO    update /var/lib/opensvc/17311646700765639015/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 23:09:22 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:09:24 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:26 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:28 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:30 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:32 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:34 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:36 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:38 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:38 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.71
+2017/08/03 23:09:38 [ux_dck_zpool_loop] STATE - INF00001 CLOSING Server 192.168.100.71 is down
+2017/08/03 23:09:40 [ux_dck_zpool_loop] INFO  - Waiting for database start
+2017/08/03 23:09:40 [ux_dck_zpool_loop] INFO  - Database started
+2017/08/03 23:09:44 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:09:48 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:09:50 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:10:06 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:10:08 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:10:26 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:10:28 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:10:46 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:10:48 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:10:51 [ux_dck_zpool_loop] INFO  - 21:09:43,146 disk#00        INFO    create file /srv/10940044185188150515_docker.dsk, size 1G
+21:09:43,147 disk#00        INFO    provisioned
+21:09:43,182 disk#00        INFO    /sbin/losetup -f /srv/10940044185188150515_docker.dsk
+21:09:43,254 disk#00        INFO    /dev/loop2 now loops to /srv/10940044185188150515_docker.dsk
+21:09:43,316 disk#0000      INFO    zpool create -m legacy zp10940044185188150515_00 /srv/10940044185188150515_docker.dsk
+21:09:43,373 disk#0000      INFO    provisioned
+21:09:43,381 disk#0000      INFO    zp10940044185188150515_00 is already up
+21:09:43,389 disk#01        INFO    create file /srv/10940044185188150515_pod01.dsk, size 1G
+21:09:43,389 disk#01        INFO    provisioned
+21:09:43,449 disk#01        INFO    /sbin/losetup -f /srv/10940044185188150515_pod01.dsk
+21:09:43,546 disk#01        INFO    /dev/loop3 now loops to /srv/10940044185188150515_pod01.dsk
+21:09:43,619 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
+21:09:43,672 disk#1001      INFO    provisioned
+21:09:43,679 disk#1001      INFO    zp10940044185188150515_pod01 is already up
+21:09:43,691 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+21:09:43,712 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+21:09:43,723 fs#00          INFO    provisioned
+21:09:43,740 fs#00          INFO    /sbin/zfs mount zp10940044185188150515_00/docker
+21:09:43,763 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+21:09:43,783 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+21:09:43,792 fs#01          INFO    provisioned
+21:09:43,810 fs#01          INFO    /sbin/zfs mount zp10940044185188150515_pod01/pod01
+21:09:43,819 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+21:09:46,211 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.proxy is already attached to this service
+========================= mariadb.svc.mrm.proxy.cnf ==========================
+ACTION:   check
+ERR: file //srv/10940044185188150515/pod01/conf/maxscale.cnf does not exist
+ERR: file /srv/10940044185188150515/pod01/init/launcher does not exist
+ERR: file //srv/10940044185188150515/pod01/log/ does not exist
+ERR: file //srv/10940044185188150515/pod01/data/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config-haproxy.toml does not exist
+ERR: file //srv/10940044185188150515/pod01/init/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/keepalived.conf does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config.toml does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir //srv/10940044185188150515/pod01/conf
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf rewritten
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf mode set to 775
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf ownership set to 999:999
+file: mkdir /srv/10940044185188150515/pod01/init
+file /srv/10940044185188150515/pod01/init/launcher rewritten
+file /srv/10940044185188150515/pod01/init/launcher mode set to 755
+file /srv/10940044185188150515/pod01/init/launcher ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/log/
+file //srv/10940044185188150515/pod01/log/ mode set to 775
+file //srv/10940044185188150515/pod01/log/ ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/data/
+file //srv/10940044185188150515/pod01/data/ mode set to 775
+file //srv/10940044185188150515/pod01/data/ ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml ownership set to 999:999
+file //srv/10940044185188150515/pod01/init/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf rewritten
+file //srv/10940044185188150515/pod01/conf/keepalived.conf mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config.toml ownership set to 999:999
+STATUS:   ok
+ACTION:   check
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf is ok
+file /srv/10940044185188150515/pod01/init/launcher is ok
+file //srv/10940044185188150515/pod01/log/ is ok
+file //srv/10940044185188150515/pod01/data/ is ok
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml is ok
+file //srv/10940044185188150515/pod01/init/ is ok
+file //srv/10940044185188150515/pod01/conf/ is ok
+file //srv/10940044185188150515/pod01/conf/keepalived.conf is ok
+file //srv/10940044185188150515/pod01/conf/config.toml is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.proxy.cnf
+0 error
+total duration: 0:00:00.436107
+21:09:46,287 container#0001 INFO    docker start 32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+21:09:46,450 container#0001 INFO    output:
+32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+21:09:46,463 container#0001 INFO    wait for up status
+21:09:46,492 container#0001 INFO    wait for container operational
+21:09:46,539 ip#01          INFO    skip allocate: an ip is already defined
+21:09:46,610 ip#01          INFO    checking 192.168.100.50 availability
+21:09:49,679 ip#01          INFO    bridge mode
+21:09:49,708 ip#01          INFO    create symlink /var/run/netns/28259 -> /proc/28259/ns/net
+21:09:49,777 ip#01          INFO    /sbin/ip link add name veth1pl28259 mtu 1500 type veth peer name veth1pg28259 mtu 1500
+21:09:49,782 ip#01          INFO    /sbin/ip link set veth1pl28259 master br0
+21:09:49,787 ip#01          INFO    /sbin/ip link set veth1pl28259 up
+21:09:49,791 ip#01          INFO    /sbin/ip link set veth1pg28259 netns 28259
+21:09:49,806 ip#01          INFO    /sbin/ip netns exec 28259 ip link set veth1pg28259 name eth1
+21:09:49,862 ip#01          INFO    /sbin/ip netns exec 28259 ip addr add 192.168.100.50/24 dev eth1
+21:09:49,938 ip#01          INFO    /sbin/ip netns exec 28259 ip link set eth1 up
+21:09:49,978 ip#01          INFO    /sbin/ip netns exec 28259 ip route replace default via 192.168.100.254
+21:09:50,019 ip#01          INFO    remove /var/run/netns/28259
+21:09:50,157 container#2001 INFO    docker run -d --name=10940044185188150515.container.2001 --net=container:10940044185188150515.container.0001 -v /etc/localtime:/etc/localtime:ro -v /srv/10940044185188150515/pod01/conf:/etc/maxscale.d:rw --rm --cgroup-parent /10940044185188150515/container.docker/container.2001 asosso/maxscale:latest
+21:09:50,380 container#2001 INFO    output:
+3007774fb2beae232e7aea92aeb5c47d724057f1f54dbb2fd62332af84283025
+21:09:50,398 container#2001 INFO    wait for up status
+21:09:50,431 container#2001 INFO    wait for container operational
+a stack has been saved to the rpc log
+21:10:50,605                INFO    send /etc/opensvc/10940044185188150515.conf to collector
+21:10:50,605                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 23:10:52 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 23:10:54 [ux_dck_zpool_loop] INFO  - Cleaning up replication on existing servers
+2017/08/03 23:11:04 [ux_dck_zpool_loop] INFO  - Environment bootstrapped with 192.168.100.70 as master
+2017/08/03 23:11:04 [ux_dck_zpool_loop] TEST: Waiting Bootstrap and discovery
+2017/08/03 23:11:04 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 23:11:04 [ux_dck_zpool_loop] ERROR - MaxScale server name undiscovered
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:04 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:06 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
+2017/08/03 23:11:06 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
+2017/08/03 23:11:06 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 23:11:06 [ux_dck_zpool_loop] ERROR - MaxScale server name undiscovered
+2017/08/03 23:11:06 [ux_dck_zpool_loop] TEST  - Starting Test testFailoverAllSlavesDelayNoRplChecksNoSemiSync
+2017/08/03 23:11:06 [ux_dck_zpool_loop] BENCH - Stopping slaves, injecting data & long transaction
+2017/08/03 23:11:26 [ux_dck_zpool_loop] TEST  - Master is 192.168.100.70
+2017/08/03 23:11:26 [ux_dck_zpool_loop] INFO : Starting master switch
+2017/08/03 23:11:26 [ux_dck_zpool_loop] INFO  - Electing a new master
+2017/08/03 23:11:26 [ux_dck_zpool_loop] DEBUG - Checking eligibility of slave server 192.168.100.71 [0]
+2017/08/03 23:11:26 [ux_dck_zpool_loop] DEBUG - Got sequence(s) [1] for server [0]
+2017/08/03 23:11:26 [ux_dck_zpool_loop] INFO  - Slave 192.168.100.71 [0] has been elected as a new master
+2017/08/03 23:11:26 [ux_dck_zpool_loop] INFO  - Waiting for candidate master to apply relay log
+2017/08/03 23:11:26 [ux_dck_zpool_loop] INFO  - Reading all relay logs on 192.168.100.71
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Status IO_Pos:0-3232261190-27, Slave_Pos:0-3232261190-1
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Status IO_Pos:0-3232261190-45, Slave_Pos:0-3232261190-45
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Save replication status before electing
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - master_log_file=mariadb-bin.000001
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - master_log_pos=447
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Candidate was in sync=false
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Stopping slave thread on new master
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Resetting slave on new master and set read/write mode on
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Inject fake transaction on new master 192.168.100.71 
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Switching other slaves to the new master
+2017/08/03 23:11:27 [ux_dck_zpool_loop] INFO  - Master switch on 192.168.100.71 complete
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - ERR00017 Unable to fetch MaxScale monitoring information
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 23:11:28 [ux_dck_zpool_loop] STATE - WARN0023 Failover number of master pings failure has been reached
+2017/08/03 23:11:28 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:29 [ux_dck_zpool_loop] TEST  - New Master  192.168.100.70 
+2017/08/03 23:11:30 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Master to Suspect
+2017/08/03 23:11:30 [ux_dck_zpool_loop] STATE - WARN0023 CLOSING Failover number of master pings failure has been reached
+2017/08/03 23:11:30 [ux_dck_zpool_loop] STATE - ERR00017 CLOSING Unable to fetch MaxScale monitoring information
+2017/08/03 23:11:30 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.71 is down
+2017/08/03 23:11:30 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:31 [ux_dck_zpool_loop] ERROR - Old master 192.168.100.70 ==  New master 192.168.100.70  
+2017/08/03 23:11:33 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:33 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:33 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:33 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:33 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:33 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:35 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:35 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:35 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:35 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:35 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:35 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:35 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:37 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:37 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:37 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:37 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:37 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:37 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:37 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:39 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:39 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:39 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:39 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:39 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:39 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:39 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:41 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:41 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:41 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:41 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:41 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:41 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:41 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:43 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:43 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:43 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:43 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:43 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:43 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:43 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:45 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:45 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:45 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:45 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:45 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:47 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:47 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:47 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:47 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:47 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:49 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:49 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:49 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:49 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:49 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:49 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:51 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:51 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:51 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:51 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:51 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:51 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:51 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:53 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:53 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:53 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:53 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:53 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:53 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:55 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:55 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:55 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:55 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:55 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:55 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:55 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:57 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:57 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:57 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:57 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:57 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:57 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:57 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:11:59 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:11:59 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:11:59 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:11:59 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:11:59 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:11:59 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:11:59 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:01 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:01 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:01 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:01 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:01 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:01 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:01 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:03 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:03 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:03 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:03 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:03 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:03 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:03 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:05 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:05 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:05 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:05 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:05 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:05 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:05 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:07 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:07 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:07 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:07 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:07 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:07 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:07 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:08 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:08 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:08 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:08 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:08 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:08 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:08 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:10 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:10 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:10 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:10 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:10 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:10 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:10 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:12 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:12 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:12 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:12 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:12 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:12 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:12 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:14 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:14 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:14 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:14 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:14 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:14 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:14 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:16 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:16 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:16 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:16 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:16 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:16 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:16 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:18 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:18 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:18 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:18 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:18 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:18 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:18 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:21 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:21 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:21 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:21 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:21 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:21 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:21 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:23 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:23 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:23 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:23 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:23 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:23 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:23 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:25 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:25 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:25 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:25 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:25 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:25 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:25 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:27 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:27 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:27 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:27 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:27 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:27 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:27 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:29 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:29 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:29 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:29 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:29 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:29 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:29 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:31 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:31 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:31 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:31 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:31 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:31 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:31 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:33 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:33 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:33 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:33 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:33 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:33 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:33 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:35 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:35 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:35 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:35 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:35 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:35 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:35 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:37 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:37 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:37 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:37 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:37 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:37 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:37 [ux_dck_zpool_loop] ERROR - Error 1045: failed to create new session
+2017/08/03 23:12:39 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:40 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:40 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:40 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:40 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:40 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:40 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 23:12:41 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:42 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:42 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:42 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:42 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:42 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:42 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:43 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:44 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:44 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:44 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:44 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:44 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:44 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:44 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:45 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:45 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:45 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:45 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:46 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:47 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:47 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:47 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:47 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:48 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:49 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:49 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:49 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:49 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:49 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:51 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:52 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:52 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:52 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:52 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:52 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:52 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:53 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:54 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:54 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:54 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:54 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:54 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:54 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:55 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:56 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
+2017/08/03 23:12:56 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 23:12:56 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
+2017/08/03 23:12:56 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/03 23:12:56 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
+2017/08/03 23:12:56 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/03 23:12:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 23:12:57 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
+2017/08/03 23:12:57 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/03 23:12:57 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/03 23:12:57 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/03 23:12:57 [ux_dck_zpool_loop] TEST  - Result FailoverAllSlavesDelayNoRplChecksNoSemiSync              -> {testFailoverAllSlavesDelayNoRplChecksNoSemiSync FAIL ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAllSlavesDelayNoRplChecksNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker agent1,agent2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker agent2 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=4) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAllSlavesDelayNoRplChecksNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=5) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker agent1,agent2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker agent2 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}

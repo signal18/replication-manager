@@ -1,0 +1,14 @@
+2017/08/03 19:56:03 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/03 19:56:03 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/03 19:56:03 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/03 19:56:03 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/03 19:56:03 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/03 19:56:05 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
+2017/08/03 19:56:05 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/03 19:56:05 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
+2017/08/03 19:56:05 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
+2017/08/03 19:56:05 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
+2017/08/03 19:56:05 [ux_dck_zpool_loop] STATE - ERR00012 Could not find a master in topology
+2017/08/03 19:56:05 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/03 19:56:05 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
