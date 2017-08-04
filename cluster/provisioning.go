@@ -376,10 +376,14 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	cluster.LogPrintf("INFO", "Cleaning up replication on existing servers")
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.servers {
+		err := server.Refresh()
+		if err != nil {
+			return err
+		}
 		if cluster.conf.Verbose {
 			cluster.LogPrintf("INFO", "SetDefaultMasterConn on server %s ", server.URL)
 		}
-		err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
+		err = dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
 		if err != nil {
 			if cluster.conf.Verbose {
 				cluster.LogPrintf("INFO", "RemoveFailoverState on server %s ", server.URL)

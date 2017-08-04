@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,8 @@ var (
 	cliShowtests        bool
 	cliTeststopcluster  bool
 	cliTeststartcluster bool
+	cliTestConvert      bool
+	cliTestConvertFile  string
 	cliTopology         string
 	cliCleanall         bool
 )
@@ -130,6 +133,8 @@ func init() {
 	testCmd.Flags().BoolVar(&cliShowtests, "show-tests", false, "display tests list")
 	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-start-cluster", true, "start the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-stop-cluster", true, "stop the cluster between tests")
+	testCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
+	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 
 	rootCmd.AddCommand(bootstrapCmd)
 	bootstrapCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
@@ -179,7 +184,7 @@ var failoverCmd = &cobra.Command{
 		var slogs []string
 		cliInit(true)
 		cliGetTopology()
-		cliClusterCmd("failover")
+		cliClusterCmd("actions/failover")
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
@@ -199,7 +204,7 @@ and demoting the old master to slave`,
 		var slogs []string
 		cliInit(true)
 		cliGetTopology()
-		cliClusterCmd("switchover")
+		cliClusterCmd("actions/switchover")
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
@@ -248,6 +253,35 @@ var testCmd = &cobra.Command{
 	Long:  `Perform named tests passed with argument --run-tests=test1,test2`,
 	Run: func(cmd *cobra.Command, args []string) {
 
+		if cliTestConvert {
+
+			type TestResults struct {
+				Results []cluster.Test `json:"results"`
+			}
+			var cltests TestResults
+			file, err := ioutil.ReadFile(cliTestConvertFile)
+			if err != nil {
+				fmt.Printf("File error: %v\n", err)
+				return
+			}
+			err = json.Unmarshal(file, &cltests)
+			if err != nil {
+				fmt.Printf("File error: %v\n", err)
+				return
+			}
+			var tmplgreen = "<tr><td>%s</td><td bgcolor=\"#adebad\">%s</td></tr>"
+			var tmplred = "<tr><td>%s</td><td  bgcolor=\"##ff8080\">%s</td></tr>"
+			fmt.Printf("<table>")
+			for _, v := range cltests.Results {
+				if v.Result == "FAIL" {
+					fmt.Printf(tmplred, v.Name, v.Result)
+				} else {
+					fmt.Printf(tmplgreen, v.Name, v.Result)
+				}
+			}
+			fmt.Printf("</table>")
+			return
+		}
 		cliInit(true)
 		//cliGetTopology()
 
@@ -263,7 +297,18 @@ var testCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal("Error in API call")
 				} else {
-					fmt.Printf(res)
+					if res != "" {
+						fmt.Printf(res)
+					} else {
+						var thistest cluster.Test
+						thistest.Result = "TIMEOUT"
+						thistest.Name = test
+						data, _ := json.Marshal(thistest)
+						if err != nil {
+							return
+						}
+						fmt.Printf(string(data))
+					}
 				}
 			}
 		}
@@ -804,9 +849,9 @@ func cliAPICmd(urlpost string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
 	req.Header.Set("Authorization", bearer)
-
-	resp, err := cliConn.Do(req)
+	resp, err := cliConn.Do(req.WithContext(ctx))
 	if err != nil {
 		log.Println("ERROR ", err)
 		return "", err
