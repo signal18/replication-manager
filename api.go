@@ -9,10 +9,11 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
@@ -257,7 +258,7 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 
-	log.Println("Now listening localhost:3000")
+	log.Println("Now listening on localhost:3000")
 	http.ListenAndServeTLS("0.0.0.0:3000", conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 }
 
