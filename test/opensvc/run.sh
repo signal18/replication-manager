@@ -17,7 +17,7 @@ for i in $(find ./$1 -name "*.conf") ; do
    > $desdir/$test.log
    ../../replication-manager-pro --test --logfile=$destdir/$test.log --config=./$i monitor  &
    pid="$!"
-   sleep 3
+   sleep 8
    while [[ $(../../replication-manager-pro api --url=https://127.0.0.1:3000/api/status) != "{\"alive\": \"running\"}" ]] ; do
     echo "waiting start service"
     sleep 1
@@ -34,4 +34,4 @@ for i in $(find ./$1 -name "*.conf") ; do
   # Convert result to html
    ../../replication-manager-pro test --convert --file="$destdir/result.json" > $destdir/result.html
 done
-tree config -P result.json -H https://github.com/tanji/replication-manager/tree/develop/test/opensvc/config  > ../../doc/regtest.html
+tree config -P result.html -H "http://htmlpreview.github.io/?https://github.com/tanji/replication-manager/tree/develop/test/opensvc/config"  > ../../doc/regtest.html

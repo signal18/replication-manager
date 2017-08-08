@@ -113,7 +113,7 @@ func (SM *StateMachine) IsInState(key string) bool {
 		return false
 	} else {
 		SM.Unlock()
-		return false
+		return true
 	}
 }
 

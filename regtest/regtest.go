@@ -12,7 +12,6 @@ var tests = []string{
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
 	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
 	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
-	"testSwitchoverReplAllDelay",
 	"testSwitchoverReadOnlyNoRplCheck",
 	"testSwitchoverNoReadOnlyNoRplCheck",
 	"testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck",
@@ -42,7 +41,7 @@ var tests = []string{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
-	"testFailoverReplAllDelayInteractive",
+	//	"testFailoverReplAllDelayInteractive",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
@@ -153,7 +152,6 @@ func (regtest *RegTest) RunAllTests(cl *cluster.Cluster, test string) []cluster.
 		thistest.Result = regtest.getTestResultLabel(res)
 		allTests["testFailoverAssyncAutoRejoinRelay"] = thistest
 	}
-
 	if test == "testFailoverCascadingSemisyncAutoRejoinFlashback" || test == "ALL" {
 		thistest.Name = "testFailoverCascadingSemisyncAutoRejoinFlashback"
 		res = testFailoverCascadingSemisyncAutoRejoinFlashback(cl, "semisync.cnf", &thistest)

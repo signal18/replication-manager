@@ -57,14 +57,22 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		for _, svc := range node.Svc {
 			for _, db := range cluster.servers {
 				if db.Id == svc.Svc_name {
-					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					if err != nil {
+						continue
+					} else {
+						cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					}
 				}
 			}
 			for _, prx := range cluster.proxies {
 				if prx.Id == svc.Svc_name {
-					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					if err != nil {
+						continue
+					} else {
+						cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					}
 				}
 			}
 		}
@@ -349,7 +357,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 						cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 					}
 					if status == "W" {
-						cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+						cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
 					}
 					if status == "T" {
 						break

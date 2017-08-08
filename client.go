@@ -290,23 +290,23 @@ var testCmd = &cobra.Command{
 			log.Println(cliSettings.RegTests)
 		}
 		if cliShowtests == false {
+
 			todotests := strings.Split(cliRuntests, ",")
+
 			for _, test := range todotests {
+				var thistest cluster.Test
+				thistest.Result = "TIMEOUT"
+				thistest.Name = test
+				data, _ := json.Marshal(thistest)
 				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
 				res, err := cliAPICmd(urlpost)
 				if err != nil {
+					fmt.Printf(string(data))
 					log.Fatal("Error in API call")
 				} else {
 					if res != "" {
 						fmt.Printf(res)
 					} else {
-						var thistest cluster.Test
-						thistest.Result = "TIMEOUT"
-						thistest.Name = test
-						data, _ := json.Marshal(thistest)
-						if err != nil {
-							return
-						}
 						fmt.Printf(string(data))
 					}
 				}

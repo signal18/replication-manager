@@ -25,7 +25,7 @@ var clusterError = map[string]string{
 	"ERR00018": "Could not connect to MaxScale: %s",
 	"ERR00019": "Could not get MaxScale maxadmin server list: %s",
 	"ERR00020": "Could not get MaxScale maxinfo server list: %s",
-	"ERR00021": "All cluster down in non-interactive mode",
+	"ERR00021": "All cluster db servers down",
 	"ERR00022": "Running in passive mode",
 	"ERR00023": "Constraint failed: state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t",
 	"ERR00024": "Constraint failed: isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t",

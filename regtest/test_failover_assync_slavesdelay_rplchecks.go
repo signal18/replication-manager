@@ -28,18 +28,16 @@ func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, con
 
 	cluster.DelayAllSlaves()
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
-	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
-	cluster.GetMaster().FailCount = cluster.GetMaxFail()
 	cluster.SetFailLimit(5)
 	cluster.SetFailTime(0)
 	cluster.SetFailoverCtr(0)
 	cluster.SetCheckFalsePositiveHeartbeat(false)
 	cluster.SetRplChecks(true)
 	cluster.SetRplMaxDelay(4)
-	cluster.CheckFailed()
 
-	cluster.WaitFailoverEnd()
+	cluster.FailoverAndWait()
+
 	cluster.LogPrintf("TEST", " New Master  %s ", cluster.GetMaster().URL)
 
 	time.Sleep(2 * time.Second)

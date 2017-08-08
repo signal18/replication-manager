@@ -211,21 +211,31 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	}
 	return true
 }
+func (cluster *Cluster) FailoverAndWait() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.WaitFailover(wg)
+	cluster.StopDatabaseService(cluster.GetMaster())
+	wg.Wait()
+}
 
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
 		dbhelper.StopSlave(s.Conn)
 	}
-	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
+	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
-		cluster.LogPrintf("BENCH", "%s %s", err.Error(), result)
+		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
 	}
-	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-	time.Sleep(10 * time.Second)
+	err = dbhelper.InjectLongTrx(cluster.master.Conn, 15)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "%s %s", err.Error())
+	}
 	for _, s := range cluster.slaves {
 		dbhelper.StartSlave(s.Conn)
 	}
+	time.Sleep(3 * time.Second)
 	return nil
 }
 
@@ -241,11 +251,12 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	//	}
 	err := cluster.Bootstrap()
 	if err != nil {
-		cluster.LogPrintf("TEST", "Abording test, bootstrap failed, %s", err)
+		cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)
 		cluster.Unprovision()
 		return false
 	}
-	cluster.LogPrintf("TEST", "Starting Test %s", test.Name)
+	cluster.waitClusterStart()
+	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
 	return true
 }
 
@@ -264,7 +275,7 @@ func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
 		cluster.Unprovision()
 	}
 	cluster.RestoreConf()
-
+	cluster.WaitClusterStop()
 	return true
 }
 

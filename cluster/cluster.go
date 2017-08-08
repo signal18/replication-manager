@@ -233,7 +233,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 	var clsave Save
 	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".json")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "File error: %v\n", err)
+		cluster.LogPrintf("WARN", "File error: %v\n", err)
 		return err
 	}
 	err = json.Unmarshal(file, &clsave)

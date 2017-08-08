@@ -27,48 +27,73 @@ Each micro-service define some collection of resources:
 OpenSVC drivers can provision disk device on all kine of external SAN arrays, contact opensvc if you need custom type of disk provisioning on your architecture.
 
 Provisioning options can be defined in the configuration file cluster section and as of today are uniform over a full cluster.
+
+Type of Micro-Services can be docker or package not that if package it need the package install on the agent as replication-manager will call the binary for bootstrapping.    
 ```
 prov-db-service-type = "docker"
+prov-db-docker-img = "mariadb:latest"
+```
+
+File system many drivers are available we do test xfs ext4 zfs the most othe like ceph or drbd would need additional testing to be used as may extra options need to be setup
+```
 prov-db-disk-fs = "zfs"
 prov-db-disk-pool = "zpool"
+```
+Disks type can be loopback or device in case of type loopback the path is needed instead of device name
+```
 prov-db-disk-type = "loopback"
 prov-db-disk-device = "/srv"
+```
+
+Network please check availability of the ip before using them , also some opensvc deployemetn can manage range of dhcp ip and DNS entries   
+```
 prov-db-net-iface = "br0"
 prov0-db-net-gateway = "192.168.1.254"
 prov-db-net-mask = "255.255.255.0"
 ```
 
-Database Micro Service bootstrap some database configurations files adapted to following cluster parameters:
+Database bootstrap is deploying some database configurations files that are auto adapted to following cluster parameters and to tags:
+
+
+Memory in M for micro service VM (default "256")
 ```
- prov-db-memory                           
-  Memory in M for micro service VM (default "256")
- prov-db-disk-iops                        
-  Rnd IO/s in for micro service VM (default "300")
- prov-db-disk-size                        
-  Disk in g for micro service VM (default "20g")
+prov-db-memory = "256"  
+```                         
+Rnd IO/s in for micro service VM (default "300")
+```  
+prov-db-disk-iops = "300"                       
+```  
+Disk in g for micro service VM (default "20g")
+```
+prov-db-disk-size = "20g"                       
+```
+Disk in g for micro service VM (default "20g")
+```
  prov-proxy-disk-size                    
-   Disk in g for micro service VM (default "20g")
+
 ```
 
-Extra database tags:
+### Extra database tags:
 ```
-prov-db-tags                             
- Tags for configuration (default  
+prov-db-tagsnfiguration = "semisync,innodb,noquerycache,threadpool,logslow"
 ```
+
 Storage:
-
+```
 innodb, myrocks, tokudb, spider
-
+```
 Logs:
-
+```
 logaudit, logslow, logsqlerrors, loggeneral,
-
+```
 Features:
-
+```
 compress, noquerycache,  threadpool
-
-Replication
+```
+Replication:
+```
 multidomains, nologslaveupdates, mysqlgtid, smallredolog
+```
 
 ## Install
 

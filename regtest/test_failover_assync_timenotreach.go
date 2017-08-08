@@ -17,9 +17,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *clust
 	}
 
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
-	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
-	cluster.GetMaster().FailCount = cluster.GetMaxFail()
 	cluster.SetFailLimit(3)
 	cluster.SetFailTime(20)
 	cluster.SetFailoverCtr(1)
@@ -35,8 +33,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *clust
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.SetFailoverTs(time.Now().Unix())
-	cluster.CheckFailed()
-	cluster.WaitFailoverEnd()
+	cluster.FailoverAndWait()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)

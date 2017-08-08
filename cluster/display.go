@@ -106,6 +106,10 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			log.WithField("cluster", cluster.cfgGroup).Debugf(cliformat, args...)
 		case "WARN":
 			log.WithField("cluster", cluster.cfgGroup).Warnf(cliformat, args...)
+		case "TEST":
+			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "test"}).Infof(cliformat, args...)
+		case "BENCH":
+			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "benchmark"}).Infof(cliformat, args...)
 		case "ALERT":
 			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "alert"}).Warnf(cliformat, args...)
 		case "STATE":

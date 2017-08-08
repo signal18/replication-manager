@@ -96,7 +96,7 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf("TEST", "Starting Database service %s", server.Id)
+	cluster.LogPrintf("INFO", "Starting Database service %s", server.Id)
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCStartService(server)
 	} else {
@@ -122,7 +122,7 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
-		cluster.LogPrintf("TEST", "Waiting for failover stopped.")
+		cluster.LogPrintf("INFO", "Waiting for failover stopped.")
 	}
 	time.Sleep(recoverTime * time.Second)
 }
@@ -156,24 +156,25 @@ func (cluster *Cluster) WaitFailoverEnd() error {
 }
 
 func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
-
+	cluster.LogPrintf("INFO", "Waiting failover end")
 	defer wg.Done()
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("TEST", "Waiting Failover end")
+			cluster.LogPrintf("INFO", "Waiting failover end")
 			exitloop++
 		case <-cluster.failoverCond.Recv:
+			cluster.LogPrintf("INFO", "Failover end receive from channel failoverCond")
 			return
 		default:
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST", "Failover end")
+		cluster.LogPrintf("INFO", "Failover end")
 	} else {
-		cluster.LogPrintf("TEST", "Failover end timeout")
+		cluster.LogPrintf("ERROR", "Failover end timeout")
 		return
 	}
 	return
@@ -187,7 +188,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("TEST", "Waiting Switchover end")
+			cluster.LogPrint("INFO", "Waiting switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
 			return
@@ -195,9 +196,9 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST", "Switchover end")
+		cluster.LogPrintf("INFO", "Switchover end")
 	} else {
-		cluster.LogPrintf("TEST", "Switchover end timeout")
+		cluster.LogPrintf("ERROR", "Switchover end timeout")
 		return
 	}
 	return
@@ -214,7 +215,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("TEST", "Waiting Rejoin")
+			cluster.LogPrintf("INFO", "Waiting Rejoin")
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
 			return
@@ -228,10 +229,35 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		cluster.LogPrintf("INFO", "Rejoin Finished")
 
 	} else {
-		cluster.LogPrintf("INFO", "Rejoin timeout")
+		cluster.LogPrintf("ERROR", "Rejoin timeout")
 		return
 	}
 	return
+}
+
+func (cluster *Cluster) WaitClusterStop() error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
+	for exitloop < 60 {
+		select {
+		case <-ticker.C:
+			cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
+			exitloop++
+			// All cluster down
+			if cluster.sme.IsInState("ERR00021") {
+				exitloop = 100
+			}
+		default:
+		}
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("INFO", "Cluster is shutdown")
+	} else {
+		cluster.LogPrintf("ERROR", "Cluster shutdown timeout")
+		return errors.New("Failed to stop the cluster")
+	}
+	return nil
 }
 
 func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
@@ -240,7 +266,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("INFO", "Waiting MariaDB shutdown")
+			cluster.LogPrintf("INFO", "Waiting MariaDB shutdown")
 			exitloop++
 			_, err := os.FindProcess(server.Process.Pid)
 			if err != nil {
@@ -264,7 +290,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for database start")
+			cluster.LogPrintf("INFO", "Waiting for database start %s", server.URL)
 			exitloop++
 
 			dbhelper.GetStatus(server.Conn)
@@ -284,13 +310,13 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitBootstrapDiscovery() error {
-	cluster.LogPrint("TEST: Waiting Bootstrap and discovery")
+	cluster.LogPrintf("INFO", "Waiting Bootstrap and discovery")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("TEST", "Waiting Bootstrap and discovery")
+			cluster.LogPrintf("INFO", "Waiting Bootstrap and discovery")
 			exitloop++
 			if cluster.sme.IsDiscovered() {
 				exitloop = 100
@@ -299,22 +325,22 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST", "Cluster is Bootstraped and discovery")
+		cluster.LogPrintf("INFO", "Cluster is Bootstraped and discovery")
 	} else {
-		cluster.LogPrintf("TEST", "Bootstrap timeout")
+		cluster.LogPrintf("ERROR", "Bootstrap timeout")
 		return errors.New("Failed Bootstrap timeout")
 	}
 	return nil
 }
 
 func (cluster *Cluster) waitMasterDiscovery() error {
-	cluster.LogPrintf("TEST", "Waiting Master Found")
+	cluster.LogPrintf("INFO", "Waiting Master Found")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("TEST", "Waiting Master Found")
+			cluster.LogPrintf("INFO", "Waiting Master Found")
 			exitloop++
 			if cluster.master != nil {
 				exitloop = 100
@@ -323,10 +349,34 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("TEST", "Master founded")
+		cluster.LogPrintf("INFO", "Master founded")
 	} else {
-		cluster.LogPrintf("TEST", "Master found timeout")
+		cluster.LogPrintf("ERROR", "Master found timeout")
 		return errors.New("Failed Master search timeout")
+	}
+	return nil
+}
+
+func (cluster *Cluster) waitClusterStart() error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	cluster.LogPrintf("INFO", "Waiting for cluster start")
+	for exitloop < 30 {
+		select {
+		case <-ticker.C:
+			cluster.LogPrintf("INFO", "Waiting for cluster start")
+			exitloop++
+			if cluster.sme.CanMonitor() {
+				exitloop = 100
+			}
+		default:
+		}
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("INFO", "Cluster was started")
+	} else {
+		cluster.LogPrintf("ERROR", "Timeout waiting for cluster start")
+		return errors.New("Cluster search timeout")
 	}
 	return nil
 }
