@@ -1044,8 +1044,10 @@ func checkAuth(u, p string) bool {
 
 // test if file exists
 func testFile(fn string) error {
+
 	f, err := os.Open(conf.HttpRoot + "/" + fn)
 	if err != nil {
+		log.Printf("error no file %s", conf.HttpRoot+"/"+fn)
 		return err
 	}
 	f.Close()
