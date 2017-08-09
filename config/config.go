@@ -86,6 +86,7 @@ type Config struct {
 	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
 	MaxFail                            int    `mapstructure:"failcount"`
 	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
+	FailMode                           string `mapstructure:"failover-mode"`
 	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
 	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
 	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`

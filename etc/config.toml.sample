@@ -11,7 +11,7 @@ hosts = "127.0.0.1:5055,127.0.0.1:5056"
 prefmaster = "127.0.0.1:5055"
 user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
-interactive = true
+failover-mode = "manual"
 maxscale = true
 maxscale-monitor = false
 maxscale-maxinfo-port = 3307
@@ -36,7 +36,7 @@ failover-at-sync = false
 user = "skysql:skyvodka"
 rpluser = "skysql:skyvodka"
 connect-timeout = 1
-interactive = false
+failover-mode = "automatic"
 maxscale = true
 
 maxscale-get-info-method = "maxadmin"
@@ -188,6 +188,7 @@ check-replication-state = true
 failcount = 5
 failcount-reset-time = 300
 
+failover-mode = "manual"
 # Cancel failover if already N failover
 # Cancel failover if last failover was N seconds before
 # Cancel failover in semi-sync when one slave is not in sync
@@ -286,19 +287,6 @@ graphite-carbon-pickle-port = 2004
 graphite-carbon-pprof-port = 7007
 
 
-# SYSBENCH
-# --------
-
-sysbench-binary-path = "/usr/sbin/sysbench"
-sysbench-threads = 4
-sysbench-time = 60
-
-
-# MARIADB >= 10.2
-# ---------------
-
-mariadb-binary-path = "/usr/sbin"
-
 # REJOIN
 # --------
 autorejoin = true
@@ -307,14 +295,3 @@ autorejoin-semisync = true
 autorejoin-backup-binlog = true
 autorejoin-flashback = false
 autorejoin-mysqldump = false
-
-# ETCD CLUSTER
-# ------------
-
-#[Agent1]
-#hosts= "127.0.0.1:5012"
-#rpluser = "skysql:skyvodka"
-
-#[Agent2]
-#hosts = "127.0.0.1:5054"
-#rpluser = "skysql:skyvodka"
