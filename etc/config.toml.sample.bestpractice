@@ -173,7 +173,6 @@ mail-to = "mrm@mariadb.com"
 
 pre-failover-script = ""
 post-failover-script = ""
-rejoin-script = ""
 
 
 # Timeout in seconds between consecutive monitoring
@@ -302,8 +301,9 @@ mariadb-binary-path = "/usr/sbin"
 # REJOIN
 # --------
 autorejoin = true
+autorejoin-script = ""
 autorejoin-semisync = true
-autorejoin-flashback = true
+autorejoin-flashback = false
 autorejoin-mysqldump = false
 
 

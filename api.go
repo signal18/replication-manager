@@ -259,7 +259,7 @@ func apiserver() {
 	))
 
 	log.Println("Now listening on localhost:3000")
-	http.ListenAndServeTLS("0.0.0.0:3000", conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 }
 
 //////////////////////////////////////////

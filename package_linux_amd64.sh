@@ -25,7 +25,8 @@ cp replication-manager build/usr/bin/
 cp etc/* build/etc/replication-manager/
 cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp -r share/* build/usr/share/replication-manager/
-# do not package commercial collector docker images  
+
+# do not package commercial collector docker images
 rm -rf build/usr/share/replication-manager/opensvc/*.tar.gz
 cp service/replication-manager.service build/etc/systemd/system
 cp service/replication-manager.init.el6 build/etc/init.d/replication-manager

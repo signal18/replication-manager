@@ -140,14 +140,14 @@ func (server *ServerMonitor) rejoinMasterFashBack(crash *Crash) error {
 	}
 
 	// Flashback here
-	if _, err := os.Stat(server.ClusterGroup.conf.MariaDBBinaryPath + "/mysqlbinlog"); os.IsNotExist(err) {
+	if _, err := os.Stat(server.ClusterGroup.conf.ShareDir + "/" + server.ClusterGroup.conf.GoArch + "/" + server.ClusterGroup.conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
 		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
 		return err
 	}
 
-	binlogCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", binlogCmd.Args)
+	binlogCmd := exec.Command(server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	clientCmd := exec.Command(server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", binlogCmd.Args)
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -444,19 +444,19 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 }
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
-	if _, err := os.Stat(server.ClusterGroup.conf.MariaDBBinaryPath + "/mysqlbinlog"); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "Backup Binlog File does not exist %s check param mariadb-binary-path", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+	if _, err := os.Stat(server.ClusterGroup.conf.ShareDir + "/" + server.ClusterGroup.conf.GoArch + "/" + server.ClusterGroup.conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("ERROR", "Backup Binlog File does not exist %s check param mariadb-binary-path", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog")
 		return err
 	}
 	if _, err := os.Stat(server.ClusterGroup.conf.WorkingDir); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "WorkingDir does not exist %s check param working-directory", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+		server.ClusterGroup.LogPrintf("ERROR", "WorkingDir does not exist %s check param working-directory", server.ClusterGroup.conf.WorkingDir)
 		return err
 	}
 	var cmdrun *exec.Cmd
 	server.ClusterGroup.LogPrintf("INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.conf.WorkingDir+"/", server.deletefiles)
-	cmdrun = exec.Command(server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog", cmdrun.Args)
+	cmdrun = exec.Command(server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
+	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", cmdrun.Args)
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -464,7 +464,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog ", cmdrun.Args)
+		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog ", cmdrun.Args)
 		server.ClusterGroup.canFlashBack = false
 		return cmdrunErr
 	}
@@ -473,8 +473,8 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
 	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
-	dumpCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	dumpCmd := exec.Command(cluster.conf.ShareDir+"/"+cluster.conf.GoArch+"/"+cluster.conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	clientCmd := exec.Command(cluster.conf.ShareDir+"/"+cluster.conf.GoArch+"/"+cluster.conf.GoOS+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	var err error
 	clientCmd.Stdin, err = dumpCmd.StdoutPipe()

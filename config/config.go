@@ -22,7 +22,6 @@ type Config struct {
 	Verbose                            bool   `mapstructure:"verbose"`
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
-	RejoinScript                       string `mapstructure:"rejoin-script"`
 	PrefMaster                         string `mapstructure:"prefmaster"`
 	IgnoreSrv                          string `mapstructure:"ignore-servers"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
@@ -34,6 +33,7 @@ type Config struct {
 	ReadOnly                           bool   `mapstructure:"readonly"`
 	Autorejoin                         bool   `mapstructure:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
+	RejoinScript                       string `mapstructure:"autrejoin-script"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
@@ -179,5 +179,8 @@ type Config struct {
 	ProvProxImg                        string `mapstructure:"prov-proxy-docker-img"`
 	APIUser                            string `mapstructure:"api-user"`
 	APIPort                            string `mapstructure:"api-port"`
+	APIBind                            string `mapstructure:"api-bind"`
 	ConfigFile                         string `mapstructure:"config"`
+	GoOS                               string `mapstructure:"goos"`
+	GoArch                             string `mapstructure:"goarch"`
 }

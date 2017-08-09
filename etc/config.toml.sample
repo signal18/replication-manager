@@ -175,12 +175,10 @@ mail-to = "mrm@mariadb.com"
 
 pre-failover-script = ""
 post-failover-script = ""
-rejoin-script = ""
 
 # Timeout in seconds between consecutive monitoring
 # check type can be tcp or agent
 monitoring-ticker = 2
-check-type = "tcp"
 check-replication-filters = true
 check-binlog-filters = true
 check-replication-state = true
@@ -304,10 +302,11 @@ mariadb-binary-path = "/usr/sbin"
 # REJOIN
 # --------
 autorejoin = true
+autorejoin-script = ""
 autorejoin-semisync = true
-autorejoin-flashback = true
-autorejoin-mysqldump = false
 autorejoin-backup-binlog = true
+autorejoin-flashback = false
+autorejoin-mysqldump = false
 
 # ETCD CLUSTER
 # ------------

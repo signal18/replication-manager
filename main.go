@@ -46,7 +46,9 @@ var (
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
-	Build string
+	Build  string
+	GoOS   string
+	GoArch string
 )
 var confs = make(map[string]config.Config)
 
