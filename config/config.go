@@ -11,19 +11,23 @@ package config
 type Config struct {
 	WorkingDir                         string `mapstructure:"working-directory"`
 	ShareDir                           string `mapstructure:"share-directory"`
-	User                               string `mapstructure:"user"`
-	Hosts                              string `mapstructure:"hosts"`
-	HostsTLSCA                         string `mapstructure:"hosts-tls-ca-cert"`
-	HostsTLSKEY                        string `mapstructure:"hosts-tls-client-key"`
-	HostsTLSCLI                        string `mapstructure:"hosts-tls-client-cert"`
+	User                               string `mapstructure:"db-servers-credential"`
+	Hosts                              string `mapstructure:"db-servers-hosts"`
+	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert"`
+	HostsTLSKEY                        string `mapstructure:"db-servers-tls-client-key"`
+	HostsTLSCLI                        string `mapstructure:"db-servers-tls-client-cert"`
+	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
+	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
+	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
 	Socket                             string `mapstructure:"socket"`
-	RplUser                            string `mapstructure:"rpluser"`
+	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
+	RplUser                            string `mapstructure:"replication-credential"`
+	MasterConn                         string `mapstructure:"replication-source-name"`
+	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	PreScript                          string `mapstructure:"pre-failover-script"`
 	PostScript                         string `mapstructure:"post-failover-script"`
-	PrefMaster                         string `mapstructure:"prefmaster"`
-	IgnoreSrv                          string `mapstructure:"ignore-servers"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx"`
 	SwitchWaitWrite                    int    `mapstructure:"switchover-wait-write-query"`
@@ -39,7 +43,6 @@ type Config struct {
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
 	LogFile                            string `mapstructure:"logfile"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
-	Timeout                            int    `mapstructure:"connect-timeout"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
@@ -62,7 +65,6 @@ type Config struct {
 	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
 	RplChecks                          bool
-	MasterConn                         string `mapstructure:"master-connection"`
 	MultiMaster                        bool   `mapstructure:"multimaster"`
 	MultiTierSlave                     bool   `mapstructure:"multi-tier-slave"`
 	Spider                             bool   `mapstructure:"spider"`
@@ -77,7 +79,6 @@ type Config struct {
 	MailFrom                           string `mapstructure:"mail-from"`
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
-	MasterConnectRetry                 int    `mapstructure:"master-connect-retry"`
 	FailLimit                          int    `mapstructure:"failover-limit"`
 	FailTime                           int64  `mapstructure:"failover-time-limit"`
 	FailSync                           bool   `mapstructure:"failover-at-sync"`
@@ -142,7 +143,6 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
-	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	FailForceGtid                      bool   //suspicious code
 	RegTestStopCluster                 bool   //used by regtest to stop cluster
 	Enterprise                         bool   //used to talk to opensvc collector

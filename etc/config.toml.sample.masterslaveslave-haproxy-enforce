@@ -5,103 +5,18 @@
 # replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
 
-[Cluster_Maxscale_MasterSlave]
-title = "ClusterTestMaxscale"
-hosts = "127.0.0.1:5055,127.0.0.1:5056"
-prefmaster = "127.0.0.1:5055"
-user = "skysql:skyvodka"
-rpluser = "skysql:skyvodka"
-failover-mode = "manual"
-maxscale = true
-maxscale-monitor = false
-maxscale-maxinfo-port = 3307
-maxscale-get-info-method = "maxadmin"
-maxscale-host = "127.0.0.1"
-maxscale-port = 3307
-maxscale-user = "admin"
-maxscale-pass = "mariadb"
-maxscale-write-port = 4007
-maxscale-read-port = 4008
-maxscale-read-write-port = 4006
-maxscale-binlog = false
-maxscale-binlog-port = 3305
-test = true
-
-[Cluster_Maxscale_BinlogServer]
-title = "ClusterTestBinlogServer"
-hosts = "127.0.0.1:5057,127.0.0.1:5058,127.0.0.1:3305"
-prefmaster = "127.0.0.1:5057"
-switchover-at-sync = false
-failover-at-sync = false
-user = "skysql:skyvodka"
-rpluser = "skysql:skyvodka"
-connect-timeout = 1
-failover-mode = "automatic"
-maxscale = true
-
-maxscale-get-info-method = "maxadmin"
-maxscale-host = "127.0.0.1"
-maxscale-port = 3307
-maxscale-user = "admin"
-maxscale-pass = "mariadb"
-maxscale-monitor = false
-maxscale-maxinfo-port = 3307
-maxscale-write-port = 4007
-maxscale-read-port = 4008
-maxscale-read-write-port = 4006
-maxscale-binlog = true
-maxscale-binlog-port = 3305
-test = true
-
-
-[Cluster_Haproxy_MultiMaster]
-title = "ClusterTestMultiMaster"
-hosts = "127.0.0.1:3315,127.0.0.1:3316"
-user = "root:test"
-rpluser = "root:test"
-multimaster = true
-connect-timeout = 1
-prefmaster = "127.0.0.1:3315"
-haproxy-write-port=3300
-haproxy-read-port=3301
-test = true
-
-[Cluster_Haproxy_MultiTierSlave]
-title = "ClusterTestSemisync"
-hosts = "127.0.0.1:3312,127.0.0.1:3313,127.0.0.1:3314"
-prefmaster = "127.0.0.1:3312"
-multi-tier-slave = true
-user = "root:test"
-rpluser = "root:test"
-connect-timeout = 1
-haproxy=true
-haproxy-write-port= 3305
-haproxy-read-port= 3304
-test = true
-
-[Cluster_Haproxy_MasterSlave]
-title = "ClusterTestMasterSlave"
-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-prefmaster = "127.0.0.1:3310"
-user = "root:test"
-rpluser = "root:test"
-connect-timeout = 1
-haproxy=true
-haproxy-write-port=3303
-haproxy-read-port=3302
-test = true
-
-[Cluster_Haproxy_MasterSlaveSlave]
+[Cluster_Test_MasterSlaveSlave]
 title = "ClusterTestMasterSlaveSlave"
-prefmaster = "127.0.0.1:3310"
-hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
-user = "root:test"
+db-servers-hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
+db-servers-prefered-master = "127.0.0.1:3317"
+db-servers-credential = "root:test"
 rpluser = "root:test"
-connect-timeout = 1
+db-servers-connect-timeout = 1
 haproxy=true
 haproxy-write-port=3307
 haproxy-read-port=3306
 test = true
+
 
 [Default]
 
@@ -127,28 +42,27 @@ maxscale-binlog = false
 readonly = true
 failover-event-scheduler = false
 failover-event-status = false
-connect-timeout = 1
+db-servers-connect-timeout = 1
 
 
 # Enforce best practice
 # ---------------------
-force-slave-heartbeat= false
+force-slave-heartbeat= true
 force-slave-heartbeat-retry = 5
 force-slave-heartbeat-time = 3
-force-slave-gtid-mode = false
-force-slave-semisync = false
-force-slave-readonly = false
-force-binlog-row = false
-force-binlog-annotate = false
-force-binlog-slowqueries = false
-force-binlog-compress = false
-force-binlog-checksum = false
+force-slave-gtid-mode = true
+force-slave-semisync = true
+force-slave-readonly = true
+force-binlog-row = true
+force-binlog-annotate = true
+force-binlog-slowqueries = true
+force-binlog-checksum = true
+force-binlog-compress = true
 force-inmemory-binlog-cache-size = false
 force-disk-relaylog-size-limit = false
 force-disk-relaylog-size-limit-size = 1000000000
-force-sync-binlog = false
-force-sync-innodb = false
-
+force-sync-binlog = true
+force-sync-innodb = true
 
 # HTTP
 # ----
@@ -160,6 +74,7 @@ http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
+
 api-user = "admin:mariadb"
 api-port = "3000"
 
@@ -176,6 +91,7 @@ mail-to = "mrm@mariadb.com"
 pre-failover-script = ""
 post-failover-script = ""
 
+
 # Timeout in seconds between consecutive monitoring
 # check type can be tcp or agent
 monitoring-ticker = 2
@@ -189,14 +105,15 @@ failcount = 5
 failcount-reset-time = 300
 
 failover-mode = "manual"
+
 # Cancel failover if already N failover
 # Cancel failover if last failover was N seconds before
 # Cancel failover in semi-sync when one slave is not in sync
 # Cancel failover if one slave receive master heartbeat
 # Cancel failover when replication delay is more than N seconds
-failover-limit = 0
-failover-time-limit = 0
-failover-at-sync = false
+failover-limit = 3
+failover-time-limit = 10
+failover-at-sync = true
 failover-max-slave-delay = 30
 failover-restart-unsafe = false
 
@@ -226,7 +143,7 @@ switchover-wait-kill = 5000
 switchover-wait-trx = 10
 switchover-wait-write-query = 10
 switchover-at-equal-gtid = false
-switchover-at-sync = false
+switchover-at-sync = true
 switchover-max-slave-delay = 30
 
 # MAXSCALE PROXY
@@ -292,6 +209,5 @@ graphite-carbon-pprof-port = 7007
 autorejoin = true
 autorejoin-script = ""
 autorejoin-semisync = true
-autorejoin-backup-binlog = true
 autorejoin-flashback = false
 autorejoin-mysqldump = false

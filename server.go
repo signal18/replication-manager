@@ -76,15 +76,14 @@ func init() {
 
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring time interval in seconds")
 
-	monitorCmd.Flags().StringVar(&conf.User, "user", "", "User for database login, specified in the [user]:[password] format")
-	monitorCmd.Flags().StringVar(&conf.Hosts, "hosts", "", "List of database hosts IP and port (optional), specified in the host:[port] format and separated by commas")
-	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "hosts-tls-ca-cert", "", "TLS authority certificate")
-	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "hosts-tls-client-key", "", "TLS client key")
-	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "hosts-tls-client-cert", "", "TLS client certificate")
-	monitorCmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
-	monitorCmd.Flags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
-	monitorCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
-	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
+	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "User for database login, specified in the [user]:[password] format")
+	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "List of database hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "TLS authority certificate")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "db-servers-tls-client-key", "", "TLS client key")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "db-servers-tls-client-cert", "", "TLS client certificate")
+	monitorCmd.Flags().IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
+	monitorCmd.Flags().StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Preferred candidate server for master failover, in host:[port] format")
+	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "List of servers to ignore in slave promotion operations")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover failover")
 
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Wait this many milliseconds before killing threads on demoted master")
@@ -94,8 +93,9 @@ func init() {
 	monitorCmd.Flags().Int64Var(&conf.SwitchMaxDelay, "switchover-max-slave-delay", 0, "Maximum replication delay before initiating switchover")
 	monitorCmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
 
-	monitorCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
-	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	monitorCmd.Flags().StringVar(&conf.MasterConn, "replication-master-connection", "", "Connection name to use for multisource replication")
+	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	monitorCmd.Flags().StringVar(&conf.RplUser, "replication-credential", "", "Replication user in the [user]:[password] format")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Use SSL encryption to replicate from master")
 
 	monitorCmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
@@ -103,6 +103,7 @@ func init() {
 
 	monitorCmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
 	monitorCmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
+
 	//	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().StringVar(&conf.FailMode, "failover-mode", "manual", "failover manual or automatic")
 	if conf.FailMode == "manual" {

@@ -1,0 +1,27 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+# TOPOLOGY
+# --------
+
+[osx_pkg_nopool_loop]
+title = "ClusterProMasterSlave"
+db-servers-hosts = "192.168.1.54,192.168.1.55"
+db-servers-prefered-master = "192.168.1.54"
+db-servers-credential = "root:mariadb"
+replication-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+prov-db-agents = "macbook-pro-de-apple-2.local"
+prov-db-service-type = "package"
+prov-db-disk-fs = "hfs"
+prov-db-disk-pool = "none"
+prov-db-disk-type = "loopback"
+prov-db-disk-device = "/srv"
+prov-db-net-iface = "en0"
+prov-db-net-gateway = "192.168.1.254"
+prov-db-net-mask = "255.255.255.0"
+
+[default]
