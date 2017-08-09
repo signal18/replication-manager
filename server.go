@@ -106,11 +106,6 @@ func init() {
 
 	//	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().StringVar(&conf.FailMode, "failover-mode", "manual", "failover manual or automatic")
-	if conf.FailMode == "manual" {
-		conf.Interactive = true
-	} else {
-		conf.Interactive = false
-	}
 	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Maximum replication delay before initiating failover")
 	monitorCmd.Flags().BoolVar(&conf.FailRestartUnsafe, "failover-restart-unsafe", false, "Failover when cluster down if a slave is start first ")
 	monitorCmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Quit monitor after N failovers (0: unlimited)")
@@ -170,7 +165,12 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP monitor")
 		monitorCmd.Flags().StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 		monitorCmd.Flags().StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
-		monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP monitor files")
+		if GoOS == "linux" {
+			monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP replication-monitor files")
+		}
+		if GoOS == "darwin" {
+			monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/opt/replication-manager/share/dashboard", "Path to HTTP replication-monitor files")
+		}
 		monitorCmd.Flags().BoolVar(&conf.HttpAuth, "http-auth", false, "Authenticate to web server")
 		monitorCmd.Flags().BoolVar(&conf.HttpBootstrapButton, "http-bootstrap-button", false, "Deprecate for the test flag. Get a boostrap option to init replication")
 		monitorCmd.Flags().IntVar(&conf.SessionLifeTime, "http-session-lifetime", 3600, "Http Session life time ")
@@ -321,6 +321,11 @@ For interacting with this daemon use,
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
+		if conf.FailMode == "manual" {
+			conf.Interactive = true
+		} else {
+			conf.Interactive = false
+		}
 		if conf.LogLevel > 1 {
 			log.SetLevel(log.DebugLevel)
 		}
