@@ -258,7 +258,7 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 
-	log.Println("Now listening on localhost:3000")
+	log.Println("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
 	http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 }
 

@@ -42,6 +42,7 @@ var (
 	WithEnforce           string
 	WithDeprecate         string
 	WithOpenSVC           string
+	WithMultiTiers        string
 
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string

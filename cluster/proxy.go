@@ -84,22 +84,26 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.conf.HaproxyOn {
-		cluster.LogPrintf("INFO", "Loading HaProxy...")
 
-		prx := new(Proxy)
-		prx.Type = proxyHaproxy
-		prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
-		prx.Host = cluster.conf.HaproxyWriteBindIp
-		prx.ReadPort = cluster.conf.HaproxyReadPort
-		prx.WritePort = cluster.conf.HaproxyWritePort
-		prx.ReadWritePort = cluster.conf.HaproxyWritePort
-		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+		for _, proxyHost := range strings.Split(cluster.conf.HaproxyHosts, ",") {
+
+			cluster.LogPrintf("INFO", "Loading HaProxy...")
+
+			prx := new(Proxy)
+			prx.Type = proxyHaproxy
+			prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
+			prx.Host = proxyHost
+			prx.ReadPort = cluster.conf.HaproxyReadPort
+			prx.WritePort = cluster.conf.HaproxyWritePort
+			prx.ReadWritePort = cluster.conf.HaproxyWritePort
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+
+			ctproxy++
 		}
-
-		ctproxy++
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {

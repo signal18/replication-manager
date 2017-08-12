@@ -10,16 +10,18 @@
 title = "ClusterTestBinlogServer"
 db-servers-hosts = "127.0.0.1:5057,127.0.0.1:5058,127.0.0.1:3305"
 db-servers-prefered-master = "127.0.0.1:5057"
+db-servers-credential = "skysql:skyvodka"
+db-servers-connect-timeout = 1
+
+replication-credential = "skysql:skyvodka"
+
 switchover-at-sync = false
 failover-at-sync = false
-db-servers-credential = "skysql:skyvodka"
-replication-credential = "skysql:skyvodka"
-db-servers-connect-timeout = 1
 failover-mode = "automatic"
-maxscale = true
 
+maxscale = true
 maxscale-get-info-method = "maxadmin"
-maxscale-host = "127.0.0.1"
+maxscale-servers = "127.0.0.1"
 maxscale-port = 3307
 maxscale-user = "admin"
 maxscale-pass = "mariadb"
@@ -51,13 +53,7 @@ multimaster = false
 multi-tier-slave = false
 maxscale-binlog = false
 
-# Automatically rejoin a failed server to the current master
-# Slaves will re enter with read-only
-readonly = true
-failover-event-scheduler = false
-failover-event-status = false
 db-servers-connect-timeout = 1
-
 
 # Enforce best practice
 # ---------------------
@@ -66,7 +62,7 @@ force-slave-heartbeat-retry = 5
 force-slave-heartbeat-time = 3
 force-slave-gtid-mode = false
 force-slave-semisync = false
-force-slave-readonly = false
+force-slave-failover-readonly-state = false
 force-binlog-row = false
 force-binlog-annotate = false
 force-binlog-slowqueries = false
@@ -77,7 +73,6 @@ force-disk-relaylog-size-limit = false
 force-disk-relaylog-size-limit-size = 1000000000
 force-sync-binlog = false
 force-sync-innodb = false
-
 
 # HTTP
 # ----
@@ -102,22 +97,23 @@ mail-to = "mrm@mariadb.com"
 # FAILOVER
 # --------
 
+failover-mode = "manual"
+
+# Automatically rejoin a failed server to the current master
+# Slaves will re enter with read-only
+failover-readonly-state = true
+failover-event-scheduler = false
+failover-event-status = false
+
 pre-failover-script = ""
 post-failover-script = ""
 
 # Timeout in seconds between consecutive monitoring
-# check type can be tcp or agent
 monitoring-ticker = 2
 check-replication-filters = true
 check-binlog-filters = true
 check-replication-state = true
 
-# Failover after N failures detection
-# Reset number of failure if server auto recover after N seconds
-failcount = 5
-failcount-reset-time = 300
-
-failover-mode = "manual"
 # Cancel failover if already N failover
 # Cancel failover if last failover was N seconds before
 # Cancel failover in semi-sync when one slave is not in sync
@@ -129,6 +125,9 @@ failover-at-sync = false
 failover-max-slave-delay = 30
 failover-restart-unsafe = false
 
+# Failover after N failures detection
+failover-falsepositive-ping-counter = 5
+
 failover-falsepositive-heartbeat = true
 failover-falsepositive-heartbeat-timeout = 3
 failover-falsepositive-maxscale = false
@@ -136,7 +135,8 @@ failover-falsepositive-maxscale-timeout = 14
 failover-falsepositive-external = false
 failover-falsepositive-external-port = 80
 
-# Enterpise SAS identity
+# SAS identity
+# ------------
 arbitration-external = false
 arbitration-external-secret = "13787932529099014144"
 arbitration-external-hosts = "88.191.151.84:80"
@@ -174,7 +174,7 @@ maxscale-disable-monitor = false
 maxscale-get-info-method = "maxadmin"
 maxscale-maxinfo-port = 4002
 
-maxscale-host = "192.168.0.201"
+maxscale-servers = "192.168.0.201"
 maxscale-port = 4003
 maxscale-user = "admin"
 maxscale-pass = "mariadb"

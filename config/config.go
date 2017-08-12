@@ -34,7 +34,6 @@ type Config struct {
 	SwitchGtidCheck                    bool   `mapstructure:"switchover-at-equal-gtid"`
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
-	ReadOnly                           bool   `mapstructure:"readonly"`
 	Autorejoin                         bool   `mapstructure:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
 	RejoinScript                       string `mapstructure:"autrejoin-script"`
@@ -46,6 +45,7 @@ type Config struct {
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
+	RplChecks                          bool   `mapstructure:"check-replication-state"`
 	ForceSlaveHeartbeat                bool   `mapstructure:"force-slave-heartbeat"`
 	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`
 	ForceSlaveHeartbeatRetry           int    `mapstructure:"force-slave-heartbeat-retry"`
@@ -64,7 +64,6 @@ type Config struct {
 	ForceSyncBinlog                    bool   `mapstructure:"force-sync-binlog"`
 	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
-	RplChecks                          bool
 	MultiMaster                        bool   `mapstructure:"multimaster"`
 	MultiTierSlave                     bool   `mapstructure:"multi-tier-slave"`
 	Spider                             bool   `mapstructure:"spider"`
@@ -80,12 +79,13 @@ type Config struct {
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
 	FailLimit                          int    `mapstructure:"failover-limit"`
+	ReadOnly                           bool   `mapstructure:"failover-readonly-state"`
 	FailTime                           int64  `mapstructure:"failover-time-limit"`
 	FailSync                           bool   `mapstructure:"failover-at-sync"`
 	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
 	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
 	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
-	MaxFail                            int    `mapstructure:"failcount"`
+	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter"`
 	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
 	FailMode                           string `mapstructure:"failover-mode"`
 	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
@@ -97,10 +97,10 @@ type Config struct {
 	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MdbsProxyOn                        bool   `mapstructure:"mdbshardproxy"`
-	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-hosts"`
+	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-servers"`
 	MdbsProxyUser                      string `mapstructure:"mdbshardproxy-user"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
-	MxsHost                            string `mapstructure:"maxscale-host"`
+	MxsHost                            string `mapstructure:"maxscale-servers"`
 	MxsPort                            string `mapstructure:"maxscale-port"`
 	MxsUser                            string `mapstructure:"maxscale-user"`
 	MxsPass                            string `mapstructure:"maxscale-pass"`
@@ -114,6 +114,7 @@ type Config struct {
 	MxsGetInfoMethod                   string `mapstructure:"maxscale-get-info-method"`
 	MxsServerMatchPort                 bool   `mapstructure:"maxscale-server-match-port"`
 	HaproxyOn                          bool   `mapstructure:"haproxy"`
+	HaproxyHosts                       string `mapstructure:"haproxy-servers"`
 	HaproxyWritePort                   int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort                    int    `mapstructure:"haproxy-read-port"`
 	HaproxyStatPort                    int    `mapstructure:"haproxy-stat-port"`
@@ -177,7 +178,9 @@ type Config struct {
 	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
 	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
-	ProvProxImg                        string `mapstructure:"prov-proxy-docker-img"`
+	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
+	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
+	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
 	APIUser                            string `mapstructure:"api-user"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`

@@ -39,7 +39,7 @@ maxscale-binlog = false
 
 # Automatically rejoin a failed server to the current master
 # Slaves will re enter with read-only
-readonly = true
+failover-readonly-state = true
 failover-event-scheduler = false
 failover-event-status = false
 db-servers-connect-timeout = 1
@@ -52,7 +52,7 @@ force-slave-heartbeat-retry = 5
 force-slave-heartbeat-time = 3
 force-slave-gtid-mode = true
 force-slave-semisync = true
-force-slave-readonly = true
+force-slave-failover-readonly-state = true
 force-binlog-row = true
 force-binlog-annotate = true
 force-binlog-slowqueries = true
@@ -101,7 +101,7 @@ check-replication-state = true
 
 # Failover after N failures detection
 # Reset number of failure if server auto recover after N seconds
-failcount = 5
+failover-falsepositive-ping-counter = 5
 failcount-reset-time = 300
 
 failover-mode = "manual"
@@ -162,7 +162,7 @@ maxscale-disable-monitor = false
 maxscale-get-info-method = "maxadmin"
 maxscale-maxinfo-port = 4002
 
-maxscale-host = "192.168.0.201"
+maxscale-servers = "192.168.0.201"
 maxscale-port = 4003
 maxscale-user = "admin"
 maxscale-pass = "mariadb"
