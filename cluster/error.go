@@ -43,6 +43,7 @@ var clusterError = map[string]string{
 	"ERR00036": "Skip slave in election %s is relay",
 	"ERR00037": "Skip slave in election %s in ignore list",
 	"ERR00038": "Skip slave in election %s repl not electable for failover",
+	"ERR00039": "Skip slave in election %s repl not electable",
 	"ERR00040": "Skip slave in election %s does not ping or has no binlogs",
 	"ERR00041": "Skip slave in election %s has more than %d seconds of replication delay (%d)",
 	"ERR00042": "Skip slave in election %s SQL Thread is stopped",
