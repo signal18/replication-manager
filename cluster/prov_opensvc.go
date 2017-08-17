@@ -242,6 +242,23 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			cluster.LogPrintf("INFO", "%s", task.Stderr)
 		}
 	}
+	if prx.Type == proxySqlproxy {
+		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+			res, err := cluster.GetProxysqlTemplate(svc, strings.Join(srvlist, " "), agent, prx)
+			if err != nil {
+				return err
+			}
+			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			if err != nil {
+				return err
+			}
+
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			cluster.LogPrintf("INFO", "%s", task.Stderr)
+		}
+	}
 	return nil
 }
 
@@ -427,6 +444,67 @@ show_disabled = false
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerHaproxyTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + collector.ProvPwd + `
+network = ` + network + `
+gateway =  ` + collector.ProvProxNetGateway + `
+netmask =  ` + collector.ProvProxNetMask + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + collector.ProvProxNetMask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_http = 80
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+`
+	log.Println(conf)
+	return conf, nil
+}
+
+func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+
+	ipPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerProxysqlTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
 `
@@ -854,7 +932,7 @@ type = docker
 run_image = {env.proxysql_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
+    -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
 		--rm
 `
 	}
