@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/mariadb-corporation/mrm/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
@@ -69,6 +70,12 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Port = cluster.conf.MxsPort
 			prx.User = cluster.conf.MxsUser
 			prx.Pass = cluster.conf.MxsPass
+			if cluster.key != nil {
+				p := crypto.Password{Key: cluster.key}
+				p.CipherText = prx.Pass
+				p.Decrypt()
+				prx.Pass = p.PlainText
+			}
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
 			prx.ReadWritePort = cluster.conf.MxsReadWritePort
@@ -96,6 +103,36 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort = cluster.conf.HaproxyReadPort
 			prx.WritePort = cluster.conf.HaproxyWritePort
 			prx.ReadWritePort = cluster.conf.HaproxyWritePort
+
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+
+			ctproxy++
+		}
+	}
+	if cluster.conf.ProxysqlOn {
+
+		for _, proxyHost := range strings.Split(cluster.conf.ProxysqlHosts, ",") {
+
+			cluster.LogPrintf("INFO", "Loading ProxySQL...")
+
+			prx := new(Proxy)
+			prx.Type = proxySqlproxy
+			prx.Port = strconv.Itoa(cluster.conf.ProxysqlStatPort)
+			prx.Host = proxyHost
+			prx.ReadPort = cluster.conf.ProxysqlReadPort
+			prx.WritePort = cluster.conf.ProxysqlWritePort
+			prx.ReadWritePort = cluster.conf.ProxysqlWritePort
+			prx.User, prx.Pass = misc.SplitPair(cluster.conf.ProxysqlUser)
+			if cluster.key != nil {
+				p := crypto.Password{Key: cluster.key}
+				p.CipherText = prx.Pass
+				p.Decrypt()
+				prx.Pass = p.PlainText
+			}
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
