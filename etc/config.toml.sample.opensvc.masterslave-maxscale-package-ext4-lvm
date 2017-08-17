@@ -9,11 +9,13 @@
 
 [ux_pkg_lvm_loop]
 title = "ClusterProMasterSlave"
-db-servers-hosts = "192.168.1.41,192.168.1.42"
-db-servers-prefered-master = "192.168.1.41"
+db-servers-hosts = "192.168.100.70,192.168.100.71"
+db-servers-prefered-master = "192.168.100.70"
 db-servers-credential = "root:mariadb"
-replication-credential = "root:mariadb"
 db-servers-connect-timeout = 1
+
+replication-credential = "root:mariadb"
+
 prov-db-agents = "agent1 agent2"
 prov-db-service-type = "package"
 prov-db-disk-fs = "ext4"
@@ -21,14 +23,15 @@ prov-db-disk-pool = "lvm"
 prov-db-disk-type = "loopback"
 prov-db-disk-device = "/srv"
 prov-db-net-iface = "br0"
-prov-db-net-gateway = "192.168.1.254"
+prov-db-net-gateway = "192.168.100.254"
 prov-db-net-mask = "255.255.255.0"
+
 
 maxscale = true
 maxscale-monitor = false
 maxscale-maxinfo-port = 3307
 maxscale-get-info-method = "maxadmin"
-maxscale-servers = "192.168.1.43"
+maxscale-servers = "192.168.100.43"
 maxscale-port = 3307
 maxscale-user = "admin"
 maxscale-pass = "mariadb"
@@ -44,7 +47,9 @@ prov-proxy-disk-pool = "lvm"
 prov-proxy-disk-type = "loopback"
 prov-proxy-disk-device = "/srv"
 prov-proxy-net-iface = "br0"
-prov-proxy-net-gateway = "192.168.1.254"
+prov-proxy-net-gateway = "192.168.100.254"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
+opensvc-host = "192.168.100.101:443"
+http-bootstrap-button = true

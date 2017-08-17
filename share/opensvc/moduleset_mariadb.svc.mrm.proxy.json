@@ -1,6 +1,21 @@
 {
     "modulesets": [
         {
+            "modules": [],
+            "rulesets": [],
+            "modset_name": "mariadb.svc.mrm.proxy",
+            "modulesets": [
+                "mariadb.svc.mrm.proxy.cnf"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 346,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "modules": [
                 {
                     "autofix": false,
@@ -400,13 +415,38 @@
             "ruleset_public": false,
             "ruleset_type": "explicit",
             "rulesets": [
+                "mariadb.svc.env",
                 "mariadb.svc.basedir",
-                "mariadb.svc.env"
+                "mariadb.svc.mrm.proxt.cnf.haproxy"
             ],
             "publications": [
                 "replication-manager"
             ],
             "id": 1000,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.proxt.cnf.haproxy",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n pidfile /var/lib/replication-manager/ux_dck_zpool_loop-haproxy-private.pid\\n\\n daemon\\n maxconn 4096\\n stats socket /var/lib/replication-manager/ux_dck_zpool_loop-haproxy.stats.sock level admin\\n\\n\\n ###\\n #\\n # Experimental: Logging Setup\\n #\\n # We log to a unix socket and read that socket from the Go program\\n #\\n #\\n log /var/run/vamp.log.sock local0\\n\\n defaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n\\n   retries 3\\n   maxconn 500000\\n\\n   # slowloris protection: clients should send their full http request in the configured time\\n   timeout http-request 5s\\n\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind :1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n   \\n### BEGIN GENERATED SECTION ###\\n\\nfrontend my_write_frontend\\n    \\n    bind 0.0.0.0:3303\\n    \\n\\n    \\n     option tcplog \\n\\n\\n    ###\\n    #\\n    # Set logging and set the headers to capture\\n\\n    # capture request header X-Vamp-Server-CurrentTime len 50\\n    # capture response header X-Vamp-Server-ResponseTime len 50\\n    # capture response header X-Vamp-Server-Name len 50\\n\\n\\n    #log-format {\\\\ \\\"timestamp\\\"\\\\ :\\\\ %t,\\\\ \\\"frontend\\\"\\\\ :\\\\ \\\"%f\\\",\\\\ \\\"method\\\"\\\\ :\\\\ \\\"%r\\\",\\\\ \\\"captured_request_headers\\\"\\\\ :\\\\ \\\"%hrl\\\",\\\\ \\\"captures_response_headers\\\"\\\\ :\\\\ \\\"%hsl\\\"\\\\ }\\n\\n    #\\n    ###\\n\\n    \\n\\n    mode tcp\\n    \\n\\n    ###\\n    #\\n    # Spike/Rate Limiting & Quota Management\\n    #\\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\\n    # On these metrics we set rules to designate upper limits. When limits are hit\\n    # we reroute the traffic to a specific abusers backend\\n\\n     # end HTTP spike limit generation\\n\\n     # end spike limit generation\\n\\n    ###\\n    # Filter Management\\n    #\\n    # set filters with optional negation\\n    #\\n\\n    \\n\\n    default_backend service_write\\n\\n\\nfrontend my_read_frontend\\n    \\n    bind 0.0.0.0:3302\\n    \\n\\n    \\n     option tcplog \\n\\n\\n    ###\\n    #\\n    # Set logging and set the headers to capture\\n\\n    # capture request header X-Vamp-Server-CurrentTime len 50\\n    # capture response header X-Vamp-Server-ResponseTime len 50\\n    # capture response header X-Vamp-Server-Name len 50\\n\\n\\n    #log-format {\\\\ \\\"timestamp\\\"\\\\ :\\\\ %t,\\\\ \\\"frontend\\\"\\\\ :\\\\ \\\"%f\\\",\\\\ \\\"method\\\"\\\\ :\\\\ \\\"%r\\\",\\\\ \\\"captured_request_headers\\\"\\\\ :\\\\ \\\"%hrl\\\",\\\\ \\\"captures_response_headers\\\"\\\\ :\\\\ \\\"%hsl\\\"\\\\ }\\n\\n    #\\n    ###\\n\\n    \\n\\n    mode tcp\\n    \\n\\n    ###\\n    #\\n    # Spike/Rate Limiting & Quota Management\\n    #\\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\\n    # On these metrics we set rules to designate upper limits. When limits are hit\\n    # we reroute the traffic to a specific abusers backend\\n\\n     # end HTTP spike limit generation\\n\\n     # end spike limit generation\\n\\n    ###\\n    # Filter Management\\n    #\\n    # set filters with optional negation\\n    #\\n\\n    \\n\\n    default_backend service_read\\n\\n\\n\\n\\n\\n\\nbackend service_write\\n    mode tcp\\n#\\n# Regular HTTP/TCP backends\\n#\\n\\n   \\n    balance leastconn \\n\\n\\n\\n   \\n\\n   \\n    \\n        server leader 192.168.100.70:3306  weight 100 maxconn 2000 check inter 1000 \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n\\n\\n\\n\\n\\nbackend service_read\\n    mode tcp\\n#\\n# Regular HTTP/TCP backends\\n#\\n\\n   \\n    balance leastconn \\n\\n\\n\\n   \\n\\n   \\n    \\n        server 8194047115532167437 192.168.100.70:3306  weight 100 maxconn 2000 check inter 1000 \\n        server 1167504531203395275 192.168.100.71:3306  weight 100 maxconn 2000 check inter 1000 \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n\\n\\n\\n\\n\\n\\n### END GENERATED SECTION ###\"}",
+                    "var_updated": "2017-08-16 10:34:05",
+                    "var_name": "proxy_cnf_haproxy",
+                    "id": 5959
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1019,
             "responsibles": [
                 "replication-manager"
             ]

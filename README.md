@@ -268,12 +268,12 @@ failover-max-slave-delay = 0
 failover-restart-unsafe = false
 ```
 
-A user can force switchover or failover by ignoring those checks via the
+A user can force switchover or failover by ignoring the replications checks via restarting monitoring with:
 ```
-rplchecks=false
+check-replication-state = false
 ```
 
-flag or via the console "Replication Checks Change" button.
+or via the HTTP interface "Replication Checks Change" button.
 
 
 Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi-sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
@@ -351,7 +351,7 @@ autorejoin-mysqldump = true
 
 If none of above method is set or available replication-manager will call external scripts
 ```
-rejoin-script = ""
+autorejoin-script = ""
 ```
 
 Script is passing the server to rejoin as first argument and the new master in current topology.

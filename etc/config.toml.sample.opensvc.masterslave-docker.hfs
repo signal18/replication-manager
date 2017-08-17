@@ -30,3 +30,5 @@ prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
 
 
 [default]
+opensvc-host = "192.168.100.101:443"
+http-bootstrap-button = true

@@ -280,7 +280,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	//	if idsrv == "" || err != nil {
 	idsrv, err := svc.CreateService(s.Id, "MariaDB")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't create service")
+		cluster.LogPrintf("ERROR", "Can't create OpenSVC database service")
 	}
 	//	}
 	for _, tag := range taglist {
@@ -875,4 +875,10 @@ info = 50
 `
 	}
 	return vm
+}
+
+func (cluster *Cluster) OpenSVCProvisionReloadHaproxyConf(Conf string) string {
+	svc := cluster.OpenSVCConnect()
+	svc.SetRulesetVariableValue("mariadb.svc.mrm.proxt.cnf.haproxy", "proxy_cnf_haproxy", Conf)
+	return ""
 }

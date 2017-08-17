@@ -40,6 +40,14 @@ type Action struct {
 	Stderr string `json:"stderr"`
 }
 
+type Ruleset struct {
+	Id int `json:"id"`
+}
+
+type RulesetVariable struct {
+	Id int `json:"id"`
+}
+
 type Host struct {
 	Id        int    `json:"id"`
 	Node_id   string `json:"node_id"`
@@ -736,6 +744,133 @@ func (collector *Collector) GetNodes() []Host {
 
 }
 
+func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets?filters[]=ruleset_name " + RulesetName
+	log.Println("INFO ", url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+
+	type Message struct {
+		Rulesets []Ruleset `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	return r.Rulesets, nil
+}
+
+func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName string) ([]RulesetVariable, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets/" + strconv.Itoa(RulesetId) + "/variables?filters[]=var_name " + VariableName
+	log.Println("INFO ", url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+
+	type Message struct {
+		RulesetVariables []RulesetVariable `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	return r.RulesetVariables, nil
+}
+
+func (collector *Collector) SetRulesetVariableValue(RulesetName string, VariableName string, Content string) (string, error) {
+
+	rls, err := collector.GetRuleset(RulesetName)
+	rlsv, err := collector.GetRulesetVariable(rls[0].Id, VariableName)
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets/" + strconv.Itoa(rls[0].Id) + "/variables/" + strconv.Itoa(rlsv[0].Id)
+	log.Println("INFO SetRulesetVariableValue: ", urlpost)
+	var jsonStr = []byte(`{"var_value":"{"path":"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg","mode":"%%ENV:BINDED_DIR_PERMS%%","uid":"%%ENV:MYSQL_UID%%","gid":"%%ENV:MYSQL_UID%%","fmt":"` + Content + `"}"}`)
+	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		log.Println(string(err.Error()))
+		return "", err
+	}
+	req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	//	"{"path":"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg","mode":"%%ENV:BINDED_DIR_PERMS%%","uid":"%%ENV:MYSQL_UID%%","gid":"%%ENV:MYSQL_UID%%","fmt":"global\n pidfile /var/lib/replication-manager/ux_dck_zpool_loop-haproxy-private.pid\n\n daemon\n maxconn 4096\n stats socket /var/lib/replication-manager/ux_dck_zpool_loop-haproxy.stats.sock level admin\n\n\n ###\n #\n # Experimental: Logging Setup\n #\n # We log to a unix socket and read that socket from the Go program\n #\n #\n log /var/run/vamp.log.sock local0\n\n defaults\n   log global\n   mode http\n   option dontlognull\n   option redispatch\n   option clitcpka\n   option srvtcpka\n\n   retries 3\n   maxconn 500000\n\n   # slowloris protection: clients should send their full http request in the configured time\n   timeout http-request 5s\n\n   timeout connect 5000ms\n   timeout client 50000s\n   timeout server 50000s\n\nlisten stats\n   bind :1988\n   mode http\n   stats enable\n   stats uri /\n   stats refresh 2s\n   stats realm Haproxy\\ Stats\n   \n### BEGIN GENERATED SECTION ###\n\nfrontend my_write_frontend\n    \n    bind 0.0.0.0:3303\n    \n\n    \n     option tcplog \n\n\n    ###\n    #\n    # Set logging and set the headers to capture\n\n    # capture request header X-Vamp-Server-CurrentTime len 50\n    # capture response header X-Vamp-Server-ResponseTime len 50\n    # capture response header X-Vamp-Server-Name len 50\n\n\n    #log-format {\\ \"timestamp\"\\ :\\ %t,\\ \"frontend\"\\ :\\ \"%f\",\\ \"method\"\\ :\\ \"%r\",\\ \"captured_request_headers\"\\ :\\ \"%hrl\",\\ \"captures_response_headers\"\\ :\\ \"%hsl\"\\ }\n\n    #\n    ###\n\n    \n\n    mode tcp\n    \n\n    ###\n    #\n    # Spike/Rate Limiting & Quota Management\n    #\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\n    # On these metrics we set rules to designate upper limits. When limits are hit\n    # we reroute the traffic to a specific abusers backend\n\n     # end HTTP spike limit generation\n\n     # end spike limit generation\n\n    ###\n    # Filter Management\n    #\n    # set filters with optional negation\n    #\n\n    \n\n    default_backend service_write\n\n\nfrontend my_read_frontend\n    \n    bind 0.0.0.0:3302\n    \n\n    \n     option tcplog \n\n\n    ###\n    #\n    # Set logging and set the headers to capture\n\n    # capture request header X-Vamp-Server-CurrentTime len 50\n    # capture response header X-Vamp-Server-ResponseTime len 50\n    # capture response header X-Vamp-Server-Name len 50\n\n\n    #log-format {\\ \"timestamp\"\\ :\\ %t,\\ \"frontend\"\\ :\\ \"%f\",\\ \"method\"\\ :\\ \"%r\",\\ \"captured_request_headers\"\\ :\\ \"%hrl\",\\ \"captures_response_headers\"\\ :\\ \"%hsl\"\\ }\n\n    #\n    ###\n\n    \n\n    mode tcp\n    \n\n    ###\n    #\n    # Spike/Rate Limiting & Quota Management\n    #\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\n    # On these metrics we set rules to designate upper limits. When limits are hit\n    # we reroute the traffic to a specific abusers backend\n\n     # end HTTP spike limit generation\n\n     # end spike limit generation\n\n    ###\n    # Filter Management\n    #\n    # set filters with optional negation\n    #\n\n    \n\n    default_backend service_read\n\n\n\n\n\n\nbackend service_write\n    mode tcp\n#\n# Regular HTTP/TCP backends\n#\n\n   \n    balance leastconn \n\n\n\n   \n\n   \n    \n        server leader 192.168.100.71:3306  weight 100 maxconn 2000 check inter 1000 \n    \n    \n    \n    \n    \n    \n    \n    \n    \n    \n    \n\n\n\n\n\nbackend service_read\n    mode tcp\n#\n# Regular HTTP/TCP backends\n#\n\n   \n    balance leastconn \n\n\n\n   \n\n   \n    \n        server 8194047115532167437 192.168.100.70:3306  weight 100 maxconn 2000 check inter 1000 \n        server 1167504531203395275 192.168.100.71:3306  weight 100 maxconn 2000 check inter 1000 \n    \n    \n    \n    \n    \n    \n    \n    \n    \n    \n    \n\n\n\n\n\n\n### END GENERATED SECTION ###\n"}"
+	/*
+		data := url.Values{}
+		data.Add("var_class", "file")
+		data.Add("var_value", "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\""+Value+"\"}")
+
+		b := bytes.NewBuffer([]byte(data.Encode()))
+		req, err := http.NewRequest("POST", urlpost, b)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	*/
+
+	req.SetBasicAuth(collector.User, collector.Pass)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(string(err.Error()))
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println(string(body))
+	type response struct {
+		Info string `json:"info"`
+	}
+	var r response
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println(string(body))
+		return "", err
+	}
+	log.Println(string(body))
+	return string(body), nil
+
+}
+
 func (collector *Collector) GetGroups() ([]Group, error) {
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
@@ -746,7 +881,6 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
-
 	}
 	req.SetBasicAuth(collector.User, collector.Pass)
 
