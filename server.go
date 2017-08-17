@@ -133,7 +133,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that possible master have equal binlog filters")
 	monitorCmd.Flags().BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "3000", "Rest API isten on this port")
-	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:mariadb", "Rest API user:password")
+	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:mariadb", "Rest API user:password")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind adress")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
@@ -181,7 +181,7 @@ func init() {
 	}
 
 	if WithMaxscale == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "Synchronize replication status with MaxScale proxy server")
+		monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "Enable to get replication status from MaxScale proxy server")
 		monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
 		monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
 		monitorCmd.Flags().BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Turn on maxscale binlog server detection")
@@ -213,6 +213,17 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "HaProxy binary location")
 		monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
 		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
+	}
+	if WithProxysql == "ON" {
+		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "127.0.0.1", "ProxySQL hosts")
+		monitorCmd.Flags().IntVar(&conf.ProxysqlWritePort, "proxysql-write-port", 3306, "ProxySQL read-write port to leader")
+		monitorCmd.Flags().IntVar(&conf.ProxysqlReadPort, "proxysql-read-port", 3307, "ProxySQL load balance read port to all nodes")
+		monitorCmd.Flags().IntVar(&conf.ProxysqlStatPort, "proxysql-stat-port", 1988, "ProxySQL statistics port")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "ProxySQL binary location")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlReadBindIp, "proxysql-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlWriteBindIp, "proxysql-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-credential", "admin", "MaxScale admin user")
 	}
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")

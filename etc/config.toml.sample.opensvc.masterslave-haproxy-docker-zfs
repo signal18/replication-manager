@@ -1,0 +1,53 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+# TOPOLOGY
+# --------
+
+[ux_dck_zpool_loop]
+title = "ClusterEnterpriseMasterSlave"
+db-servers-hosts = "192.168.100.70,192.168.100.71"
+db-servers-prefered-master = "192.168.100.70"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+prov-db-agents = "agent1,agent2"
+prov-db-service-type = "docker"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
+prov-db-disk-type = "loopback"
+prov-db-disk-device = "/srv"
+prov-db-net-iface = "br0"
+prov0-db-net-gateway = "192.168.100.254"
+prov-db-net-mask = "255.255.255.0"
+prov-db-docker-img = "mariadb:latest"
+prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "6G"
+prov-db-memory = "256"
+prov-db-disk-iops = "300"
+
+
+haproxy=true
+haproxy-write-port=3303
+haproxy-read-port=3302
+haproxy-servers = "192.168.100.50"
+
+
+prov-proxy-disk-size = "1G"
+prov-proxy-agents = "agent2"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-fs = "zfs"
+prov-proxy-disk-pool = "zpool"
+prov-proxy-disk-type = "loopback"
+prov-proxy-disk-device = "/srv"
+prov-proxy-net-iface = "br0"
+prov-proxy-net-gateway = "192.168.100.254"
+prov-proxy-net-mask = "255.255.255.0"
+
+[default]
+opensvc-host = "192.168.100.101:443"
+http-bootstrap-button = true

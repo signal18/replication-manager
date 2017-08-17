@@ -121,6 +121,15 @@ type Config struct {
 	HaproxyWriteBindIp                 string `mapstructure:"haproxy-ip-write-bind"`
 	HaproxyReadBindIp                  string `mapstructure:"haproxy-ip-read-bind"`
 	HaproxyBinaryPath                  string `mapstructure:"haproxy-binary-path"`
+	ProxysqlOn                         bool   `mapstructure:"proxysql"`
+	ProxysqlHosts                      string `mapstructure:"proxysql-servers"`
+	ProxysqlWritePort                  int    `mapstructure:"proxysql-write-port"`
+	ProxysqlReadPort                   int    `mapstructure:"proxysql-read-port"`
+	ProxysqlStatPort                   int    `mapstructure:"proxysql-stat-port"`
+	ProxysqlWriteBindIp                string `mapstructure:"proxysql-ip-write-bind"`
+	ProxysqlReadBindIp                 string `mapstructure:"proxysql-ip-read-bind"`
+	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path"`
+	ProxysqlUser                       string `mapstructure:"proxysql-credentail"`
 	KeyPath                            string `mapstructure:"keypath"`
 	LogLevel                           int    `mapstructure:"log-level"`
 	Test                               bool   `mapstructure:"test"`
@@ -181,7 +190,7 @@ type Config struct {
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
-	APIUser                            string `mapstructure:"api-user"`
+	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`
 	ConfigFile                         string `mapstructure:"config"`
