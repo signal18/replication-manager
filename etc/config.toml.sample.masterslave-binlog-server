@@ -49,8 +49,8 @@ verbose = true
 # TOPOLOGY
 # --------
 
-multimaster = false
-multi-tier-slave = false
+replication-multi-master = false
+replication-multi-tier-slave = false
 maxscale-binlog = false
 
 db-servers-connect-timeout = 1
@@ -84,7 +84,7 @@ http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
-api-user = "admin:mariadb"
+api-credential = "admin:mariadb"
 api-port = "3000"
 
 # ALERTS
@@ -105,8 +105,8 @@ failover-readonly-state = true
 failover-event-scheduler = false
 failover-event-status = false
 
-pre-failover-script = ""
-post-failover-script = ""
+failover-pre-script = ""
+failover-post-script = ""
 
 # Timeout in seconds between consecutive monitoring
 monitoring-ticker = 2

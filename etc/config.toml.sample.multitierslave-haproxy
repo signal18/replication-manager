@@ -13,7 +13,7 @@ db-servers-credential = "root:test"
 db-servers-connect-timeout = 1
 replication-credential = "root:test"
 
-multi-tier-slave = true
+replication-multi-tier-slave = true
 haproxy=true
 haproxy-write-port= 3305
 haproxy-read-port= 3304
@@ -34,8 +34,8 @@ verbose = true
 # TOPOLOGY
 # --------
 
-multimaster = false
-multi-tier-slave = false
+replication-multi-master = false
+replication-multi-tier-slave = false
 maxscale-binlog = false
 
 # Automatically rejoin a failed server to the current master
@@ -76,7 +76,7 @@ http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
-api-user = "admin:mariadb"
+api-credential = "admin:mariadb"
 api-port = "3000"
 
 # ALERTS
@@ -89,8 +89,8 @@ mail-to = "mrm@mariadb.com"
 # FAILOVER
 # --------
 
-pre-failover-script = ""
-post-failover-script = ""
+failover-pre-script = ""
+failover-post-script = ""
 
 # Timeout in seconds between consecutive monitoring
 # check type can be tcp or agent

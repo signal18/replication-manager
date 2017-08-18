@@ -11,6 +11,11 @@ package config
 type Config struct {
 	WorkingDir                         string `mapstructure:"working-directory"`
 	ShareDir                           string `mapstructure:"share-directory"`
+	Socket                             string `mapstructure:"socket"`
+	Interactive                        bool   `mapstructure:"interactive"`
+	Verbose                            bool   `mapstructure:"verbose"`
+	LogFile                            string `mapstructure:"logfile"`
+	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	User                               string `mapstructure:"db-servers-credential"`
 	Hosts                              string `mapstructure:"db-servers-hosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert"`
@@ -19,29 +24,43 @@ type Config struct {
 	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
 	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
-	Socket                             string `mapstructure:"socket"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
 	RplUser                            string `mapstructure:"replication-credential"`
 	MasterConn                         string `mapstructure:"replication-source-name"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
-	Interactive                        bool   `mapstructure:"interactive"`
-	Verbose                            bool   `mapstructure:"verbose"`
-	PreScript                          string `mapstructure:"pre-failover-script"`
-	PostScript                         string `mapstructure:"post-failover-script"`
+	MultiMaster                        bool   `mapstructure:"replication-multi-master"`
+	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx"`
 	SwitchWaitWrite                    int    `mapstructure:"switchover-wait-write-query"`
 	SwitchGtidCheck                    bool   `mapstructure:"switchover-at-equal-gtid"`
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
+	FailLimit                          int    `mapstructure:"failover-limit"`
+	PreScript                          string `mapstructure:"failover-pre-script"`
+	PostScript                         string `mapstructure:"failover-post-script"`
+	ReadOnly                           bool   `mapstructure:"failover-readonly-state"`
+	FailTime                           int64  `mapstructure:"failover-time-limit"`
+	FailSync                           bool   `mapstructure:"failover-at-sync"`
+	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
+	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
+	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
+	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter"`
+	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
+	FailMode                           string `mapstructure:"failover-mode"`
+	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
+	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
+	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
+	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
+	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
+	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
+	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Autorejoin                         bool   `mapstructure:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
 	RejoinScript                       string `mapstructure:"autrejoin-script"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
-	LogFile                            string `mapstructure:"logfile"`
-	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
@@ -64,8 +83,6 @@ type Config struct {
 	ForceSyncBinlog                    bool   `mapstructure:"force-sync-binlog"`
 	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
-	MultiMaster                        bool   `mapstructure:"multimaster"`
-	MultiTierSlave                     bool   `mapstructure:"multi-tier-slave"`
 	Spider                             bool   `mapstructure:"spider"`
 	BindAddr                           string `mapstructure:"http-bind-address"`
 	HttpPort                           string `mapstructure:"http-port"`
@@ -78,23 +95,6 @@ type Config struct {
 	MailFrom                           string `mapstructure:"mail-from"`
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
-	FailLimit                          int    `mapstructure:"failover-limit"`
-	ReadOnly                           bool   `mapstructure:"failover-readonly-state"`
-	FailTime                           int64  `mapstructure:"failover-time-limit"`
-	FailSync                           bool   `mapstructure:"failover-at-sync"`
-	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
-	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
-	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
-	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter"`
-	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
-	FailMode                           string `mapstructure:"failover-mode"`
-	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
-	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
-	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
-	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
-	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
-	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
-	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MdbsProxyOn                        bool   `mapstructure:"mdbshardproxy"`
 	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-servers"`
