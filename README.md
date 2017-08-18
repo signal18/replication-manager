@@ -456,16 +456,16 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
 
-> It is strongly advice to create a dedicated user for the management user !  
+> It is strongly advised to create a dedicated user for the management user !  
 Management user (given by the --user option) and Replication user (given by the --repluser option) need to be given privileges to the host from which `replication-manager` runs. Users with wildcards are accepted as well.
 
 
-The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT`, `EVENT` and `RELOAD`
+The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT`, `EVENT`, `RELOAD` and `PROCESS`
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
 > Since replication-manager 1.1 a *[default]* section is required
-> It's best practice to split each managed cluster in his own section
+> It's a best practice to split each managed cluster in his own section
 
 Read and decide about changing route strategy via proxy usage or failover scripts.  
 
@@ -473,7 +473,7 @@ Declaring multiple cluster in the configuration file, they will all be monitored
 
 `--config-group=cluster1,cluster2`
 
-A specific configuration file name can be explicitly setup via
+A specific configuration file name can be explicitely setup via
 
 `--config=/etc/replication-manager.cnf`
 
@@ -948,7 +948,9 @@ db-servers-tls-client-cert
  * CORE: Etcd integration
  * CORE: Agent base server stop leader on switchover   
  * SERVER: MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
+
 ## Community
+
 ### Non-regression tests
 
 A testing framework is available via http or in command line.
