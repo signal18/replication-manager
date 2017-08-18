@@ -502,8 +502,8 @@ Replication-Manager calls external scripts and provides following parameters in 
 - [x] New elected maxscale server port
 
 ```
-pre-failover-script = ""
-post-failover-script = ""
+failover-pre-script = ""
+failover-post-script = ""
 autorejoin-script = ""
 ```
 
@@ -592,7 +592,7 @@ maxscale = true
 # maxinfo|maxadmin
 maxscale-get-info-method = "maxadmin"
 maxscale-maxinfo-port = 4002
-maxscale-host = "192.168.0.201"
+maxscale-servers = "192.168.0.201"
 maxscale-port = 4003
 ```
 
@@ -646,7 +646,7 @@ Since version 1.1 replication-manager can manage a new type of proxy for schema 
 For every cluster you wan't to proxy add the same extra MariaDBShardProxy
 ```
 mdbshardproxy = true
-mdbshardproxy-hosts = "127.0.0.1:3306"
+mdbshardproxy-servers = "127.0.0.1:3306"
 mdbshardproxy-user = "root:mariadb"
 ```
 
@@ -749,12 +749,16 @@ Ctrl-P Ctrl-N switch between clusters
 
 By default `replication-manager` assume flat topology but can auto promote multi-tier topology with some additional setting, this scenario is you stop a slave and his master die, when the master rejoin the topology it can keep his  slave behind it or the slave can be switched to the new master
 ```
-multi-tier-slave=true
+replication-multi-tier-slave=true
 ```
 
 ### Multi master
 
-`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
+`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration,
+```
+replication-multi-master = true
+```
+you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 ```
 read_only = 1
 ```
@@ -762,7 +766,7 @@ read_only = 1
 This flag ensures that in case of split brain + leader crash, when old leader is reintroduced it will not show up as a possible leader for WRITES.
 
 
-MaxScale can follow multi=master setting by tracking the read-only flag and route queries to the writable node.
+MaxScale can follow multi master setting by tracking the read-only flag and route queries to the writable node.
 
 ```    
 [Multi-Master Monitor]
@@ -779,7 +783,7 @@ detect_stale_master=true
 Replication-Manager have support for replication tree or relay slaves architecture, in case of master death one of the slaves under the relay is promoted as a master.   
 Add following parameter to your cluster section
 ```
-multi-tier-slave=true
+replication-multi-tier-slave=true
 ```
 
 ### Active standby and external arbitrator
@@ -895,7 +899,7 @@ Some extra variables can be set in the configuration file for all databases in a
 
 ```
 db-servers-tls-ca-cert
-hdb-servers-tls-client-key
+db-servers-tls-client-key
 db-servers-tls-client-cert
 ```
 
@@ -965,9 +969,9 @@ Setting the `test` variable in the predefined testing cluster in config file:
 [Cluster_Test_2_Nodes]
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
 db-servers-preferedd-master = "127.0.0.1:3310"
-db-servers-credential = "root:"
+db-servers-credential = "root:xxxx"
 db-servers-connect-timeout = 1
-replication-credentail = "root:"
+replication-credential = "root:"
 title = "cluster1"
 haproxy-write-port=3303
 haproxy-read-port=3304
