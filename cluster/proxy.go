@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mariadb-corporation/mrm/crypto"
+	"github.com/tanji/replication-manager/crypto"
 	"github.com/tanji/replication-manager/dbhelper"
 	"github.com/tanji/replication-manager/maxscale"
 	"github.com/tanji/replication-manager/misc"
