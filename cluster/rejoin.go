@@ -368,10 +368,12 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	} // end mycurrentmaster !=nil
 
 	// In case of state change, reintroduce the server in the slave list
-	if server.PrevState == stateFailed || server.PrevState == stateUnconn {
+	if server.PrevState == stateFailed || server.PrevState == stateUnconn || server.PrevState == stateSuspect {
 		server.State = stateSlave
 		server.FailCount = 0
-		server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
+		if server.PrevState != stateSuspect {
+			server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
+		}
 		if server.ClusterGroup.conf.ReadOnly {
 			err := dbhelper.SetReadOnly(server.Conn, true)
 			if err != nil {
