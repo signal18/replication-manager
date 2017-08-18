@@ -299,6 +299,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 		return
 	} else if errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
 		server.rejoinSlave(ss)
+	}
 
 	if server.PrevState != server.State {
 		server.PrevState = server.State
