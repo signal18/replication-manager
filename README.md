@@ -493,7 +493,7 @@ Some init.d script for old os compatibility
 
 #### External failover scripts
 
-Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
+Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader host, old leader port, new elected leader port.
 
 ```
 pre-failover-script = ""

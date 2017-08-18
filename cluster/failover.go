@@ -95,7 +95,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.conf.PreScript != "" {
 		cluster.LogPrintf("INFO", "Calling pre-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PreScript, oldMaster.Host, cluster.master.Host).CombinedOutput()
+		out, err = exec.Command(cluster.conf.PreScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s", err)
 		}
@@ -227,7 +227,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.conf.PostScript != "" {
 		cluster.LogPrintf("INFO", "Calling post-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PostScript, oldMaster.Host, cluster.master.Host).CombinedOutput()
+		out, err = exec.Command(cluster.conf.PostScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s", err)
 		}
