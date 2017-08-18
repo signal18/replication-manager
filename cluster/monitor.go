@@ -297,9 +297,8 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
-	} else if errss == nil && server.PrevState == stateFailed {
+	} else if errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
 		server.rejoinSlave(ss)
-	}
 
 	if server.PrevState != server.State {
 		server.PrevState = server.State
@@ -561,7 +560,10 @@ func (server *ServerMonitor) getMaxscaleInfos(m *maxscale.MaxScale) {
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
-	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed || server.IsSlave == false {
+	if server.ClusterGroup.sme.IsInFailover() {
+		return "In Failover"
+	}
+	if (server.State == stateSuspect || server.State == stateFailed) && server.IsSlave == false {
 		return "Master OK"
 	}
 
