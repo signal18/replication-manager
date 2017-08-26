@@ -411,7 +411,7 @@ func (cluster *Cluster) Bootstrap() error {
 func (cluster *Cluster) BootstrapServices() error {
 
 	// create service template and post
-	if cluster.conf.Enterprise {
+	if cluster.conf.Test {
 		err := cluster.InitClusterSemiSync()
 		if err != nil {
 			return err
@@ -557,10 +557,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf("INFO", "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
 
 				}
-
 				if err != nil {
-					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln(err))
+					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				if cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
@@ -569,8 +567,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				}
 
 				if err != nil {
-					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("Can't start slave: ", err))
+					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}

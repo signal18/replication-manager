@@ -27,7 +27,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
-		cluster.LogPrintf("INFO", " Starting master switchover")
+		cluster.LogPrintf("INFO", "--------------------------")
+		cluster.LogPrintf("INFO", "Starting master switchover")
+		cluster.LogPrintf("INFO", "--------------------------")
 		cluster.LogPrintf("INFO", "Checking long running updates on master %d", cluster.conf.SwitchWaitWrite)
 		if cluster.master == nil {
 			cluster.LogPrintf("ERROR", "Cannot switchover without a master")
@@ -64,7 +66,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 	} else {
-		cluster.LogPrintf("INFO", " Starting master failover")
+		cluster.LogPrintf("INFO", "------------------------")
+		cluster.LogPrintf("INFO", "Starting master failover")
+		cluster.LogPrintf("INFO", "------------------------")
 	}
 	cluster.LogPrintf("INFO", "Electing a new master")
 	for _, s := range cluster.slaves {

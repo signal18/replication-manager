@@ -24,6 +24,8 @@ type Config struct {
 	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
 	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
+	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
+	DbServerLocality                   string `mapstructure:"db-servers-locality"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
 	RplUser                            string `mapstructure:"replication-credential"`
 	MasterConn                         string `mapstructure:"replication-source-name"`
@@ -147,7 +149,6 @@ type Config struct {
 	SysbenchBinaryPath                 string `mapstructure:"sysbench-binary-path"`
 	SysbenchTime                       int    `mapstructure:"sysbench-time"`
 	SysbenchThreads                    int    `mapstructure:"sysbench-threads"`
-	MariaDBBinaryPath                  string `mapstructure:"mariadb-binary-path"`
 	Arbitration                        bool   `mapstructure:"arbitration-external"`
 	ArbitrationSasSecret               string `mapstructure:"arbitration-external-secret"`
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
@@ -159,6 +160,7 @@ type Config struct {
 	ProvHost                           string `mapstructure:"opensvc-host"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user"`
 	ProvUser                           string `mapstructure:"opensvc-user"`
+	ProvDBServerPath                   string `mapstructure:"prov-db-localhost-binary-path"`
 	ProvType                           string `mapstructure:"prov-db-service-type"`
 	ProvAgents                         string `mapstructure:"prov-db-agents"`
 	ProvMem                            string `mapstructure:"prov-db-memory"`

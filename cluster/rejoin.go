@@ -141,7 +141,7 @@ func (server *ServerMonitor) rejoinMasterFashBack(crash *Crash) error {
 
 	// Flashback here
 	if _, err := os.Stat(server.ClusterGroup.conf.ShareDir + "/" + server.ClusterGroup.conf.GoArch + "/" + server.ClusterGroup.conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.conf.MariaDBBinaryPath+"/mysqlbinlog")
+		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog")
 		return err
 	}
 
@@ -447,7 +447,7 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
 	if _, err := os.Stat(server.ClusterGroup.conf.ShareDir + "/" + server.ClusterGroup.conf.GoArch + "/" + server.ClusterGroup.conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "Backup Binlog File does not exist %s check param mariadb-binary-path", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog")
+		server.ClusterGroup.LogPrintf("ERROR", "Backup Binlog File does not exist %s check binary path", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog")
 		return err
 	}
 	if _, err := os.Stat(server.ClusterGroup.conf.WorkingDir); os.IsNotExist(err) {

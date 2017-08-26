@@ -249,7 +249,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					}
 					// Additional health checks go here
 					if sv.acidTest() == false && cluster.sme.IsDiscovered() {
-						cluster.sme.AddState("WARN00007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+						cluster.sme.AddState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 					}
 				}
 			}
@@ -363,7 +363,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN00003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
 		for _, s := range cluster.servers {
@@ -372,12 +372,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getPreferedMaster()
 			if server != nil {
 				dbhelper.SetReadOnly(server.Conn, false)
 			} else {
-				cluster.sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
+				cluster.sme.AddState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
 			}
 		}
 	}

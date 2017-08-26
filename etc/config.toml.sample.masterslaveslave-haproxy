@@ -24,7 +24,6 @@ haproxy-read-port=3306
 # ---
 
 working-directory = "/var/lib/replication-manager"
-share-directory = "/usr/share/replication-manager"
 
 logfile = "/var/log/replication-manager.log"
 verbose = true
@@ -71,7 +70,6 @@ force-sync-innodb = false
 http-server = true
 http-bind-address = "0.0.0.0"
 http-port = "10001"
-http-root = "/usr/share/replication-manager/dashboard"
 http-auth = false
 http-session-lifetime =   3600
 http-bootstrap-button = false
