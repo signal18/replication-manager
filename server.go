@@ -8,8 +8,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	mysqllog "log"
+	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"runtime/pprof"
@@ -463,4 +466,179 @@ func newTbChan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
+}
+
+func fHeartbeat() {
+	if cfgGroup == "arbitrator" {
+		currentCluster.LogPrintf("ERROR", "Arbitrator cannot send heartbeat to itself. Exiting")
+		return
+	}
+	bcksplitbrain := splitBrain
+
+	var peerList []string
+	// try to found an active peer replication-manager
+	if conf.ArbitrationPeerHosts != "" {
+		peerList = strings.Split(conf.ArbitrationPeerHosts, ",")
+	} else {
+		currentCluster.LogPrintf("ERROR", "Arbitration peer not specified. Disabling arbitration")
+		conf.Arbitration = false
+		return
+	}
+	splitBrain = true
+	timeout := time.Duration(2 * time.Second)
+	for _, peer := range peerList {
+		url := "http://" + peer + "/heartbeat"
+		client := &http.Client{
+			Timeout: timeout,
+		}
+		// Send the request via a client
+		// Do sends an HTTP request and
+		// returns an HTTP response
+		// Build the request
+		currentCluster.LogPrintf("DEBUG", "Heartbeat: Sending peer request to node %s", peer)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR", "Error building HTTP request: %s", err)
+			}
+			continue
+
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR", "Could not reach peer node, might be down or incorrect address")
+			}
+			continue
+		}
+		defer resp.Body.Close()
+		monjson, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			currentCluster.LogPrintf("ERROR", "Could not read body from peer response")
+		}
+		// Use json.Decode for reading streams of JSON data
+		var h heartbeat
+		if err := json.Unmarshal(monjson, &h); err != nil {
+			currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
+		} else {
+			splitBrain = false
+			if conf.LogLevel > 1 {
+				currentCluster.LogPrintf("DEBUG", "RETURN: %v", h)
+			}
+			if h.Status == "S" {
+				currentCluster.LogPrintf("DEBUG", "Peer node is Standby, I am Active")
+				runStatus = "A"
+			} else {
+				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
+				runStatus = "S"
+			}
+		}
+
+	}
+	if splitBrain {
+		if bcksplitbrain != splitBrain {
+			currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
+		}
+
+		// report to arbitrator
+		for _, cl := range clusters {
+			if cl.LostMajority() {
+				if bcksplitbrain != splitBrain {
+					currentCluster.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
+				}
+			}
+			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
+			var mst string
+			if cl.GetMaster() != nil {
+				mst = cl.GetMaster().URL
+			}
+			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+			req.Header.Set("X-Custom-Header", "myvalue")
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{Timeout: timeout}
+			currentCluster.LogPrintf("DEBUG", "Sending message to Arbitrator server")
+			resp, err := client.Do(req)
+			if err != nil {
+				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
+				cl.SetActiveStatus("S")
+				runStatus = "S"
+				return
+			}
+			defer resp.Body.Close()
+
+		}
+		// give a chance to other partitions to report if just happened
+		if bcksplitbrain != splitBrain {
+			time.Sleep(5 * time.Second)
+		}
+		// request arbitration for all cluster
+		for _, cl := range clusters {
+
+			if bcksplitbrain != splitBrain {
+				cl.LogPrintf("INFO", "Arbitrator: External check requested")
+			}
+			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
+			var mst string
+			if cl.GetMaster() != nil {
+				mst = cl.GetMaster().URL
+			}
+			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+			req.Header.Set("X-Custom-Header", "myvalue")
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{Timeout: timeout}
+			resp, err := client.Do(req)
+			if err != nil {
+				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
+				cl.SetActiveStatus("S")
+				cl.SetMasterReadOnly()
+				runStatus = "S"
+				return
+			}
+			defer resp.Body.Close()
+
+			body, _ := ioutil.ReadAll(resp.Body)
+
+			type response struct {
+				Arbitration string `json:"arbitration"`
+				Master      string `json:"master"`
+			}
+			var r response
+			err = json.Unmarshal(body, &r)
+			if err != nil {
+				cl.LogPrintf("ERROR", "Arbitrator received invalid JSON")
+				cl.SetActiveStatus("S")
+				cl.SetMasterReadOnly()
+				runStatus = "S"
+				return
+
+			}
+			if r.Arbitration == "winner" {
+				if bcksplitbrain != splitBrain {
+					cl.LogPrintf("INFO", "Arbitration message - Election Won")
+				}
+				cl.SetActiveStatus("A")
+				runStatus = "A"
+				return
+			}
+			if bcksplitbrain != splitBrain {
+				cl.LogPrintf("INFO", "Arbitration message - Election Lost")
+				if cl.GetMaster() != nil {
+					mst = cl.GetMaster().URL
+				}
+				if r.Master != mst {
+					cl.SetMasterReadOnly()
+				}
+			}
+			cl.SetActiveStatus("S")
+			runStatus = "S"
+			return
+
+		}
+
+	}
+
 }

@@ -31,7 +31,7 @@ useradd  -g  $MRMGROUP $MRMUSER  > /dev/null 2>&1
 chown -R $MRMUSER:$MRMGROUP $MRMDATADIR
 
 
-CMD=$MRMBASEDIR/replication-manager
+CMD=$MRMBASEDIR/replication-manager-pro
 PIDFILE=$MRMDATADIR/mrm.pid
 
 

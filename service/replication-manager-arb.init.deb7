@@ -1,0 +1,75 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          replication-manager
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts replication-manager
+# Description:       starts the MariaDB/MySQL replication-manager service
+### END INIT INFO
+# chkconfig: 2345 95 20
+# description: Replication Manager is a MariaDB HA replication monitor
+# Copyright (C) 2016 Stephane Varoqui @MariaDB
+# All rights reserved.
+# processname: replication-manager
+#
+# Use and distribution licensed under the LGPL license.  See
+# the COPYING file in this directory for full text.
+
+MRMDATADIR="/usr/share/replication-manager"
+MRMBASEDIR="/usr/bin"
+export MRMBASEDIR=$MRMBASEDIR
+export MRMDATADIR=$MRMDATADIR
+export MRMUSER=mrm
+export MRMGROUP=mrm
+
+
+groupadd -f $MRMGROUP
+useradd  -g  $MRMGROUP $MRMUSER  > /dev/null 2>&1
+
+chown -R $MRMUSER:$MRMGROUP $MRMDATADIR
+
+
+CMD=$MRMBASEDIR/replication-manager-arb
+PIDFILE=$MRMDATADIR/mrm.pid
+
+
+start()
+{
+  if [ -f  $PIDFILE ]
+  then
+  if ps -p `cat $PIDFILE` > /dev/null
+  then
+    echo "$PID is running"
+    exit
+  fi
+  fi
+su $MRMUSER <<EOF
+nohup $CMD arbitrator  < /dev/null > $MRMDATADIR/out.log 2>&1 &
+pidof -s replication-manager-arb >  $PIDFILE
+EOF
+}
+
+stop()
+{
+  kill `cat $PIDFILE`
+}
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop
+  ;;
+  restart)
+    stop
+    start
+  ;;
+
+  *)
+    echo "Usage: $0 {start|stop|restart} "
+  ;;
+
+esac

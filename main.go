@@ -88,6 +88,16 @@ type Settings struct {
 	RegTests            []string `json:"regtests"`
 	Topology            string   `json:"topology"`
 }
+type heartbeat struct {
+	UUID    string `json:"uuid"`
+	Secret  string `json:"secret"`
+	Cluster string `json:"cluster"`
+	Master  string `json:"master"`
+	UID     int    `json:"id"`
+	Status  string `json:"status"`
+	Hosts   int    `json:"hosts"`
+	Failed  int    `json:"failed"`
+}
 
 func init() {
 
