@@ -1,3 +1,5 @@
+// +build clients
+
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Author: Stephane Varoqui <stephane@mariadb.com>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
@@ -50,6 +52,7 @@ var (
 	cliTestConvertFile  string
 	cliTopology         string
 	cliCleanall         bool
+	cliExit             bool
 )
 
 var cliConn = http.Client{
@@ -339,9 +342,8 @@ var clientCmd = &cobra.Command{
 		termboxChan := cliNewTbChan()
 		interval := time.Second
 		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
-		exitMsg = cliToken
 
-		for exit == false {
+		for cliExit == false {
 			select {
 			case <-ticker.C:
 				cliSettings, _ = cliGetSettings()
@@ -397,14 +399,10 @@ var clientCmd = &cobra.Command{
 						cliDisplayHelp()
 					}
 					if event.Key == termbox.KeyCtrlQ {
-
-						exit = true
-
+						cliExit = true
 					}
 					if event.Key == termbox.KeyCtrlC {
-
-						exit = true
-
+						cliExit = true
 					}
 				}
 				switch event.Ch {
@@ -413,9 +411,7 @@ var clientCmd = &cobra.Command{
 				}
 			}
 		}
-		if exitMsg != "" {
-			log.Println(exitMsg)
-		}
+
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.

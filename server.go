@@ -1,3 +1,5 @@
+// +build server
+
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Author: Guillaume Lefranc <guillaume@signal18.io>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
@@ -32,20 +34,19 @@ import (
 
 // Global variables
 var (
-	tlog               termlog.TermLog
-	termlength         int
-	runUUID            string
-	repmgrHostname     string
-	runStatus          string
-	splitBrain         bool
-	swChan             = make(chan bool)
-	exitMsg            string
-	exit               bool
-	currentCluster     *cluster.Cluster
-	currentClusterName string
-	clusters           = map[string]*cluster.Cluster{}
-	agents             []opensvc.Host
-	isStarted          bool
+	tlog           termlog.TermLog
+	termlength     int
+	runUUID        string
+	repmgrHostname string
+	runStatus      string
+	splitBrain     bool
+	swChan         = make(chan bool)
+	exitMsg        string
+	exit           bool
+	currentCluster *cluster.Cluster
+	clusters       = map[string]*cluster.Cluster{}
+	agents         []opensvc.Host
+	isStarted      bool
 )
 
 func getClusterByName(clname string) *cluster.Cluster {
