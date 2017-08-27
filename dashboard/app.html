@@ -172,10 +172,10 @@
                                  <button width=15 height=15	type="button"  ng-click="maintenance(server.Id)">
                                  <img width=15 height=15 src="/static/maintenance.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="stop(server.Id)">
+                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15	type="button"  ng-click="stop(server.Id)">
                                  <img width=15 height=15 src="/static/stop.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="start(server.Id)">
+                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15	type="button"  ng-click="start(server.Id)">
                                  <img width=15 height=15 src="/static/start.png">
                                  </button >
                               </td>

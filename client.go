@@ -322,8 +322,8 @@ var testCmd = &cobra.Command{
 }
 
 var clientCmd = &cobra.Command{
-	Use:   "client",
-	Short: "Starts the interactive replication-manager client",
+	Use:   "console",
+	Short: "Starts the interactive replication-manager console",
 	Long:  "Connect to replication-manager in stateful TLS JWT mode.",
 	Run: func(cmd *cobra.Command, args []string) {
 		cliInit(false)
