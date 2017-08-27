@@ -1,0 +1,68 @@
+#!/bin/sh
+# replication-manager       Replication HA Management for MariaDB 10.x
+#
+# chkconfig: - 90 10
+# description: replication-manager
+# processname: replication-manager
+# config: /etc/replication-manager/config.toml
+### BEGIN INIT INFO
+# Provides:          replication-manager
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts replication-manager
+# Description:       starts the MariaDB/MySQL replication-manager service
+### END INIT INFO
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+PROCNAME=replication-manager-tst
+
+# See how we were called.
+case "$1" in
+  start)
+        echo -n "Starting replication-manager test: "
+        /usr/bin/replication-manager-tst monitor  > /dev/null 2>&1 &
+        sleep 1
+        pkill -0 -f "/usr/bin/replication-manager-tst monitor"
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]
+        then
+                echo_success
+                touch /var/lock/subsys/replication-manager
+        else
+                echo_failure
+        fi
+        echo
+        ;;
+  stop)
+        echo -n "Stopping replication-manager test: "
+        kill $(pidof replication-manager-tst)
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]
+        then
+                echo_success
+                rm -f /var/lock/subsys/replication-manager
+        else
+                echo_failure
+        fi
+        echo
+        ;;
+  status)
+        status $PROCNAME
+        RETVAL=$?
+        ;;
+  restart|reload)
+        $0 stop
+        $0 start
+        RETVAL=$?
+        ;;
+  *)
+        echo "Usage: replication-manager {start|stop|status|restart}"
+        exit 1
+esac
+
+exit $RETVAL

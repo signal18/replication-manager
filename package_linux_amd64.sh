@@ -21,13 +21,27 @@ mkdir -p build/etc/systemd/system
 mkdir -p build/etc/init.d
 mkdir -p build/var/lib/replication-manager
 echo "# Copying files to build dir"
-cp etc/* build/etc/replication-manager/
 cp -r dashboard/* build/usr/share/replication-manager/dashboard/
 cp -r share/* build/usr/share/replication-manager/
 
 # do not package commercial collector docker images
 rm -rf build/usr/share/replication-manager/opensvc/*.tar.gz
-echo "# Building packages replication-manager"
+
+echo "# Building packages replication-manager-min"
+cp etc/* build/etc/replication-manager/
+rm -f build/etc/replication-manager/config.toml.sample.opensvc.*
+cp replication-manager-min build/usr/bin/
+cp service/replication-manager-min.service build/etc/systemd/system/replication-manager.service
+cp service/replication-manager-min.init.el6 build/etc/init.d/replication-manager
+fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager-min .
+fpm --package replication-manager-min-$version-$head.tar -C build -s dir -t tar -n replication-manager-min .
+gzip replication-manager-osc-$version-$head.tar
+cp service/replication-manager-min.init.deb7 build/etc/init.d/replication-manager
+fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-min .
+
+echo "# Building packages replication-manager-osc"
+cp etc/* build/etc/replication-manager/
+rm -f build/etc/replication-manager/config.toml.sample.opensvc.*
 cp replication-manager-osc build/usr/bin/
 cp service/replication-manager-osc.service build/etc/systemd/system/replication-manager.service
 cp service/replication-manager-osc.init.el6 build/etc/init.d/replication-manager
@@ -38,6 +52,7 @@ cp service/replication-manager-osc.init.deb7 build/etc/init.d/replication-manage
 fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-osc .
 
 echo "# Building packages replication-manager-pro"
+cp etc/* build/etc/replication-manager/
 cp service/replication-manager-pro.service build/etc/systemd/system/replication-manager.service
 cp service/replication-manager-pro.init.el6 build/etc/init.d/replication-manager
 rm -f build/usr/bin/replication-manager-osc
@@ -49,6 +64,8 @@ cp service/replication-manager-pro.init.deb7 build/etc/init.d/replication-manage
 fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-pro .
 
 echo "# Building packages abitrator"
+rm -rf build/etc
+rm -rf build/usr/share
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 rm -f build/usr/bin/replication-manager-pro
@@ -58,8 +75,6 @@ fpm --package replication-manager-pro-$version-$head.tar -C build -s dir -t tar 
 gzip replication-manager-pro-$version-$head.tar
 cp service/replication-manager-arb.init.deb7 build/etc/init.d/replication-manager-arbitrator
 fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-arbitrator .
-
-
 
 echo "# Building packages replication-manager-cli"
 

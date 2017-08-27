@@ -1,0 +1,9 @@
+[Unit]
+Description=MariaDB replication-manager test including provisioning of local db service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/replication-manager-tst monitor
+
+[Install]
+WantedBy=multi-user.target
