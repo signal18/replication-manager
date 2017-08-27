@@ -15,6 +15,20 @@ rm *.tar.gz
 rm *.deb
 rm *.rpm
 mkdir -p build/usr/bin
+
+
+echo "# Building packages replication-manager-cli"
+
+rm -rf build/usr/share
+rm -rf build/usr/etc
+rm -rf build/var
+cp replication-manager-cli build/usr/bin/
+fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager-client .
+fpm --package replication-manager-client-$version-$head.tar -C build -s dir -t tar -n replication-manager-client .
+gzip replication-manager-client-$version-$head.tar
+fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-client .
+
+echo "# Preparing server directy to build dir"
 mkdir -p build/usr/share/replication-manager/dashboard
 mkdir -p build/etc/replication-manager
 mkdir -p build/etc/systemd/system
@@ -90,15 +104,3 @@ gzip replication-manager-arbitrator-$version-$head.tar
 cp service/replication-manager-arb.init.deb7 build/etc/init.d/replication-manager-arbitrator
 fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-arbitrator .
 rm -f build/usr/bin/replication-manager-arb
-
-echo "# Building packages replication-manager-cli"
-
-rm -rf build/usr/share
-rm -rf build/usr/etc
-rm -rf build/var
-cp replication-manager-cli build/usr/bin/
-fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager-client .
-fpm --package replication-manager-client-$version-$head.tar -C build -s dir -t tar -n replication-manager-client .
-gzip replication-manager-client-$version-$head.tar
-fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-client .
-rm build/usr/bin/replication-manager-cli
