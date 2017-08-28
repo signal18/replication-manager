@@ -95,10 +95,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208502
-09:59:13,713 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1
+09:59:13,713 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 09:59:13,756 ip#01          INFO    skip allocate: an ip is already defined
 09:59:13,828 ip#01          INFO    192.168.100.70 is already up on br0
-09:59:13,968 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1
+09:59:13,968 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 a stack has been saved to the rpc log
 10:00:14,138                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 10:00:14,138                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -243,7 +243,7 @@ STATUS:   nok
 1 error
  mariadb.svc.mrm.db.cnf
 total duration: 0:00:00.741095
-10:00:28,656 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2
+10:00:28,656 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:00:28,703 ip#01          INFO    skip allocate: an ip is already defined
 10:00:28,772 ip#01          INFO    192.168.100.71 is already up on br0
 10:00:28,912 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
@@ -325,10 +325,10 @@ check passed, skip fix
  mariadb.svc.mrm.proxy.cnf
 0 error
 total duration: 0:00:00.108318
-10:01:37,339 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2
+10:01:37,339 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:01:37,383 ip#01          INFO    skip allocate: an ip is already defined
 10:01:37,447 ip#01          INFO    192.168.100.50 is already up on br0
-10:01:37,587 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2
+10:01:37,587 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 10:01:37,874                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 10:01:37,875                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
 
@@ -414,10 +414,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208482
-10:02:01,072 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1
+10:02:01,072 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 10:02:01,120 ip#01          INFO    skip allocate: an ip is already defined
 10:02:01,184 ip#01          INFO    192.168.100.70 is already up on br0
-10:02:01,308 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1
+10:02:01,308 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 10:02:01,760                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 10:02:01,761                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 a stack has been saved to the rpc log
@@ -563,7 +563,7 @@ STATUS:   nok
 1 error
  mariadb.svc.mrm.db.cnf
 total duration: 0:00:00.738724
-10:02:13,856 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2
+10:02:13,856 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:02:13,900 ip#01          INFO    skip allocate: an ip is already defined
 10:02:13,963 ip#01          INFO    192.168.100.71 is already up on br0
 10:02:14,107 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
@@ -644,10 +644,10 @@ check passed, skip fix
  mariadb.svc.mrm.proxy.cnf
 0 error
 total duration: 0:00:00.108645
-10:03:22,595 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2
+10:03:22,595 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:03:22,640 ip#01          INFO    skip allocate: an ip is already defined
 10:03:22,708 ip#01          INFO    192.168.100.50 is already up on br0
-10:03:22,854 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2
+10:03:22,854 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 10:03:23,114                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 10:03:23,115                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
 
@@ -2301,10 +2301,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208523
-12:58:21,873 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1
+12:58:21,873 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 12:58:21,920 ip#01          INFO    skip allocate: an ip is already defined
 12:58:21,986 ip#01          INFO    192.168.100.70 is already up on br0
-12:58:22,127 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1
+12:58:22,127 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 12:58:22,347                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 12:58:22,348                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 a stack has been saved to the rpc log
@@ -2472,10 +2472,10 @@ check passed, skip fix
  mariadb.svc.mrm.proxy.cnf
 0 error
 total duration: 0:00:00.107668
-12:58:47,142 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2
+12:58:47,142 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 12:58:47,185 ip#01          INFO    skip allocate: an ip is already defined
 12:58:47,246 ip#01          INFO    192.168.100.50 is already up on br0
-12:58:47,383 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2
+12:58:47,383 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 12:58:47,597                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 12:58:47,598                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
 

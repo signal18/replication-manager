@@ -551,10 +551,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208030
-15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1
+15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:15:29,972 ip#01          INFO    skip allocate: an ip is already defined
 15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br0
-15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1
+15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:15:30,442                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:15:30,442                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 a stack has been saved to the rpc log
