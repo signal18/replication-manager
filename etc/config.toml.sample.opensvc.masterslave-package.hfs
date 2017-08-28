@@ -25,5 +25,5 @@ prov-db-net-gateway = "192.168.100.254"
 prov-db-net-mask = "255.255.255.0"
 
 [default]
-opensvc-host = "192.168.100.101:443"
+opensvc-host = "192.168.100.9:443"
 http-bootstrap-button = true

@@ -16,7 +16,7 @@ db-servers-connect-timeout = 1
 
 replication-credential = "root:mariadb"
 
-prov-db-agents = "agent1 agent2"
+prov-db-agents = "node-1-1 node-1-2"
 prov-db-service-type = "package"
 prov-db-disk-fs = "ext4"
 prov-db-disk-pool = "lvm"
@@ -40,7 +40,7 @@ maxscale-read-port = 4008
 maxscale-read-write-port = 4006
 maxscale-binlog = false
 
-prov-proxy-agents = "agent2"
+prov-proxy-agents = "node-1-2"
 prov-proxy-service-type = "package"
 prov-proxy-disk-fs = "ext4"
 prov-proxy-disk-pool = "lvm"
@@ -51,5 +51,5 @@ prov-proxy-net-gateway = "192.168.100.254"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
-opensvc-host = "192.168.100.101:443"
+opensvc-host = "192.168.100.9:443"
 http-bootstrap-button = true

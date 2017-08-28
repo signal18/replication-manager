@@ -188,7 +188,7 @@
                                  <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
                                  <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
                                  <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                                 <button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                 <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>

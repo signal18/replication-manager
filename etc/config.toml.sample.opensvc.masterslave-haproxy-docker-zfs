@@ -15,7 +15,7 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 
-prov-db-agents = "agent1,agent2"
+prov-db-agents = "node-1-1,node-1-2"
 prov-db-service-type = "docker"
 prov-db-disk-fs = "zfs"
 prov-db-disk-pool = "zpool"
@@ -38,7 +38,7 @@ haproxy-servers = "192.168.100.50"
 
 
 prov-proxy-disk-size = "1G"
-prov-proxy-agents = "agent2"
+prov-proxy-agents = "node-1-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-fs = "zfs"
 prov-proxy-disk-pool = "zpool"
@@ -49,5 +49,5 @@ prov-proxy-net-gateway = "192.168.100.254"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
-opensvc-host = "192.168.100.101:443"
+opensvc-host = "192.168.100.9:443"
 http-bootstrap-button = true

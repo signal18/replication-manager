@@ -231,6 +231,7 @@ func httpserver() {
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	mycluster := r.URL.Query().Get("cluster")
 	currentCluster = clusters[mycluster]
+	currentClusterName = mycluster
 	for _, gl := range cfgGroupList {
 		clusters[gl].SetCfgGroupDisplay(mycluster)
 	}
