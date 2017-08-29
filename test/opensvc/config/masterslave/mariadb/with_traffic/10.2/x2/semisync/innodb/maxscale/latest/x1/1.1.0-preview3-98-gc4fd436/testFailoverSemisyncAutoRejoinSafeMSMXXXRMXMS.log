@@ -31,14 +31,14 @@
 20:09:21,141 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 20:09:21,201 disk#1001      INFO    provisioned
 20:09:21,209 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-20:09:21,221 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-20:09:21,242 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+20:09:21,221 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+20:09:21,242 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 20:09:21,252 fs#00          INFO    provisioned
-20:09:21,270 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-20:09:21,294 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-20:09:21,317 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+20:09:21,270 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+20:09:21,294 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+20:09:21,317 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 20:09:21,326 fs#01          INFO    provisioned
-20:09:21,343 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+20:09:21,343 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 20:09:21,352 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 20:09:23,596 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -341,14 +341,14 @@ a stack has been saved to the rpc log
 20:09:52,163 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
 20:09:52,224 disk#1001      INFO    provisioned
 20:09:52,232 disk#1001      INFO    zp17311646700765639015_pod01 is already up
-20:09:52,243 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
-20:09:52,267 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+20:09:52,243 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+20:09:52,267 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 20:09:52,284 fs#00          INFO    provisioned
-20:09:52,301 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
-20:09:52,327 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
-20:09:52,352 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+20:09:52,301 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+20:09:52,327 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+20:09:52,352 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 20:09:52,363 fs#01          INFO    provisioned
-20:09:52,380 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+20:09:52,380 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
 20:09:52,391 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 20:09:54,816 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -649,14 +649,14 @@ a stack has been saved to the rpc log
 20:10:19,423 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
 20:10:19,484 disk#1001      INFO    provisioned
 20:10:19,492 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-20:10:19,503 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
-20:10:19,523 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+20:10:19,503 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+20:10:19,523 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 20:10:19,532 fs#00          INFO    provisioned
-20:10:19,548 fs#00          INFO    /sbin/zfs mount zp10940044185188150515_00/docker
-20:10:19,571 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
-20:10:19,594 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+20:10:19,548 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+20:10:19,571 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+20:10:19,594 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 20:10:19,606 fs#01          INFO    provisioned
-20:10:19,623 fs#01          INFO    /sbin/zfs mount zp10940044185188150515_pod01/pod01
+20:10:19,623 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
 20:10:19,632 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 20:10:22,034 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -833,12 +833,12 @@ Finished... Total running time: 46.76675ms
 20:12:28,487 disk#01        INFO    loop /srv/4832677178583133704_pod01.dsk is already up
 20:12:28,524 disk#1001      INFO    already provisionned
 20:12:28,531 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-20:12:28,546 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+20:12:28,546 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 20:12:28,554 fs#00          INFO    provisioned
-20:12:28,565 fs#00          INFO    zfs zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
-20:12:28,581 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+20:12:28,565 fs#00          INFO    ext4 zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
+20:12:28,581 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 20:12:28,591 fs#01          INFO    provisioned
-20:12:28,601 fs#01          INFO    zfs zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
+20:12:28,601 fs#01          INFO    ext4 zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
 20:12:28,602 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 20:12:30,580 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -938,12 +938,12 @@ use '-f' to override the following errors:
 /srv/17311646700765639015_pod01.dsk is part of exported pool 'zp17311646700765639015_pod01'
 20:12:40,142 disk#1001      INFO    provisioned
 20:12:40,145 disk#1001      INFO    zpool import -f -o cachefile=/var/lib/opensvc/zpool.cache zp17311646700765639015_pod01
-20:12:40,598 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+20:12:40,598 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 20:12:40,607 fs#00          INFO    provisioned
-20:12:40,625 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
-20:12:40,653 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+20:12:40,625 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+20:12:40,653 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 20:12:40,666 fs#01          INFO    provisioned
-20:12:40,683 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+20:12:40,683 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
 20:12:40,695 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 20:12:42,966 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -1057,12 +1057,12 @@ a stack has been saved to the rpc log
 20:12:54,578 disk#01        INFO    loop /srv/10940044185188150515_pod01.dsk is already up
 20:12:54,655 disk#1001      INFO    already provisionned
 20:12:54,662 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-20:12:54,676 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+20:12:54,676 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 20:12:54,685 fs#00          INFO    provisioned
-20:12:54,696 fs#00          INFO    zfs zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
-20:12:54,712 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+20:12:54,696 fs#00          INFO    ext4 zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
+20:12:54,712 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 20:12:54,720 fs#01          INFO    provisioned
-20:12:54,730 fs#01          INFO    zfs zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
+20:12:54,730 fs#01          INFO    ext4 zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
 20:12:54,730 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 20:12:56,826 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service

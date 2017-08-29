@@ -34,14 +34,14 @@
 01:56:38,961 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 01:56:39,018 disk#1001      INFO    provisioned
 01:56:39,025 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-01:56:39,038 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-01:56:39,066 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+01:56:39,038 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+01:56:39,066 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 01:56:39,077 fs#00          INFO    provisioned
-01:56:39,096 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-01:56:39,120 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-01:56:39,140 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+01:56:39,096 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+01:56:39,120 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+01:56:39,140 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 01:56:39,151 fs#01          INFO    provisioned
-01:56:39,169 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+01:56:39,169 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 01:56:39,179 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 01:56:41,481 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -342,14 +342,14 @@ a stack has been saved to the rpc log
 01:57:10,004 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
 01:57:10,064 disk#1001      INFO    provisioned
 01:57:10,072 disk#1001      INFO    zp17311646700765639015_pod01 is already up
-01:57:10,083 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
-01:57:10,101 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+01:57:10,083 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+01:57:10,101 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 01:57:10,111 fs#00          INFO    provisioned
-01:57:10,128 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
-01:57:10,151 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
-01:57:10,171 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+01:57:10,128 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+01:57:10,151 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+01:57:10,171 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 01:57:10,183 fs#01          INFO    provisioned
-01:57:10,202 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+01:57:10,202 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
 01:57:10,211 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 01:57:12,598 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -649,14 +649,14 @@ a stack has been saved to the rpc log
 01:57:39,212 disk#1001      INFO    zpool create -m legacy zp13228523588305620563_pod01 /srv/13228523588305620563_pod01.dsk
 01:57:39,263 disk#1001      INFO    provisioned
 01:57:39,272 disk#1001      INFO    zp13228523588305620563_pod01 is already up
-01:57:39,283 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/13228523588305620563/docker -o canmount=noauto zp13228523588305620563_00/docker
-01:57:39,304 fs#00          INFO    /sbin/zfs set refquota=2048M zp13228523588305620563_00/docker
+01:57:39,283 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/13228523588305620563/docker -o canmount=noauto zp13228523588305620563_00/docker
+01:57:39,304 fs#00          INFO    /sbin/ext4 set refquota=2048M zp13228523588305620563_00/docker
 01:57:39,313 fs#00          INFO    provisioned
-01:57:39,330 fs#00          INFO    /sbin/zfs mount zp13228523588305620563_00/docker
-01:57:39,354 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/13228523588305620563/pod01 -o canmount=noauto zp13228523588305620563_pod01/pod01
-01:57:39,379 fs#01          INFO    /sbin/zfs set refquota=1024M zp13228523588305620563_pod01/pod01
+01:57:39,330 fs#00          INFO    /sbin/ext4 mount zp13228523588305620563_00/docker
+01:57:39,354 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/13228523588305620563/pod01 -o canmount=noauto zp13228523588305620563_pod01/pod01
+01:57:39,379 fs#01          INFO    /sbin/ext4 set refquota=1024M zp13228523588305620563_pod01/pod01
 01:57:39,388 fs#01          INFO    provisioned
-01:57:39,405 fs#01          INFO    /sbin/zfs mount zp13228523588305620563_pod01/pod01
+01:57:39,405 fs#01          INFO    /sbin/ext4 mount zp13228523588305620563_pod01/pod01
 01:57:39,416 fs#01          INFO    /usr/bin/svcmgr -s 13228523588305620563 push service status;/usr/bin/svcmgr -s 13228523588305620563 compliance fix --attach --moduleset mariadb.svc.mrm.db
 01:57:41,755 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -958,14 +958,14 @@ a stack has been saved to the rpc log
 01:58:08,262 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
 01:58:08,321 disk#1001      INFO    provisioned
 01:58:08,328 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-01:58:08,340 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
-01:58:08,360 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+01:58:08,340 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+01:58:08,360 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 01:58:08,369 fs#00          INFO    provisioned
-01:58:08,387 fs#00          INFO    /sbin/zfs mount zp10940044185188150515_00/docker
-01:58:08,412 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
-01:58:08,435 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+01:58:08,387 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+01:58:08,412 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+01:58:08,435 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 01:58:08,444 fs#01          INFO    provisioned
-01:58:08,460 fs#01          INFO    /sbin/zfs mount zp10940044185188150515_pod01/pod01
+01:58:08,460 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
 01:58:08,472 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 01:58:10,808 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -1517,14 +1517,14 @@ a stack has been saved to the rpc log
 01:59:57,737 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 01:59:57,796 disk#1001      INFO    provisioned
 01:59:57,805 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-01:59:57,818 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-01:59:57,839 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+01:59:57,818 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+01:59:57,839 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 01:59:57,848 fs#00          INFO    provisioned
-01:59:57,867 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-01:59:57,894 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-01:59:57,914 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+01:59:57,867 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+01:59:57,894 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+01:59:57,914 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 01:59:57,924 fs#01          INFO    provisioned
-01:59:57,943 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+01:59:57,943 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 01:59:57,954 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 02:00:00,396 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -1885,12 +1885,12 @@ a stack has been saved to the rpc log
 02:00:13,374 disk#01        INFO    loop /srv/17311646700765639015_pod01.dsk is already up
 02:00:13,443 disk#1001      INFO    already provisionned
 02:00:13,453 disk#1001      INFO    zp17311646700765639015_pod01 is already up
-02:00:13,468 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+02:00:13,468 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 02:00:13,477 fs#00          INFO    provisioned
-02:00:13,487 fs#00          INFO    zfs zp17311646700765639015_00/docker@/srv/17311646700765639015/docker is already mounted
-02:00:13,504 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+02:00:13,487 fs#00          INFO    ext4 zp17311646700765639015_00/docker@/srv/17311646700765639015/docker is already mounted
+02:00:13,504 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 02:00:13,516 fs#01          INFO    provisioned
-02:00:13,526 fs#01          INFO    zfs zp17311646700765639015_pod01/pod01@/srv/17311646700765639015/pod01 is already mounted
+02:00:13,526 fs#01          INFO    ext4 zp17311646700765639015_pod01/pod01@/srv/17311646700765639015/pod01 is already mounted
 02:00:13,526 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 02:00:15,664 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -2028,12 +2028,12 @@ a stack has been saved to the rpc log
 02:00:25,435 disk#01        INFO    loop /srv/13228523588305620563_pod01.dsk is already up
 02:00:25,503 disk#1001      INFO    already provisionned
 02:00:25,511 disk#1001      INFO    zp13228523588305620563_pod01 is already up
-02:00:25,528 fs#00          INFO    /sbin/zfs set refquota=2048M zp13228523588305620563_00/docker
+02:00:25,528 fs#00          INFO    /sbin/ext4 set refquota=2048M zp13228523588305620563_00/docker
 02:00:25,542 fs#00          INFO    provisioned
-02:00:25,553 fs#00          INFO    zfs zp13228523588305620563_00/docker@/srv/13228523588305620563/docker is already mounted
-02:00:25,571 fs#01          INFO    /sbin/zfs set refquota=1024M zp13228523588305620563_pod01/pod01
+02:00:25,553 fs#00          INFO    ext4 zp13228523588305620563_00/docker@/srv/13228523588305620563/docker is already mounted
+02:00:25,571 fs#01          INFO    /sbin/ext4 set refquota=1024M zp13228523588305620563_pod01/pod01
 02:00:25,583 fs#01          INFO    provisioned
-02:00:25,593 fs#01          INFO    zfs zp13228523588305620563_pod01/pod01@/srv/13228523588305620563/pod01 is already mounted
+02:00:25,593 fs#01          INFO    ext4 zp13228523588305620563_pod01/pod01@/srv/13228523588305620563/pod01 is already mounted
 02:00:25,594 fs#01          INFO    /usr/bin/svcmgr -s 13228523588305620563 push service status;/usr/bin/svcmgr -s 13228523588305620563 compliance fix --attach --moduleset mariadb.svc.mrm.db
 02:00:27,755 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -2181,12 +2181,12 @@ a stack has been saved to the rpc log
 02:00:34,498 disk#01        INFO    loop /srv/10940044185188150515_pod01.dsk is already up
 02:00:34,578 disk#1001      INFO    already provisionned
 02:00:34,586 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-02:00:34,601 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+02:00:34,601 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 02:00:34,609 fs#00          INFO    provisioned
-02:00:34,619 fs#00          INFO    zfs zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
-02:00:34,637 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+02:00:34,619 fs#00          INFO    ext4 zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
+02:00:34,637 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 02:00:34,646 fs#01          INFO    provisioned
-02:00:34,656 fs#01          INFO    zfs zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
+02:00:34,656 fs#01          INFO    ext4 zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
 02:00:34,656 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 02:00:36,926 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -2680,4 +2680,4 @@ total duration: 0:00:00.107962
 2017/08/04 04:02:27 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71,192.168.100.72 [192.168.100.70 192.168.100.71 192.168.100.72]
 2017/08/04 04:02:27 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 04:02:27 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/04 04:02:27 [ux_dck_zpool_loop] TEST  - Result Switchover2TimesReplicationOkNoSemiSyncNoRplCheck        -> {testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck PASS ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71,192.168.100.72     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71,192.168.100.72     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}
+2017/08/04 04:02:27 [ux_dck_zpool_loop] TEST  - Result Switchover2TimesReplicationOkNoSemiSyncNoRplCheck        -> {testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck PASS ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71,192.168.100.72     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71,192.168.100.72     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x3/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}
