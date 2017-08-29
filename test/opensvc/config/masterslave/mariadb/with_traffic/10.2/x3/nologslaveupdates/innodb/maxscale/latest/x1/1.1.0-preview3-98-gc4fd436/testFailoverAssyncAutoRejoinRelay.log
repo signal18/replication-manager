@@ -300,7 +300,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 00:36:50,244 ip#01          INFO    bridge mode
 00:36:50,272 ip#01          INFO    create symlink /var/run/netns/26515 -> /proc/26515/ns/net
 00:36:50,344 ip#01          INFO    /sbin/ip link add name veth1pl26515 mtu 1500 type veth peer name veth1pg26515 mtu 1500
-00:36:50,348 ip#01          INFO    /sbin/ip link set veth1pl26515 master br0
+00:36:50,348 ip#01          INFO    /sbin/ip link set veth1pl26515 master br-prd
 00:36:50,354 ip#01          INFO    /sbin/ip link set veth1pl26515 up
 00:36:50,358 ip#01          INFO    /sbin/ip link set veth1pg26515 netns 26515
 00:36:50,376 ip#01          INFO    /sbin/ip netns exec 26515 ip link set veth1pg26515 name eth1
@@ -612,7 +612,7 @@ total duration: 0:00:00.536062
 00:37:21,357 ip#01          INFO    bridge mode
 00:37:21,385 ip#01          INFO    create symlink /var/run/netns/24964 -> /proc/24964/ns/net
 00:37:21,469 ip#01          INFO    /sbin/ip link add name veth1pl24964 mtu 1500 type veth peer name veth1pg24964 mtu 1500
-00:37:21,473 ip#01          INFO    /sbin/ip link set veth1pl24964 master br0
+00:37:21,473 ip#01          INFO    /sbin/ip link set veth1pl24964 master br-prd
 00:37:21,476 ip#01          INFO    /sbin/ip link set veth1pl24964 up
 00:37:21,479 ip#01          INFO    /sbin/ip link set veth1pg24964 netns 24964
 00:37:21,494 ip#01          INFO    /sbin/ip netns exec 24964 ip link set veth1pg24964 name eth1
@@ -922,7 +922,7 @@ total duration: 0:00:00.533612
 00:37:50,915 ip#01          INFO    bridge mode
 00:37:50,944 ip#01          INFO    create symlink /var/run/netns/28093 -> /proc/28093/ns/net
 00:37:51,011 ip#01          INFO    /sbin/ip link add name veth1pl28093 mtu 1500 type veth peer name veth1pg28093 mtu 1500
-00:37:51,016 ip#01          INFO    /sbin/ip link set veth1pl28093 master br0
+00:37:51,016 ip#01          INFO    /sbin/ip link set veth1pl28093 master br-prd
 00:37:51,019 ip#01          INFO    /sbin/ip link set veth1pl28093 up
 00:37:51,022 ip#01          INFO    /sbin/ip link set veth1pg28093 netns 28093
 00:37:51,040 ip#01          INFO    /sbin/ip netns exec 28093 ip link set veth1pg28093 name eth1
@@ -1047,7 +1047,7 @@ total duration: 0:00:00.430926
 00:38:19,693 ip#01          INFO    bridge mode
 00:38:19,721 ip#01          INFO    create symlink /var/run/netns/26547 -> /proc/26547/ns/net
 00:38:19,785 ip#01          INFO    /sbin/ip link add name veth1pl26547 mtu 1500 type veth peer name veth1pg26547 mtu 1500
-00:38:19,790 ip#01          INFO    /sbin/ip link set veth1pl26547 master br0
+00:38:19,790 ip#01          INFO    /sbin/ip link set veth1pl26547 master br-prd
 00:38:19,795 ip#01          INFO    /sbin/ip link set veth1pl26547 up
 00:38:19,799 ip#01          INFO    /sbin/ip link set veth1pg26547 netns 26547
 00:38:19,826 ip#01          INFO    /sbin/ip netns exec 26547 ip link set veth1pg26547 name eth1

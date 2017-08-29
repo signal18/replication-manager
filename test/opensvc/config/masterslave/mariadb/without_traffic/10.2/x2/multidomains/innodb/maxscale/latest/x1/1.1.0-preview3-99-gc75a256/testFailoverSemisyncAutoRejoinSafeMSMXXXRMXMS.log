@@ -96,7 +96,7 @@ check passed, skip fix
 total duration: 0:00:00.208380
 07:29:53,837 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 07:29:53,884 ip#01          INFO    skip allocate: an ip is already defined
-07:29:53,951 ip#01          INFO    192.168.100.70 is already up on br0
+07:29:53,951 ip#01          INFO    192.168.100.70 is already up on br-prd
 07:29:54,094 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 07:29:54,313                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 07:29:54,314                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -403,7 +403,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 10:31:17,936 ip#01          INFO    bridge mode
 10:31:17,965 ip#01          INFO    create symlink /var/run/netns/5104 -> /proc/5104/ns/net
 10:31:18,032 ip#01          INFO    /sbin/ip link add name veth1pl5104 mtu 1500 type veth peer name veth1pg5104 mtu 1500
-10:31:18,037 ip#01          INFO    /sbin/ip link set veth1pl5104 master br0
+10:31:18,037 ip#01          INFO    /sbin/ip link set veth1pl5104 master br-prd
 10:31:18,043 ip#01          INFO    /sbin/ip link set veth1pl5104 up
 10:31:18,046 ip#01          INFO    /sbin/ip link set veth1pg5104 netns 5104
 10:31:18,060 ip#01          INFO    /sbin/ip netns exec 5104 ip link set veth1pg5104 name eth1
@@ -735,7 +735,7 @@ total duration: 0:00:00.533845
 10:32:35,117 ip#01          INFO    bridge mode
 10:32:35,145 ip#01          INFO    create symlink /var/run/netns/6602 -> /proc/6602/ns/net
 10:32:35,214 ip#01          INFO    /sbin/ip link add name veth1pl6602 mtu 1500 type veth peer name veth1pg6602 mtu 1500
-10:32:35,219 ip#01          INFO    /sbin/ip link set veth1pl6602 master br0
+10:32:35,219 ip#01          INFO    /sbin/ip link set veth1pl6602 master br-prd
 10:32:35,224 ip#01          INFO    /sbin/ip link set veth1pl6602 up
 10:32:35,227 ip#01          INFO    /sbin/ip link set veth1pg6602 netns 6602
 10:32:35,255 ip#01          INFO    /sbin/ip netns exec 6602 ip link set veth1pg6602 name eth1
@@ -856,7 +856,7 @@ total duration: 0:00:00.427705
 10:33:02,604 ip#01          INFO    bridge mode
 10:33:02,631 ip#01          INFO    create symlink /var/run/netns/8139 -> /proc/8139/ns/net
 10:33:02,697 ip#01          INFO    /sbin/ip link add name veth1pl8139 mtu 1500 type veth peer name veth1pg8139 mtu 1500
-10:33:02,701 ip#01          INFO    /sbin/ip link set veth1pl8139 master br0
+10:33:02,701 ip#01          INFO    /sbin/ip link set veth1pl8139 master br-prd
 10:33:02,705 ip#01          INFO    /sbin/ip link set veth1pl8139 up
 10:33:02,709 ip#01          INFO    /sbin/ip link set veth1pg8139 netns 8139
 10:33:02,718 ip#01          INFO    /sbin/ip netns exec 8139 ip link set veth1pg8139 name eth1
@@ -1089,7 +1089,7 @@ a stack has been saved to the rpc log
 2017/08/04 12:34:02 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
 2017/08/04 12:34:02 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 12:34:02 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/04 12:34:02 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinSafeMSMXXXRMXMS                -> {testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS FAIL ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf} {         %!s(bool=false) %!s(bool=false)      %!s(int64=0) %!s(int64=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(int64=0) %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false)   %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(bool=false)    %!s(int=0) %!s(int=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int64=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false) %!s(bool=false)   %!s(bool=false)     %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(int=0)     %!s(int=0) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false)  %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0)  %!s(int=0) %!s(int=0)  %!s(bool=false)   %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)                                   }}
+2017/08/04 12:34:02 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinSafeMSMXXXRMXMS                -> {testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS FAIL ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf} {         %!s(bool=false) %!s(bool=false)      %!s(int64=0) %!s(int64=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(int64=0) %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false)   %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(bool=false)    %!s(int=0) %!s(int=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int64=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false) %!s(bool=false)   %!s(bool=false)     %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(int=0)     %!s(int=0) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false)  %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0)  %!s(int=0) %!s(int=0)  %!s(bool=false)   %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)                                   }}
 2017/08/04 13:54:36 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
 2017/08/04 13:54:36 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 13:54:36 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
@@ -1389,7 +1389,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 11:54:50,788 ip#01          INFO    bridge mode
 11:54:50,816 ip#01          INFO    create symlink /var/run/netns/31863 -> /proc/31863/ns/net
 11:54:50,891 ip#01          INFO    /sbin/ip link add name veth1pl31863 mtu 1500 type veth peer name veth1pg31863 mtu 1500
-11:54:50,895 ip#01          INFO    /sbin/ip link set veth1pl31863 master br0
+11:54:50,895 ip#01          INFO    /sbin/ip link set veth1pl31863 master br-prd
 11:54:50,899 ip#01          INFO    /sbin/ip link set veth1pl31863 up
 11:54:50,902 ip#01          INFO    /sbin/ip link set veth1pg31863 netns 31863
 11:54:50,920 ip#01          INFO    /sbin/ip netns exec 31863 ip link set veth1pg31863 name eth1
@@ -1704,7 +1704,7 @@ total duration: 0:00:00.545935
 11:55:26,383 ip#01          INFO    bridge mode
 11:55:26,506 ip#01          INFO    create symlink /var/run/netns/5743 -> /proc/5743/ns/net
 11:55:26,607 ip#01          INFO    /sbin/ip link add name veth1pl5743 mtu 1500 type veth peer name veth1pg5743 mtu 1500
-11:55:26,617 ip#01          INFO    /sbin/ip link set veth1pl5743 master br0
+11:55:26,617 ip#01          INFO    /sbin/ip link set veth1pl5743 master br-prd
 11:55:26,624 ip#01          INFO    /sbin/ip link set veth1pl5743 up
 11:55:26,629 ip#01          INFO    /sbin/ip link set veth1pg5743 netns 5743
 11:55:26,650 ip#01          INFO    /sbin/ip netns exec 5743 ip link set veth1pg5743 name eth1
@@ -1826,7 +1826,7 @@ total duration: 0:00:00.429086
 11:55:59,339 ip#01          INFO    bridge mode
 11:55:59,367 ip#01          INFO    create symlink /var/run/netns/7256 -> /proc/7256/ns/net
 11:55:59,437 ip#01          INFO    /sbin/ip link add name veth1pl7256 mtu 1500 type veth peer name veth1pg7256 mtu 1500
-11:55:59,442 ip#01          INFO    /sbin/ip link set veth1pl7256 master br0
+11:55:59,442 ip#01          INFO    /sbin/ip link set veth1pl7256 master br-prd
 11:55:59,448 ip#01          INFO    /sbin/ip link set veth1pl7256 up
 11:55:59,451 ip#01          INFO    /sbin/ip link set veth1pg7256 netns 7256
 11:55:59,470 ip#01          INFO    /sbin/ip netns exec 7256 ip link set veth1pg7256 name eth1
@@ -2003,7 +2003,7 @@ check passed, skip fix
 total duration: 0:00:00.209481
 11:58:08,351 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 11:58:08,397 ip#01          INFO    skip allocate: an ip is already defined
-11:58:08,459 ip#01          INFO    192.168.100.70 is already up on br0
+11:58:08,459 ip#01          INFO    192.168.100.70 is already up on br-prd
 11:58:08,600 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 11:58:08,829                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 11:58:08,830                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -2117,7 +2117,7 @@ total duration: 0:00:00.213276
 11:58:24,141 ip#01          INFO    bridge mode
 11:58:24,170 ip#01          INFO    create symlink /var/run/netns/10487 -> /proc/10487/ns/net
 11:58:24,249 ip#01          INFO    /sbin/ip link add name veth1pl10487 mtu 1500 type veth peer name veth1pg10487 mtu 1500
-11:58:24,255 ip#01          INFO    /sbin/ip link set veth1pl10487 master br0
+11:58:24,255 ip#01          INFO    /sbin/ip link set veth1pl10487 master br-prd
 11:58:24,259 ip#01          INFO    /sbin/ip link set veth1pl10487 up
 11:58:24,264 ip#01          INFO    /sbin/ip link set veth1pg10487 netns 10487
 11:58:24,274 ip#01          INFO    /sbin/ip netns exec 10487 ip link set veth1pg10487 name eth1
@@ -2184,7 +2184,7 @@ check passed, skip fix
 total duration: 0:00:00.107101
 11:58:34,679 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 11:58:34,725 ip#01          INFO    skip allocate: an ip is already defined
-11:58:34,786 ip#01          INFO    192.168.100.50 is already up on br0
+11:58:34,786 ip#01          INFO    192.168.100.50 is already up on br-prd
 11:58:34,920 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 11:58:35,161                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 11:58:35,162                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
@@ -2568,7 +2568,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 14:30:22,338 ip#01          INFO    bridge mode
 14:30:22,365 ip#01          INFO    create symlink /var/run/netns/23131 -> /proc/23131/ns/net
 14:30:22,435 ip#01          INFO    /sbin/ip link add name veth1pl23131 mtu 1500 type veth peer name veth1pg23131 mtu 1500
-14:30:22,440 ip#01          INFO    /sbin/ip link set veth1pl23131 master br0
+14:30:22,440 ip#01          INFO    /sbin/ip link set veth1pl23131 master br-prd
 14:30:22,444 ip#01          INFO    /sbin/ip link set veth1pl23131 up
 14:30:22,447 ip#01          INFO    /sbin/ip link set veth1pg23131 netns 23131
 14:30:22,464 ip#01          INFO    /sbin/ip netns exec 23131 ip link set veth1pg23131 name eth1
@@ -2880,7 +2880,7 @@ total duration: 0:00:00.531814
 14:30:51,211 ip#01          INFO    bridge mode
 14:30:51,239 ip#01          INFO    create symlink /var/run/netns/1298 -> /proc/1298/ns/net
 14:30:51,305 ip#01          INFO    /sbin/ip link add name veth1pl1298 mtu 1500 type veth peer name veth1pg1298 mtu 1500
-14:30:51,310 ip#01          INFO    /sbin/ip link set veth1pl1298 master br0
+14:30:51,310 ip#01          INFO    /sbin/ip link set veth1pl1298 master br-prd
 14:30:51,315 ip#01          INFO    /sbin/ip link set veth1pl1298 up
 14:30:51,318 ip#01          INFO    /sbin/ip link set veth1pg1298 netns 1298
 14:30:51,330 ip#01          INFO    /sbin/ip netns exec 1298 ip link set veth1pg1298 name eth1
@@ -3003,7 +3003,7 @@ total duration: 0:00:00.431200
 14:31:18,703 ip#01          INFO    bridge mode
 14:31:18,733 ip#01          INFO    create symlink /var/run/netns/3529 -> /proc/3529/ns/net
 14:31:18,801 ip#01          INFO    /sbin/ip link add name veth1pl3529 mtu 1500 type veth peer name veth1pg3529 mtu 1500
-14:31:18,805 ip#01          INFO    /sbin/ip link set veth1pl3529 master br0
+14:31:18,805 ip#01          INFO    /sbin/ip link set veth1pl3529 master br-prd
 14:31:18,810 ip#01          INFO    /sbin/ip link set veth1pl3529 up
 14:31:18,814 ip#01          INFO    /sbin/ip link set veth1pg3529 netns 3529
 14:31:18,822 ip#01          INFO    /sbin/ip netns exec 3529 ip link set veth1pg3529 name eth1
@@ -3180,7 +3180,7 @@ check passed, skip fix
 total duration: 0:00:00.207823
 14:33:27,785 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 14:33:27,828 ip#01          INFO    skip allocate: an ip is already defined
-14:33:27,896 ip#01          INFO    192.168.100.70 is already up on br0
+14:33:27,896 ip#01          INFO    192.168.100.70 is already up on br-prd
 14:33:28,022 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 14:33:28,245                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 14:33:28,246                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -3291,7 +3291,7 @@ total duration: 0:00:00.210584
 14:33:43,596 ip#01          INFO    bridge mode
 14:33:43,626 ip#01          INFO    create symlink /var/run/netns/6768 -> /proc/6768/ns/net
 14:33:43,702 ip#01          INFO    /sbin/ip link add name veth1pl6768 mtu 1500 type veth peer name veth1pg6768 mtu 1500
-14:33:43,708 ip#01          INFO    /sbin/ip link set veth1pl6768 master br0
+14:33:43,708 ip#01          INFO    /sbin/ip link set veth1pl6768 master br-prd
 14:33:43,713 ip#01          INFO    /sbin/ip link set veth1pl6768 up
 14:33:43,716 ip#01          INFO    /sbin/ip link set veth1pg6768 netns 6768
 14:33:43,730 ip#01          INFO    /sbin/ip netns exec 6768 ip link set veth1pg6768 name eth1
@@ -3360,7 +3360,7 @@ check passed, skip fix
 total duration: 0:00:00.107560
 14:33:54,278 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 14:33:54,324 ip#01          INFO    skip allocate: an ip is already defined
-14:33:54,382 ip#01          INFO    192.168.100.50 is already up on br0
+14:33:54,382 ip#01          INFO    192.168.100.50 is already up on br-prd
 14:33:54,526 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 14:33:54,798                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 14:33:54,799                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
@@ -3679,7 +3679,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 15:35:57,519 ip#01          INFO    bridge mode
 15:35:57,549 ip#01          INFO    create symlink /var/run/netns/10279 -> /proc/10279/ns/net
 15:35:57,615 ip#01          INFO    /sbin/ip link add name veth1pl10279 mtu 1500 type veth peer name veth1pg10279 mtu 1500
-15:35:57,619 ip#01          INFO    /sbin/ip link set veth1pl10279 master br0
+15:35:57,619 ip#01          INFO    /sbin/ip link set veth1pl10279 master br-prd
 15:35:57,623 ip#01          INFO    /sbin/ip link set veth1pl10279 up
 15:35:57,629 ip#01          INFO    /sbin/ip link set veth1pg10279 netns 10279
 15:35:57,649 ip#01          INFO    /sbin/ip netns exec 10279 ip link set veth1pg10279 name eth1
@@ -3991,7 +3991,7 @@ total duration: 0:00:00.532750
 15:36:33,325 ip#01          INFO    bridge mode
 15:36:33,355 ip#01          INFO    create symlink /var/run/netns/15448 -> /proc/15448/ns/net
 15:36:33,425 ip#01          INFO    /sbin/ip link add name veth1pl15448 mtu 1500 type veth peer name veth1pg15448 mtu 1500
-15:36:33,430 ip#01          INFO    /sbin/ip link set veth1pl15448 master br0
+15:36:33,430 ip#01          INFO    /sbin/ip link set veth1pl15448 master br-prd
 15:36:33,434 ip#01          INFO    /sbin/ip link set veth1pl15448 up
 15:36:33,438 ip#01          INFO    /sbin/ip link set veth1pg15448 netns 15448
 15:36:33,454 ip#01          INFO    /sbin/ip netns exec 15448 ip link set veth1pg15448 name eth1
@@ -4113,7 +4113,7 @@ total duration: 0:00:00.445959
 15:37:01,806 ip#01          INFO    bridge mode
 15:37:01,857 ip#01          INFO    create symlink /var/run/netns/16961 -> /proc/16961/ns/net
 15:37:01,942 ip#01          INFO    /sbin/ip link add name veth1pl16961 mtu 1500 type veth peer name veth1pg16961 mtu 1500
-15:37:01,948 ip#01          INFO    /sbin/ip link set veth1pl16961 master br0
+15:37:01,948 ip#01          INFO    /sbin/ip link set veth1pl16961 master br-prd
 15:37:01,957 ip#01          INFO    /sbin/ip link set veth1pl16961 up
 15:37:01,966 ip#01          INFO    /sbin/ip link set veth1pg16961 netns 16961
 15:37:01,986 ip#01          INFO    /sbin/ip netns exec 16961 ip link set veth1pg16961 name eth1
@@ -4288,7 +4288,7 @@ check passed, skip fix
 total duration: 0:00:00.207817
 15:39:10,718 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:39:10,762 ip#01          INFO    skip allocate: an ip is already defined
-15:39:10,827 ip#01          INFO    192.168.100.70 is already up on br0
+15:39:10,827 ip#01          INFO    192.168.100.70 is already up on br-prd
 15:39:10,960 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:39:11,186                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:39:11,187                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -4403,7 +4403,7 @@ total duration: 0:00:00.209725
 15:39:26,476 ip#01          INFO    bridge mode
 15:39:26,505 ip#01          INFO    create symlink /var/run/netns/20163 -> /proc/20163/ns/net
 15:39:26,577 ip#01          INFO    /sbin/ip link add name veth1pl20163 mtu 1500 type veth peer name veth1pg20163 mtu 1500
-15:39:26,583 ip#01          INFO    /sbin/ip link set veth1pl20163 master br0
+15:39:26,583 ip#01          INFO    /sbin/ip link set veth1pl20163 master br-prd
 15:39:26,587 ip#01          INFO    /sbin/ip link set veth1pl20163 up
 15:39:26,591 ip#01          INFO    /sbin/ip link set veth1pg20163 netns 20163
 15:39:26,606 ip#01          INFO    /sbin/ip netns exec 20163 ip link set veth1pg20163 name eth1
@@ -4470,7 +4470,7 @@ check passed, skip fix
 total duration: 0:00:00.107127
 15:39:36,939 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 15:39:36,983 ip#01          INFO    skip allocate: an ip is already defined
-15:39:37,046 ip#01          INFO    192.168.100.50 is already up on br0
+15:39:37,046 ip#01          INFO    192.168.100.50 is already up on br-prd
 15:39:37,187 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 15:39:37,403                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 15:39:37,404                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp

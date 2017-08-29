@@ -95,7 +95,7 @@ check passed, skip fix
 total duration: 0:00:00.208815
 10:29:49,519 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 10:29:49,563 ip#01          INFO    skip allocate: an ip is already defined
-10:29:49,632 ip#01          INFO    192.168.100.70 is already up on br0
+10:29:49,632 ip#01          INFO    192.168.100.70 is already up on br-prd
 10:29:49,763 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 10:29:49,979                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 10:29:49,980                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -248,7 +248,7 @@ STATUS:   nok
 total duration: 0:00:00.735617
 10:31:03,084 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:31:03,127 ip#01          INFO    skip allocate: an ip is already defined
-10:31:03,196 ip#01          INFO    192.168.100.71 is already up on br0
+10:31:03,196 ip#01          INFO    192.168.100.71 is already up on br-prd
 10:31:03,339 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
 10:31:03,537 container#2001 INFO    output:
 90aa518c6f860b71c85cf90c3b443662a21da4c3f57d93103410e0022b60da6f
@@ -329,7 +329,7 @@ check passed, skip fix
 total duration: 0:00:00.107741
 10:32:10,958 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:32:11,004 ip#01          INFO    skip allocate: an ip is already defined
-10:32:11,072 ip#01          INFO    192.168.100.50 is already up on br0
+10:32:11,072 ip#01          INFO    192.168.100.50 is already up on br-prd
 10:32:11,228 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 10:32:11,571                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 10:32:11,571                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
@@ -418,7 +418,7 @@ check passed, skip fix
 total duration: 0:00:00.208649
 10:32:34,824 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 10:32:34,870 ip#01          INFO    skip allocate: an ip is already defined
-10:32:34,936 ip#01          INFO    192.168.100.70 is already up on br0
+10:32:34,936 ip#01          INFO    192.168.100.70 is already up on br-prd
 10:32:35,072 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 10:32:35,420                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 10:32:35,422                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -567,7 +567,7 @@ STATUS:   nok
 total duration: 0:00:00.737957
 10:32:47,444 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:32:47,489 ip#01          INFO    skip allocate: an ip is already defined
-10:32:47,551 ip#01          INFO    192.168.100.71 is already up on br0
+10:32:47,551 ip#01          INFO    192.168.100.71 is already up on br-prd
 10:32:47,692 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
 10:32:47,876 container#2001 INFO    output:
 068107d6ed658f0dffff08684da6353744a747cf4a87811d7668da265a555642
@@ -648,7 +648,7 @@ check passed, skip fix
 total duration: 0:00:00.109837
 10:33:56,349 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 10:33:56,391 ip#01          INFO    skip allocate: an ip is already defined
-10:33:56,456 ip#01          INFO    192.168.100.50 is already up on br0
+10:33:56,456 ip#01          INFO    192.168.100.50 is already up on br-prd
 10:33:56,605 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 10:33:56,883                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 10:33:56,884                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
@@ -954,7 +954,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 20:26:21,998 ip#01          INFO    bridge mode
 20:26:22,027 ip#01          INFO    create symlink /var/run/netns/20573 -> /proc/20573/ns/net
 20:26:22,098 ip#01          INFO    /sbin/ip link add name veth1pl20573 mtu 1500 type veth peer name veth1pg20573 mtu 1500
-20:26:22,103 ip#01          INFO    /sbin/ip link set veth1pl20573 master br0
+20:26:22,103 ip#01          INFO    /sbin/ip link set veth1pl20573 master br-prd
 20:26:22,107 ip#01          INFO    /sbin/ip link set veth1pl20573 up
 20:26:22,110 ip#01          INFO    /sbin/ip link set veth1pg20573 netns 20573
 20:26:22,122 ip#01          INFO    /sbin/ip netns exec 20573 ip link set veth1pg20573 name eth1
@@ -1264,7 +1264,7 @@ total duration: 0:00:00.537117
 20:26:53,412 ip#01          INFO    bridge mode
 20:26:53,440 ip#01          INFO    create symlink /var/run/netns/5577 -> /proc/5577/ns/net
 20:26:53,509 ip#01          INFO    /sbin/ip link add name veth1pl5577 mtu 1500 type veth peer name veth1pg5577 mtu 1500
-20:26:53,514 ip#01          INFO    /sbin/ip link set veth1pl5577 master br0
+20:26:53,514 ip#01          INFO    /sbin/ip link set veth1pl5577 master br-prd
 20:26:53,518 ip#01          INFO    /sbin/ip link set veth1pl5577 up
 20:26:53,522 ip#01          INFO    /sbin/ip link set veth1pg5577 netns 5577
 20:26:53,542 ip#01          INFO    /sbin/ip netns exec 5577 ip link set veth1pg5577 name eth1
@@ -1674,7 +1674,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 13:40:05,024 ip#01          INFO    bridge mode
 13:40:05,057 ip#01          INFO    create symlink /var/run/netns/13980 -> /proc/13980/ns/net
 13:40:05,137 ip#01          INFO    /sbin/ip link add name veth1pl13980 mtu 1500 type veth peer name veth1pg13980 mtu 1500
-13:40:05,143 ip#01          INFO    /sbin/ip link set veth1pl13980 master br0
+13:40:05,143 ip#01          INFO    /sbin/ip link set veth1pl13980 master br-prd
 13:40:05,147 ip#01          INFO    /sbin/ip link set veth1pl13980 up
 13:40:05,152 ip#01          INFO    /sbin/ip link set veth1pg13980 netns 13980
 13:40:05,170 ip#01          INFO    /sbin/ip netns exec 13980 ip link set veth1pg13980 name eth1
@@ -1983,7 +1983,7 @@ total duration: 0:00:00.549098
 13:40:39,887 ip#01          INFO    bridge mode
 13:40:39,916 ip#01          INFO    create symlink /var/run/netns/6082 -> /proc/6082/ns/net
 13:40:39,986 ip#01          INFO    /sbin/ip link add name veth1pl6082 mtu 1500 type veth peer name veth1pg6082 mtu 1500
-13:40:39,991 ip#01          INFO    /sbin/ip link set veth1pl6082 master br0
+13:40:39,991 ip#01          INFO    /sbin/ip link set veth1pl6082 master br-prd
 13:40:39,996 ip#01          INFO    /sbin/ip link set veth1pl6082 up
 13:40:40,000 ip#01          INFO    /sbin/ip link set veth1pg6082 netns 6082
 13:40:40,014 ip#01          INFO    /sbin/ip netns exec 6082 ip link set veth1pg6082 name eth1
@@ -2106,7 +2106,7 @@ total duration: 0:00:00.437679
 13:41:14,477 ip#01          INFO    bridge mode
 13:41:14,506 ip#01          INFO    create symlink /var/run/netns/7668 -> /proc/7668/ns/net
 13:41:14,575 ip#01          INFO    /sbin/ip link add name veth1pl7668 mtu 1500 type veth peer name veth1pg7668 mtu 1500
-13:41:14,579 ip#01          INFO    /sbin/ip link set veth1pl7668 master br0
+13:41:14,579 ip#01          INFO    /sbin/ip link set veth1pl7668 master br-prd
 13:41:14,584 ip#01          INFO    /sbin/ip link set veth1pl7668 up
 13:41:14,587 ip#01          INFO    /sbin/ip link set veth1pg7668 netns 7668
 13:41:14,598 ip#01          INFO    /sbin/ip netns exec 7668 ip link set veth1pg7668 name eth1
@@ -2507,4 +2507,4 @@ Finished... Total running time: 68.155568ms
 2017/08/08 15:45:39 [ux_dck_zpool_loop] INFO  - Waiting for cluster shutdown
 2017/08/08 15:45:41 [ux_dck_zpool_loop] INFO  - Waiting for cluster shutdown
 2017/08/08 15:45:41 [ux_dck_zpool_loop] INFO  - Cluster is shutdown
-2017/08/08 15:45:41 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS              -> {testFailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS PASS ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-101-g480629e/testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-101-g480629e/testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}
+2017/08/08 15:45:41 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS              -> {testFailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS PASS ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-101-g480629e/testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-101-g480629e/testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}

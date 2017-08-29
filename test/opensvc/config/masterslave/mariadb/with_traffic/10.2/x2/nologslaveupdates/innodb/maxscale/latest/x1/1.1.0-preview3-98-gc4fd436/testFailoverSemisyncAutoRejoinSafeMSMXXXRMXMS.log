@@ -298,7 +298,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 15:43:43,458 ip#01          INFO    bridge mode
 15:43:43,489 ip#01          INFO    create symlink /var/run/netns/29630 -> /proc/29630/ns/net
 15:43:43,558 ip#01          INFO    /sbin/ip link add name veth1pl29630 mtu 1500 type veth peer name veth1pg29630 mtu 1500
-15:43:43,563 ip#01          INFO    /sbin/ip link set veth1pl29630 master br0
+15:43:43,563 ip#01          INFO    /sbin/ip link set veth1pl29630 master br-prd
 15:43:43,566 ip#01          INFO    /sbin/ip link set veth1pl29630 up
 15:43:43,570 ip#01          INFO    /sbin/ip link set veth1pg29630 netns 29630
 15:43:43,596 ip#01          INFO    /sbin/ip netns exec 29630 ip link set veth1pg29630 name eth1
@@ -609,7 +609,7 @@ total duration: 0:00:00.537599
 15:44:14,509 ip#01          INFO    bridge mode
 15:44:14,539 ip#01          INFO    create symlink /var/run/netns/29798 -> /proc/29798/ns/net
 15:44:14,610 ip#01          INFO    /sbin/ip link add name veth1pl29798 mtu 1500 type veth peer name veth1pg29798 mtu 1500
-15:44:14,616 ip#01          INFO    /sbin/ip link set veth1pl29798 master br0
+15:44:14,616 ip#01          INFO    /sbin/ip link set veth1pl29798 master br-prd
 15:44:14,622 ip#01          INFO    /sbin/ip link set veth1pl29798 up
 15:44:14,626 ip#01          INFO    /sbin/ip link set veth1pg29798 netns 29798
 15:44:14,634 ip#01          INFO    /sbin/ip netns exec 29798 ip link set veth1pg29798 name eth1
@@ -731,7 +731,7 @@ total duration: 0:00:00.433090
 15:44:40,847 ip#01          INFO    bridge mode
 15:44:40,874 ip#01          INFO    create symlink /var/run/netns/31316 -> /proc/31316/ns/net
 15:44:40,937 ip#01          INFO    /sbin/ip link add name veth1pl31316 mtu 1500 type veth peer name veth1pg31316 mtu 1500
-15:44:40,941 ip#01          INFO    /sbin/ip link set veth1pl31316 master br0
+15:44:40,941 ip#01          INFO    /sbin/ip link set veth1pl31316 master br-prd
 15:44:40,945 ip#01          INFO    /sbin/ip link set veth1pl31316 up
 15:44:40,948 ip#01          INFO    /sbin/ip link set veth1pg31316 netns 31316
 15:44:40,958 ip#01          INFO    /sbin/ip netns exec 31316 ip link set veth1pg31316 name eth1
@@ -916,7 +916,7 @@ check passed, skip fix
 total duration: 0:00:00.207761
 15:46:45,034 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:46:45,078 ip#01          INFO    skip allocate: an ip is already defined
-15:46:45,144 ip#01          INFO    192.168.100.70 is already up on br0
+15:46:45,144 ip#01          INFO    192.168.100.70 is already up on br-prd
 15:46:45,278 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:46:45,551                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:46:45,552                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
@@ -1028,7 +1028,7 @@ total duration: 0:00:00.208699
 15:47:02,893 ip#01          INFO    bridge mode
 15:47:02,923 ip#01          INFO    create symlink /var/run/netns/2156 -> /proc/2156/ns/net
 15:47:03,002 ip#01          INFO    /sbin/ip link add name veth1pl2156 mtu 1500 type veth peer name veth1pg2156 mtu 1500
-15:47:03,007 ip#01          INFO    /sbin/ip link set veth1pl2156 master br0
+15:47:03,007 ip#01          INFO    /sbin/ip link set veth1pl2156 master br-prd
 15:47:03,013 ip#01          INFO    /sbin/ip link set veth1pl2156 up
 15:47:03,016 ip#01          INFO    /sbin/ip link set veth1pg2156 netns 2156
 15:47:03,038 ip#01          INFO    /sbin/ip netns exec 2156 ip link set veth1pg2156 name eth1
@@ -1085,7 +1085,7 @@ check passed, skip fix
 total duration: 0:00:00.108066
 15:47:13,215 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 15:47:13,259 ip#01          INFO    skip allocate: an ip is already defined
-15:47:13,318 ip#01          INFO    192.168.100.50 is already up on br0
+15:47:13,318 ip#01          INFO    192.168.100.50 is already up on br-prd
 15:47:13,456 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 15:47:13,680                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 15:47:13,680                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp

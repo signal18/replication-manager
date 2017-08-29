@@ -297,7 +297,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 14:58:48,866 ip#01          INFO    bridge mode
 14:58:48,892 ip#01          INFO    create symlink /var/run/netns/21034 -> /proc/21034/ns/net
 14:58:48,956 ip#01          INFO    /sbin/ip link add name veth1pl21034 mtu 1500 type veth peer name veth1pg21034 mtu 1500
-14:58:48,961 ip#01          INFO    /sbin/ip link set veth1pl21034 master br0
+14:58:48,961 ip#01          INFO    /sbin/ip link set veth1pl21034 master br-prd
 14:58:48,964 ip#01          INFO    /sbin/ip link set veth1pl21034 up
 14:58:48,967 ip#01          INFO    /sbin/ip link set veth1pg21034 netns 21034
 14:58:48,984 ip#01          INFO    /sbin/ip netns exec 21034 ip link set veth1pg21034 name eth1
@@ -553,7 +553,7 @@ check passed, skip fix
 total duration: 0:00:00.208030
 15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:15:29,972 ip#01          INFO    skip allocate: an ip is already defined
-15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br0
+15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br-prd
 15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:15:30,442                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:15:30,442                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
