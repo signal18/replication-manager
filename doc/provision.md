@@ -192,7 +192,8 @@ Instruct you cluster agents where to found your fresh collector and replication-
 ```
 nodemgr set --param node.dbopensvc --value https://collector-host
 nodemgr register --user=replication-manager@localhost.localdomain --password=mariadb
-nodemgr set --param node.repocomp --value https:/replication-manager:10001/repocomp
+nodemgr set --param node.repocomp --value http://replication-manager:10001/repocomp
+nodemgr updatecomp
 ```
 
 You can verify that the agent is discovered by going the web interface of replicaton-manager and check the agents tab.
