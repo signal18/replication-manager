@@ -1,9 +1,6 @@
 #!/bin/bash
 echo "# Getting branch info"
 git status -bs
-echo "# Press Return or Space to start build, all other keys to quit"
-# read -s -n 1 key
-if [[ $key != "" ]]; then exit; fi
 version=$(git describe --tag)
 head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
