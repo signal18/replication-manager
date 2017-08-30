@@ -52,7 +52,7 @@ prov-proxy-disk-pool = "lvm"
 prov-proxy-disk-type = "loopback"
 prov-proxy-disk-device = "/srv"
 prov-proxy-net-iface = "br-prd"
-prov-proxy-net-gateway = "192.168.100.254"
+prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
