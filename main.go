@@ -102,7 +102,6 @@ type heartbeat struct {
 func init() {
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
-	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")

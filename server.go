@@ -57,6 +57,7 @@ func getClusterByName(clname string) *cluster.Cluster {
 }
 
 func init() {
+
 	runUUID = uuid.NewV4().String()
 	runStatus = "A"
 	splitBrain = false
@@ -64,6 +65,8 @@ func init() {
 	conf.GoArch = GoArch
 	conf.GoOS = GoOS
 	//	conf := confs[cfgGroup]
+	cobra.OnInitialize(initConfig)
+
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 
