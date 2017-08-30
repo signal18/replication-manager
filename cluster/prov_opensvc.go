@@ -764,7 +764,7 @@ type = ` + collector.ProvFSType + `
 			fs = fs + `
 dev = /dev/{svcname}_` + pod + `/pod` + pod + `
 vg = {svcname}_` + pod + `
-size = ` + strconv.Itoa(lvsize) + `g
+size = 100%FREE
 `
 		} else if collector.ProvFSPool == "zpool" {
 			fs = fs + `
