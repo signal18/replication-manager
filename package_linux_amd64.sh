@@ -81,7 +81,7 @@ echo "# Building packages replication-manager-pro"
 cp etc/* build/etc/replication-manager/
 cp service/replication-manager-pro.service build/etc/systemd/system/replication-manager.service
 cp service/replication-manager-pro.init.el6 build/etc/init.d/replication-manager
-cp test/opensvc build/usr/share/replication-manager/tests
+cp -rp test/opensvc build/usr/share/replication-manager/tests
 cp replication-manager-pro build/usr/bin/
 fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager-pro .
 fpm --package replication-manager-pro-$version-$head.tar -C build -s dir -t tar -n replication-manager-pro .
