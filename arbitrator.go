@@ -78,6 +78,7 @@ var (
 )
 
 func init() {
+	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 8080, "Arbitrator API port")
 }
