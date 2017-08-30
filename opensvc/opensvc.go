@@ -226,7 +226,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 
 		return 0, err
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
@@ -272,7 +272,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	}
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
@@ -395,7 +395,7 @@ func (collector *Collector) SetServiceTag(tag_id string, service_id string) (str
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -502,7 +502,7 @@ func (collector *Collector) CreateTag(tag string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -537,7 +537,7 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 	if err != nil {
 		return "", err
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -713,8 +713,7 @@ func (collector *Collector) GetNodes() []Host {
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
-
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)
@@ -754,7 +753,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -790,7 +789,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
