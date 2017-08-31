@@ -558,25 +558,25 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		/* If server is in the ignore list, do not elect it */
 		if misc.Contains(cluster.ignoreList, sl.URL) {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "%s is in the ignore list. Skipping", sl.URL)
 			}
 			continue
 		}
 		// TODO: refresh state outside evaluation
-		if cluster.conf.LogLevel > 2 || forcingLog {
+		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("DEBUG", "Checking eligibility of slave server %s [%d]", sl.URL, i)
 		}
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Slave %s is Relay . Skipping", sl.URL)
 			}
 			continue
 		}
 		if cluster.conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Slave %s has state Master. Skipping", sl.URL)
 			}
 			continue
@@ -585,7 +585,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		// The tests below should run only in case of a switchover as they require the master to be up.
 		if cluster.master.State != stateFailed && cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
 			cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Slave %s has isSlaveElectableForSwitchover false. Skipping", sl.URL)
 			}
 			continue
@@ -594,7 +594,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl, forcingLog) == false {
 			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Slave %s has isSlaveElectable false. Skipping", sl.URL)
 			}
 			continue
@@ -602,7 +602,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
 		if sl.URL == cluster.conf.PrefMaster && cluster.master.State != stateFailed {
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
@@ -610,7 +610,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		//old style replication
 		if sl.MasterLogFile == "" && cluster.conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 2 || forcingLog {
+			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Election %s have no master log file, may be failed slave", sl.URL)
 			}
 			continue
@@ -640,7 +640,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 				seqnos = sl.IOGtid.GetSeqNos()
 			}
 		}
-		if cluster.conf.LogLevel > 2 || forcingLog {
+		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("DEBUG", "Got sequence(s) %v for server [%d]", seqnos, i)
 		}
 
@@ -674,28 +674,28 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 		cluster.sme.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 2 || forcingLog {
+		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("DEBUG", "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		}
 		return false
 	}
 	if ss.Seconds_Behind_Master.Int64 > cluster.conf.SwitchMaxDelay && cluster.conf.RplChecks == true {
 		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64)
 		}
 		return false
 	}
 	if ss.Slave_SQL_Running == "No" && cluster.conf.RplChecks {
 		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.FailSync && cluster.conf.RplChecks {
 		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 2 || forcingLog {
+		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("DEBUG", "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
@@ -708,45 +708,45 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	ss, _ := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
 	hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
 	if err != nil {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Could not check binlog filters")
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Could not check binlog filters")
 		}
 		return false
 	}
 	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
 	if dbhelper.CheckReplicationFilters(cluster.master.Conn, sl.Conn) == false && cluster.conf.CheckReplFilter == true {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("WARN : Replication filters differ on master and slave %s. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
 	if cluster.conf.SwitchGtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
 	if ss.Seconds_Behind_Master.Valid == false && cluster.conf.RplChecks == true {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Slave %s is stopped. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Slave %s is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
-		if cluster.conf.LogLevel > 2 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Slave %s is a relay slave. Skipping", sl.URL)
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Slave %s is a relay slave. Skipping", sl.URL)
 		}
 		return false
 	}
