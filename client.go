@@ -53,6 +53,7 @@ var (
 	cliTopology         string
 	cliCleanall         bool
 	cliExit             bool
+	cliPrefMaster       string
 )
 
 var cliConn = http.Client{
@@ -112,6 +113,7 @@ func init() {
 	switchoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	switchoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	switchoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 
 	failoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	failoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")

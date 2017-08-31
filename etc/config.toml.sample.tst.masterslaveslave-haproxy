@@ -7,7 +7,7 @@
 
 [Cluster_Haproxy_MasterSlaveSlave]
 title = "ClusterTestMasterSlaveSlave"
-db-servers-prefered-master = "127.0.0.1:3310"
+db-servers-prefered-master = "127.0.0.1:3317"
 db-servers-hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
 db-servers-credential = "root:test"
 db-servers-connect-timeout = 1
@@ -172,7 +172,7 @@ maxscale-binlog-port = 4000
 # --------------------
 
 haproxy = false
-haproxy-binary-path = "/usr/sbin/haproxy"
+#haproxy-binary-path = "/usr/sbin/haproxy"
 
 # Read write traffic
 # Read only load balance least connection traffic

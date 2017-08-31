@@ -8,7 +8,6 @@ package cluster
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -83,9 +82,14 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 }
 
 func (cluster *Cluster) LocalhostStopDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
-	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
-	killCmd.Run()
+	_, err := server.Conn.Exec("SHUTDOWN")
+	if err != nil {
+		cluster.LogPrintf("TEST", "Shutdown failed %s", err)
+	}
+	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
+
+	//	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
+	//	killCmd.Run()
 	return nil
 }
 
