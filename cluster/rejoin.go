@@ -245,7 +245,7 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 
 func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
-	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
+	server.ClusterGroup.LogPrintf("INFO", "Crash info [URL:%s LogFile:%s LogPos:%s SyncStatus:%v IOGtid: %s ElectedMasterURL: %s", crash.URL, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos, crash.FailoverSemiSyncSlaveStatus, crash.FailoverIOGtid.Sprint(), crash.ElectedMasterURL)
 
 	server.Refresh()
 	if server.ClusterGroup.conf.ReadOnly {
