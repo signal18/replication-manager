@@ -241,6 +241,9 @@ func (cluster *Cluster) ReloadFromSave() error {
 		cluster.LogPrintf("ERROR", "File error: %v\n", err)
 		return err
 	}
+	if len(clsave.Crashes) > 0 {
+		cluster.LogPrintf("INFO", "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
+	}
 	cluster.crashes = clsave.Crashes
 	return nil
 }

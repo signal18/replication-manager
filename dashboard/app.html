@@ -193,6 +193,8 @@
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
+                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button>
+
                                  <label for="test" action="/runonetest" >
                                     <p class="sectionheader">Tests: </p>
                                  </label>

@@ -272,6 +272,15 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			}
 		}
 	}
+
+	// clean crashes
+	if server.State == stateMaster || server.State == stateSlave || server.State == stateSlaveErr || server.State == stateSlaveLate {
+		crash := server.ClusterGroup.getCrash(server.URL)
+		if crash != nil {
+			server.ClusterGroup.LogPrintf("INFO", "Cleaning old crash info: %s", server.URL)
+			crash.delete(&server.ClusterGroup.crashes)
+		}
+	}
 	// Reset FailCount
 
 	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) && (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime) {

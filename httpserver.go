@@ -178,6 +178,8 @@ func httpserver() {
 		router.HandleFunc("/repocomp/current", handlerRepoComp)
 		router.HandleFunc("/unprovision", handlerUnprovision)
 		router.HandleFunc("/rolling", handlerRollingUpgrade)
+		router.HandleFunc("/toggletraffic", handlerTraffic)
+
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
@@ -188,6 +190,7 @@ func httpserver() {
 		http.HandleFunc("/start", handlerStartServer)
 		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/runonetest", handlerSetOneTest)
+		http.HandleFunc("/toggletraffic", handlerTraffic)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/slaves", handlerSlaves)
 		http.HandleFunc("/agents", handlerAgents)
@@ -297,6 +300,12 @@ func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(data)
+
+}
+
+func handlerTraffic(w http.ResponseWriter, r *http.Request) {
+
+	currentCluster.SetTraffic(!currentCluster.GetTraffic())
 
 }
 
