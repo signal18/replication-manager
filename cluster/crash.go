@@ -28,8 +28,9 @@ func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 
 func (cluster *Cluster) getCrash(URL string) *Crash {
 	for _, cr := range cluster.crashes {
-		cr.URL = URL
-		return cr
+		if cr.URL == URL {
+			return cr
+		}
 	}
 	return nil
 }
