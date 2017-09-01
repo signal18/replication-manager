@@ -194,11 +194,7 @@ func (cluster *Cluster) Run() {
 
 		}
 	}
-	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf("INFO", "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
-	}
-	cluster.crashes = clsave.Crashes
-	return nil
+	return
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
