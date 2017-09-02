@@ -21,7 +21,7 @@ prov-db-disk-pool = "none"
 prov-db-disk-type = "loopback"
 prov-db-disk-device = "/srv"
 prov-db-net-iface = "en0"
-prov-db-net-gateway = "192.168.100.254"
+prov-db-net-gateway = "192.168.100.1"
 prov-db-net-mask = "255.255.255.0"
 
 [default]

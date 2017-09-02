@@ -793,9 +793,9 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		return string("")
 	}
 	conf = conf + `
-docker_daemon_private = false
+docker_daemon_private = true
 docker_data_dir = {env.base_dir}/docker
-docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
+docker_daemon_args = --log-opt max-size=1m --storage-driver=overlay
 `
 
 	if collector.ProvFSMode == "loopback" {
