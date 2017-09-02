@@ -14,6 +14,8 @@ import (
 	"github.com/tanji/replication-manager/state"
 )
 
+var dockerMinusRm bool
+
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.conf.ProvHost)
@@ -861,8 +863,11 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
- --rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
@@ -885,8 +890,11 @@ run_image = {env.maxscale_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
-		--rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
@@ -909,8 +917,11 @@ run_image = {env.haproxy_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc/haproxy:rw
-		--rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
@@ -933,8 +944,11 @@ run_image = {env.proxysql_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
-		--rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
