@@ -24,6 +24,7 @@ type Config struct {
 	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
 	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
+	ReadTimeout                        int    `mapstructure="db-servers-read-timeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
 	DbServerLocality                   string `mapstructure:"db-servers-locality"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
