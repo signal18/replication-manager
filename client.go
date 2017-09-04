@@ -343,7 +343,7 @@ var clientCmd = &cobra.Command{
 		loglen := cliTermlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 		termboxChan := cliNewTbChan()
 		interval := time.Second
-		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
+		ticker := time.NewTicker(interval * time.Duration(2))
 
 		for cliExit == false {
 			select {
