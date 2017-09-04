@@ -165,7 +165,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds,readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
+	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
@@ -179,7 +179,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 	server.DSN = mydsn()
 	if cluster.haveDBTLSCert {
 		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
-		server.DSN = server.DSN + ",tls=tlsconfig"
+		server.DSN = server.DSN + "&tls=tlsconfig"
 	}
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
