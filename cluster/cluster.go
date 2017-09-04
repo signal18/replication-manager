@@ -210,11 +210,13 @@ func (cluster *Cluster) Save() error {
 	type Save struct {
 		Servers string    `json:"servers"`
 		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
 	}
 
 	var clsave Save
 	clsave.Crashes = cluster.crashes
 	clsave.Servers = cluster.conf.Hosts
+	clsave.SLA = cluster.sme.GetSla()
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := ioutil.WriteFile(cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json", saveJson, 0644)
 	if err != nil {
@@ -228,6 +230,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 	type Save struct {
 		Servers string    `json:"servers"`
 		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
 	}
 
 	var clsave Save
@@ -245,6 +248,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 		cluster.LogPrintf("INFO", "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
 	}
 	cluster.crashes = clsave.Crashes
+	cluster.sme.SetSla(clsave.SLA)
 	return nil
 }
 

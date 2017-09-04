@@ -9,13 +9,13 @@
 package config
 
 type Config struct {
-	WorkingDir                         string `mapstructure:"working-directory"`
-	ShareDir                           string `mapstructure:"share-directory"`
-	Socket                             string `mapstructure:"socket"`
+	WorkingDir                         string `mapstructure:"monitoring-datadir"`
+	ShareDir                           string `mapstructure:"monitoring-sharedir"`
+	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
+	Socket                             string `mapstructure:"monitoring-socket"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"logfile"`
-	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	User                               string `mapstructure:"db-servers-credential"`
 	Hosts                              string `mapstructure:"db-servers-hosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert"`

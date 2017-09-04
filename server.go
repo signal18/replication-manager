@@ -74,13 +74,12 @@ func init() {
 
 	initRepmgrFlags(monitorCmd)
 	if GoOS == "linux" {
-		monitorCmd.Flags().StringVar(&conf.ShareDir, "share-directory", "/usr/share/replication-manager", "Path to HTTP monitor share files")
+		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to HTTP monitor share files")
 	}
 	if GoOS == "darwin" {
-		monitorCmd.Flags().StringVar(&conf.ShareDir, "share-directory", "/opt/replication-manager/share", "Path to share files")
+		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
 	}
-	monitorCmd.Flags().StringVar(&conf.WorkingDir, "working-directory", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
-
+	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring time interval in seconds")
 
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
@@ -125,8 +124,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveExternal, "failover-falsepositive-external", false, "Failover checks that http//master:80 does not reponse 200 OK header")
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	monitorCmd.Flags().IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
-	//	monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N ping failures (interval 1s)")
-	monitorCmd.Flags().Int64Var(&conf.FailResetTime, "failcount-reset-time", 300, "Reset failures counter after this time in seconds")
+	// monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N ping failures (interval 1s)")
+	// monitorCmd.Flags().Int64Var(&conf.FailResetTime, "failcount-reset-time", 300, "Reset failures counter after this time in seconds")
 
 	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")

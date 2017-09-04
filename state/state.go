@@ -70,6 +70,29 @@ type StateMachine struct {
 	sync.Mutex
 }
 
+type Sla struct {
+	firsttime      int64
+	uptime         int64
+	uptimeFailable int64
+	uptimeSemisync int64
+}
+
+func (SM *StateMachine) GetSla() Sla {
+	var mySla Sla
+	mySla.firsttime = SM.firsttime
+	mySla.uptime = SM.uptime
+	mySla.uptimeFailable = SM.uptimeFailable
+	mySla.uptimeSemisync = SM.uptimeSemisync
+	return mySla
+}
+
+func (SM *StateMachine) SetSla(mySla Sla) {
+	SM.firsttime = mySla.firsttime
+	SM.uptime = mySla.uptime
+	SM.uptimeFailable = mySla.uptimeFailable
+	SM.uptimeSemisync = mySla.uptimeSemisync
+}
+
 func (SM *StateMachine) Init() {
 
 	SM.CurState = NewMap()
