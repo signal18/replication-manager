@@ -432,6 +432,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not stop slave on server %s, %s", sl.URL, err)
 		}
+		//possible dead code
 		if fail == false && cluster.conf.MxsBinlogOn == false {
 			if cluster.conf.FailForceGtid && sl.DBVersion.IsMariaDB() {
 				_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.GTIDBinlogPos.Sprint() + "'")

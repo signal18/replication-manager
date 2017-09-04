@@ -61,7 +61,7 @@ func init() {
 	runUUID = uuid.NewV4().String()
 	runStatus = "A"
 	splitBrain = false
-	conf.FailForceGtid = true
+	//conf.FailForceGtid = true
 	conf.GoArch = GoArch
 	conf.GoOS = GoOS
 	//	conf := confs[cfgGroup]
