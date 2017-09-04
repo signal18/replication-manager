@@ -37,6 +37,7 @@ type Config struct {
 	LogFile                            string `mapstructure:"logfile"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	Timeout                            int    `mapstructure:"connect-timeout"`
+	ReadTimeout                        int    `mapstructure:"read-timeout"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`

@@ -192,6 +192,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover")
 	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write MRM messages to a log file")
 	cmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
+	cmd.Flags().IntVar(&conf.ReadTimeout, "read-timeout", 15, "Database read timeout in seconds")
 	cmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
 	cmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
 	cmd.Flags().BoolVar(&conf.MultiTierSlave, "multi-tier-slave", false, "Turn on to enable relay slaves in the topology")
