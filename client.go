@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -55,6 +56,11 @@ var (
 	cliExit             bool
 	cliPrefMaster       string
 )
+
+type RequetParam struct {
+	key   string
+	value string
+}
 
 var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
@@ -158,10 +164,9 @@ var bootstrapCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
-
 		if cliCleanall == true {
 			urlclean := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/cleanup"
-			_, err := cliAPICmd(urlclean)
+			_, err := cliAPICmd(urlclean, nil)
 			if err != nil {
 				log.Fatal(err)
 			} else {
@@ -169,7 +174,7 @@ var bootstrapCmd = &cobra.Command{
 			}
 		}
 		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/bootstrap/" + cliTopology
-		_, err := cliAPICmd(urlpost)
+		_, err := cliAPICmd(urlpost, nil)
 		if err != nil {
 			log.Fatal(err)
 		} else {
@@ -189,7 +194,7 @@ var failoverCmd = &cobra.Command{
 		var slogs []string
 		cliInit(true)
 		cliGetTopology()
-		cliClusterCmd("actions/failover")
+		cliClusterCmd("actions/failover", nil)
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
@@ -207,9 +212,19 @@ var switchoverCmd = &cobra.Command{
 and demoting the old master to slave`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var slogs []string
+		var prefMasterParam RequetParam
+		var params []RequetParam
+
 		cliInit(true)
 		cliGetTopology()
-		cliClusterCmd("actions/switchover")
+		if cliPrefMaster != "" {
+			prefMasterParam.key = "prefmaster"
+			prefMasterParam.value = cliPrefMaster
+			params = append(params, prefMasterParam)
+			cliClusterCmd("actions/switchover", params)
+		} else {
+			cliClusterCmd("actions/switchover", nil)
+		}
 		slogs, _ = cliGetLogs()
 		cliPrintLog(slogs)
 		cliServers, _ = cliGetServers()
@@ -228,7 +243,7 @@ var apiCmd = &cobra.Command{
 	Long:  `Performs call to jwt api served by monitoring`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cliInit(false)
-		res, err := cliAPICmd(cliUrl)
+		res, err := cliAPICmd(cliUrl, nil)
 		if err != nil {
 			log.Fatal("Error in API call")
 		} else {
@@ -304,7 +319,7 @@ var testCmd = &cobra.Command{
 				thistest.Name = test
 				data, _ := json.Marshal(thistest)
 				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
-				res, err := cliAPICmd(urlpost)
+				res, err := cliAPICmd(urlpost, nil)
 				if err != nil {
 					fmt.Printf(string(data))
 					log.Fatal("Error in API call")
@@ -359,11 +374,11 @@ var clientCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-						cliClusterCmd("actions/switchover")
+						cliClusterCmd("actions/switchover", nil)
 					}
 					if event.Key == termbox.KeyCtrlF {
 						if cliMaster.State == "Failed" {
-							cliClusterCmd("actions/failover")
+							cliClusterCmd("actions/failover", nil)
 						}
 					}
 					if event.Key == termbox.KeyCtrlD {
@@ -383,19 +398,19 @@ var clientCmd = &cobra.Command{
 						}
 					}
 					if event.Key == termbox.KeyCtrlR {
-						cliClusterCmd("settings/switch/readonly")
+						cliClusterCmd("settings/switch/readonly", nil)
 					}
 					if event.Key == termbox.KeyCtrlW {
-						cliClusterCmd("settings/switch/readonly")
+						cliClusterCmd("settings/switch/readonly", nil)
 					}
 					if event.Key == termbox.KeyCtrlI {
-						cliClusterCmd("settings/switch/interactive")
+						cliClusterCmd("settings/switch/interactive", nil)
 					}
 					if event.Key == termbox.KeyCtrlV {
-						cliClusterCmd("settings/switch/verbosity")
+						cliClusterCmd("settings/switch/verbosity", nil)
 					}
 					if event.Key == termbox.KeyCtrlE {
-						cliClusterCmd("settings/reset/failovercontrol")
+						cliClusterCmd("settings/reset/failovercontrol", nil)
 					}
 					if event.Key == termbox.KeyCtrlH {
 						cliDisplayHelp()
@@ -809,16 +824,26 @@ func cliGetLogs() ([]string, error) {
 	return r, nil
 }
 
-func cliClusterCmd(command string) error {
+func cliClusterCmd(command string, params []RequetParam) error {
 	//var r string
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/" + command
 	var bearer = "Bearer " + cliToken
-	req, err := http.NewRequest("GET", urlpost, nil)
+
+	data := url.Values{}
+	data.Add("customer_name", "value")
+	if params != nil {
+		for _, param := range params {
+			data.Add(param.key, param.value)
+		}
+	}
+	b := bytes.NewBuffer([]byte(data.Encode()))
+
+	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", bearer)
-
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := cliConn.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)
@@ -839,7 +864,7 @@ func cliClusterCmd(command string) error {
 	return nil
 }
 
-func cliAPICmd(urlpost string) (string, error) {
+func cliAPICmd(urlpost string, params []RequetParam) (string, error) {
 	//var r string
 	var bearer = "Bearer " + cliToken
 	var err error

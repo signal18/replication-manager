@@ -451,6 +451,15 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	return nil
 }
 
+func (cluster *Cluster) IsInHostList(host string) bool {
+	for _, v := range cluster.hostList {
+		if v == host {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) ToggleInteractive() {
 	if cluster.conf.Interactive == true {
 		cluster.conf.Interactive = false
