@@ -333,14 +333,15 @@ var testCmd = &cobra.Command{
 				} else {
 					if res != "" {
 						fmt.Printf(res)
+
 						err = json.Unmarshal([]byte(res), &thistest)
 						if err != nil {
-							fmt.Printf("Not valid json in test reult: %v\n", err)
+							fmt.Printf("No valid json in test result: %v\n", err)
 							return
 						}
 						// post result in database
 						if cliTestResultDBServer != "" {
-							params := fmt.Sprintf("?timeout=2")
+							params := fmt.Sprintf("?timeout=2s")
 							dsn := cliTestResultDBCredential + "@"
 							dsn += "tcp(" + cliTestResultDBServer + ")/" + params
 							c, err := sqlx.Open("mysql", dsn)
@@ -351,7 +352,11 @@ var testCmd = &cobra.Command{
 							if err != nil {
 								fmt.Printf("Could not connect to result database %s", err)
 							}
-							c.Query("REPLACE INTO result.tests (version,test,path,result) VALUES('" + FullVersion + "','" + thistest.Name + "','" + thistest.ConfigFile + "','" + thistest.Result + "')")
+							_, err = c.Query("REPLACE INTO result.tests (version,test,path,result) VALUES('" + FullVersion + "','" + thistest.Name + "','" + thistest.ConfigFile + "','" + thistest.Result + "')")
+							if err != nil {
+								fmt.Printf("Could play sql to result database %s", err)
+							}
+
 							c.Close()
 						}
 
