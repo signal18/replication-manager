@@ -21,10 +21,10 @@ for i in $(find ./$1 -name "*.conf") ; do
     echo "waiting start service"
     sleep 1
    done
-   res=$(replication-manager-cli test --run-tests="$test")
+   res=$(replication-manager-cli test --run-tests="$test" --result-db-server="192.168.100.21:3306" --result-db-credential="testres:testres4repman")
    echo $res  >> $destdir/result.json
    kill $pid
-   $((COUNTER++))
+   ((++COUNTER))
    if [[ "$COUNTER" -ne "$lasttest" ]]; then
       echo ","  >> $destdir/result.json
    fi

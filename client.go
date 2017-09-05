@@ -23,6 +23,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
@@ -30,31 +31,33 @@ import (
 )
 
 var (
-	cliUser             string
-	cliPassword         string
-	cliHost             string
-	cliPort             string
-	cliCert             string
-	cliNoCheckCert      bool
-	cliToken            string
-	cliClusters         []string
-	cliClusterIndex     int
-	cliTlog             termlog.TermLog
-	cliTermlength       int
-	cliServers          []cluster.ServerMonitor
-	cliMaster           cluster.ServerMonitor
-	cliSettings         Settings
-	cliUrl              string
-	cliRuntests         string
-	cliShowtests        bool
-	cliTeststopcluster  bool
-	cliTeststartcluster bool
-	cliTestConvert      bool
-	cliTestConvertFile  string
-	cliTopology         string
-	cliCleanall         bool
-	cliExit             bool
-	cliPrefMaster       string
+	cliUser                   string
+	cliPassword               string
+	cliHost                   string
+	cliPort                   string
+	cliCert                   string
+	cliNoCheckCert            bool
+	cliToken                  string
+	cliClusters               []string
+	cliClusterIndex           int
+	cliTlog                   termlog.TermLog
+	cliTermlength             int
+	cliServers                []cluster.ServerMonitor
+	cliMaster                 cluster.ServerMonitor
+	cliSettings               Settings
+	cliUrl                    string
+	cliRuntests               string
+	cliShowtests              bool
+	cliTeststopcluster        bool
+	cliTeststartcluster       bool
+	cliTestConvert            bool
+	cliTestConvertFile        string
+	cliTestResultDBCredential string
+	cliTestResultDBServer     string
+	cliTopology               string
+	cliCleanall               bool
+	cliExit                   bool
+	cliPrefMaster             string
 )
 
 type RequetParam struct {
@@ -141,10 +144,14 @@ func init() {
 	testCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	testCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	testCmd.Flags().StringVar(&cliRuntests, "run-tests", "", "tests list to be run ")
+	testCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
+	testCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
+
 	testCmd.Flags().BoolVar(&cliShowtests, "show-tests", false, "display tests list")
 	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-start-cluster", true, "start the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-stop-cluster", true, "stop the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
+
 	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 
 	rootCmd.AddCommand(bootstrapCmd)
@@ -326,6 +333,28 @@ var testCmd = &cobra.Command{
 				} else {
 					if res != "" {
 						fmt.Printf(res)
+						err = json.Unmarshal([]byte(res), &thistest)
+						if err != nil {
+							fmt.Printf("Not valid json in test reult: %v\n", err)
+							return
+						}
+						// post result in database
+						if cliTestResultDBServer != "" {
+							params := fmt.Sprintf("?timeout=2")
+							dsn := cliTestResultDBCredential + "@"
+							dsn += "tcp(" + cliTestResultDBServer + ")/" + params
+							c, err := sqlx.Open("mysql", dsn)
+							if err != nil {
+								fmt.Printf("Could not connect to result database %s", err)
+							}
+							err = c.Ping()
+							if err != nil {
+								fmt.Printf("Could not connect to result database %s", err)
+							}
+							c.Query("REPLACE INTO result.tests (version,test,path,result) VALUES('" + FullVersion + "','" + thistest.Name + "','" + thistest.ConfigFile + "','" + thistest.Result + "')")
+							c.Close()
+						}
+
 					} else {
 						fmt.Printf(string(data))
 					}
