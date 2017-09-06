@@ -243,7 +243,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
 	if prx.Type == proxySpider {
@@ -260,7 +264,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
 	if prx.Type == proxyHaproxy {
@@ -277,7 +285,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
 	if prx.Type == proxySqlproxy {
@@ -294,7 +306,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
 	return nil
@@ -346,6 +362,8 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	task := svc.GetAction(strconv.Itoa(idaction))
 	if task != nil {
 		cluster.LogPrintf("INFO", "%s", task.Stderr)
+	} else {
+		cluster.LogPrintf("ERROR", "Can't fetch task")
 	}
 	cluster.WaitDatabaseStart(s)
 
@@ -440,8 +458,13 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 					}
 
 				}
+
 				task := svc.GetAction(strconv.Itoa(idaction))
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				if task != nil {
+					cluster.LogPrintf("INFO", "%s", task.Stderr)
+				} else {
+					cluster.LogPrintf("ERROR", "Can't fetch task")
+				}
 			}
 		}
 	}

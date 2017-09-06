@@ -14,14 +14,14 @@ for i in $(find ./$1 -name "*.conf") ; do
 
   for test in $tests ; do
    > $desdir/$test.log
-   replication-manager-pro --http-bind-address="0.0.0.0" --test --logfile=$destdir/$test.log --verbose --config=./$i monitor > run.log > 2>&1  &
+   replication-manager-pro --http-bind-address="0.0.0.0" --test --logfile=$destdir/$test.log --verbose --config=./$i monitor &> run.log &
    pid="$!"
-   sleep 8
+   sleep 4
    while [[ $(replication-manager-cli api --url=https://127.0.0.1:3000/api/status) != "{\"alive\": \"running\"}" ]] ; do
     echo "waiting start service"
     sleep 1
    done
-   res=$(replication-manager-cli test --run-tests="$test" --result-db-server="192.168.100.21:3306" --result-db-credential="testres:testres4repman > client.log > 2>&1")
+   res=$(replication-manager-cli test --run-tests="$test" --result-db-server="192.168.100.21:3306" --result-db-credential="testres:testres4repman")
    echo $res  >> $destdir/result.json
    kill $pid
    ((++COUNTER))
