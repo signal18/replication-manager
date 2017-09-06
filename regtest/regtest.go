@@ -201,7 +201,12 @@ func (regtest *RegTest) RunAllTests(cl *cluster.Cluster, test string) []cluster.
 		thistest.Result = regtest.getTestResultLabel(res)
 		allTests["testSwitchoverLongTransactionNoRplCheckNoSemiSync"] = thistest
 	}
-
+	if test == "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync" || test == "ALL" {
+		thistest.Name = "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync"
+		res = testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
+		thistest.Result = regtest.getTestResultLabel(res)
+		allTests["testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync"] = thistest
+	}
 	if test == "testSwitchoverLongQueryNoRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverLongQueryNoRplCheckNoSemiSync"
 		res = testSwitchoverLongQueryNoRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
