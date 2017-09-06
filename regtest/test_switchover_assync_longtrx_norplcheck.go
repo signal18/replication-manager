@@ -34,14 +34,14 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 		return false
 	}
 
-	err = dbhelper.InjectTrxWithoutCommit(db, 20)
+	go dbhelper.InjectTrxWithoutCommit(db, 20)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
 		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
-	cluster.LogPrintf("TEST", "Wainting in some trx 12s more wait-trx  default %d ", cluster.GetWaitTrx())
+	cluster.LogPrintf("TEST", "Waiting in some trx 12s more wait-trx  default %d ", cluster.GetWaitTrx())
 	time.Sleep(14 * time.Second)
 
 	cluster.LogPrintf("TEST :  Master is %s", cluster.GetMaster().URL)
