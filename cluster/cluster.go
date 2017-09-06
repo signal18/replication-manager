@@ -178,11 +178,11 @@ func (cluster *Cluster) Run() {
 			}
 			// switchover / failover only on Active
 			cluster.CheckFailed()
-			states := cluster.sme.GetStates()
-			for i := range states {
-				cluster.LogPrintf("STATE", states[i])
-			}
 			if !cluster.sme.IsInFailover() {
+				states := cluster.sme.GetStates()
+				for i := range states {
+					cluster.LogPrintf("STATE", states[i])
+				}
 				cluster.sme.ClearState()
 			}
 

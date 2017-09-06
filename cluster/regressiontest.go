@@ -222,7 +222,10 @@ func (cluster *Cluster) FailoverAndWait() {
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		dbhelper.StopSlave(s.Conn)
+		err := dbhelper.StopSlave(s.Conn)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Stopping slave on %s %s", s.URL, err)
+		}
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
@@ -230,10 +233,13 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	}
 	err = dbhelper.InjectLongTrx(cluster.master.Conn, 15)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s %s", err.Error())
+		cluster.LogPrintf("ERROR", "InjectLongTrx %s", err.Error())
 	}
 	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
+		err := dbhelper.StartSlave(s.Conn)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Staring slave on %s %s", s.URL, err)
+		}
 	}
 	time.Sleep(3 * time.Second)
 	return nil
