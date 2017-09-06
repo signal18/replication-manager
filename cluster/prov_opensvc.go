@@ -344,7 +344,9 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)
 	cluster.OpenSVCWaitDequeue(svc, idaction)
 	task := svc.GetAction(strconv.Itoa(idaction))
-	cluster.LogPrintf("INFO", "%s", task.Stderr)
+	if task != nil {
+		cluster.LogPrintf("INFO", "%s", task.Stderr)
+	}
 	cluster.WaitDatabaseStart(s)
 
 	return nil

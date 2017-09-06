@@ -1067,7 +1067,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("JSON ERROR unmarchaling action", err)
 		return nil
 	}
 	return &r.Data[0]

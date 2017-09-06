@@ -112,6 +112,9 @@ func apiserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
 	))
+	router.Handle("/api/timeout", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
+	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
@@ -1126,4 +1129,11 @@ func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
 	}
+}
+
+func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	time.Sleep(1200 * time.Second)
+	io.WriteString(w, `{"alive": "running"}`)
 }
