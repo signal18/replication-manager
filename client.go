@@ -9,7 +9,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -67,6 +66,7 @@ type RequetParam struct {
 
 var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	Timeout:   1200 * time.Second,
 }
 
 func cliInit(needcluster bool) {
@@ -906,9 +906,9 @@ func cliAPICmd(urlpost string, params []RequetParam) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
+	//	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
 	req.Header.Set("Authorization", bearer)
-	resp, err := cliConn.Do(req.WithContext(ctx))
+	resp, err := cliConn.Do(req)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return "", err
