@@ -84,7 +84,6 @@ func init() {
 	}
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring time interval in seconds")
-
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")
@@ -327,7 +326,9 @@ func init() {
 // If you add a subcommand that shares flags with other subcommand scenarios please call this function.
 // If you add flags that impact all the possible scenarios please do it here.
 func initRepmgrFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write output messages to log file")
+	cmd.Flags().StringVar(&conf.LogFile, "log-file", "", "Write output messages to log file")
+	cmd.Flags().BoolVar(&conf.LogSyslog, "log-syslog", false, "Enable logging to syslog")
+
 	viper.BindPFlags(cmd.Flags())
 
 }
@@ -344,12 +345,11 @@ For interacting with this daemon use,
 
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-
-		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
-		if err == nil {
-			// t'as fumé ou quoi
-			//	log.Hooks.Add(hook)
-			log.AddHook(hook)
+		if conf.LogSyslog {
+			hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
+			if err == nil {
+				log.AddHook(hook)
+			}
 		}
 
 		if conf.FailMode == "manual" {

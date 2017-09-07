@@ -39,7 +39,8 @@ maxscale-binlog-port = 3305
 ## LOG ##
 #########
 
-# logfile = "/var/log/replication-manager.log"
+# log-file = "/var/log/replication-manager.log"
+# log-syslog = true
 verbose = true
 
 ##############

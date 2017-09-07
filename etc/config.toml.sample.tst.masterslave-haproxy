@@ -30,7 +30,7 @@ haproxy-read-port = 3302
 ## LOG ##
 #########
 
-# logfile = "/var/log/replication-manager.log"
+# log-file = "/var/log/replication-manager.log"
 verbose = true
 
 ##############

@@ -15,7 +15,9 @@ type Config struct {
 	Socket                             string `mapstructure:"monitoring-socket"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
-	LogFile                            string `mapstructure:"logfile"`
+	LogFile                            string `mapstructure:"log-file"`
+	LogSyslog                          bool   `mapstructure:"log-syslog"`
+	LogLevel                           int    `mapstructure:"log-level"`
 	User                               string `mapstructure:"db-servers-credential"`
 	Hosts                              string `mapstructure:"db-servers-hosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert"`
@@ -24,7 +26,7 @@ type Config struct {
 	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
 	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
-	ReadTimeout                        int    `mapstructure="db-servers-read-timeout"`
+	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
 	DbServerLocality                   string `mapstructure:"db-servers-locality"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
@@ -134,7 +136,6 @@ type Config struct {
 	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path"`
 	ProxysqlUser                       string `mapstructure:"proxysql-credentail"`
 	KeyPath                            string `mapstructure:"keypath"`
-	LogLevel                           int    `mapstructure:"log-level"`
 	Test                               bool   `mapstructure:"test"`
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
