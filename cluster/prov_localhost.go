@@ -70,6 +70,9 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	mvCommand.Run()
 	time.Sleep(time.Millisecond * 2000)
 	err := cluster.StartDatabaseService(server)
+	if err != nil {
+		return err
+	}
 	time.Sleep(time.Millisecond * 2000)
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")

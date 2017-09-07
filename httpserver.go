@@ -282,6 +282,7 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(currentCluster.GetCrashes())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)

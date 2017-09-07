@@ -555,6 +555,9 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 		return "", err
 	}
 	log.Println(string(body))
+	if len(m.Data) == 0 {
+		return "", errors.New("OpenSVC can't create service")
+	}
 	return m.Data[0].Svc_id, nil
 }
 

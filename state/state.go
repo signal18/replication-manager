@@ -8,10 +8,13 @@
 
 package state
 
-import "fmt"
-import "time"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
 import "strconv"
-import "sync"
 
 type State struct {
 	ErrType string
@@ -131,7 +134,10 @@ func (SM *StateMachine) AddState(key string, s State) {
 
 func (SM *StateMachine) IsInState(key string) bool {
 	SM.Lock()
-	if SM.CurState.Search(key) == false {
+	//log.Printf("%s,%s", key, SM.OldState.Search(key))
+	//CurState may not be valid depending when it's call because empty at every ticker so may have not collected the state yet
+
+	if SM.OldState.Search(key) == false {
 		SM.Unlock()
 		return false
 	} else {

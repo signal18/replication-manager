@@ -68,9 +68,8 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 						if err != nil {
 							cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
-						} else {
-							opensvc.DeleteService(svc.Svc_id)
 						}
+						opensvc.DeleteService(svc.Svc_id)
 					}
 				}
 			}
@@ -83,9 +82,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 						if err != nil {
 							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
-						} else {
-							opensvc.DeleteService(svc.Svc_id)
 						}
+						opensvc.DeleteService(svc.Svc_id)
+
 					}
 				}
 			}
@@ -104,10 +103,8 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
-				} else {
-					opensvc.DeleteService(svc.Svc_id)
 				}
-
+				opensvc.DeleteService(svc.Svc_id)
 			}
 		}
 	}
@@ -123,9 +120,9 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
-				} else {
-					opensvc.DeleteService(svc.Svc_id)
 				}
+				opensvc.DeleteService(svc.Svc_id)
+
 			}
 		}
 	}
@@ -346,7 +343,8 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	//	if idsrv == "" || err != nil {
 	idsrv, err := svc.CreateService(s.Id, "MariaDB")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't create OpenSVC database service")
+		cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
+		return err
 	}
 	//	}
 	for _, tag := range taglist {

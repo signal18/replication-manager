@@ -14,9 +14,6 @@ import (
 
 func testFailoverAssyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
 	cluster.SetRplChecks(false)
@@ -26,9 +23,6 @@ func testFailoverAssyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string
 	cluster.DisableSemisync()
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
-	//clusteruster.DelayAllSlaves()
-	//cluster.PrepareBench()
-	//go clusteruster.RunBench()
 	go cluster.RunSysbench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
@@ -40,7 +34,6 @@ func testFailoverAssyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string
 
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
@@ -52,10 +45,8 @@ func testFailoverAssyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

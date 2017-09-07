@@ -16,13 +16,15 @@ import (
 	"github.com/tanji/replication-manager/dbhelper"
 )
 
-func (cluster *Cluster) InitClusterSemiSync() error {
+func (cluster *Cluster) InitCluster() error {
+	var err error
 	if cluster.conf.Enterprise {
-		cluster.OpenSVCProvisionCluster()
+		err = cluster.OpenSVCProvisionCluster()
+
 	} else {
-		cluster.LocalhostProvisionDatabases()
+		err = cluster.LocalhostProvisionDatabases()
 	}
-	return nil
+	return err
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
@@ -131,28 +133,6 @@ func (cluster *Cluster) WaitFailoverEnd() error {
 	cluster.WaitFailoverEndState()
 	return nil
 
-	// following code deadlock they may be cases where the channel blocked lacking a receiver
-	/*exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
-		select {
-		case <-ticker.C:
-			cluster.LogPrint("TEST: Waiting Failover startup")
-			exitloop++
-		case sig := <-endfailoverChan:
-			if sig {
-				exitloop = 100
-			}
-		default:
-		}
-	}
-	if exitloop == 100 {
-		cluster.LogPrintf("TEST: Failover started")
-	} else {
-		cluster.LogPrintf("TEST: Failover timeout")
-		return errors.New("Failed to Failover")
-	}
-	return nil*/
 }
 
 func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
@@ -160,7 +140,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 	defer wg.Done()
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	for exitloop < 15 {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting failover end")
@@ -245,7 +225,7 @@ func (cluster *Cluster) WaitClusterStop() error {
 			cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
 			exitloop++
 			// All cluster down
-			if cluster.sme.IsInState("ERR00021") {
+			if cluster.sme.IsInState("ERR00021") == true {
 				exitloop = 100
 			}
 		default:
@@ -412,12 +392,11 @@ func (cluster *Cluster) BootstrapServices() error {
 
 	// create service template and post
 	if cluster.conf.Test {
-		err := cluster.InitClusterSemiSync()
+		err := cluster.InitCluster()
 		if err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 

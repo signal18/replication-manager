@@ -12,18 +12,13 @@ import (
 )
 
 func testSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 
 	cluster.SetRplMaxDelay(2)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-
 	cluster.GetStateMachine().ResetUpTime()
 	time.Sleep(3 * time.Second)
 	sla1 := cluster.GetStateMachine().GetUptimeFailable()
@@ -32,14 +27,11 @@ func testSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, 
 	err = cluster.EnableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	if sla2 == sla1 {
-		cluster.CloseTestCluster(conf, test)
 		return false
 	} else {
-		cluster.CloseTestCluster(conf, test)
 		return true
 	}
 }

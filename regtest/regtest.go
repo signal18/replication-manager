@@ -41,7 +41,7 @@ var tests = []string{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
-	//	"testFailoverReplAllDelayInteractive",
+	"testFailoverManual",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
@@ -62,251 +62,467 @@ func (regtest *RegTest) GetTests() []string {
 
 func (regtest *RegTest) RunAllTests(cl *cluster.Cluster, test string) []cluster.Test {
 	var allTests = map[string]cluster.Test{}
+	conf := "semisync.cnf"
 
 	var res bool
 	cl.LogPrintf("TESTING : %s", test)
 	var thistest cluster.Test
 	thistest.ConfigFile = cl.GetConf().ConfigFile
+	if test == "testFailoverManual" || test == "ALL" {
+
+		thistest.Name = "testFailoverManual"
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinSafeMSMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
+		allTests["testFailoverManual"] = thistest
+
+	}
 	if test == "testFailoverSemisyncAutoRejoinSafeMSMXMS" || test == "ALL" {
+
 		thistest.Name = "testFailoverSemisyncAutoRejoinSafeMSMXMS"
-		res = testFailoverSemisyncAutoRejoinSafeMSMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinSafeMSMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinSafeMSMXMS"] = thistest
+
 	}
 	if test == "testFailoverSemisyncAutoRejoinSafeMSXMSM" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinSafeMSXMSM"
-		res = testFailoverSemisyncAutoRejoinSafeMSXMSM(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinSafeMSXMSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinSafeMSXMSM"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS"
-		res = testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS"
-		res = testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSMXMS"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMSM" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSXMSM"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSXMSM(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSXMSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMSM"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXRXMXMS"] = thistest
 	}
 	if test == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM"
-		res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM"] = thistest
 	}
 
 	if test == "testFailoverAssyncAutoRejoinNoGtid" || test == "ALL" {
 		thistest.Name = "testFailoverAssyncAutoRejoinNoGtid"
-		res = testFailoverAssyncAutoRejoinNoGtid(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAssyncAutoRejoinNoGtid(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAssyncAutoRejoinNoGtid"] = thistest
 	}
 	if test == "testFailoverAssyncAutoRejoinRelay" || test == "ALL" {
 		thistest.Name = "testFailoverAssyncAutoRejoinRelay"
-		res = testFailoverAssyncAutoRejoinRelay(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAssyncAutoRejoinRelay(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAssyncAutoRejoinRelay"] = thistest
 	}
 	if test == "testFailoverCascadingSemisyncAutoRejoinFlashback" || test == "ALL" {
 		thistest.Name = "testFailoverCascadingSemisyncAutoRejoinFlashback"
-		res = testFailoverCascadingSemisyncAutoRejoinFlashback(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverCascadingSemisyncAutoRejoinFlashback(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverCascadingSemisyncAutoRejoinFlashback"] = thistest
 	}
 	if test == "testFailoverSemisyncSlavekilledAutoRejoin" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncSlavekilledAutoRejoin"
-		res = testFailoverSemisyncSlavekilledAutoRejoin(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncSlavekilledAutoRejoin(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncSlavekilledAutoRejoin"] = thistest
 	}
 
 	if test == "testFailoverSemisyncAutoRejoinFlashback" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncAutoRejoinFlashback"
-		res = testFailoverSemisyncAutoRejoinFlashback(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinFlashback(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverSemisyncAutoRejoinFlashback"] = thistest
 	}
 	if test == "testFailoverAssyncAutoRejoinFlashback" || test == "ALL" {
 		thistest.Name = "testFailoverAssyncAutoRejoinFlashback"
-		res = testFailoverAssyncAutoRejoinFlashback(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAssyncAutoRejoinFlashback(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAssyncAutoRejoinFlashback"] = thistest
 	}
 	if test == "testFailoverAssyncAutoRejoinNowrites" || test == "ALL" {
 		thistest.Name = "testFailoverAssyncAutoRejoinNowrites"
-		res = testFailoverAssyncAutoRejoinNowrites(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAssyncAutoRejoinNowrites(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAssyncAutoRejoinNowrites"] = thistest
 	}
 	if test == "testFailoverAssyncAutoRejoinDump" || test == "ALL" {
 		thistest.Name = "testFailoverAssyncAutoRejoinDump"
-		res = testFailoverAssyncAutoRejoinDump(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAssyncAutoRejoinDump(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAssyncAutoRejoinDump"] = thistest
 	}
 	if test == "testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync"
-		res = testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverLongTransactionNoRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverLongTransactionNoRplCheckNoSemiSync"
-		res = testSwitchoverLongTransactionNoRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverLongTransactionNoRplCheckNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverLongTransactionNoRplCheckNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync"
-		res = testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverLongQueryNoRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverLongQueryNoRplCheckNoSemiSync"
-		res = testSwitchoverLongQueryNoRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverLongQueryNoRplCheckNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverLongQueryNoRplCheckNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverNoReadOnlyNoRplCheck" || test == "ALL" {
 		thistest.Name = "testSwitchoverNoReadOnlyNoRplCheck"
-		res = testSwitchoverNoReadOnlyNoRplCheck(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverNoReadOnlyNoRplCheck(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverNoReadOnlyNoRplCheck"] = thistest
 	}
 	if test == "testSwitchoverReadOnlyNoRplCheck" || test == "ALL" {
 		thistest.Name = "testSwitchoverReadOnlyNoRplCheck"
-		res = testSwitchoverReadOnlyNoRplCheck(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverReadOnlyNoRplCheck(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverReadOnlyNoRplCheck"] = thistest
 	}
 	if test == "testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck" || test == "ALL" {
 		thistest.Name = "testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck"
-		res = testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck"] = thistest
 	}
 	if test == "testSwitchover2TimesReplicationOkSemiSyncNoRplCheck" || test == "ALL" {
 		thistest.Name = "testSwitchover2TimesReplicationOkSemiSyncNoRplCheck"
-		res = testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchover2TimesReplicationOkSemiSyncNoRplCheck"] = thistest
 	}
 	if test == "testSwitchoverBackPreferedMasterNoRplCheckSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverBackPreferedMasterNoRplCheckSemiSync"
-		res = testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverBackPreferedMasterNoRplCheckSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverBackPreferedMasterNoRplCheckSemiSync"] = thistest
 	}
 	if test == "testSwitchoverAllSlavesStopRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverAllSlavesStopRplCheckNoSemiSync"
-		res = testSwitchoverAllSlavesStopRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverAllSlavesStopRplCheckNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverAllSlavesStopRplCheckNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck" || test == "ALL" {
 		thistest.Name = "testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck"
-		res = testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck"] = thistest
 	}
 	if test == "testSwitchoverAllSlavesDelayRplCheckNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverAllSlavesDelayRplCheckNoSemiSync"
-		res = testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverAllSlavesDelayRplCheckNoSemiSync"] = thistest
 	}
 	if test == "testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync"
-		res = testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync"] = thistest
 	}
 	if test == "testSlaReplAllSlavesStopNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSlaReplAllSlavesStopNoSemiSync"
-		res = testSlaReplAllSlavesStopNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSlaReplAllSlavesStopNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSlaReplAllSlavesStopNoSemiSync"] = thistest
 	}
 	if test == "testSlaReplAllSlavesDelayNoSemiSync" || test == "ALL" {
 		thistest.Name = "testSlaReplAllSlavesDelayNoSemiSync"
-		res = testSlaReplAllSlavesDelayNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testSlaReplAllSlavesDelayNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testSlaReplAllSlavesDelayNoSemiSync"] = thistest
 	}
 	if test == "testFailoverNoRplChecksNoSemiSync" || test == "ALL" {
 		thistest.Name = "testFailoverNoRplChecksNoSemiSync"
-		res = testFailoverNoRplChecksNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverNoRplChecksNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverNoRplChecksNoSemiSync"] = thistest
 	}
 	if test == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" || test == "ALL" {
-		thistest.Name = "testFailoverAllSlavesDelayNoRplChecksNoSemiSync"
-		res = testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			thistest.Name = "testFailoverAllSlavesDelayNoRplChecksNoSemiSync"
+			res = testFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAllSlavesDelayNoRplChecksNoSemiSync"] = thistest
 	}
 	if test == "testFailoverAllSlavesDelayRplChecksNoSemiSync" || test == "ALL" {
 		thistest.Name = "testFailoverAllSlavesDelayRplChecksNoSemiSync"
-		res = testFailoverAllSlavesDelayRplChecksNoSemiSync(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverAllSlavesDelayRplChecksNoSemiSync(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverAllSlavesDelayRplChecksNoSemiSync"] = thistest
 	}
 	if test == "testFailoverNumberFailureLimitReach" || test == "ALL" {
 		thistest.Name = "testFailoverNumberFailureLimitReach"
-		res = testFailoverNumberFailureLimitReach(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverNumberFailureLimitReach(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverNumberFailureLimitReach"] = thistest
 	}
 	if test == "testFailoverTimeNotReach" || test == "ALL" {
 		thistest.Name = "testFailoverTimeNotReach"
-		res = testFailoverTimeNotReach(cl, "semisync.cnf", &thistest)
-		thistest.Result = regtest.getTestResultLabel(res)
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverTimeNotReach(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
 		allTests["testFailoverTimeNotReach"] = thistest
 	}
 	vals := make([]cluster.Test, 0, len(allTests))
@@ -317,7 +533,7 @@ func (regtest *RegTest) RunAllTests(cl *cluster.Cluster, test string) []cluster.
 	}
 	sort.Strings(keys)
 	for _, v := range keys {
-		cl.LogPrintf("TEST", "Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v])
+		cl.LogPrintf("TEST", "Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v].Result)
 	}
 	cl.CleanAll = false
 	return vals

@@ -8,14 +8,11 @@ package regtest
 import "github.com/tanji/replication-manager/cluster"
 
 func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
@@ -31,20 +28,17 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(20)
 	cluster.CheckFailed()
-
 	cluster.WaitFailoverEnd()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR:", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

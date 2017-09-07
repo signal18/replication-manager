@@ -14,9 +14,6 @@ import (
 
 func testFailoverSemisyncAutoRejoinUnsafeMSMXMS(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetFailoverCtr(0)
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
@@ -53,22 +50,20 @@ func testFailoverSemisyncAutoRejoinUnsafeMSMXMS(cluster *cluster.Cluster, conf s
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
-			cluster.CloseTestCluster(conf, test)
+
 			return false
 		}
 	}
 	time.Sleep(10 * time.Second)
 	if cluster.ChecksumBench() != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	if len(cluster.GetServers()) == 2 && SaveMasterURL != cluster.GetMaster().URL {
 		cluster.LogPrintf("ERROR", "Unexpected master for 2 nodes cluster")
 		return false
 	}
-
-	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

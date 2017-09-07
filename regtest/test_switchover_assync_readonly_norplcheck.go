@@ -8,9 +8,6 @@ package regtest
 import "github.com/tanji/replication-manager/cluster"
 
 func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetRplMaxDelay(0)
@@ -21,7 +18,6 @@ func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, tes
 		_, err := s.Conn.Exec("set global read_only=1")
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s", err)
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
@@ -30,10 +26,8 @@ func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, tes
 	for _, s := range cluster.GetSlaves() {
 		cluster.LogPrintf("TEST", "Server  %s is %s", s.URL, s.ReadOnly)
 		if s.ReadOnly == "OFF" {
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

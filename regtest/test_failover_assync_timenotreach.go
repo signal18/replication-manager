@@ -12,15 +12,12 @@ import (
 )
 
 func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
 	cluster.SetFailLimit(3)
-	cluster.SetFailTime(20)
-	cluster.SetFailoverCtr(1)
+	cluster.SetFailTime(60)
+	// Give longer failtime than the failover wait loop 30s
 	cluster.SetCheckFalsePositiveHeartbeat(false)
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(20)
@@ -28,24 +25,19 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *clust
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.SetFailoverTs(time.Now().Unix())
+	//Giving time for state dicovery
+	time.Sleep(4 * time.Second)
 	cluster.FailoverAndWait()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-	err = cluster.EnableSemisync()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
-		return false
-	}
-	cluster.CloseTestCluster(conf, test)
+
 	return true
 }

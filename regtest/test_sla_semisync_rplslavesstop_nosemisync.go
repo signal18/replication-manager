@@ -12,14 +12,12 @@ import (
 )
 
 func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
+
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
@@ -29,7 +27,7 @@ func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, t
 	err = cluster.StopSlaves()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	time.Sleep(recoverTime * time.Second)
@@ -37,20 +35,20 @@ func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, t
 	err = cluster.StartSlaves()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	if sla2 == sla1 {
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	} else {
-		cluster.CloseTestCluster(conf, test)
+
 		return true
 	}
 }

@@ -13,19 +13,13 @@ import (
 
 func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
-
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
 	SaveMasterURL := cluster.GetMaster().URL
-
 	cluster.DelayAllSlaves()
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
@@ -43,15 +37,9 @@ func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, con
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR", "Old master %s ==  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
-	err = cluster.EnableSemisync()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
-		return false
-	}
-	cluster.CloseTestCluster(conf, test)
+
 	return true
 }

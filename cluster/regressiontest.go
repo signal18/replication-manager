@@ -252,9 +252,6 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	savedFailoverTs = cluster.failoverTs
 	cluster.CleanAll = true
 
-	//	if cluster.testStartCluster {
-	//		cluster.InitClusterSemiSync()
-	//	}
 	err := cluster.Bootstrap()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)

@@ -13,15 +13,12 @@ import (
 )
 
 func testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
+
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 
@@ -31,7 +28,6 @@ func testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cluster *cluster.Clus
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 		cluster.LogPrintf("TEST", "Master  %s ", cluster.GetMaster().URL)
@@ -41,14 +37,11 @@ func testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cluster *cluster.Clus
 
 		if SaveMasterURL == cluster.GetMaster().URL {
 			cluster.LogPrintf("ERROR", "Same server URL after switchover")
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
 	if cluster.CheckSlavesRunning() == false {
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

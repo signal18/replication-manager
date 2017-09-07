@@ -8,14 +8,11 @@ package regtest
 import "github.com/tanji/replication-manager/cluster"
 
 func testFailoverNumberFailureLimitReach(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
@@ -38,11 +35,10 @@ func testFailoverNumberFailureLimitReach(cluster *cluster.Cluster, conf string, 
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
+
 		SaveMaster.FailCount = 0
 		return false
 	}
 	SaveMaster.FailCount = 0
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

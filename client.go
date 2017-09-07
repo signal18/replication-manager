@@ -324,7 +324,7 @@ var testCmd = &cobra.Command{
 				var thistest cluster.Test
 				thistest.Result = "TIMEOUT"
 				thistest.Name = test
-				data, _ := json.Marshal(thistest)
+				data, _ := json.MarshalIndent(thistest, "", "\t")
 				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
 				res, err := cliAPICmd(urlpost, nil)
 				if err != nil {
