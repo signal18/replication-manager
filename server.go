@@ -328,6 +328,7 @@ func init() {
 func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&conf.LogFile, "log-file", "", "Write output messages to log file")
 	cmd.Flags().BoolVar(&conf.LogSyslog, "log-syslog", false, "Enable logging to syslog")
+	cmd.Flags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
 
 	viper.BindPFlags(cmd.Flags())
 
