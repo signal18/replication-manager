@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	log "github.com/sirupsen/logrus"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/opensvc"
 	"github.com/tanji/replication-manager/regtest"

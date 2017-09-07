@@ -18,7 +18,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/dbhelper"

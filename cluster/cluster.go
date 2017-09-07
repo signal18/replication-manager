@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/tanji/replication-manager/cluster/nbc"
 	"github.com/tanji/replication-manager/config"

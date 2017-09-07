@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/tanji/replication-manager/graphite/carbon"
 	"github.com/tanji/replication-manager/graphite/logging"
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/tanji/replication-manager/graphite/helper"
 	"github.com/tanji/replication-manager/graphite/points"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // UDP receive metrics from UDP socket

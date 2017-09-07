@@ -18,12 +18,13 @@ import (
 	"net/url"
 	"os"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/tanji/replication-manager/cluster"
 	"github.com/tanji/replication-manager/termlog"
@@ -326,7 +327,19 @@ var testCmd = &cobra.Command{
 				thistest.Name = test
 				data, _ := json.MarshalIndent(thistest, "", "\t")
 				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
-				res, err := cliAPICmd(urlpost, nil)
+
+				var startcluster RequetParam
+				var stopcluster RequetParam
+				var params []RequetParam
+
+				startcluster.key = "startcluster"
+				startcluster.value = strconv.FormatBool(cliTeststartcluster)
+				params = append(params, startcluster)
+				stopcluster.key = "stopcluster"
+				stopcluster.value = strconv.FormatBool(cliTeststopcluster)
+				params = append(params, stopcluster)
+
+				res, err := cliAPICmd(urlpost, params)
 				if err != nil {
 					fmt.Printf(string(data))
 					log.Fatal("Error in API call")

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // This is to not silently overwrite `time`, `msg` and `level` fields when

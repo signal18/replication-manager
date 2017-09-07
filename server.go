@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	mysqllog "log"
+	"log/syslog"
+
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -20,7 +22,8 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
@@ -341,6 +344,13 @@ For interacting with this daemon use,
 
 `,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
+		if err == nil {
+			// t'as fumé ou quoi
+			//	log.Hooks.Add(hook)
+			log.AddHook(hook)
+		}
 
 		if conf.FailMode == "manual" {
 			conf.Interactive = true

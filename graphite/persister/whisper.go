@@ -12,7 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	whisper "github.com/tanji/replication-manager/graphite/whisper"
 
 	"github.com/tanji/replication-manager/graphite/helper"

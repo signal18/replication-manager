@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/tanji/replication-manager/graphite/cache"
 	"github.com/tanji/replication-manager/graphite/carbonserver"
 	"github.com/tanji/replication-manager/graphite/persister"

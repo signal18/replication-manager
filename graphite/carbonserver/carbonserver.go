@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	logger "github.com/Sirupsen/logrus"
+	logger "github.com/sirupsen/logrus"
 	"github.com/dgryski/httputil"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/tanji/replication-manager/graphite/carbonzipperpb"

@@ -18,7 +18,7 @@ import (
 	"github.com/tanji/replication-manager/graphite/helper/framing"
 	"github.com/tanji/replication-manager/graphite/points"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // TCP receive metrics from TCP connections
