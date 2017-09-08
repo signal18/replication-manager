@@ -63,13 +63,17 @@ do
 
     echo "# Building tarball replication-manager-$flavor"
     cp etc/* buildtar/etc/
-    rm -f buildtar/etc/config.toml.sample.opensvc.*
+    if [ "$flavor" != "pro" ]; then
+      rm -f buildtar/etc/config.toml.sample.opensvc.*
+    else
+      cp -rp test/opensvc buildtar/share/tests
+    done
     cp replication-manager-$flavor buildtar/bin/
-    cp service/replication-manager-$flavor.service buildtar/etc/replication-manager.service
-    cp service/replication-manager-$flavor.init.el6 buildtar/etc/replication-manager.init
+    cp service/replication-manager-$flavor.service buildtar/share/replication-manager.service
+    cp service/replication-manager-$flavor.init.el6 buildtar/share/replication-manager.init
     fpm --package replication-manager-$flavor-$version.tar -C buildtar -s dir -t tar -n replication-manager-$flavor .
     gzip replication-manager-$flavor-$version.tar
-    rm -rf buildtar/usr/bin/replication-manager-$flavor
+    rm -rf buildtar/bin/replication-manager-$flavor
 done
 
 echo "# Building arbitrator packages"
@@ -78,11 +82,11 @@ rm -rf build/usr/share
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
-fpm --rpm-os linux --epoch $epoch --iteration $head -v $version -C build -s dir -t rpm -n replication-manager-arbitrator .
-fpm --package replication-manager-arbitrator-$version-$head.tar -C build -s dir -t tar -n replication-manager-arbitrator .
-gzip replication-manager-arbitrator-$version-$head.tar
+fpm --rpm-os linux --epoch $epoch -v $version -C build -s dir -t rpm -n replication-manager-arbitrator .
+fpm --package replication-manager-arbitrator-$version.tar -C build -s dir -t tar -n replication-manager-arbitrator .
+gzip replication-manager-arbitrator-$version.tar
 cp service/replication-manager-arb.init.deb7 build/etc/init.d/replication-manager-arbitrator
-fpm --epoch $epoch --iteration $head -v $version -C build -s dir -t deb -n replication-manager-arbitrator .
+fpm --epoch $epoch -v $version -C build -s dir -t deb -n replication-manager-arbitrator .
 rm -f build/usr/bin/replication-manager-arb
 
 echo "# Build complete"
