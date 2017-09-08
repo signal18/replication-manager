@@ -1,20 +1,20 @@
-2017/08/04 19:04:09 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 19:04:09 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 19:04:09 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 19:04:09 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 19:04:09 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/04 19:04:09 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/04 19:04:11 [ux_dck_zpool_loop] TESTI - testSlaReplAllSlavesDelayNoSemiSync
-2017/08/04 19:04:11 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
-2017/08/04 19:04:12 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
-2017/08/04 19:04:15 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:04:11 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from  to Suspect
+2017/08/04 19:04:12 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from  to Suspect
+2017/08/04 19:04:15 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:04:15 [ux_dck_zpool_loop] STATE - ERR00010 Could not find a slave in topology
 2017/08/04 19:04:15 [ux_dck_zpool_loop] STATE - ERR00012 Could not find a master in topology
 2017/08/04 19:04:15 [ux_dck_zpool_loop] STATE - ERR00021 All cluster down in non-interactive mode
-2017/08/04 19:04:19 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.71 as failed
-2017/08/04 19:04:19 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Suspect to Failed
-2017/08/04 19:04:20 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.70 as failed
-2017/08/04 19:04:20 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from Suspect to Failed
+2017/08/04 19:04:19 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.81 as failed
+2017/08/04 19:04:19 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from Suspect to Failed
+2017/08/04 19:04:20 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.80 as failed
+2017/08/04 19:04:20 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from Suspect to Failed
 2017/08/04 19:05:11 [ux_dck_zpool_loop] TESTI - testSlaReplAllSlavesDelayNoSemiSync
 2017/08/04 19:05:13 [ux_dck_zpool_loop] INFO  - Provisioning delete service 7f5cde17-4dd4-4047-a208-5d32a6047227
 2017/08/04 19:05:20 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -297,7 +297,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 17:05:21,044 container#0001 INFO    wait for up status
 17:05:21,072 container#0001 INFO    wait for container operational
 17:05:21,119 ip#01          INFO    skip allocate: an ip is already defined
-17:05:21,187 ip#01          INFO    checking 192.168.100.70 availability
+17:05:21,187 ip#01          INFO    checking 192.168.100.80 availability
 17:05:24,258 ip#01          INFO    bridge mode
 17:05:24,286 ip#01          INFO    create symlink /var/run/netns/29984 -> /proc/29984/ns/net
 17:05:24,355 ip#01          INFO    /sbin/ip link add name veth1pl29984 mtu 1500 type veth peer name veth1pg29984 mtu 1500
@@ -305,7 +305,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 17:05:24,363 ip#01          INFO    /sbin/ip link set veth1pl29984 up
 17:05:24,366 ip#01          INFO    /sbin/ip link set veth1pg29984 netns 29984
 17:05:24,384 ip#01          INFO    /sbin/ip netns exec 29984 ip link set veth1pg29984 name eth1
-17:05:24,444 ip#01          INFO    /sbin/ip netns exec 29984 ip addr add 192.168.100.70/24 dev eth1
+17:05:24,444 ip#01          INFO    /sbin/ip netns exec 29984 ip addr add 192.168.100.80/24 dev eth1
 17:05:24,532 ip#01          INFO    /sbin/ip netns exec 29984 ip link set eth1 up
 17:05:24,572 ip#01          INFO    /sbin/ip netns exec 29984 ip route replace default via 192.168.100.254
 17:05:24,616 ip#01          INFO    remove /var/run/netns/29984
@@ -324,7 +324,7 @@ a stack has been saved to the rpc log
 2017/08/04 19:05:35 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:05:37 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:05:39 [ux_dck_zpool_loop] INFO  - Waiting for database start
-2017/08/04 19:05:41 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.70
+2017/08/04 19:05:41 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.80
 2017/08/04 19:05:41 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:05:41 [ux_dck_zpool_loop] INFO  - Database started
 2017/08/04 19:05:43 [ux_dck_zpool_loop] INFO  - Provisioning delete service afa21ebb-07d2-4f93-8852-655fdc8ed256
@@ -606,7 +606,7 @@ total duration: 0:00:00.534973
 17:06:50,191 container#0001 INFO    wait for up status
 17:06:50,220 container#0001 INFO    wait for container operational
 17:06:50,265 ip#01          INFO    skip allocate: an ip is already defined
-17:06:50,334 ip#01          INFO    checking 192.168.100.71 availability
+17:06:50,334 ip#01          INFO    checking 192.168.100.81 availability
 17:06:53,422 ip#01          INFO    bridge mode
 17:06:53,451 ip#01          INFO    create symlink /var/run/netns/27281 -> /proc/27281/ns/net
 17:06:53,534 ip#01          INFO    /sbin/ip link add name veth1pl27281 mtu 1500 type veth peer name veth1pg27281 mtu 1500
@@ -614,7 +614,7 @@ total duration: 0:00:00.534973
 17:06:53,544 ip#01          INFO    /sbin/ip link set veth1pl27281 up
 17:06:53,547 ip#01          INFO    /sbin/ip link set veth1pg27281 netns 27281
 17:06:53,562 ip#01          INFO    /sbin/ip netns exec 27281 ip link set veth1pg27281 name eth1
-17:06:53,627 ip#01          INFO    /sbin/ip netns exec 27281 ip addr add 192.168.100.71/24 dev eth1
+17:06:53,627 ip#01          INFO    /sbin/ip netns exec 27281 ip addr add 192.168.100.81/24 dev eth1
 17:06:53,710 ip#01          INFO    /sbin/ip netns exec 27281 ip link set eth1 up
 17:06:53,750 ip#01          INFO    /sbin/ip netns exec 27281 ip route replace default via 192.168.100.254
 17:06:53,796 ip#01          INFO    remove /var/run/netns/27281
@@ -636,8 +636,8 @@ a stack has been saved to the rpc log
 2017/08/04 19:07:09 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:07:11 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:07:13 [ux_dck_zpool_loop] INFO  - Waiting for database start
-2017/08/04 19:07:13 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.71
-2017/08/04 19:07:13 [ux_dck_zpool_loop] STATE - INF00001 CLOSING Server 192.168.100.71 is down
+2017/08/04 19:07:13 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.81
+2017/08/04 19:07:13 [ux_dck_zpool_loop] STATE - INF00001 CLOSING Server 192.168.100.81 is down
 2017/08/04 19:07:15 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/04 19:07:15 [ux_dck_zpool_loop] INFO  - Database started
 2017/08/04 19:07:19 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -731,7 +731,7 @@ total duration: 0:00:00.429442
 17:07:21,199 container#0001 INFO    wait for up status
 17:07:21,227 container#0001 INFO    wait for container operational
 17:07:21,273 ip#01          INFO    skip allocate: an ip is already defined
-17:07:21,347 ip#01          INFO    checking 192.168.100.50 availability
+17:07:21,347 ip#01          INFO    checking 192.168.100.85 availability
 17:07:24,429 ip#01          INFO    bridge mode
 17:07:24,455 ip#01          INFO    create symlink /var/run/netns/28882 -> /proc/28882/ns/net
 17:07:24,517 ip#01          INFO    /sbin/ip link add name veth1pl28882 mtu 1500 type veth peer name veth1pg28882 mtu 1500
@@ -739,7 +739,7 @@ total duration: 0:00:00.429442
 17:07:24,525 ip#01          INFO    /sbin/ip link set veth1pl28882 up
 17:07:24,528 ip#01          INFO    /sbin/ip link set veth1pg28882 netns 28882
 17:07:24,542 ip#01          INFO    /sbin/ip netns exec 28882 ip link set veth1pg28882 name eth1
-17:07:24,590 ip#01          INFO    /sbin/ip netns exec 28882 ip addr add 192.168.100.50/24 dev eth1
+17:07:24,590 ip#01          INFO    /sbin/ip netns exec 28882 ip addr add 192.168.100.85/24 dev eth1
 17:07:24,662 ip#01          INFO    /sbin/ip netns exec 28882 ip link set eth1 up
 17:07:24,694 ip#01          INFO    /sbin/ip netns exec 28882 ip route replace default via 192.168.100.254
 17:07:24,739 ip#01          INFO    remove /var/run/netns/28882
@@ -753,257 +753,257 @@ e04e4c706eb534177a5597f4b6846737095e69325281346055a0e1fdcbb02847
 a stack has been saved to the rpc log
 
 2017/08/04 19:07:29 [ux_dck_zpool_loop] INFO  - Cleaning up replication on existing servers
-2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Environment bootstrapped with 192.168.100.70 as master
-2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Enforce read only on slave 192.168.100.71
-2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/04 19:07:39 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Environment bootstrapped with 192.168.100.80 as master
+2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Enforce read only on slave 192.168.100.81
+2017/08/04 19:07:39 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.85 3307
+2017/08/04 19:07:39 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.85:3307
 2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.81
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.80
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.80
 2017/08/04 19:07:39 [ux_dck_zpool_loop] TEST: Waiting Bootstrap and discovery
-2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/04 19:07:39 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.85:3307
 2017/08/04 19:07:41 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/04 19:07:41 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/04 19:07:41 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/04 19:07:41 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/04 19:07:41 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.85 3307
+2017/08/04 19:07:41 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.85:3307
 2017/08/04 19:07:41 [ux_dck_zpool_loop] TEST  - Starting Test testSlaReplAllSlavesDelayNoSemiSync
 2017/08/04 19:07:44 [ux_dck_zpool_loop] BENCH - Stopping slaves, injecting data & long transaction
-2017/08/04 19:07:45 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/04 19:07:45 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.85:3307
 2017/08/04 19:08:05 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:05 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
+2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:05 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
 2017/08/04 19:08:07 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:07 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:07 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:10 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:10 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:10 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:12 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:12 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:12 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:14 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:14 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:14 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:16 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:16 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:16 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:18 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:18 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:18 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:20 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:20 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:20 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:22 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:22 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:22 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:24 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:27 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:27 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:28 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:29 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:29 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:30 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:31 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:31 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:32 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:33 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:33 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:34 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:35 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:35 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:36 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:37 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:37 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:38 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:39 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
 2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:39 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:40 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:41 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
 2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:41 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:42 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:43 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
 2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:43 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:44 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:45 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:46 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:47 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:48 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:49 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:49 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:50 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:51 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:51 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:52 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:53 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:53 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:54 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/04 19:08:55 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
-2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.80 is down
 2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/04 19:08:55 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/04 19:08:56 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/04 19:08:57 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 19:08:57 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 19:08:57 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 19:08:57 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/04 19:08:57 [ux_dck_zpool_loop] TEST  - Result SlaReplAllSlavesDelayNoSemiSync                          -> {testSlaReplAllSlavesDelayNoSemiSync PASS ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testSlaReplAllSlavesDelayNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=2) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testSlaReplAllSlavesDelayNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf}}
+2017/08/04 19:08:57 [ux_dck_zpool_loop] TEST  - Result SlaReplAllSlavesDelayNoSemiSync                          -> {testSlaReplAllSlavesDelayNoSemiSync PASS ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.80,192.168.100.81     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.80  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testSlaReplAllSlavesDelayNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.85 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.80,192.168.100.81     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.80  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=2) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testSlaReplAllSlavesDelayNoSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.85 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf}}

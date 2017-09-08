@@ -28,11 +28,7 @@ func testFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf stri
 	//go clusteruster.RunBench()
 	go cluster.RunSysbench()
 	time.Sleep(4 * time.Second)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go cluster.WaitFailover(wg)
-	cluster.StopDatabaseService(cluster.GetMaster())
-	wg.Wait()
+	cluster.FailoverAndWait()
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {

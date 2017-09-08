@@ -5,11 +5,7 @@
 
 package regtest
 
-import (
-	"sync"
-
-	"github.com/tanji/replication-manager/cluster"
-)
+import "github.com/tanji/replication-manager/cluster"
 
 func testFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
@@ -18,11 +14,7 @@ func testFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Tes
 	cluster.SetRplChecks(true)
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go cluster.WaitFailover(wg)
-	cluster.StopDatabaseService(SaveMaster)
-	wg.Wait()
+	cluster.FailoverNow()
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("TEST", " Old master %s !=  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false

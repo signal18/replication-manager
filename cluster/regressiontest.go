@@ -219,10 +219,20 @@ func (cluster *Cluster) FailoverAndWait() {
 	wg.Wait()
 }
 
+func (cluster *Cluster) FailoverNow() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.WaitFailover(wg)
+	cluster.SetMasterStateFailed()
+	cluster.SetInteractive(false)
+	cluster.GetMaster().FailCount = cluster.GetMaxFail()
+	wg.Wait()
+}
+
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		err := dbhelper.StopSlave(s.Conn)
+		err := dbhelper.StopSlaveSQLThread(s.Conn)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Stopping slave on %s %s", s.URL, err)
 		}
@@ -231,9 +241,13 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
 	}
-	err = dbhelper.InjectLongTrx(cluster.master.Conn, 15)
+	err = dbhelper.InjectLongTrx(cluster.master.Conn, 12)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "InjectLongTrx %s", err.Error())
+	}
+	result, err = dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
 	}
 	for _, s := range cluster.slaves {
 		err := dbhelper.StartSlave(s.Conn)
@@ -241,7 +255,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 			cluster.LogPrintf("ERROR", "Staring slave on %s %s", s.URL, err)
 		}
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 	return nil
 }
 

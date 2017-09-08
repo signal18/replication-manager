@@ -32,23 +32,12 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	cluster.PrepareBench()
 	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go cluster.WaitFailover(wg)
-	cluster.StopDatabaseService(cluster.GetMaster())
-	wg.Wait()
+	cluster.FailoverAndWait()
 	SaveMaster2 := cluster.GetMaster()
-
 	cluster.RunBench()
-
-	wg.Add(1)
-	go cluster.WaitFailover(wg)
-	cluster.StopDatabaseService(cluster.GetMaster())
-	wg.Wait()
-
+	cluster.FailoverAndWait()
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-
 		return false
 	}
 
@@ -69,7 +58,6 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
-
 			return false
 		}
 	}

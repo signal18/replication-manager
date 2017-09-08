@@ -23,9 +23,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	cluster.DisableSemisync()
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
-	//clusteruster.DelayAllSlaves()
-	//cluster.PrepareBench()
-	//go clusteruster.RunBench()
+
 	go cluster.RunSysbench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)

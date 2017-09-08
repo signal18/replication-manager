@@ -727,7 +727,7 @@ total duration: 0:00:00.433090
 15:44:37,650 container#0001 INFO    wait for up status
 15:44:37,677 container#0001 INFO    wait for container operational
 15:44:37,720 ip#01          INFO    skip allocate: an ip is already defined
-15:44:37,785 ip#01          INFO    checking 192.168.100.50 availability
+15:44:37,785 ip#01          INFO    checking 192.168.100.75 availability
 15:44:40,847 ip#01          INFO    bridge mode
 15:44:40,874 ip#01          INFO    create symlink /var/run/netns/31316 -> /proc/31316/ns/net
 15:44:40,937 ip#01          INFO    /sbin/ip link add name veth1pl31316 mtu 1500 type veth peer name veth1pg31316 mtu 1500
@@ -735,7 +735,7 @@ total duration: 0:00:00.433090
 15:44:40,945 ip#01          INFO    /sbin/ip link set veth1pl31316 up
 15:44:40,948 ip#01          INFO    /sbin/ip link set veth1pg31316 netns 31316
 15:44:40,958 ip#01          INFO    /sbin/ip netns exec 31316 ip link set veth1pg31316 name eth1
-15:44:41,015 ip#01          INFO    /sbin/ip netns exec 31316 ip addr add 192.168.100.50/24 dev eth1
+15:44:41,015 ip#01          INFO    /sbin/ip netns exec 31316 ip addr add 192.168.100.75/24 dev eth1
 15:44:41,078 ip#01          INFO    /sbin/ip netns exec 31316 ip link set eth1 up
 15:44:41,106 ip#01          INFO    /sbin/ip netns exec 31316 ip route replace default via 192.168.100.254
 15:44:41,150 ip#01          INFO    remove /var/run/netns/31316
@@ -756,8 +756,8 @@ a stack has been saved to the rpc log
 2017/08/03 17:44:45 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 17:44:45 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/03 17:44:55 [ux_dck_zpool_loop] INFO  - Environment bootstrapped with 192.168.100.70 as master
-2017/08/03 17:44:55 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/03 17:44:55 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 17:44:55 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
+2017/08/03 17:44:55 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 17:44:55 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 17:44:55 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/03 17:44:55 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
@@ -767,18 +767,18 @@ a stack has been saved to the rpc log
 2017/08/03 17:44:55 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 17:44:55 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 17:44:55 [ux_dck_zpool_loop] TEST: Waiting Bootstrap and discovery
-2017/08/03 17:44:57 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/03 17:44:57 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
 2017/08/03 17:44:57 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/03 17:44:57 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/03 17:44:57 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/03 17:44:57 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 17:44:57 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
+2017/08/03 17:44:57 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 17:44:58 [ux_dck_zpool_loop] TEST  - Starting Test testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS
 2017/08/03 17:44:58 [ux_dck_zpool_loop] BENCH - PreparedExecConcurrent2 10 iterations
  27.509473ms 	    364 queries/sec	    8 allocs/query	    799 B/query
 
 Finished... Total running time: 42.322194ms
 
-2017/08/03 17:45:01 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/03 17:45:01 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
 2017/08/03 17:45:05 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Slave to Suspect
 2017/08/03 17:45:05 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
 2017/08/03 17:45:05 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
@@ -1085,7 +1085,7 @@ check passed, skip fix
 total duration: 0:00:00.108066
 15:47:13,215 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 15:47:13,259 ip#01          INFO    skip allocate: an ip is already defined
-15:47:13,318 ip#01          INFO    192.168.100.50 is already up on br-prd
+15:47:13,318 ip#01          INFO    192.168.100.75 is already up on br-prd
 15:47:13,456 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 15:47:13,680                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 15:47:13,680                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
@@ -1121,7 +1121,7 @@ total duration: 0:00:00.108066
 2017/08/03 17:47:27 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
 2017/08/03 17:47:29 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/03 17:47:29 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/03 17:47:29 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 17:47:29 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 17:47:29 [ux_dck_zpool_loop] TEST  - Starting Test testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS
 2017/08/03 17:47:29 [ux_dck_zpool_loop] BENCH - PreparedExecConcurrent2 10 iterations
  29.806519ms 	    335 queries/sec	    8 allocs/query	    784 B/query

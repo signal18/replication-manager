@@ -320,343 +320,343 @@ a stack has been saved to the rpc log
 2017/08/03 21:36:59 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 21:37:01 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 21:37:02 [ux_dck_zpool_loop] INFO  - Trying to rejoin restarted server 192.168.100.70
-2017/08/03 21:37:03 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 21:37:03 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 21:37:03 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 21:37:03 [ux_dck_zpool_loop] INFO  - Database started
-2017/08/03 21:37:04 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 21:37:04 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 21:37:04 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/03 21:37:04 [ux_dck_zpool_loop] STATE - INF00001 CLOSING Server 192.168.100.70 is down
 2017/08/03 21:37:04 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 21:37:04 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
 2017/08/03 21:37:05 [ux_dck_zpool_loop] INFO  - Provisioning delete service e225cb04-eb76-455d-8020-1cbdccc794e6
-2017/08/03 21:37:06 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
-2017/08/03 21:37:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:37:06 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
+2017/08/03 21:37:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:37:12 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:37:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: no route to host
-2017/08/03 21:37:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:37:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: no route to host
+2017/08/03 21:37:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:37:17 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
-2017/08/03 21:37:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:37:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:37:19 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:37:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:37:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:37:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:37:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:37:45 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
-2017/08/03 21:37:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:37:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:37:47 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:37:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:37:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:37:55 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
-2017/08/03 21:37:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:37:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:37:57 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:37:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:37:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:37:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:37:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:38:15 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
-2017/08/03 21:38:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:38:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:38:17 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:38:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:38:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:38:19 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
-2017/08/03 21:38:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:38:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:38:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:39:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:38:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:38:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:38:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:39:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:39:18 [ux_dck_zpool_loop] STATE - ERR0046 Provision task is in queue
-2017/08/03 21:39:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:39:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:39:20 [ux_dck_zpool_loop] STATE - ERR0046 CLOSING Provision task is in queue
 2017/08/03 21:39:20 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:39:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:39:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:39:26 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:39:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:39:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:39:28 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:39:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:39:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:39:48 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
 2017/08/03 21:39:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:39:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:39:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:39:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:39:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:39:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:39:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:39:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:39:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:39:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:39:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:39:57 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:39:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:39:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:39:59 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:39:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:39:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:40:19 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:40:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:40:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:40:21 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:40:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:40:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:40:48 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
 2017/08/03 21:40:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:40:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:40:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:40:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:40:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:40:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:40:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:40:59 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:40:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:40:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:41:01 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:41:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:41:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:11 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:41:19 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:41:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:41:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:41:21 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:41:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:41:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: no route to host
+2017/08/03 21:41:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:41:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: no route to host
 2017/08/03 21:41:51 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:41:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:41:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:41:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:41:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:41:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:41:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:41:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:42:01 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:42:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:42:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:42:03 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:42:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:42:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:42:21 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:42:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:42:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:42:23 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:42:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:42:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:42:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:42:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:42:51 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:42:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:42:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:42:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:42:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:42:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:42:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:42:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:43:03 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:43:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:43:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:43:05 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:43:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:43:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:43:14 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:43:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:43:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:43:16 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:43:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:43:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:43:25 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:43:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:43:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:43:27 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:43:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:43:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:43:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:43:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:43:51 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:43:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:43:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:43:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:43:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:43:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:43:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:43:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:44:05 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:44:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:44:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:44:07 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:44:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:44:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:44:16 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:44:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:44:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:44:18 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:44:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:44:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:44:27 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:44:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:44:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:44:29 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:44:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:44:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:44:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:44:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:44:51 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:44:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:44:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:44:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:44:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:44:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:44:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:44:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:01 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:07 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:09 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:45:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:09 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:12 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:45:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:45:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:45:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:45:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:45:13 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:45:15 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:45:17 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:45:19 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:45:20 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:45:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:45:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:45:21 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:45:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:29 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:45:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:29 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:31 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:45:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:31 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:33 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:33 [ux_dck_zpool_loop] INFO  - 
-2017/08/03 21:45:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:35 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:35 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 21:45:35 [ux_dck_zpool_loop] INFO  - Database started
 2017/08/03 21:45:37 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
-2017/08/03 21:45:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 21:45:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:45:37 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 21:45:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:45:42 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:45:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:45:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:45:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:45:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:45:46 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
 2017/08/03 21:45:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:45:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
-2017/08/03 21:45:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
-2017/08/03 21:45:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 21:45:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
+2017/08/03 21:45:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
+2017/08/03 21:45:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 21:45:53 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
 2017/08/03 21:45:53 [ux_dck_zpool_loop] INFO  - 19:45:38,109 disk#00        INFO    create file /srv/10940044185188150515_docker.dsk, size 1G
 19:45:38,110 disk#00        INFO    provisioned
@@ -747,7 +747,7 @@ total duration: 0:00:00.433362
 19:45:41,371 container#0001 INFO    wait for up status
 19:45:41,399 container#0001 INFO    wait for container operational
 19:45:41,444 ip#01          INFO    skip allocate: an ip is already defined
-19:45:41,517 ip#01          INFO    checking 192.168.100.50 availability
+19:45:41,517 ip#01          INFO    checking 192.168.100.75 availability
 19:45:46,528 ip#01          INFO    bridge mode
 19:45:46,556 ip#01          INFO    create symlink /var/run/netns/20928 -> /proc/20928/ns/net
 19:45:46,622 ip#01          INFO    /sbin/ip link add name veth1pl20928 mtu 1500 type veth peer name veth1pg20928 mtu 1500
@@ -755,7 +755,7 @@ total duration: 0:00:00.433362
 19:45:46,632 ip#01          INFO    /sbin/ip link set veth1pl20928 up
 19:45:46,636 ip#01          INFO    /sbin/ip link set veth1pg20928 netns 20928
 19:45:46,662 ip#01          INFO    /sbin/ip netns exec 20928 ip link set veth1pg20928 name eth1
-19:45:46,726 ip#01          INFO    /sbin/ip netns exec 20928 ip addr add 192.168.100.50/24 dev eth1
+19:45:46,726 ip#01          INFO    /sbin/ip netns exec 20928 ip addr add 192.168.100.75/24 dev eth1
 19:45:46,806 ip#01          INFO    /sbin/ip netns exec 20928 ip link set eth1 up
 19:45:46,838 ip#01          INFO    /sbin/ip netns exec 20928 ip route replace default via 192.168.100.254
 19:45:49,903 ip#01          INFO    remove /var/run/netns/20928
@@ -789,12 +789,12 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:07 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
 2017/08/03 21:46:08 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/03 21:46:08 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/03 21:46:08 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/03 21:46:08 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 21:46:08 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
+2017/08/03 21:46:08 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 21:46:08 [ux_dck_zpool_loop] TEST  - Starting Test testSwitchoverBackPreferedMasterNoRplCheckSemiSync
 2017/08/03 21:46:08 [ux_dck_zpool_loop] TEST  - Set cluster.conf.PrefMaster cluster.conf.PrefMaster
 2017/08/03 21:46:10 [ux_dck_zpool_loop] TEST  - New Master  192.168.100.70 Failover counter 0
-2017/08/03 21:46:11 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/03 21:46:11 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
 2017/08/03 21:46:11 [ux_dck_zpool_loop] Signaling Switchover..
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO : Starting master switch
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Checking long running updates on master 10
@@ -807,7 +807,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Rejecting updates on 192.168.100.70 (old master)
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Waiting for candidate Master to synchronize
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Stopping slave thread on new master
-2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Resetting slave on new master and set read/write mode on
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Inject fake transaction on new master 192.168.100.71 
 2017/08/03 21:46:11 [ux_dck_zpool_loop] INFO  - Switching old master as a slave
@@ -829,7 +829,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Rejecting updates on 192.168.100.71 (old master)
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Waiting for candidate Master to synchronize
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Stopping slave thread on new master
-2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Resetting slave on new master and set read/write mode on
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Inject fake transaction on new master 192.168.100.70 
 2017/08/03 21:46:13 [ux_dck_zpool_loop] INFO  - Switching old master as a slave
@@ -924,7 +924,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:36 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:36 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:36 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
-2017/08/03 21:46:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 21:46:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 21:46:37 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:38 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:38 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
@@ -935,7 +935,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:38 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:38 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:38 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:46:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:39 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:39 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:40 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:40 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -946,7 +946,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:40 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:40 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:40 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 21:46:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:41 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:41 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:42 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:42 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
@@ -957,7 +957,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:42 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:42 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:42 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:46:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:43 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:43 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:44 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:44 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -969,7 +969,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:44 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:44 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:45 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:45 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:46 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:46 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 21:46:46 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.70
@@ -980,7 +980,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:46 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:46 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:47 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:48 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:48 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.71
 2017/08/03 21:46:48 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
@@ -990,7 +990,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:48 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:48 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:48 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 21:46:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:49 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:50 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:50 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -1002,7 +1002,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:50 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:50 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:50 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:51 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:51 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.70
 2017/08/03 21:46:51 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.70
@@ -1013,7 +1013,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:51 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:51 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:51 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:52 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:52 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
 2017/08/03 21:46:52 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -1024,7 +1024,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:52 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:52 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:52 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:53 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:53 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 21:46:53 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.70
@@ -1034,7 +1034,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:53 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:46:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:53 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
-2017/08/03 21:46:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:55 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:56 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:56 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -1045,7 +1045,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:56 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:56 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:56 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 21:46:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:46:57 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:46:58 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:46:58 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -1057,7 +1057,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:46:58 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:46:58 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:46:59 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 21:46:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:46:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:47:00 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:47:00 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.70
 2017/08/03 21:47:00 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.71
@@ -1067,7 +1067,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:47:00 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:47:00 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:47:00 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 21:47:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 21:47:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 21:47:02 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:47:02 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:47:02 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.70
@@ -1078,7 +1078,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:47:02 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 21:47:02 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:47:02 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 21:47:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:47:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:47:03 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:47:03 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:47:03 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
@@ -1089,7 +1089,7 @@ a stack has been saved to the rpc log
 2017/08/03 21:47:03 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:47:03 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:47:03 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:47:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:47:03 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:47:05 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 21:47:05 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.70
@@ -1098,10 +1098,10 @@ a stack has been saved to the rpc log
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.71
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.71
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 21:47:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 21:47:05 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 21:47:05 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 21:47:06 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
 2017/08/03 21:47:06 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/03 21:47:06 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/03 21:47:06 [ux_dck_zpool_loop] TEST  - Result SwitchoverBackPreferedMasterNoRplCheckSemiSync           -> {testSwitchoverBackPreferedMasterNoRplCheckSemiSync PASS ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchoverBackPreferedMasterNoRplCheckSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchoverBackPreferedMasterNoRplCheckSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}
+2017/08/03 21:47:06 [ux_dck_zpool_loop] TEST  - Result SwitchoverBackPreferedMasterNoRplCheckSemiSync           -> {testSwitchoverBackPreferedMasterNoRplCheckSemiSync PASS ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchoverBackPreferedMasterNoRplCheckSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.75 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testSwitchoverBackPreferedMasterNoRplCheckSemiSync.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.75 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/semisync/innodb/maxscale/latest/x1/replication-manager.conf}}

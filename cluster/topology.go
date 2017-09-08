@@ -503,7 +503,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
-				if sl.Delay.Int64 <= cluster.conf.SwitchMaxDelay && sl.SQLThread == "Yes" {
+				if sl.Delay.Int64 <= cluster.conf.FailMaxDelay && sl.SQLThread == "Yes" {
 					cluster.master.RplMasterStatus = true
 				}
 

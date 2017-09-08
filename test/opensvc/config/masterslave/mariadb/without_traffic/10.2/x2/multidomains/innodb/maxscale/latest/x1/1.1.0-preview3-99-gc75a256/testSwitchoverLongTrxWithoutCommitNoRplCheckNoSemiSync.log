@@ -1,4 +1,4 @@
-2017/08/04 08:22:22 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 08:22:22 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 08:22:22 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 08:22:22 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 08:22:22 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
@@ -6,7 +6,7 @@
 
 2017/08/04 08:22:24 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
 2017/08/04 08:22:24 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 08:45:09 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 08:45:09 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 08:45:09 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 08:45:09 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 08:45:09 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
@@ -14,7 +14,7 @@
 
 2017/08/04 08:45:10 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
 2017/08/04 08:45:10 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 09:11:56 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 09:11:56 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 09:11:56 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 09:11:56 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 09:11:56 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
@@ -22,7 +22,7 @@
 
 2017/08/04 09:11:57 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
 2017/08/04 09:11:57 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 09:40:29 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 09:40:29 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 09:40:29 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 09:40:29 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 09:40:29 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
@@ -30,28 +30,28 @@
 
 2017/08/04 09:40:31 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
 2017/08/04 09:40:31 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 11:48:32 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 11:48:32 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 11:48:32 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 11:48:32 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 11:48:32 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/04 11:48:32 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/04 11:48:34 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 13:09:10 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 13:09:10 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 13:09:10 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 13:09:10 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 13:09:10 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/04 13:09:10 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/04 13:09:12 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 15:55:31 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 15:55:31 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 15:55:31 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 15:55:31 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 15:55:31 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/04 15:55:31 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/04 15:55:33 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/04 16:59:59 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 16:59:59 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 16:59:59 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 16:59:59 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 16:59:59 [ux_dck_zpool_loop] INFO  - Failover in automatic mode

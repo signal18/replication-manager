@@ -98,7 +98,6 @@ func init() {
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Switchover is cancel after this timeout in second if can't aquire FTWRL")
 	monitorCmd.Flags().BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Switchover Only  when state semisync is sync for last status")
 	monitorCmd.Flags().BoolVar(&conf.SwitchGtidCheck, "switchover-at-equal-gtid", false, "Switchover only when slaves are fully in sync")
-	monitorCmd.Flags().Int64Var(&conf.SwitchMaxDelay, "switchover-max-slave-delay", 0, "Switchover skip candidate slave if replication passed this delay")
 
 	monitorCmd.Flags().StringVar(&conf.MasterConn, "replication-source-name", "", "Replication channel name to use for multisource")
 	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
@@ -114,7 +113,7 @@ func init() {
 	//	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")
 	monitorCmd.Flags().StringVar(&conf.FailMode, "failover-mode", "manual", "Failover is manual or automatic")
-	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Failover ignore slave with replication delay over this time in sec")
+	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Election ignore slave with replication delay over this time in sec")
 	monitorCmd.Flags().BoolVar(&conf.FailRestartUnsafe, "failover-restart-unsafe", false, "Failover when cluster down if a slave is start first ")
 	monitorCmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Failover is canceld if already failover this number of time (0: unlimited)")
 	monitorCmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "Failover is canceled if timer in sec is not passed with previous failover (0: do not wait)")
@@ -317,6 +316,7 @@ func init() {
 		monitorCmd.Flags().MarkDeprecated("gtidcheck", "Deprecate for switchover-at-equal-gtid")
 		monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
 		monitorCmd.Flags().MarkDeprecated("maxdelay", "Deprecate for failover-max-slave-delay")
+
 	}
 
 	if WithSpider == "ON" {

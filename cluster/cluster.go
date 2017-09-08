@@ -584,7 +584,7 @@ func (cluster *Cluster) SwitchRplChecks() {
 }
 
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
-	cluster.conf.SwitchMaxDelay = delay
+	cluster.conf.FailMaxDelay = delay
 }
 
 func (cluster *Cluster) SetCleanAll(check bool) {

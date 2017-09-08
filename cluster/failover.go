@@ -680,10 +680,11 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
-	if ss.Seconds_Behind_Master.Int64 > cluster.conf.SwitchMaxDelay && cluster.conf.RplChecks == true {
-		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64), ErrFrom: "CHECK"})
+	cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.FailMaxDelay, ss.Seconds_Behind_Master.Int64)
+	if ss.Seconds_Behind_Master.Int64 > cluster.conf.FailMaxDelay && cluster.conf.RplChecks == true {
+		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.FailMaxDelay, ss.Seconds_Behind_Master.Int64), ErrFrom: "CHECK"})
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.SwitchMaxDelay, ss.Seconds_Behind_Master.Int64)
+			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than %d seconds of replication delay (%d). Skipping", sl.URL, cluster.conf.FailMaxDelay, ss.Seconds_Behind_Master.Int64)
 		}
 		return false
 	}

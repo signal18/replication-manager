@@ -1,49 +1,49 @@
-2017/08/06 11:14:50 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/06 11:14:50 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/06 11:14:50 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/06 11:14:50 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/06 11:14:50 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/06 11:14:50 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/06 11:14:52 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/07 10:27:23 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/07 10:27:23 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/07 10:27:23 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/07 10:27:23 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/07 10:27:23 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/07 10:27:23 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
 2017/08/07 10:27:25 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/07 14:01:35 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/07 14:01:35 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/07 14:01:35 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/07 14:01:35 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/07 14:01:35 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/07 14:01:35 [ux_dck_zpool_loop] WARN  - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
-2017/08/07 14:01:37 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
-2017/08/07 14:01:37 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
-2017/08/07 14:01:37 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.71 is down
+2017/08/07 14:01:37 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from  to Suspect
+2017/08/07 14:01:37 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from  to Suspect
+2017/08/07 14:01:37 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.81 is down
 2017/08/07 14:01:37 [ux_dck_zpool_loop] STATE - ERR00010 Could not find a slave in topology
 2017/08/07 14:01:37 [ux_dck_zpool_loop] STATE - ERR00012 Could not find a master in topology
 2017/08/07 14:01:37 [ux_dck_zpool_loop] STATE - ERR00021 All cluster db servers down
-2017/08/07 14:01:41 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.71 as failed
-2017/08/07 14:01:41 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from Suspect to Failed
-2017/08/07 14:01:41 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.70 as failed
-2017/08/07 14:01:41 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from Suspect to Failed
+2017/08/07 14:01:41 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.81 as failed
+2017/08/07 14:01:41 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from Suspect to Failed
+2017/08/07 14:01:41 [ux_dck_zpool_loop] INFO  - Declaring server 192.168.100.80 as failed
+2017/08/07 14:01:41 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from Suspect to Failed
 2017/08/07 14:01:42 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/07 20:58:43 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/07 20:58:43 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/07 20:58:43 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/07 20:58:43 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/07 20:58:43 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/07 20:58:43 [ux_dck_zpool_loop] WARN  - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
-2017/08/07 20:58:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
-2017/08/07 20:58:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
+2017/08/07 20:58:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from  to Suspect
+2017/08/07 20:58:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from  to Suspect
 2017/08/07 20:58:50 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
-2017/08/08 14:11:43 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/08 14:11:43 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/08 14:11:43 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/08 14:11:43 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/08 14:11:43 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
 2017/08/08 14:11:43 [ux_dck_zpool_loop] WARN  - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
 
-2017/08/08 14:11:45 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from  to Suspect
-2017/08/08 14:11:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.71 state changed from  to Suspect
+2017/08/08 14:11:45 [ux_dck_zpool_loop] ALERT - Server 192.168.100.80 state changed from  to Suspect
+2017/08/08 14:11:46 [ux_dck_zpool_loop] ALERT - Server 192.168.100.81 state changed from  to Suspect
 2017/08/08 14:11:48 [ux_dck_zpool_loop] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync

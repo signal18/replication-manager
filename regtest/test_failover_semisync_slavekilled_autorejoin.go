@@ -28,12 +28,7 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	cluster.StopDatabaseService(killedSlave)
 
 	time.Sleep(5 * time.Second)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go cluster.WaitFailover(wg)
-	cluster.StopDatabaseService(cluster.GetMaster())
-	wg.Wait()
-	/// give time to start the failover
+	cluster.FailoverAndWait()
 
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)

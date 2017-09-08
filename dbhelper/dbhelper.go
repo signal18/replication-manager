@@ -716,6 +716,10 @@ func StopSlaveIOThread(db *sqlx.DB) error {
 	_, err := db.Exec("STOP SLAVE IO_THREAD")
 	return err
 }
+func StopSlaveSQLThread(db *sqlx.DB) error {
+	_, err := db.Exec("STOP SLAVE SQL_THREAD")
+	return err
+}
 
 func StopAllSlaves(db *sqlx.DB) error {
 	_, err := db.Exec("STOP ALL SLAVES")

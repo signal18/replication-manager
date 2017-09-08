@@ -1,4 +1,4 @@
-2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
+2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
 2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
 2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Failover in automatic mode

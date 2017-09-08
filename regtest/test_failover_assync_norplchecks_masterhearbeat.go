@@ -18,9 +18,7 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	SaveMasterURL := cluster.GetMaster().URL
 
 	cluster.LogPrintf("INFO", "Master is %s", cluster.GetMaster().URL)
-	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
-	cluster.GetMaster().FailCount = cluster.GetMaxFail()
 	cluster.SetFailLimit(5)
 	cluster.SetFailTime(0)
 	cluster.SetFailoverCtr(0)
@@ -28,7 +26,7 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(20)
 	cluster.CheckFailed()
-	cluster.WaitFailoverEnd()
+	cluster.FailoverNow()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)

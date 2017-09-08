@@ -603,7 +603,7 @@ func (server *ServerMonitor) replicationCheck() string {
 		}
 
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.FailMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateSlaveLate
 			} else {
 				server.State = stateSlave
@@ -631,7 +631,7 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Running OK"
 		}
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.FailMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateRelayLate
 			} else {
 				server.State = stateRelay

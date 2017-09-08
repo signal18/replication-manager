@@ -5,11 +5,7 @@
 
 package regtest
 
-import (
-	"time"
-
-	"github.com/tanji/replication-manager/cluster"
-)
+import "github.com/tanji/replication-manager/cluster"
 
 func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
@@ -20,24 +16,17 @@ func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, con
 	}
 
 	SaveMasterURL := cluster.GetMaster().URL
-	cluster.DelayAllSlaves()
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
-	cluster.SetFailLimit(5)
-	cluster.SetFailTime(0)
-	cluster.SetFailoverCtr(0)
 	cluster.SetCheckFalsePositiveHeartbeat(false)
 	cluster.SetRplChecks(true)
 	cluster.SetRplMaxDelay(4)
-
-	cluster.FailoverAndWait()
-
+	cluster.SetFailoverCtr(1)
+	cluster.DelayAllSlaves()
+	cluster.FailoverNow()
 	cluster.LogPrintf("TEST", " New Master  %s ", cluster.GetMaster().URL)
-
-	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Old master %s ==  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-
+		cluster.LogPrintf("ERROR", "Old master %s !=  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 
