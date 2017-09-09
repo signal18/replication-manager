@@ -67,7 +67,7 @@ do
       rm -f buildtar/etc/config.toml.sample.opensvc.*
     else
       cp -rp test/opensvc buildtar/share/tests
-    done
+    fi
     cp replication-manager-$flavor buildtar/bin/
     cp service/replication-manager-$flavor.service buildtar/share/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 buildtar/share/replication-manager.init
