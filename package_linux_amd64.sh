@@ -71,7 +71,7 @@ do
     cp replication-manager-$flavor buildtar/bin/
     cp service/replication-manager-$flavor.service buildtar/share/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 buildtar/share/replication-manager.init
-    fpm --package replication-manager-$flavor-$version.tar -C buildtar -s dir -t tar -n replication-manager-$flavor .
+    fpm --package replication-manager-$flavor-$version.tar --prefix replication-manager-$flavor -C buildtar -s dir -t tar -n replication-manager-$flavor .
     gzip replication-manager-$flavor-$version.tar
     rm -rf buildtar/bin/replication-manager-$flavor
 done
