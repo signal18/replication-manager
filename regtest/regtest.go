@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 var tests = []string{

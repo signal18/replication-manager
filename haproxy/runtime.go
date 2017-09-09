@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package haproxy
@@ -11,7 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/misc"
 	"io/ioutil"
 	"log"
 	"net"

@@ -1,4 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Author: Guillaume Lefranc <guillaume@signal18.io>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
@@ -21,10 +22,10 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/graphite"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/termlog"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/termlog"
 )
 
 // Global variables

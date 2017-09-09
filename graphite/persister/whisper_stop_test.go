@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package persister
@@ -13,8 +14,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tanji/replication-manager/graphite/points"
-	"github.com/tanji/replication-manager/graphite/qa"
+	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/qa"
 )
 
 func makeRecvFromChan(ch chan *points.Points) func(chan bool) *points.Points {

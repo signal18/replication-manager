@@ -1,4 +1,4 @@
-## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager) [![Stories in Ready](https://badge.waffle.io/tanji/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/tanji/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=develop)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
@@ -398,7 +398,7 @@ Web browser IE is reported not working with http interface.
 
 As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
 
-Check https://github.com/tanji/replication-manager/releases for official releases.
+Check https://github.com/signal18/replication-manager/releases for official releases.
 
 Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
 
@@ -1024,7 +1024,7 @@ ALL is a special test to run all available tests.
 
 ### Bugs
 
-Check https://github.com/tanji/replication-manager/issues for a list of issues.
+Check https://github.com/signal18/replication-manager/issues for a list of issues.
 
 ### Contributors
 
@@ -1035,7 +1035,7 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 Guillaume Lefranc <guillaume@signal18.io>
 
-Stephane Varoqui <stephane@mariadb.com>
+Stephane Varoqui <svaroqui@gmail.com>
 
 #### Special Thanks
 

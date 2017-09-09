@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -22,14 +23,14 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/alert"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/graphite"
-	"github.com/tanji/replication-manager/gtid"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/alert"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/gtid"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/state"
 
-	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/misc"
 )
 
 // ServerMonitor defines a server to monitor.

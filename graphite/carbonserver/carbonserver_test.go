@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package carbonserver
@@ -15,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tanji/replication-manager/graphite/cache"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipperpb"
-	"github.com/tanji/replication-manager/graphite/points"
-	whisper "github.com/tanji/replication-manager/graphite/whisper"
+	"github.com/signal18/replication-manager/graphite/cache"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
+	"github.com/signal18/replication-manager/graphite/points"
+	whisper "github.com/signal18/replication-manager/graphite/whisper"
 	trigram "github.com/dgryski/go-trigram"
 )
 

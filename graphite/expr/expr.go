@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package expr
@@ -24,7 +25,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gonum/matrix/mat64"
 	"github.com/mjibson/go-dsp/fft"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
 	"github.com/wangjohn/quickselect"
 )
 

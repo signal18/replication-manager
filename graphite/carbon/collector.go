@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package carbon
@@ -14,8 +15,8 @@ import (
 
 	"github.com/Sirupsen/logrus"
 
-	"github.com/tanji/replication-manager/graphite/helper"
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/helper"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 type statFunc func()

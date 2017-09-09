@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -15,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (cluster *Cluster) CheckFailed() {
