@@ -9,7 +9,7 @@ package regtest
 import (
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
