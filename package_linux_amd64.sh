@@ -1,11 +1,27 @@
 #!/bin/bash
+
+nobuild=0
+if [ $1 != "" ]; then
+  if [ $1 = "--no-build" ]; then
+    nobuild=1
+  fi
+fi
+
 echo "# Getting branch info"
 git status -bs
+
 version=$(git describe --tag --abbrev=4)
 head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
-echo "# Building"
-./build_linux_amd64.sh
+description="Replication Manager for MariaDB and MySQL"
+maintainer="info@signal18.io"
+license="GPLv3"
+
+if [ $nobuild -eq 0 ]; then
+  echo "# Building"
+  ./build_linux_amd64.sh
+fi
+
 echo "# Cleaning up previous builds"
 rm -rf build
 rm -rf buildtar
@@ -14,17 +30,18 @@ rm *.deb
 rm *.rpm
 mkdir -p build/usr/bin
 
-
 echo "# Building packages replication-manager-cli"
+
+cflags=(-m "$maintainer" --license "$license" --epoch $epoch -v $version)
 
 rm -rf build/usr/share
 rm -rf build/usr/etc
 rm -rf build/var
 cp replication-manager-cli build/usr/bin/
-fpm --rpm-os linux --epoch $epoch -v $version -C build -s dir -t rpm -n replication-manager-client .
+fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-client --description "$description - client package" .
+fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-client --description "$description - client package" .
 fpm --package replication-manager-client-$version.tar -C build -s dir -t tar -n replication-manager-client .
 gzip replication-manager-client-$version.tar
-fpm --epoch $epoch -v $version -C build -s dir -t deb -n replication-manager-client .
 
 mkdir -p build/usr/share/replication-manager/dashboard
 mkdir -p build/etc/replication-manager
@@ -56,9 +73,9 @@ do
     cp replication-manager-$flavor build/usr/bin/
     cp service/replication-manager-$flavor.service build/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 build/etc/init.d/replication-manager
-    fpm --rpm-os linux --epoch $epoch -v $version -C build -s dir -t rpm -n replication-manager-$flavor .
+    fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-$flavor --description "$description" .
     cp service/replication-manager-$flavor.init.deb7 build/etc/init.d/replication-manager
-    fpm --epoch $epoch -v $version -C build -s dir -t deb -n replication-manager-$flavor .
+    fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-$flavor --description "$description" .
     rm -f build/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
@@ -82,11 +99,11 @@ rm -rf build/usr/share
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
-fpm --rpm-os linux --epoch $epoch -v $version -C build -s dir -t rpm -n replication-manager-arbitrator .
+fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-arbitrator .
 fpm --package replication-manager-arbitrator-$version.tar -C build -s dir -t tar -n replication-manager-arbitrator .
 gzip replication-manager-arbitrator-$version.tar
 cp service/replication-manager-arb.init.deb7 build/etc/init.d/replication-manager-arbitrator
-fpm --epoch $epoch -v $version -C build -s dir -t deb -n replication-manager-arbitrator .
+fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-arbitrator .
 rm -f build/usr/bin/replication-manager-arb
 
 echo "# Build complete"
