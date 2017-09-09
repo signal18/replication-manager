@@ -45,7 +45,8 @@ var tests = []string{
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
-	"testFailoverCascadingSemisyncAutoRejoinFlashback",
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM",
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM",
 	"testFailoverSemisyncSlavekilledAutoRejoin",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
@@ -238,16 +239,27 @@ func (regtest *RegTest) RunAllTests(cl *cluster.Cluster, test string) []cluster.
 		}
 		allTests["testFailoverAssyncAutoRejoinRelay"] = thistest
 	}
-	if test == "testFailoverCascadingSemisyncAutoRejoinFlashback" || test == "ALL" {
-		thistest.Name = "testFailoverCascadingSemisyncAutoRejoinFlashback"
+	if test == "testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM" || test == "ALL" {
+		thistest.Name = "testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM"
 		if cl.InitTestCluster(conf, &thistest) == true {
-			res = testFailoverCascadingSemisyncAutoRejoinFlashback(cl, conf, &thistest)
+			res = testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM(cl, conf, &thistest)
 			thistest.Result = regtest.getTestResultLabel(res)
 			cl.CloseTestCluster(conf, &thistest)
 		} else {
 			thistest.Result = "ERR"
 		}
-		allTests["testFailoverCascadingSemisyncAutoRejoinFlashback"] = thistest
+		allTests["testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM"] = thistest
+	}
+	if test == "testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM" || test == "ALL" {
+		thistest.Name = "testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM"
+		if cl.InitTestCluster(conf, &thistest) == true {
+			res = testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cl, conf, &thistest)
+			thistest.Result = regtest.getTestResultLabel(res)
+			cl.CloseTestCluster(conf, &thistest)
+		} else {
+			thistest.Result = "ERR"
+		}
+		allTests["testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM"] = thistest
 	}
 	if test == "testFailoverSemisyncSlavekilledAutoRejoin" || test == "ALL" {
 		thistest.Name = "testFailoverSemisyncSlavekilledAutoRejoin"

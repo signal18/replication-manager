@@ -96,6 +96,8 @@ type ServerMonitor struct {
 	HaveBinlogCompress          bool
 	HaveLogSlaveUpdates         bool
 	HaveGtidStrictMode          bool
+	HaveWsrep                   bool
+	IsWsrepSync                 bool
 	Version                     int
 	IsMaxscale                  bool
 	IsRelay                     bool
@@ -524,6 +526,12 @@ func (server *ServerMonitor) Refresh() error {
 		server.SemiSyncSlaveStatus = true
 	} else {
 		server.SemiSyncSlaveStatus = false
+	}
+
+	if server.Status["WSREP_LOCAL_STATE"] == "4" {
+		server.IsWsrepSync = true
+	} else {
+		server.IsWsrepSync = false
 	}
 
 	//monitor haproxy

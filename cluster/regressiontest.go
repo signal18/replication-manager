@@ -229,6 +229,14 @@ func (cluster *Cluster) FailoverNow() {
 	wg.Wait()
 }
 
+func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(1)
+	go cluster.WaitRejoin(wg2)
+	err := cluster.StartDatabaseService(server)
+	wg2.Wait()
+	return err
+}
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {

@@ -6,13 +6,12 @@
 package regtest
 
 import (
-	"sync"
 	"time"
 
 	"github.com/tanji/replication-manager/cluster"
 )
 
-func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailoverCtr(0)
 	cluster.SetFailSync(false)
@@ -41,19 +40,10 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 		return false
 	}
 
-	wg2 := new(sync.WaitGroup)
-	wg2.Add(1)
-	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster)
-	wg2.Wait()
-	//Recovered as slave first wait that it trigger master failover
+	cluster.StartDatabaseWaitRejoin(SaveMaster2)
 	time.Sleep(5 * time.Second)
 	cluster.RunBench()
-
-	wg2.Add(1)
-	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster2)
-	wg2.Wait()
+	cluster.StartDatabaseWaitRejoin(SaveMaster)
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
@@ -64,7 +54,6 @@ func testFailoverCascadingSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, 
 	time.Sleep(5 * time.Second)
 	if cluster.ChecksumBench() != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-
 		return false
 	}
 
