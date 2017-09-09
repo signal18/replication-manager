@@ -52,7 +52,7 @@ do
       rm -f build/etc/replication-manager/config.toml.sample.opensvc.*
     else
       cp -rp test/opensvc build/usr/share/replication-manager/tests
-    done
+    fi
     cp replication-manager-$flavor build/usr/bin/
     cp service/replication-manager-$flavor.service build/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 build/etc/init.d/replication-manager
