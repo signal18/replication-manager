@@ -1,8 +1,8 @@
 #!/bin/bash
 
 nobuild=0
-if [ $1 != "" ]; then
-  if [ $1 = "--no-build" ]; then
+if [ "$1" != "" ]; then
+  if [ "$1" = "--no-build" ]; then
     nobuild=1
   fi
 fi
