@@ -1018,7 +1018,7 @@ Check https://github.com/signal18/replication-manager/issues for a list of issue
 
 Guillaume Lefranc <guillaume@signal18.io>
 
-Stephane Varoqui <stephane@mariadb.com>
+Stephane Varoqui  <svaroqui@gmail.com>
 
 #### Special Thanks
 
