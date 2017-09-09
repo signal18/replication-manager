@@ -18,14 +18,14 @@ import (
 	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/tanji/replication-manager/cluster/nbc"
-	"github.com/tanji/replication-manager/config"
-	"github.com/tanji/replication-manager/crypto"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
-	"github.com/tanji/replication-manager/termlog"
+	"github.com/signal18/replication-manager/cluster/nbc"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/termlog"
 )
 
 type Cluster struct {

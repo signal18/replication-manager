@@ -24,7 +24,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gonum/matrix/mat64"
 	"github.com/mjibson/go-dsp/fft"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
 	"github.com/wangjohn/quickselect"
 )
 

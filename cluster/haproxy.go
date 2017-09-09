@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/tanji/replication-manager/haproxy"
+	"github.com/signal18/replication-manager/haproxy"
 )
 
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {

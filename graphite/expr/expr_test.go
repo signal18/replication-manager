@@ -13,7 +13,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gogo/protobuf/proto"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
 )
 
 func deepClone(original map[MetricRequest][]*MetricData) map[MetricRequest][]*MetricData {

@@ -14,11 +14,11 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/crypto"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 // Proxy defines a proxy

@@ -13,8 +13,8 @@ import (
 	"net/url"
 	"strconv"
 
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
-	"github.com/tanji/replication-manager/graphite/expr"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	"github.com/signal18/replication-manager/graphite/expr"
 )
 
 var errNoMetrics = errors.New("no metrics")

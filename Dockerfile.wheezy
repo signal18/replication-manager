@@ -1,7 +1,7 @@
 FROM golang:1.7-wheezy
-RUN mkdir -p /go/src/github.com/tanji/replication-manager
-WORKDIR /go/src/github.com/tanji/replication-manager
-COPY . /go/src/github.com/tanji/replication-manager/
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+COPY . /go/src/github.com/signal18/replication-manager/
 RUN go install .
 RUN mkdir -p /etc/replication-manager && mkdir -p /usr/share/replication-manager/dashboard
 COPY etc/config.toml.sample /etc/replication-manager/

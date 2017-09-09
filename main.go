@@ -17,7 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/replication-manager/config"
+	"github.com/signal18/replication-manager/config"
 )
 
 var (

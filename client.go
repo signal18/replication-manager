@@ -26,8 +26,8 @@ import (
 	termbox "github.com/nsf/termbox-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/termlog"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/termlog"
 )
 
 var (

@@ -8,7 +8,7 @@ package cache
 import (
 	"testing"
 
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 func TestInFlight(t *testing.T) {

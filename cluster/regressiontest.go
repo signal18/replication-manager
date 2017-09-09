@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/config"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 const recoverTime = 8

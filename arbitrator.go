@@ -20,8 +20,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 type route struct {

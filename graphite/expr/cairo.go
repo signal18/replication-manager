@@ -23,7 +23,7 @@ import (
 	"bitbucket.org/tebeka/strftime"
 	"github.com/evmar/gocairo/cairo"
 	"github.com/gogo/protobuf/proto"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
 )
 
 const haveGraphSupport = true

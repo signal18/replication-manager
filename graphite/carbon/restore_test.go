@@ -10,8 +10,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/tanji/replication-manager/graphite/points"
-	"github.com/tanji/replication-manager/graphite/qa"
+	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/qa"
 )
 
 func TestRestore(t *testing.T) {

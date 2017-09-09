@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 func (cluster *Cluster) InitCluster() error {

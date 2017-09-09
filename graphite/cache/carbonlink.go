@@ -16,9 +16,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/tanji/replication-manager/graphite/helper"
-	"github.com/tanji/replication-manager/graphite/helper/framing"
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/helper"
+	"github.com/signal18/replication-manager/graphite/helper/framing"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 // CarbonlinkRequest ...

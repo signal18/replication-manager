@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tanji/replication-manager/graphite/qa"
+	"github.com/signal18/replication-manager/graphite/qa"
 )
 
 func TestStartStop(t *testing.T) {

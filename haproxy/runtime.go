@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/misc"
 	"io/ioutil"
 	"log"
 	"net"

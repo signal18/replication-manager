@@ -26,8 +26,8 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/regtest"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/regtest"
 )
 
 //RSA KEYS AND INITIALISATION

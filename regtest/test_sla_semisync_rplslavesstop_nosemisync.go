@@ -8,7 +8,7 @@ package regtest
 import (
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {

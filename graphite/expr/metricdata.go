@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
-	pickle "github.com/tanji/replication-manager/graphite/og-rek"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	pickle "github.com/signal18/replication-manager/graphite/og-rek"
 )
 
 type MetricData struct {

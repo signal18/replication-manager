@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 type queueItem struct {

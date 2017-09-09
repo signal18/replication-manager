@@ -16,7 +16,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/alyu/configparser"
-	"github.com/tanji/replication-manager/graphite/whisper"
+	"github.com/signal18/replication-manager/graphite/whisper"
 )
 
 type whisperAggregationItem struct {

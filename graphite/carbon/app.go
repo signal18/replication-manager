@@ -15,10 +15,10 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"github.com/tanji/replication-manager/graphite/cache"
-	"github.com/tanji/replication-manager/graphite/carbonserver"
-	"github.com/tanji/replication-manager/graphite/persister"
-	"github.com/tanji/replication-manager/graphite/receiver"
+	"github.com/signal18/replication-manager/graphite/cache"
+	"github.com/signal18/replication-manager/graphite/carbonserver"
+	"github.com/signal18/replication-manager/graphite/persister"
+	"github.com/signal18/replication-manager/graphite/receiver"
 )
 
 type App struct {

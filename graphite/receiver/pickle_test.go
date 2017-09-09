@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tanji/replication-manager/graphite/logging"
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/logging"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 func TestPickle(t *testing.T) {
@@ -51,7 +51,7 @@ func TestBadPickle(t *testing.T) {
 	})
 }
 
-// https://github.com/tanji/replication-manager/graphite/issues/30
+// https://github.com/signal18/replication-manager/graphite/issues/30
 func TestPickleMemoryError(t *testing.T) {
 	assert := assert.New(t)
 	test := newTCPTestCase(t, true)

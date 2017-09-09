@@ -7,7 +7,7 @@
 // See LICENSE in this directory for the integral text.
 package cluster
 
-import "github.com/tanji/replication-manager/gtid"
+import "github.com/signal18/replication-manager/gtid"
 
 // Crash will store informations on a crash based on the replication stream
 type Crash struct {

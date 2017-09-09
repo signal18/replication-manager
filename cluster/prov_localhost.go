@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 func readPidFromFile(pidfile string) (string, error) {

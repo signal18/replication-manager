@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (cluster *Cluster) CheckFailed() {

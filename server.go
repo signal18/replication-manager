@@ -30,12 +30,12 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/crypto"
-	"github.com/tanji/replication-manager/graphite"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/termlog"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/termlog"
 )
 
 // Global variables

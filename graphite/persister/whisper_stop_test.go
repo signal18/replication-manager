@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tanji/replication-manager/graphite/points"
-	"github.com/tanji/replication-manager/graphite/qa"
+	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/qa"
 )
 
 func makeRecvFromChan(ch chan *points.Points) func(chan bool) *points.Points {

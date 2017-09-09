@@ -19,8 +19,8 @@ import (
 	//	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/cluster"
-	//	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/cluster"
+	//	"github.com/signal18/replication-manager/misc"
 )
 
 func init() {

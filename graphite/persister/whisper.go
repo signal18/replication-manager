@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
-	whisper "github.com/tanji/replication-manager/graphite/whisper"
+	whisper "github.com/signal18/replication-manager/graphite/whisper"
 
-	"github.com/tanji/replication-manager/graphite/helper"
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/helper"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 const storeMutexCount = 32768

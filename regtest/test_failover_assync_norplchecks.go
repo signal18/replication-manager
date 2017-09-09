@@ -5,7 +5,7 @@
 
 package regtest
 
-import "github.com/tanji/replication-manager/cluster"
+import "github.com/signal18/replication-manager/cluster"
 
 func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetRplMaxDelay(0)

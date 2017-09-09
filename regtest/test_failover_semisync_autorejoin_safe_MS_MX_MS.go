@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testFailoverSemisyncAutoRejoinSafeMSMXMS(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {

@@ -33,4 +33,4 @@ for i in $(find ./$1 -name "*.conf") ; do
   # Convert result to html
    replication-manager-cli test  --convert --file="$destdir/result.json" > $destdir/result.html
 done
-tree config -P result.html -H "http://htmlpreview.github.io/?https://github.com/tanji/replication-manager/tree/develop/test/opensvc/config"  > /data/results/regtest.html
+tree config -P result.html -H "http://htmlpreview.github.io/?https://github.com/signal18/replication-manager/tree/develop/test/opensvc/config"  > /data/results/regtest.html

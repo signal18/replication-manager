@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/tanji/replication-manager/graphite/carbon"
-	"github.com/tanji/replication-manager/graphite/logging"
+	"github.com/signal18/replication-manager/graphite/carbon"
+	"github.com/signal18/replication-manager/graphite/logging"
 )
 
 import _ "net/http/pprof"

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/tanji/replication-manager/graphite/persister"
-	"github.com/tanji/replication-manager/graphite/points"
+	"github.com/signal18/replication-manager/graphite/persister"
+	"github.com/signal18/replication-manager/graphite/points"
 )
 
 type SyncWriter struct {

@@ -24,10 +24,10 @@ import (
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
 	log "github.com/sirupsen/logrus"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/regtest"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/state"
 )
 
 type HandlerManager struct {

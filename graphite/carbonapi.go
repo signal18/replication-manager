@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/tanji/replication-manager/graphite/carbonzipper/carbonzipperpb"
-	"github.com/tanji/replication-manager/graphite/carbonzipper/mlog"
-	"github.com/tanji/replication-manager/graphite/carbonzipper/mstats"
-	"github.com/tanji/replication-manager/graphite/expr"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
+	"github.com/signal18/replication-manager/graphite/carbonzipper/mlog"
+	"github.com/signal18/replication-manager/graphite/carbonzipper/mstats"
+	"github.com/signal18/replication-manager/graphite/expr"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	ecache "github.com/dgryski/go-expirecache"

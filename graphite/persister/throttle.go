@@ -6,7 +6,7 @@
 package persister
 
 import (
-	"github.com/tanji/replication-manager/graphite/helper"
+	"github.com/signal18/replication-manager/graphite/helper"
 	"time"
 )
 

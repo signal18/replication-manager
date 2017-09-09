@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tanji/replication-manager/graphite/whisper"
+	"github.com/signal18/replication-manager/graphite/whisper"
 )
 
 func assertRetentionsEq(t *testing.T, ret whisper.Retentions, s string) {

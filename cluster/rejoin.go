@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 // RejoinMaster a server that just show up without slave status

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tanji/replication-manager/graphite/helper/framing"
+	"github.com/signal18/replication-manager/graphite/helper/framing"
 )
 
 func Test1BigEndian(t *testing.T) {

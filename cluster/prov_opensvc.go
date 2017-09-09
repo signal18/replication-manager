@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/state"
 )
 
 var dockerMinusRm bool

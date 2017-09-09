@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/tanji/replication-manager/graphite/persister"
+	"github.com/signal18/replication-manager/graphite/persister"
 )
 
 const MetricEndpointLocal = "local"

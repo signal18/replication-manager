@@ -6,7 +6,7 @@
 package haproxy
 
 import (
-	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/misc"
 	"path"
 )
 

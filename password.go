@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/crypto"
+	"github.com/signal18/replication-manager/crypto"
 )
 
 var (

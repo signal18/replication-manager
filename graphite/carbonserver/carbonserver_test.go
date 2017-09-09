@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tanji/replication-manager/graphite/cache"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipperpb"
-	"github.com/tanji/replication-manager/graphite/points"
-	whisper "github.com/tanji/replication-manager/graphite/whisper"
+	"github.com/signal18/replication-manager/graphite/cache"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
+	"github.com/signal18/replication-manager/graphite/points"
+	whisper "github.com/signal18/replication-manager/graphite/whisper"
 	trigram "github.com/dgryski/go-trigram"
 )
 
