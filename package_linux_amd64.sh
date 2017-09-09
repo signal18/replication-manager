@@ -32,7 +32,7 @@ mkdir -p build/usr/bin
 
 echo "# Building packages replication-manager-cli"
 
-cflags=(-m "$maintainer" --license "$license" --epoch $epoch -v $version)
+cflags=(-m "$maintainer" --license "$license" -v $version)
 
 rm -rf build/usr/share
 rm -rf build/usr/etc
@@ -73,7 +73,7 @@ do
     cp replication-manager-$flavor build/usr/bin/
     cp service/replication-manager-$flavor.service build/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 build/etc/init.d/replication-manager
-    fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-$flavor --description "$description" .
+    fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-$flavor --epoch $epoch --description "$description" .
     cp service/replication-manager-$flavor.init.deb7 build/etc/init.d/replication-manager
     fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-$flavor --description "$description" .
     rm -f build/usr/bin/replication-manager-$flavor
@@ -99,11 +99,11 @@ rm -rf build/usr/share
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
-fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-arbitrator .
+fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-arbitrator --epoch $epoch  --description "$description - arbitrator package" .
 fpm --package replication-manager-arbitrator-$version.tar -C build -s dir -t tar -n replication-manager-arbitrator .
 gzip replication-manager-arbitrator-$version.tar
 cp service/replication-manager-arb.init.deb7 build/etc/init.d/replication-manager-arbitrator
-fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-arbitrator .
+fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-arbitrator --description "$description - arbitrator package" .
 rm -f build/usr/bin/replication-manager-arb
 
 echo "# Build complete"
