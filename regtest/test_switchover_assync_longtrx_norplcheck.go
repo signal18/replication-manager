@@ -27,7 +27,7 @@ func testSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster,
 		cluster.LogPrintf("ERROR", "%s", err)
 		return false
 	}
-	go dbhelper.InjectTrxWithoutCommit(db, 20)
+	go dbhelper.InjectLongTrx(db, 20)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
 		return false

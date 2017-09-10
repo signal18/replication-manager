@@ -28,8 +28,8 @@ func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Clu
 		cluster.LogPrintf("ERROR", "Can't take proxy conn %s ", err)
 		return false
 	}
-	go dbhelper.InjectLongTrx(db, 20)
-	time.Sleep(2 * time.Second)
+	dbhelper.InjectTrxWithoutCommit(db)
+	time.Sleep(12 * time.Second)
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SwitchoverWaitTest()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)

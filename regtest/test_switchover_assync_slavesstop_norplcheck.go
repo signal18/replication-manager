@@ -26,9 +26,10 @@ func testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cluster *cluster.Cluster, c
 		cluster.LogPrintf("ERROR", "%s", err)
 		return false
 	}
-
+	time.Sleep(4 * time.Second)
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
+
 	cluster.SwitchoverWaitTest()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	time.Sleep(2 * time.Second)

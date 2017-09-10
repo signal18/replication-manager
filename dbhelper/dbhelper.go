@@ -1122,7 +1122,7 @@ func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 	return checkres, err
 }
 
-func InjectTrxWithoutCommit(db *sqlx.DB, time int) error {
+func InjectTrxWithoutCommit(db *sqlx.DB) error {
 	benchWarmup(db)
 	_, err := db.Exec("START TRANSACTION")
 	if err != nil {

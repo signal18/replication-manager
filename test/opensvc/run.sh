@@ -16,7 +16,7 @@ for i in $(find ./$1 -name "*.conf") ; do
    > $desdir/$test.log
    replication-manager-pro --http-bind-address="0.0.0.0" --test --log-file=$destdir/$test.log --verbose --config=./$i monitor &>run.log &
    pid="$!"
-   sleep 4
+   sleep 6
    while [[ $(replication-manager-cli api --url=https://127.0.0.1:3000/api/status) != "{\"alive\": \"running\"}" ]] ; do
     echo "waiting start service"
     sleep 1
