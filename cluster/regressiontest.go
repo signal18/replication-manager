@@ -281,7 +281,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 		cluster.Unprovision()
 		return false
 	}
-	cluster.waitClusterStart()
+
 	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
 	return true
 }

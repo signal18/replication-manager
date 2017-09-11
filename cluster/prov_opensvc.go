@@ -317,8 +317,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 
 	svc := cluster.OpenSVCConnect()
 	var taglist []string
-	taglist = strings.Split(svc.ProvTags, ",")
-	svctags, _ := svc.GetTags()
 
 	agent, err := cluster.FoundDatabaseAgent(s)
 	if err != nil {
@@ -333,12 +331,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 		cluster.UnprovisionDatabaseService(s)
 	}
 
-	// create template && bootstrap
-	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
-	if err != nil {
-		return err
-	}
-
 	//	idsrv := mysrv.Svc_id
 	//	if idsrv == "" || err != nil {
 	idsrv, err := svc.CreateService(s.Id, "MariaDB")
@@ -347,12 +339,21 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 		return err
 	}
 	//	}
+	taglist = strings.Split(svc.ProvTags, ",")
+	svctags, _ := svc.GetTags()
+
 	for _, tag := range taglist {
 		idtag, err := svc.GetTagIdFromTags(svctags, tag)
 		if err != nil {
 			idtag, _ = svc.CreateTag(tag)
 		}
 		svc.SetServiceTag(idtag, idsrv)
+	}
+
+	// create template && bootstrap
+	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
+	if err != nil {
+		return err
 	}
 	idtemplate, _ := svc.CreateTemplate(s.Id, res)
 	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)

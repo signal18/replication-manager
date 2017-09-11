@@ -338,26 +338,36 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 	return nil
 }
 
-func (cluster *Cluster) waitClusterStart() error {
+func (cluster *Cluster) AllDatabaseCanConn() bool {
+	for _, s := range cluster.servers {
+		if s.State == stateFailed {
+			return false
+		}
+	}
+	return true
+}
+
+func (cluster *Cluster) waitClusterCanConn() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	cluster.LogPrintf("INFO", "Waiting for cluster start")
+
+	cluster.LogPrintf("INFO", "Waiting for databases to start")
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for cluster start")
+			cluster.LogPrintf("INFO", "Waiting for databases to start")
 			exitloop++
-			if cluster.sme.CanMonitor() {
+			if cluster.AllDatabaseCanConn() {
 				exitloop = 100
 			}
 		default:
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Cluster was started")
+		cluster.LogPrintf("INFO", "All databases was started")
 	} else {
-		cluster.LogPrintf("ERROR", "Timeout waiting for cluster start")
-		return errors.New("Cluster search timeout")
+		cluster.LogPrintf("ERROR", "Timeout waiting for database to start")
+		return errors.New("Connections databases failure")
 	}
 	return nil
 }
@@ -370,13 +380,19 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
-	time.Sleep(time.Millisecond * 3000)
+	err = cluster.waitClusterCanConn()
+	if err != nil {
+		return err
+	}
 	err = cluster.BootstrapReplication()
 	if err != nil {
 		return err
 	}
 	if cluster.conf.Test {
-		cluster.WaitBootstrapDiscovery()
+		err = cluster.WaitBootstrapDiscovery()
+		if err != nil {
+			return err
+		}
 		cluster.initProxies()
 		if cluster.master == nil {
 			return errors.New("Abording test, no master found")
