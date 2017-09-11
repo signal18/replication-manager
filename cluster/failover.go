@@ -712,7 +712,11 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
-	ss, _ := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	ss, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
+		return false
+	}
 	hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
 	if err != nil {
 		if cluster.conf.LogLevel > 1 || forcingLog {
