@@ -876,6 +876,13 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
+		r.ParseForm() // Parses the request body
+		if r.Form.Get("provision") == "true" {
+			mycluster.SetTestStartCluster(true)
+		}
+		if r.Form.Get("unprovision") == "true" {
+			mycluster.SetTestStopCluster(true)
+		}
 		regtest := new(regtest.RegTest)
 		res := regtest.RunAllTests(mycluster, vars["testName"])
 		e := json.NewEncoder(w)
@@ -886,6 +893,8 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
+				mycluster.SetTestStartCluster(false)
+				mycluster.SetTestStopCluster(false)
 				return
 			}
 		} else {
@@ -896,6 +905,8 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
+				mycluster.SetTestStartCluster(false)
+				mycluster.SetTestStopCluster(false)
 				return
 			}
 
@@ -903,8 +914,12 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
+		mycluster.SetTestStartCluster(false)
+		mycluster.SetTestStopCluster(false)
 		return
 	}
+	mycluster.SetTestStartCluster(false)
+	mycluster.SetTestStopCluster(false)
 	return
 }
 

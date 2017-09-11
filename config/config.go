@@ -137,8 +137,6 @@ type Config struct {
 	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path"`
 	ProxysqlUser                       string `mapstructure:"proxysql-credentail"`
 	KeyPath                            string `mapstructure:"keypath"`
-	Test                               bool   `mapstructure:"test"`
-	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`
 	GraphiteEmbedded                   bool   `mapstructure:"graphite-embedded"`
@@ -158,7 +156,8 @@ type Config struct {
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
 	FailForceGtid                      bool   //suspicious code
-	RegTestStopCluster                 bool   //used by regtest to stop cluster
+	Test                               bool   `mapstructure:"test"`
+	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Enterprise                         bool   //used to talk to opensvc collector
 	ProvHost                           string `mapstructure:"opensvc-host"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user"`

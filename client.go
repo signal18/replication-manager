@@ -25,10 +25,10 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/termlog"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -150,8 +150,8 @@ func init() {
 	testCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
 
 	testCmd.Flags().BoolVar(&cliShowtests, "show-tests", false, "display tests list")
-	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-start-cluster", true, "start the cluster between tests")
-	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-stop-cluster", true, "stop the cluster between tests")
+	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
+	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
 
 	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
@@ -333,10 +333,10 @@ var testCmd = &cobra.Command{
 				var stopcluster RequetParam
 				var params []RequetParam
 
-				startcluster.key = "startcluster"
+				startcluster.key = "provision"
 				startcluster.value = strconv.FormatBool(cliTeststartcluster)
 				params = append(params, startcluster)
-				stopcluster.key = "stopcluster"
+				stopcluster.key = "unprovision"
 				stopcluster.value = strconv.FormatBool(cliTeststopcluster)
 				params = append(params, stopcluster)
 

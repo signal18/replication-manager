@@ -220,7 +220,7 @@ func (cluster *Cluster) WaitClusterStop() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
-	for exitloop < 60 {
+	for exitloop < 10 {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting for cluster shutdown")

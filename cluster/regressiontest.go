@@ -268,24 +268,6 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	return nil
 }
 
-func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
-	test.ConfigInit = cluster.conf
-	savedConf = cluster.conf
-	savedFailoverCtr = cluster.failoverCtr
-	savedFailoverTs = cluster.failoverTs
-	cluster.CleanAll = true
-
-	err := cluster.Bootstrap()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)
-		cluster.Unprovision()
-		return false
-	}
-
-	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
-	return true
-}
-
 func (cluster *Cluster) InitBenchTable() error {
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
@@ -295,13 +277,32 @@ func (cluster *Cluster) InitBenchTable() error {
 	return nil
 }
 
+func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
+	test.ConfigInit = cluster.conf
+	savedConf = cluster.conf
+	savedFailoverCtr = cluster.failoverCtr
+	savedFailoverTs = cluster.failoverTs
+	cluster.CleanAll = true
+	if cluster.testStopCluster {
+		err := cluster.Bootstrap()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)
+			cluster.Unprovision()
+			return false
+		}
+	}
+	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
+	return true
+}
+
 func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
 	test.ConfigTest = cluster.conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
+		cluster.WaitClusterStop()
 	}
 	cluster.RestoreConf()
-	cluster.WaitClusterStop()
+
 	return true
 }
 
