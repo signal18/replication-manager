@@ -672,7 +672,11 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 }
 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
-	ss, _ := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	ss, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		return false
+	}
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 		cluster.sme.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK"})
