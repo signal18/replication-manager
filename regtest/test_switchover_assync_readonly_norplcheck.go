@@ -23,8 +23,10 @@ func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, tes
 		}
 	}
 	cluster.SwitchoverWaitTest()
+
 	cluster.LogPrintf("TEST", "New Master is %s ", cluster.GetMaster().URL)
 	for _, s := range cluster.GetSlaves() {
+		s.Refresh()
 		cluster.LogPrintf("TEST", "Server  %s is %s", s.URL, s.ReadOnly)
 		if s.ReadOnly == "OFF" {
 			return false

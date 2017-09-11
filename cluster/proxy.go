@@ -219,6 +219,36 @@ func (cluster *Cluster) InjectTraffic() {
 	}
 }
 
+func (cluster *Cluster) IsProxyEqualMaster() bool {
+	// Found server from ServerId
+	if cluster.master != nil {
+		for _, pr := range cluster.proxies {
+			db, err := cluster.GetClusterThisProxyConn(pr)
+			if err != nil {
+				return false
+			} else {
+				var sv map[string]string
+				sv, err = dbhelper.GetVariables(db)
+				if err != nil {
+					db.Close()
+					return false
+				}
+				var sid uint64
+				sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+				if err != nil {
+					return false
+				}
+
+				if cluster.master.ServerID == uint(sid) {
+					db.Close()
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {

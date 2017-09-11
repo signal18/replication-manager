@@ -267,15 +267,15 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	return "N/A"
 }
 
-func GetHostFromConnection(db *sqlx.DB, user string) string {
+func GetHostFromConnection(db *sqlx.DB, user string) (string, error) {
 
 	var value string
 	err := db.QueryRowx("select user()").Scan(&value)
 	if err != nil {
-		log.Println("ERROR: Could not get spider shards", err)
-		return "N/A"
+		log.Println("ERROR: Could not get SQL User()", err)
+		return "N/A", err
 	}
-	return strings.Split(value, "@")[1]
+	return strings.Split(value, "@")[1], nil
 
 }
 

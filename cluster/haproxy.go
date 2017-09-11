@@ -44,12 +44,12 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	cluster.LogPrintf("INFO", "Haproxy loading haproxy config at %s", haproxyconfigPath)
 	err := haConfig.GetConfigFromDisk()
 	if err != nil {
-		log.Printf("Haproxy did not find an haproxy config...initializing new config")
+		cluster.LogPrintf("INFO", "Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
 	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: cluster.conf.HaproxyWritePort, BindIp: cluster.conf.HaproxyWriteBindIp}
 	if err := haConfig.AddFrontend(&few); err != nil {
-		log.Printf("Failed to add frontend write ")
+		cluster.LogPrintf("ERROR", "Failed to add frontend write ")
 	} else {
 		if err := haConfig.AddFrontend(&few); err != nil {
 			cluster.LogPrintf("ERROR", "Haproxy should return nil on already existing frontend")
@@ -120,11 +120,8 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	} else {
 
 		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-			cluster.LogPrintf("ERROR", "Haproxy pidfile exists at %s, proceeding...", haConfig.PidFile)
-		} else {
-			cluster.LogPrintf("ERROR", "Created new pidfile...")
+			cluster.LogPrintf("WARNING", "Haproxy pidfile exists at %s, proceeding with reload config...", haConfig.PidFile)
 		}
-
 		err = haRuntime.Reload(&haConfig)
 		if err != nil {
 			log.Fatal("Error while reloading haproxy: " + err.Error())

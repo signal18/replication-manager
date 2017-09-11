@@ -241,6 +241,31 @@ func (cluster *Cluster) WaitClusterStop() error {
 	return nil
 }
 
+func (cluster *Cluster) WaitProxyEqualMaster() error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * 2000)
+	cluster.LogPrintf("INFO", "Waiting for proxy to join master")
+	for exitloop < 60 {
+		select {
+		case <-ticker.C:
+			cluster.LogPrintf("INFO", "Waiting for proxy to join master")
+			exitloop++
+			// All cluster down
+			if cluster.IsProxyEqualMaster() == true {
+				exitloop = 100
+			}
+		default:
+		}
+	}
+	if exitloop == 100 {
+		cluster.LogPrintf("INFO", "Proxy can join master")
+	} else {
+		cluster.LogPrintf("ERROR", "Proxy to join master timeout")
+		return errors.New("Failed to join master via proxy")
+	}
+	return nil
+}
+
 func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
@@ -389,6 +414,10 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.conf.Test {
+		err = cluster.WaitProxyEqualMaster()
+		if err != nil {
+			return err
+		}
 		err = cluster.WaitBootstrapDiscovery()
 		if err != nil {
 			return err

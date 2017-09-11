@@ -402,7 +402,7 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 	return errors.New("Waiting to long more 400s for OpenSVC dequeue")
 }
 
-func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
+/*func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 
 	svc := cluster.OpenSVCConnect()
 	servers := cluster.GetServers()
@@ -468,7 +468,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 	}
 
 	return nil
-}
+}*/
 
 // OpenSVCSeviceStatus 0 not provision , 1 prov and up ,2 on error error
 func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {

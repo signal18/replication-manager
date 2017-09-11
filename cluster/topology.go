@@ -215,7 +215,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.LogPrintf("DEBUG", "Privilege check on %s", sv.URL)
 		}
 		if sv.State != "" && !sv.IsDown() && sv.IsRelay == false {
-			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
+			myhost, err := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Cant get host for connection user on %s: %s", sv.URL, err)
+			}
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
