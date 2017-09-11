@@ -169,6 +169,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf("DEBUG", "Entering topology detection")
 	}
+	// Check topology Cluster is down
+	cluster.TopologyClusterDown()
 
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
@@ -524,8 +526,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
-	// Check topology Cluster is down
-	cluster.TopologyClusterDown()
+
 	// Fecth service Status
 	/*	if cluster.conf.Enterprise {
 		status, err := cluster.GetOpenSVCSeviceStatus()
