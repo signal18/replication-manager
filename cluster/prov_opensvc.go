@@ -69,8 +69,8 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 						if err != nil {
 							cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 						}
-						opensvc.DeleteService(svc.Svc_id)
 					}
+					opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 			for _, prx := range cluster.proxies {
@@ -83,9 +83,8 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 						if err != nil {
 							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 						}
-						opensvc.DeleteService(svc.Svc_id)
-
 					}
+					opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 		}
