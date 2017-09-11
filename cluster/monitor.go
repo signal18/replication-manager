@@ -200,7 +200,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 
 	if server.ClusterGroup.conf.LogLevel > 2 {
-		// LogPrint("DEBUG: Checking server", server.Host)
+		// server.ClusterGroup.LogPrintf("INFO", "Checking server %s", server.Host)
 	}
 
 	var conn *sqlx.DB

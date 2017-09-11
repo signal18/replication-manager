@@ -169,7 +169,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrint("INFO", "Waiting switchover end")
+			cluster.LogPrintf("INFO", "Waiting switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
 			return

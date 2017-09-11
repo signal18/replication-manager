@@ -191,7 +191,7 @@ func (cluster *Cluster) Run() {
 			case sig := <-cluster.switchoverChan:
 				if sig {
 					if cluster.runStatus == "A" {
-						cluster.LogPrint("Signaling Switchover..")
+						cluster.LogPrintf("INFO", "Signaling Switchover...")
 						cluster.MasterFailover(false)
 						cluster.switchoverCond.Send <- true
 					} else {

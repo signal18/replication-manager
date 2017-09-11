@@ -94,7 +94,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}
-		server.ClusterGroup.LogPrint("INFO", "Rejoin script complete", string(out))
+		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
 	}
 	return nil
 }
@@ -308,12 +308,11 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 		if err == nil {
 			dbhelper.StartSlave(server.Conn)
 		} else {
-			server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect master server %s, stopping slave as a precaution", server.URL)
-			server.ClusterGroup.LogPrint(err)
+			server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect master server %s, stopping slave as a precaution %s ", server.URL, err)
 			return err
 		}
 	} else {
-		server.ClusterGroup.LogPrint(err)
+		server.ClusterGroup.LogPrintf("ERROR", "Rejoin master as slave can't set read only %s", err)
 		return err
 	}
 	return nil
@@ -350,11 +349,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 							if err == nil {
 								dbhelper.StartSlave(server.Conn)
 							} else {
-								server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect slave server %s, stopping slave as a precaution", server.URL)
-								server.ClusterGroup.LogPrint(err)
+								server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
 							}
 						} else {
-							server.ClusterGroup.LogPrint(err)
+							server.ClusterGroup.LogPrintf("ERROR", "Can't stop slave in rejoin slave %s", err)
 						}
 
 					} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {

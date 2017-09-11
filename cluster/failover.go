@@ -301,7 +301,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		hasMyGTID, err := dbhelper.HasMySQLGTID(oldMaster.Conn)
 		if err != nil {
-			cluster.LogPrint("WARN : Could not get MySQL GTID status: ", err)
+			cluster.LogPrintf("ERROR", "Could not get MySQL GTID status: ", err)
 		}
 		var changeMasterErr error
 		// Do positional switch if we are an old MySQL version
@@ -667,7 +667,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		/* Return key of slave with the highest pos. */
 		return hipos
 	}
-	// cluster.LogPrint("ERROR: No suitable candidates found.") TODO: move this outside func
 	return -1
 }
 

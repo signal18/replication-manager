@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"strconv"
@@ -282,33 +283,25 @@ func (cluster *Cluster) initProxies() {
 }
 
 func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	var proxyHost string
-	var proxyPort string
-	proxyHost = ""
-	if cluster.conf.MxsOn {
-		proxyHost = cluster.conf.MxsHost
-		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
-
+	if len(cluster.proxies) == 0 {
+		return nil, errors.New("No proxies definition")
 	}
-	if cluster.conf.HaproxyOn {
-		proxyHost = "127.0.0.1"
-		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
-	}
-
-	_, err := dbhelper.CheckHostAddr(proxyHost)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
-		return nil, errmsg
-	}
+	prx := cluster.proxies[0]
 
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if proxyHost != "" {
-		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
+	if prx.Host != "" {
+		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+	} else {
+
+		return nil, errors.New("No proxies definition")
 	}
-	cluster.LogPrint(dsn)
-	return sqlx.Open("mysql", dsn)
+	conn, err := sqlx.Open("mysql", dsn)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Can't get a proxy %s connection: %s", dsn, err)
+	}
+	return conn, err
 
 }
 

@@ -42,7 +42,6 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 			if err != nil {
 				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
 			} else {
-				//		server.ClusterGroup.LogPrint("get MaxScale server list")
 				var connections string
 				server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
 				server.MxsServerConnections, _ = strconv.Atoi(connections)
