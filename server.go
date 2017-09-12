@@ -29,14 +29,14 @@ import (
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
 	uuid "github.com/satori/go.uuid"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/termlog"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // Global variables
@@ -83,6 +83,11 @@ func init() {
 	if GoOS == "darwin" {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
 	}
+
+	if WithDeprecate == "ON" {
+		initDeprecated()
+	}
+
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring time interval in seconds")
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
@@ -114,6 +119,7 @@ func init() {
 	//	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")
 	monitorCmd.Flags().StringVar(&conf.FailMode, "failover-mode", "manual", "Failover is manual or automatic")
+
 	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Election ignore slave with replication delay over this time in sec")
 	monitorCmd.Flags().BoolVar(&conf.FailRestartUnsafe, "failover-restart-unsafe", false, "Failover when cluster down if a slave is start first ")
 	monitorCmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Failover is canceld if already failover this number of time (0: unlimited)")
@@ -254,71 +260,6 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10002", "Peer replication-manager hosts http port")
 		monitorCmd.Flags().StringVar(&conf.DbServerLocality, "db-servers-locality", "127.0.0.1:10002", "List database servers that are in same network locality")
 	}
-	if WithDeprecate == "ON" {
-		monitorCmd.Flags().StringVar(&conf.MasterConn, "replication-master-connection", "", "Connection name to use for multisource replication")
-		monitorCmd.Flags().MarkDeprecated("replication-master-connection", "Depecrate for replication-source-name")
-		monitorCmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write output messages to log file")
-		monitorCmd.Flags().MarkDeprecated("logfile", "Deprecate for log-file")
-		monitorCmd.Flags().Int64Var(&conf.SwitchWaitKill, "wait-kill", 5000, "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
-		monitorCmd.Flags().MarkDeprecated("wait-kill", "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
-		monitorCmd.Flags().StringVar(&conf.User, "user", "", "User for database login, specified in the [user]:[password] format")
-		monitorCmd.Flags().MarkDeprecated("user", "Deprecate for db-servers-credential")
-		monitorCmd.Flags().StringVar(&conf.Hosts, "hosts", "", "List of database hosts IP and port (optional), specified in the host:[port] format and separated by commas")
-		monitorCmd.Flags().MarkDeprecated("hosts", "Deprecate for db-servers-hosts")
-		monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "hosts-tls-ca-cert", "", "TLS authority certificate")
-		monitorCmd.Flags().MarkDeprecated("hosts-tls-ca-cert", "Deprecate for db-servers-tls-ca-cert")
-		monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "hosts-tls-client-key", "", "TLS client key")
-		monitorCmd.Flags().MarkDeprecated("hosts-tls-client-key", "Deprecate for db-servers-tls-client-key")
-		monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "hosts-tls-client-cert", "", "TLS client certificate")
-		monitorCmd.Flags().MarkDeprecated("hosts-tls-client-cert", "Deprecate for db-servers-tls-client-cert")
-		monitorCmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
-		monitorCmd.Flags().MarkDeprecated("connect-timeout", "Deprecate for db-servers-connect-timeout")
-		monitorCmd.Flags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
-		monitorCmd.Flags().MarkDeprecated("rpluser", "Deprecate for replication-credential")
-		monitorCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
-		monitorCmd.Flags().MarkDeprecated("prefmaster", "Deprecate for db-servers-prefered-master")
-		monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
-		monitorCmd.Flags().MarkDeprecated("ignore-servers", "Deprecate for db-servers-ignored-hosts")
-		monitorCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
-		monitorCmd.Flags().MarkDeprecated("master-connection", "Deprecate for replication-master-connection")
-		monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
-		monitorCmd.Flags().MarkDeprecated("master-connect-retry", "Deprecate for replication-master-connection-retry")
-		monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:mariadb", "Rest API user:password")
-		monitorCmd.Flags().MarkDeprecated("api-user", "Deprecate for 	api-credential")
-		monitorCmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover failover")
-		monitorCmd.Flags().MarkDeprecated("readonly", "Deprecate for failover-readonly-state")
-		monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
-		monitorCmd.Flags().MarkDeprecated("maxscale-host", "Deprecate for maxscale-servers")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "mdbshardproxy-hosts", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
-		monitorCmd.Flags().MarkDeprecated("mdbshardproxy-hosts", "Deprecate for mdbshardproxy-servers")
-		monitorCmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
-		monitorCmd.Flags().MarkDeprecated("multimaster", "Deprecate for replication-multi-master")
-		monitorCmd.Flags().BoolVar(&conf.MultiTierSlave, "multi-tier-slave", false, "Turn on to enable relay slaves in the topology")
-		monitorCmd.Flags().MarkDeprecated("multi-tier-slaver", "Deprecate for replication-multi-tier-slave")
-		monitorCmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
-		monitorCmd.Flags().MarkDeprecated("pre-failover-script", "Deprecate for failover-pre-script")
-		monitorCmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
-		monitorCmd.Flags().MarkDeprecated("post-failover-script", "Deprecate for failover-post-script")
-		monitorCmd.Flags().StringVar(&conf.RejoinScript, "rejoin-script", "", "Path of old master rejoin script")
-		monitorCmd.Flags().MarkDeprecated("rejoin-script", "Deprecate for autorejoin-script")
-		monitorCmd.Flags().StringVar(&conf.ShareDir, "share-directory", "/usr/share/replication-manager", "Path to HTTP monitor share files")
-		monitorCmd.Flags().MarkDeprecated("share-directory", "Deprecate for monitoring-sharedir")
-		monitorCmd.Flags().StringVar(&conf.WorkingDir, "working-directory", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
-		monitorCmd.Flags().MarkDeprecated("working-directory", "Deprecate for monitoring-datadir")
-		monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
-		monitorCmd.Flags().MarkDeprecated("interactive", "Deprecate for failover-mode")
-		monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
-		monitorCmd.Flags().MarkDeprecated("failcount", "Deprecate for failover-falsepositive-ping-counter")
-		monitorCmd.Flags().IntVar(&conf.SwitchWaitWrite, "wait-write-query", 10, "Deprecate  Wait this many seconds before write query end to cancel switchover")
-		monitorCmd.Flags().MarkDeprecated("wait-write-query", "Deprecate for switchover-wait-write-query")
-		monitorCmd.Flags().Int64Var(&conf.SwitchWaitTrx, "wait-trx", 10, "Depecrate for switchover-wait-trx Wait this many seconds before transactions end to cancel switchover")
-		monitorCmd.Flags().MarkDeprecated("wait-trx", "Deprecate for switchover-wait-trx")
-		monitorCmd.Flags().BoolVar(&conf.SwitchGtidCheck, "gtidcheck", false, "Depecrate for failover-at-equal-gtid do not initiate failover unless slaves are fully in sync")
-		monitorCmd.Flags().MarkDeprecated("gtidcheck", "Deprecate for switchover-at-equal-gtid")
-		monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
-		monitorCmd.Flags().MarkDeprecated("maxdelay", "Deprecate for failover-max-slave-delay")
-
-	}
 
 	if WithSpider == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
@@ -392,6 +333,72 @@ func initRepmgrFlags(cmd *cobra.Command) {
 
 }
 
+func initDeprecated() {
+	monitorCmd.Flags().StringVar(&conf.MasterConn, "replication-master-connection", "", "Connection name to use for multisource replication")
+	monitorCmd.Flags().MarkDeprecated("replication-master-connection", "Depecrate for replication-source-name")
+	monitorCmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write output messages to log file")
+	monitorCmd.Flags().MarkDeprecated("logfile", "Deprecate for log-file")
+	monitorCmd.Flags().Int64Var(&conf.SwitchWaitKill, "wait-kill", 5000, "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
+	monitorCmd.Flags().MarkDeprecated("wait-kill", "Deprecate for switchover-wait-kill Wait this many milliseconds before killing threads on demoted master")
+	monitorCmd.Flags().StringVar(&conf.User, "user", "", "User for database login, specified in the [user]:[password] format")
+	monitorCmd.Flags().MarkDeprecated("user", "Deprecate for db-servers-credential")
+	monitorCmd.Flags().StringVar(&conf.Hosts, "hosts", "", "List of database hosts IP and port (optional), specified in the host:[port] format and separated by commas")
+	monitorCmd.Flags().MarkDeprecated("hosts", "Deprecate for db-servers-hosts")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "hosts-tls-ca-cert", "", "TLS authority certificate")
+	monitorCmd.Flags().MarkDeprecated("hosts-tls-ca-cert", "Deprecate for db-servers-tls-ca-cert")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "hosts-tls-client-key", "", "TLS client key")
+	monitorCmd.Flags().MarkDeprecated("hosts-tls-client-key", "Deprecate for db-servers-tls-client-key")
+	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "hosts-tls-client-cert", "", "TLS client certificate")
+	monitorCmd.Flags().MarkDeprecated("hosts-tls-client-cert", "Deprecate for db-servers-tls-client-cert")
+	monitorCmd.Flags().IntVar(&conf.Timeout, "connect-timeout", 5, "Database connection timeout in seconds")
+	monitorCmd.Flags().MarkDeprecated("connect-timeout", "Deprecate for db-servers-connect-timeout")
+	monitorCmd.Flags().StringVar(&conf.RplUser, "rpluser", "", "Replication user in the [user]:[password] format")
+	monitorCmd.Flags().MarkDeprecated("rpluser", "Deprecate for replication-credential")
+	monitorCmd.Flags().StringVar(&conf.PrefMaster, "prefmaster", "", "Preferred candidate server for master failover, in host:[port] format")
+	monitorCmd.Flags().MarkDeprecated("prefmaster", "Deprecate for db-servers-prefered-master")
+	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "ignore-servers", "", "List of servers to ignore in slave promotion operations")
+	monitorCmd.Flags().MarkDeprecated("ignore-servers", "Deprecate for db-servers-ignored-hosts")
+	monitorCmd.Flags().StringVar(&conf.MasterConn, "master-connection", "", "Connection name to use for multisource replication")
+	monitorCmd.Flags().MarkDeprecated("master-connection", "Deprecate for replication-master-connection")
+	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
+	monitorCmd.Flags().MarkDeprecated("master-connect-retry", "Deprecate for replication-master-connection-retry")
+	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:mariadb", "Rest API user:password")
+	monitorCmd.Flags().MarkDeprecated("api-user", "Deprecate for 	api-credential")
+	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover failover")
+	monitorCmd.Flags().MarkDeprecated("readonly", "Deprecate for failover-readonly-state")
+	monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
+	monitorCmd.Flags().MarkDeprecated("maxscale-host", "Deprecate for maxscale-servers")
+	monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "mdbshardproxy-hosts", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
+	monitorCmd.Flags().MarkDeprecated("mdbshardproxy-hosts", "Deprecate for mdbshardproxy-servers")
+	monitorCmd.Flags().BoolVar(&conf.MultiMaster, "multimaster", false, "Turn on multi-master detection")
+	monitorCmd.Flags().MarkDeprecated("multimaster", "Deprecate for replication-multi-master")
+	monitorCmd.Flags().BoolVar(&conf.MultiTierSlave, "multi-tier-slave", false, "Turn on to enable relay slaves in the topology")
+	monitorCmd.Flags().MarkDeprecated("multi-tier-slaver", "Deprecate for replication-multi-tier-slave")
+	monitorCmd.Flags().StringVar(&conf.PreScript, "pre-failover-script", "", "Path of pre-failover script")
+	monitorCmd.Flags().MarkDeprecated("pre-failover-script", "Deprecate for failover-pre-script")
+	monitorCmd.Flags().StringVar(&conf.PostScript, "post-failover-script", "", "Path of post-failover script")
+	monitorCmd.Flags().MarkDeprecated("post-failover-script", "Deprecate for failover-post-script")
+	monitorCmd.Flags().StringVar(&conf.RejoinScript, "rejoin-script", "", "Path of old master rejoin script")
+	monitorCmd.Flags().MarkDeprecated("rejoin-script", "Deprecate for autorejoin-script")
+	monitorCmd.Flags().StringVar(&conf.ShareDir, "share-directory", "/usr/share/replication-manager", "Path to HTTP monitor share files")
+	monitorCmd.Flags().MarkDeprecated("share-directory", "Deprecate for monitoring-sharedir")
+	monitorCmd.Flags().StringVar(&conf.WorkingDir, "working-directory", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
+	monitorCmd.Flags().MarkDeprecated("working-directory", "Deprecate for monitoring-datadir")
+	monitorCmd.Flags().BoolVar(&conf.Interactive, "interactive", true, "Ask for user interaction when failures are detected")
+	monitorCmd.Flags().MarkDeprecated("interactive", "Deprecate for failover-mode")
+	monitorCmd.Flags().IntVar(&conf.MaxFail, "failcount", 5, "Trigger failover after N failures (interval 1s)")
+	monitorCmd.Flags().MarkDeprecated("failcount", "Deprecate for failover-falsepositive-ping-counter")
+	monitorCmd.Flags().IntVar(&conf.SwitchWaitWrite, "wait-write-query", 10, "Deprecate  Wait this many seconds before write query end to cancel switchover")
+	monitorCmd.Flags().MarkDeprecated("wait-write-query", "Deprecate for switchover-wait-write-query")
+	monitorCmd.Flags().Int64Var(&conf.SwitchWaitTrx, "wait-trx", 10, "Depecrate for switchover-wait-trx Wait this many seconds before transactions end to cancel switchover")
+	monitorCmd.Flags().MarkDeprecated("wait-trx", "Deprecate for switchover-wait-trx")
+	monitorCmd.Flags().BoolVar(&conf.SwitchGtidCheck, "gtidcheck", false, "Depecrate for failover-at-equal-gtid do not initiate failover unless slaves are fully in sync")
+	monitorCmd.Flags().MarkDeprecated("gtidcheck", "Deprecate for switchover-at-equal-gtid")
+	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
+	monitorCmd.Flags().MarkDeprecated("maxdelay", "Deprecate for failover-max-slave-delay")
+
+}
+
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "Starts monitoring server",
@@ -411,11 +418,6 @@ For interacting with this daemon use,
 			}
 		}
 
-		if conf.FailMode == "manual" {
-			conf.Interactive = true
-		} else {
-			conf.Interactive = false
-		}
 		if conf.LogLevel > 1 {
 			log.SetLevel(log.DebugLevel)
 		}
@@ -485,7 +487,14 @@ For interacting with this daemon use,
 		}
 		for _, gl := range cfgGroupList {
 			currentCluster = new(cluster.Cluster)
-			currentCluster.Init(confs[gl], gl, &tlog, termlength, runUUID, Version, repmgrHostname, k)
+
+			myClusterConf := confs[gl]
+			if myClusterConf.FailMode == "manual" {
+				myClusterConf.Interactive = true
+			} else {
+				myClusterConf.Interactive = false
+			}
+			currentCluster.Init(myClusterConf, gl, &tlog, termlength, runUUID, Version, repmgrHostname, k)
 			clusters[gl] = currentCluster
 			go currentCluster.Run()
 			currentClusterName = gl
