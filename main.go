@@ -32,6 +32,7 @@ var (
 	// Provisoning to add flags for compile
 	WithProvisioning      string
 	WithArbitration       string
+	WithArbitrationClient string
 	WithProxysql          string
 	WithHaproxy           string
 	WithMaxscale          string
