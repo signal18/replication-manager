@@ -218,8 +218,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	var idsrv string
 	mysrv, err := svc.GetServiceFromName(prx.Id)
 	if err == nil {
-		cluster.LogPrintf("INFO", "Unprovision opensvc proxy service %s service %s", prx.Id, mysrv.Svc_id)
-		cluster.UnprovisionProxyService(prx)
+		cluster.LogPrintf("INFO", "Found existing service %s service %s", prx.Id, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
 	} else {
 		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
@@ -339,8 +338,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	var idsrv string
 	mysrv, err := svc.GetServiceFromName(s.Id)
 	if err == nil {
-		cluster.LogPrintf("INFO", "Unprovision opensvc database service %s service %s", s.Id, mysrv.Svc_id)
-		cluster.UnprovisionDatabaseService(s)
+		cluster.LogPrintf("INFO", "Found opensvc database service %s service %s", s.Id, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
 	} else {
 		idsrv, err = svc.CreateService(s.Id, "MariaDB")

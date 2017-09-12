@@ -25,9 +25,7 @@ type Addr struct {
 	Net_broadcast string `json:"net_broadcast"`
 	Net_gateway   string `json:"net_gateway"`
 	Net_name      string `json:"net_name"`
-	Net_netmask   int    `json:"net_netmask"`
 	Net_network   string `json:"net_network"`
-	Net_id        int    `json:"id"`
 	Net_intf      string `json:"intf"`
 }
 
@@ -945,7 +943,10 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 		log.Println("ERROR ", err)
 		return nil, err
 	}
-
+	count, err := collector.getMetaCount(body)
+	if count == 0 {
+		return nil, nil
+	}
 	type Message struct {
 		Tags []Tag `json:"data"`
 	}
@@ -956,6 +957,21 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 		return nil, err
 	}
 	return r.Tags, nil
+}
+
+func (collector *Collector) getMetaCount(body []byte) (int, error) {
+	type ResMeta struct {
+		Count int `json:"count"`
+	}
+	type Metadata struct {
+		Meta ResMeta `json:"meta"`
+	}
+	var m Metadata
+	err := json.Unmarshal(body, &m)
+	if err != nil {
+		return 0, err
+	}
+	return m.Meta.Count, nil
 }
 
 func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
@@ -983,7 +999,9 @@ func (collector *Collector) DeteteServiceTags(idSrv string) error {
 	if err != nil {
 		return err
 	}
-
+	if tags == nil {
+		return nil
+	}
 	for _, tag := range tags {
 		err := collector.deteteServiceTag(idSrv, tag)
 		if err != nil {
