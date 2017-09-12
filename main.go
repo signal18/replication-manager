@@ -16,9 +16,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/signal18/replication-manager/config"
 )
 
 var (
@@ -136,7 +136,6 @@ func initConfig() {
 			log.Fatal("No config file etc/replication-manager/config.toml ")
 		}
 	}
-
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
@@ -189,10 +188,12 @@ func initConfig() {
 			if gl != "" {
 				clusterconf := conf
 				cf2 := viper.Sub("Default")
+				initAlias(cf2)
 				cf2.Unmarshal(&clusterconf)
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
 				cf2 = viper.Sub(gl)
+				initAlias(cf2)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
@@ -227,7 +228,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "replication-manager",
 	Short: "Replication Manager tool for MariaDB and MySQL",
-// Copyright 2017 Signal 18 SARL
+	// Copyright 2017 Signal 18 SARL
 	Long: `replication-manager allows users to monitor interactively MariaDB 10.x and MySQL GTID replication health
 and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -244,4 +245,38 @@ var versionCmd = &cobra.Command{
 		fmt.Println("Full Version: ", FullVersion)
 		fmt.Println("Build Time: ", Build)
 	},
+}
+
+func initAlias(v *viper.Viper) {
+	v.RegisterAlias("replication-master-connection", "replication-source-name")
+	v.RegisterAlias("logfile", "log-file")
+	v.RegisterAlias("wait-kill", "switchover-wait-kill")
+	v.RegisterAlias("user", "db-servers-credential")
+	v.RegisterAlias("hosts", "db-servers-hosts")
+	v.RegisterAlias("hosts-tls-ca-cert", "db-servers-tls-ca-cert")
+	v.RegisterAlias("hosts-tls-client-key", "db-servers-tls-client-key")
+	v.RegisterAlias("hosts-tls-client-cert", "db-servers-tls-client-cert")
+	v.RegisterAlias("connect-timeout", "db-servers-connect-timeout")
+	v.RegisterAlias("rpluser", "replication-credential")
+	v.RegisterAlias("prefmaster", "db-servers-prefered-master")
+	v.RegisterAlias("ignore-servers", "db-servers-ignored-hosts")
+	v.RegisterAlias("master-connection", "replication-master-connection")
+	v.RegisterAlias("master-connect-retry", "replication-master-connection-retry")
+	v.RegisterAlias("api-user", "api-credential")
+	v.RegisterAlias("readonly", "failover-readonly-state")
+	v.RegisterAlias("maxscale-host", "maxscale-servers")
+	v.RegisterAlias("mdbshardproxy-hosts", "mdbshardproxy-servers")
+	v.RegisterAlias("multimaster", "replication-multi-master")
+	v.RegisterAlias("multi-tier-slaver", "replication-multi-tier-slave")
+	v.RegisterAlias("pre-failover-script", "failover-pre-script")
+	v.RegisterAlias("post-failover-script", "failover-post-script")
+	v.RegisterAlias("rejoin-script", "autorejoin-script")
+	v.RegisterAlias("share-directory", "monitoring-sharedir")
+	v.RegisterAlias("working-directory", "monitoring-datadir")
+	v.RegisterAlias("interactive", "failover-mode")
+	v.RegisterAlias("failcount", "failover-falsepositive-ping-counter")
+	v.RegisterAlias("wait-write-query", "switchover-wait-write-query")
+	v.RegisterAlias("wait-trx", "switchover-wait-trx")
+	v.RegisterAlias("gtidcheck", "switchover-at-equal-gtid")
+	v.RegisterAlias("maxdelay", "failover-max-slave-delay")
 }

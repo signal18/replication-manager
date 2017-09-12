@@ -84,14 +84,11 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
 	}
 
-	if WithDeprecate == "ON" {
-		initDeprecated()
-	}
-
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to HTTP monitor working directory")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring time interval in seconds")
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
+
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "db-servers-tls-client-key", "", "Database TLS client key")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "db-servers-tls-client-cert", "", "Database TLS client certificate")
@@ -308,6 +305,11 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:latest", "Docker image for haproxy")
 		}
 	}
+	if WithDeprecate == "ON" {
+		initDeprecated()
+	}
+	//viper.RegisterAlias("hosts", "db-servers-hosts")
+	//viper.RegisterAlias("db-servers-hosts", "hosts")
 
 	viper.BindPFlags(monitorCmd.Flags())
 	//	viper.RegisterAlias("mariadb-binary-path", "mariadb-mysqlbinlog-path")
@@ -334,6 +336,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 }
 
 func initDeprecated() {
+
 	monitorCmd.Flags().StringVar(&conf.MasterConn, "replication-master-connection", "", "Connection name to use for multisource replication")
 	monitorCmd.Flags().MarkDeprecated("replication-master-connection", "Depecrate for replication-source-name")
 	monitorCmd.Flags().StringVar(&conf.LogFile, "logfile", "", "Write output messages to log file")
