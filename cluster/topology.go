@@ -545,25 +545,25 @@ func (cluster *Cluster) TopologyDiscover() error {
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
 	if cluster.master == nil || cluster.master.State == stateFailed {
-		if cluster.conf.Interactive == false {
-			allslavefailed := true
-			for _, s := range cluster.slaves {
-				if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
-					allslavefailed = false
-				}
-			}
-			if allslavefailed {
-				if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
-					// forget the master if safe mode
-					cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
-					cluster.lastmaster = cluster.master
-					cluster.master = nil
-
-				}
-				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
-				return true
+		//	if cluster.conf.Interactive == false {
+		allslavefailed := true
+		for _, s := range cluster.slaves {
+			if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+				allslavefailed = false
 			}
 		}
+		if allslavefailed {
+			if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
+				// forget the master if safe mode
+				cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+				cluster.lastmaster = cluster.master
+				cluster.master = nil
+
+			}
+			cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+			return true
+		}
+		//}
 	}
 	return false
 }
