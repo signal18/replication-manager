@@ -70,7 +70,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 							cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 						}
 					}
-					opensvc.DeleteService(svc.Svc_id)
+					//opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 			for _, prx := range cluster.proxies {
@@ -84,7 +84,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 						}
 					}
-					opensvc.DeleteService(svc.Svc_id)
+					//opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 		}
@@ -103,7 +103,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 				}
-				opensvc.DeleteService(svc.Svc_id)
+				//	opensvc.DeleteService(svc.Svc_id)
 			}
 		}
 	}
@@ -120,7 +120,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 				}
-				opensvc.DeleteService(svc.Svc_id)
+				//		opensvc.DeleteService(svc.Svc_id)
 
 			}
 		}
@@ -214,12 +214,25 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		return err
 	}
 	// Unprovision if already in OpenSVC
+
+	var idsrv string
 	mysrv, err := svc.GetServiceFromName(prx.Id)
 	if err == nil {
 		cluster.LogPrintf("INFO", "Unprovision opensvc proxy service %s service %s", prx.Id, mysrv.Svc_id)
 		cluster.UnprovisionProxyService(prx)
+		idsrv = mysrv.Svc_id
+	} else {
+		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Can't create OpenSVC proxy service")
+			return err
+		}
 	}
-
+	err = svc.DeteteServiceTags(idsrv)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Can't delete service tags")
+		return err
+	}
 	srvlist := make([]string, len(cluster.servers))
 	for i, s := range cluster.servers {
 		srvlist[i] = s.Host
@@ -323,24 +336,27 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	}
 
 	// Unprovision if already in OpenSVC
-
+	var idsrv string
 	mysrv, err := svc.GetServiceFromName(s.Id)
 	if err == nil {
 		cluster.LogPrintf("INFO", "Unprovision opensvc database service %s service %s", s.Id, mysrv.Svc_id)
 		cluster.UnprovisionDatabaseService(s)
+		idsrv = mysrv.Svc_id
+	} else {
+		idsrv, err = svc.CreateService(s.Id, "MariaDB")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
+			return err
+		}
 	}
 
-	//	idsrv := mysrv.Svc_id
-	//	if idsrv == "" || err != nil {
-	idsrv, err := svc.CreateService(s.Id, "MariaDB")
+	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
+		cluster.LogPrintf("ERROR", "Can't delete service tags")
 		return err
 	}
-	//	}
 	taglist = strings.Split(svc.ProvTags, ",")
 	svctags, _ := svc.GetTags()
-
 	for _, tag := range taglist {
 		idtag, err := svc.GetTagIdFromTags(svctags, tag)
 		if err != nil {

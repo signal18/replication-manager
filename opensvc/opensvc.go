@@ -920,6 +920,79 @@ func (collector *Collector) GetTagIdFromTags(tags []Tag, name string) (string, e
 	return "", errors.New("No tag found")
 }
 
+func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags?limit=0"
+	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+
+	type Message struct {
+		Tags []Tag `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return nil, err
+	}
+	return r.Tags, nil
+}
+
+func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/tags/" + tag.Tag_id + "/services/" + idSrv
+	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	_, err = client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (collector *Collector) DeteteServiceTags(idSrv string) error {
+	tags, err := collector.GetServiceTags(idSrv)
+	if err != nil {
+		return err
+	}
+
+	for _, tag := range tags {
+		err := collector.deteteServiceTag(idSrv, tag)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (collector *Collector) GetTags() ([]Tag, error) {
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
