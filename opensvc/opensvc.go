@@ -930,7 +930,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -944,6 +944,10 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 		return nil, err
 	}
 	count, err := collector.getMetaCount(body)
+	if err != nil {
+		log.Println("ERROR get Meta Data count", err)
+		return nil, err
+	}
 	if count == 0 {
 		return nil, nil
 	}
@@ -969,6 +973,7 @@ func (collector *Collector) getMetaCount(body []byte) (int, error) {
 	var m Metadata
 	err := json.Unmarshal(body, &m)
 	if err != nil {
+		log.Print(string(body))
 		return 0, err
 	}
 	return m.Meta.Count, nil
@@ -984,7 +989,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	_, err = client.Do(req)
 	if err != nil {
@@ -1023,7 +1028,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1061,7 +1066,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 		log.Println("ERROR ", err)
 
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {

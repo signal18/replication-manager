@@ -30,5 +30,5 @@ prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
 
 
 [default]
-opensvc-host = "192.168.100.9:443"
+opensvc-host = "ci.signal18.io:9443"
 http-bootstrap-button = true
