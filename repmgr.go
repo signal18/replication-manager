@@ -20,12 +20,12 @@ import (
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
 	uuid "github.com/satori/go.uuid"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/termlog"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // Global variables
@@ -185,7 +185,7 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Only failover when state semisync is sync for last status")
 	cmd.Flags().BoolVar(&conf.SwitchGtidCheck, "gtidcheck", false, "Depecrate for failover-at-equal-gtid do not initiate failover unless slaves are fully in sync")
 	cmd.Flags().BoolVar(&conf.SwitchGtidCheck, "switchover-at-equal-gtid", false, "Do not initiate failover unless slaves are fully in sync")
-	cmd.Flags().Int64Var(&conf.SwitchMaxDelay, "switchover-max-slave-delay", 0, "Maximum replication delay before initiating switchover")
+	cmd.Flags().Int64Var(&conf.SwitchMaxDelay, "switchover-max-slave-delay", 30, "Maximum replication delay before initiating switchover (-1 = unlimited)")
 
 	cmd.Flags().IntVar(&conf.SwitchWaitWrite, "wait-write-query", 10, "Deprecate  Wait this many seconds before write query end to cancel switchover")
 	cmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Wait this many seconds before write query end to cancel switchover")
@@ -199,8 +199,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&conf.MultiTierSlave, "multi-tier-slave", false, "Turn on to enable relay slaves in the topology")
 	cmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	cmd.Flags().BoolVar(&conf.Test, "test", false, "Enable non regression tests ")
-	cmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
-	cmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 0, "Maximum replication delay before initiating failover")
+	cmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 30, "(deprecated) Maximum replication delay before initiating failover")
+	cmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 30, "Maximum replication delay before initiating failover (-1 = unlimited)")
 	cmd.Flags().BoolVar(&conf.FailRestartUnsafe, "failover-restart-unsafe", false, "Failover when cluster down if a slave is start first ")
 	cmd.Flags().IntVar(&conf.FailLimit, "failover-limit", 5, "Quit monitor after N failovers (0: unlimited)")
 	cmd.Flags().Int64Var(&conf.FailTime, "failover-time-limit", 0, "In automatic mode, Wait N seconds before attempting next failover (0: do not wait)")
