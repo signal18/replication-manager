@@ -17,12 +17,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	_ "github.com/mattn/go-sqlite3"
-
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/dbhelper"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 type route struct {
