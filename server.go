@@ -69,7 +69,6 @@ func init() {
 	conf.GoArch = GoArch
 	conf.GoOS = GoOS
 	//	conf := confs[cfgGroup]
-	cobra.OnInitialize(initConfig)
 
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
@@ -138,6 +137,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.RejoinScript, "autorejoin-script", "", "Path of old master rejoin script")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinFlashback, "autorejoin-flashback", false, "Automatically rejoin a failed server to the current master and flashback at the time of election if new master was delayed")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
+	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
 
 	// monitorCmd.Flags().StringVar(&conf.CheckType, "check-type", "tcp", "Type of server health check (tcp, agent)")
 	conf.CheckType = "tcp"
@@ -262,7 +262,7 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	}
 	if WithProvisioning == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.Test, "test", false, "Enable non regression tests")
+		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")
 		monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 		monitorCmd.Flags().IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 		monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
@@ -270,6 +270,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "db-servers-binary-path", "/usr/local/mysql/bin", "Path to mysqld binary for testing")
 		monitorCmd.Flags().MarkDeprecated("mariadb-binary-path", "mariadb-binary-path is deprecated, please replace by mariadb-mysqlbinlog-path")
 		if WithOpenSVC == "ON" {
+
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "127.0.0.1:443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
@@ -310,7 +311,7 @@ func init() {
 	}
 	//viper.RegisterAlias("hosts", "db-servers-hosts")
 	//viper.RegisterAlias("db-servers-hosts", "hosts")
-
+	cobra.OnInitialize(initConfig)
 	viper.BindPFlags(monitorCmd.Flags())
 	//	viper.RegisterAlias("mariadb-binary-path", "mariadb-mysqlbinlog-path")
 

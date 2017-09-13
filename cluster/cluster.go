@@ -772,6 +772,10 @@ func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
 }
 
+func (cluster *Cluster) GetStatus() bool {
+	return cluster.sme.IsFailable()
+}
+
 func (cluster *Cluster) agentFlagCheck() {
 
 	// if slaves option has been supplied, split into a slice.

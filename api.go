@@ -116,6 +116,10 @@ func apiserver() {
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
 	))
+	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
+	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
@@ -181,10 +185,16 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplicationCleanup)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/services/bootstrap", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/services/provision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProvisionServices)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStopTraffic)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/start-traffic", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
@@ -609,7 +619,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
+func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
@@ -1144,6 +1154,19 @@ func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"alive": "running"}`)
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
+	}
+}
+
+func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	if mycluster.GetStatus() {
+		io.WriteString(w, `{"alive": "running"}`)
+	} else {
+		io.WriteString(w, `{"alive": "errors"}`)
 	}
 }
 

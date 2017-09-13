@@ -191,7 +191,18 @@ func (SM *StateMachine) GetUptimeFailable() string {
 }
 
 func (SM *StateMachine) IsFailable() bool {
-	return SM.CanMonitor()
+
+	SM.Lock()
+	for _, value := range *SM.OldState {
+		if value.ErrType == "ERROR" {
+			SM.Unlock()
+			return false
+		}
+	}
+	SM.discovered = true
+	SM.Unlock()
+	return true
+
 }
 
 func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {

@@ -382,17 +382,17 @@ func (cluster *Cluster) waitClusterCanConn() error {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting for databases to start")
 			exitloop++
-			if cluster.AllDatabaseCanConn() {
+			if cluster.AllDatabaseCanConn() && cluster.IsProvision() {
 				exitloop = 100
 			}
 		default:
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "All databases was started")
+		cluster.LogPrintf("INFO", "All databases can connect")
 	} else {
-		cluster.LogPrintf("ERROR", "Timeout waiting for database to start")
-		return errors.New("Connections databases failure")
+		cluster.LogPrintf("ERROR", "Timeout waiting for database to be connected")
+		return errors.New("Connections to databases failure")
 	}
 	return nil
 }
@@ -409,6 +409,7 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
+
 	err = cluster.BootstrapReplication()
 	if err != nil {
 		return err
@@ -437,7 +438,7 @@ func (cluster *Cluster) Bootstrap() error {
 func (cluster *Cluster) BootstrapServices() error {
 
 	// create service template and post
-	if cluster.conf.Test {
+	if cluster.conf.Test || cluster.conf.Enterprise {
 		err := cluster.InitCluster()
 		if err != nil {
 			return err
@@ -540,7 +541,11 @@ func (cluster *Cluster) BootstrapReplication() error {
 			} else {
 				var hasMyGTID bool
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
-				if cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+				_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[masterKey].CurrentGtid.Sprint() + "\"")
+				if err != nil {
+					return err
+				}
+				if server.State != stateFailed && cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.servers[masterKey].Host,
 						Port:      cluster.servers[masterKey].Port,
@@ -548,7 +553,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Password:  cluster.rplPass,
 						Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-						Mode:      "CURRENT_POS",
+						Mode:      "SLAVE_POS",
 					})
 					cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 				} else if hasMyGTID {
@@ -585,7 +590,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
-				if cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+				if server.State != stateFailed && cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
 				} else {
 					_, err = server.Conn.Exec("START SLAVE")

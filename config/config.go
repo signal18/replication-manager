@@ -197,6 +197,7 @@ type Config struct {
 	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`
+	AlertScript                        string `mapstructure:"alert-script"`
 	ConfigFile                         string `mapstructure:"config"`
 	GoOS                               string `mapstructure:"goos"`
 	GoArch                             string `mapstructure:"goarch"`

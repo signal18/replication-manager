@@ -32,33 +32,35 @@ import (
 )
 
 var (
-	cliUser                   string
-	cliPassword               string
-	cliHost                   string
-	cliPort                   string
-	cliCert                   string
-	cliNoCheckCert            bool
-	cliToken                  string
-	cliClusters               []string
-	cliClusterIndex           int
-	cliTlog                   termlog.TermLog
-	cliTermlength             int
-	cliServers                []cluster.ServerMonitor
-	cliMaster                 cluster.ServerMonitor
-	cliSettings               Settings
-	cliUrl                    string
-	cliRuntests               string
-	cliShowtests              bool
-	cliTeststopcluster        bool
-	cliTeststartcluster       bool
-	cliTestConvert            bool
-	cliTestConvertFile        string
-	cliTestResultDBCredential string
-	cliTestResultDBServer     string
-	cliTopology               string
-	cliCleanall               bool
-	cliExit                   bool
-	cliPrefMaster             string
+	cliUser                      string
+	cliPassword                  string
+	cliHost                      string
+	cliPort                      string
+	cliCert                      string
+	cliNoCheckCert               bool
+	cliToken                     string
+	cliClusters                  []string
+	cliClusterIndex              int
+	cliTlog                      termlog.TermLog
+	cliTermlength                int
+	cliServers                   []cluster.ServerMonitor
+	cliMaster                    cluster.ServerMonitor
+	cliSettings                  Settings
+	cliUrl                       string
+	cliTTestRun                  string
+	cliTestShowTests             bool
+	cliTeststopcluster           bool
+	cliTeststartcluster          bool
+	cliTestConvert               bool
+	cliTestConvertFile           string
+	cliTestResultDBCredential    string
+	cliTestResultDBServer        string
+	cliBootstrapTopology         string
+	cliBootstrapCleanall         bool
+	cliBootstrapWithProvisioning bool
+	cliExit                      bool
+	cliPrefMaster                string
+	cliStatusErrors              bool
 )
 
 type RequetParam struct {
@@ -101,6 +103,8 @@ func init() {
 	rootCmd.AddCommand(topologyCmd)
 	rootCmd.AddCommand(apiCmd)
 	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(bootstrapCmd)
 
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	clientCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
@@ -145,25 +149,31 @@ func init() {
 	testCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	testCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	testCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	testCmd.Flags().StringVar(&cliRuntests, "run-tests", "", "tests list to be run ")
+	testCmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
 	testCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
 	testCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
-
-	testCmd.Flags().BoolVar(&cliShowtests, "show-tests", false, "display tests list")
+	testCmd.Flags().BoolVar(&cliTestShowTests, "show-tests", false, "display tests list")
 	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
 	testCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
 
 	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 
-	rootCmd.AddCommand(bootstrapCmd)
 	bootstrapCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	bootstrapCmd.Flags().StringVar(&cliTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
-	bootstrapCmd.Flags().BoolVar(&cliCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
+	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
+
+	statusCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	statusCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	statusCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	statusCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	statusCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -173,25 +183,104 @@ var bootstrapCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
-		if cliCleanall == true {
-			urlclean := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/cleanup"
-			_, err := cliAPICmd(urlclean, nil)
+		if cliBootstrapWithProvisioning == true {
+			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/services/provision"
+			_, err := cliAPICmd(urlpost, nil)
 			if err != nil {
-				log.Fatal(err)
+				fmt.Fprintf(os.Stderr, "%s", err)
+				os.Exit(1)
 			} else {
-				log.Println("Replication cleanup done")
+				fmt.Println("Provisioning done")
+				os.Exit(0)
+			}
+		} else {
+
+			if cliBootstrapCleanall == true {
+				urlclean := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/cleanup"
+				_, err := cliAPICmd(urlclean, nil)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s", err)
+					os.Exit(1)
+				} else {
+					fmt.Println("Replication cleanup done")
+				}
+			}
+			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/bootstrap/" + cliBootstrapTopology
+			_, err := cliAPICmd(urlpost, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s", err)
+				os.Exit(2)
+			} else {
+				fmt.Println("Replication bootsrap done")
+			}
+			//		slogs, _ := cliGetLogs()
+			//	cliPrintLog(slogs)
+			cliGetTopology()
+		}
+	},
+}
+
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Request status ",
+	Long:  `The status command is used to request monitor daemon or pecific cluster status`,
+	Run: func(cmd *cobra.Command, args []string) {
+		log.SetFormatter(&log.TextFormatter{})
+		cliInit(true)
+		type Result struct {
+			Alive string `json:"alive"`
+		}
+		var ret Result
+
+		if cfgGroup == "" {
+			urlpost := "https://" + cliHost + ":" + cliPort + "/api/status"
+			res, err := cliAPICmd(urlpost, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "API call %s", err)
+				os.Exit(1)
+			} else {
+				if res != "" {
+					err = json.Unmarshal([]byte(res), &ret)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "API call %s", err)
+						os.Exit(2)
+					} else {
+						fmt.Fprintf(os.Stdout, "%s\n", ret.Alive)
+						os.Exit(0)
+					}
+				}
 			}
 		}
-		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/replication/bootstrap/" + cliTopology
-		_, err := cliAPICmd(urlpost, nil)
-		if err != nil {
-			log.Fatal(err)
-		} else {
-			log.Println("Replication bootsrap done")
+		if cfgGroup != "" {
+			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/status"
+			res, err := cliAPICmd(urlpost, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "API call %s", err)
+				os.Exit(1)
+			} else {
+				if res != "" {
+					err = json.Unmarshal([]byte(res), &ret)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "API call %s", err)
+						os.Exit(2)
+					} else {
+						if cliStatusErrors {
+							urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/alerts"
+							res, err := cliAPICmd(urlpost, nil)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "API call %s", err)
+								os.Exit(3)
+							} else {
+								fmt.Fprintf(os.Stdout, "%s\n", res)
+							}
+						} else {
+							fmt.Fprintf(os.Stdout, "%s\n", ret.Alive)
+						}
+						os.Exit(0)
+					}
+				}
+			}
 		}
-		//		slogs, _ := cliGetLogs()
-		//	cliPrintLog(slogs)
-		cliGetTopology()
 	},
 }
 
@@ -314,13 +403,13 @@ var testCmd = &cobra.Command{
 		cliInit(true)
 		//cliGetTopology()
 
-		if cliShowtests == true {
+		if cliTestShowTests == true {
 			cliSettings, _ = cliGetSettings()
 			log.Println(cliSettings.RegTests)
 		}
-		if cliShowtests == false {
+		if cliTestShowTests == false {
 
-			todotests := strings.Split(cliRuntests, ",")
+			todotests := strings.Split(cliTTestRun, ",")
 
 			for _, test := range todotests {
 				var thistest cluster.Test

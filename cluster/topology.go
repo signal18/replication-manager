@@ -535,10 +535,20 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
 		}
 	}*/
-	if cluster.sme.CanMonitor() {
+	if cluster.sme.IsFailable() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
+}
+
+func (cluster *Cluster) IsProvision() bool {
+	for _, s := range cluster.servers {
+		if s.State == stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+			return false
+		}
+	}
+	return true
+
 }
 
 // TopologyClusterDown track state all ckuster down

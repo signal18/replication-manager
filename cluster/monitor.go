@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"database/sql"
+	"os/exec"
 	//"encoding/hex"
 	"errors"
 	"fmt"
@@ -273,6 +274,15 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 					server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
 				}
 			}
+		}
+		if server.ClusterGroup.conf.AlertScript != "" {
+			server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
+			var out []byte
+			out, err = exec.Command(server.ClusterGroup.conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+			}
+			server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
 		}
 	}
 

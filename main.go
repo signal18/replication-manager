@@ -190,6 +190,7 @@ func initConfig() {
 				clusterconf := conf
 				cf2 := viper.Sub("Default")
 				initAlias(cf2)
+
 				cf2.Unmarshal(&clusterconf)
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
