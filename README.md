@@ -40,6 +40,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
         * [Command line bootstrap](#command-line-bootstrap)
         * [Monitor in daemon mode](#daemon-monitoring)
 * [Provisioning](doc/provision.md)
+* [Alerting](doc/alert.md)
 * [Metrics](#metrics)
 * [Security](#security)
     * [JWT Rest API](doc/api.md)
