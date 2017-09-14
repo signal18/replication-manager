@@ -269,6 +269,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 }
 
 func (cluster *Cluster) InitBenchTable() error {
+	dbhelper.benchWarmup(cluster.master.DSN)
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
