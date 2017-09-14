@@ -74,7 +74,9 @@ func init() {
 	mysql.SetLogger(errLog)
 
 	rootCmd.AddCommand(monitorCmd)
-
+	if WithDeprecate == "ON" {
+		//	initDeprecated() // not needed used alias in main
+	}
 	initRepmgrFlags(monitorCmd)
 	if GoOS == "linux" {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to HTTP monitor share files")
@@ -306,9 +308,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:latest", "Docker image for haproxy")
 		}
 	}
-	if WithDeprecate == "ON" {
-		initDeprecated()
-	}
+
 	//viper.RegisterAlias("hosts", "db-servers-hosts")
 	//viper.RegisterAlias("db-servers-hosts", "hosts")
 	cobra.OnInitialize(initConfig)

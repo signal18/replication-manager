@@ -957,7 +957,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 		s.RejoinFlashback = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinFlashback)
 		s.RejoinDump = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinMysqldump)
 		s.RejoinUnsafe = fmt.Sprintf("%v", mycluster.GetConf().FailRestartUnsafe)
-		s.MaxDelay = fmt.Sprintf("%v", mycluster.GetConf().SwitchMaxDelay)
+		s.MaxDelay = fmt.Sprintf("%v", mycluster.GetConf().FailMaxDelay)
 		s.FailoverCtr = fmt.Sprintf("%d", mycluster.GetFailoverCtr())
 		s.Faillimit = fmt.Sprintf("%d", mycluster.GetConf().FailLimit)
 		s.MonHearbeats = fmt.Sprintf("%d", mycluster.GetStateMachine().GetHeartbeats())

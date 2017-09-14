@@ -24,11 +24,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
-	log "github.com/sirupsen/logrus"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/state"
+	log "github.com/sirupsen/logrus"
 )
 
 type HandlerManager struct {
@@ -467,7 +467,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
 	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
 	s.RejoinUnsafe = fmt.Sprintf("%v", currentCluster.GetConf().FailRestartUnsafe)
-	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().SwitchMaxDelay)
+	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().FailMaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
 	s.MonHearbeats = fmt.Sprintf("%d", currentCluster.GetStateMachine().GetHeartbeats())
