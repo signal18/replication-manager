@@ -474,6 +474,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not get slaves status %s", err)
+		return err
 	}
 	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
