@@ -68,10 +68,6 @@ func TestDgels(t *testing.T) {
 	testlapack.DgelsTest(t, impl)
 }
 
-func TestDgerq2(t *testing.T) {
-	testlapack.Dgerq2Test(t, impl)
-}
-
 func TestDgeqp3(t *testing.T) {
 	testlapack.Dgeqp3Test(t, impl)
 }
@@ -82,10 +78,6 @@ func TestDgeqr2(t *testing.T) {
 
 func TestDgeqrf(t *testing.T) {
 	testlapack.DgeqrfTest(t, impl)
-}
-
-func TestDgerqf(t *testing.T) {
-	testlapack.DgerqfTest(t, impl)
 }
 
 func TestDgesvd(t *testing.T) {
@@ -106,14 +98,6 @@ func TestDgetrf(t *testing.T) {
 
 func TestDgetrs(t *testing.T) {
 	testlapack.DgetrsTest(t, impl)
-}
-
-func TestDggsvd3(t *testing.T) {
-	testlapack.Dggsvd3Test(t, impl)
-}
-
-func TestDggsvp3(t *testing.T) {
-	testlapack.Dggsvp3Test(t, impl)
 }
 
 func TestDlabrd(t *testing.T) {
@@ -292,10 +276,6 @@ func TestDlatrd(t *testing.T) {
 	testlapack.DlatrdTest(t, impl)
 }
 
-func TestDlatrs(t *testing.T) {
-	testlapack.DlatrsTest(t, impl)
-}
-
 func TestDorg2r(t *testing.T) {
 	testlapack.Dorg2rTest(t, impl)
 }
@@ -350,10 +330,6 @@ func TestDormlq(t *testing.T) {
 
 func TestDormqr(t *testing.T) {
 	testlapack.DormqrTest(t, impl)
-}
-
-func TestDormr2(t *testing.T) {
-	testlapack.Dormr2Test(t, impl)
 }
 
 func TestDorm2r(t *testing.T) {

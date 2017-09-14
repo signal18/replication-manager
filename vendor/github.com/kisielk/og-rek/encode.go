@@ -290,15 +290,6 @@ func (e *Encoder) encodeCall(v *Call) error {
 	return err
 }
 
-func (e *Encoder) encodeClass(v *Class) error {
-	_, err := fmt.Fprintf(e.w, "%c'%s'\n%c'%s'\n", opString, v.Module, opString, v.Name)
-	if err != nil {
-		return err
-	}
-	_, err = e.w.Write([]byte{opStackGlobal})
-	return err
-}
-
 func (e *Encoder) encodeStruct(st reflect.Value) error {
 
 	typ := st.Type()
@@ -310,8 +301,6 @@ func (e *Encoder) encodeStruct(st reflect.Value) error {
 		return err
 	case Call:
 		return e.encodeCall(&v)
-	case Class:
-		return e.encodeClass(&v)
 	case big.Int:
 		return e.encodeLong(&v)
 	}

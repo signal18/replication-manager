@@ -1,16 +1,3 @@
-Table of Contents
-=================
-
-* [Features](#features)
-* [Performance](#performance)
-* [Installation](#installation)
-* [Configuration](#configuration)
-  * [OS tuning](#os-tuning)
-* [Reported stats](#reported-stats)
-* [Changelog](#changelog)
-  * [master](#master)
-
-
 go-carbon [![Build Status](https://travis-ci.org/lomik/go-carbon.svg?branch=master)](https://travis-ci.org/lomik/go-carbon)
 ============
 
@@ -18,7 +5,7 @@ Golang implementation of Graphite/Carbon server with classic architecture: Agent
 
 ![Architecture](doc/design.png)
 
-## Features
+### Features
 - Receive metrics from TCP and UDP ([plaintext protocol](http://graphite.readthedocs.org/en/latest/feeding-carbon.html#the-plaintext-protocol))
 - Receive metrics with [Pickle protocol](http://graphite.readthedocs.org/en/latest/feeding-carbon.html#the-pickle-protocol) (TCP only)
 - [storage-schemas.conf](http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-schemas-conf)
@@ -42,13 +29,29 @@ The result of replacing "carbon" to "go-carbon" on a server with a load up to 90
 ![Success story](doc/success1.png)
 
 ## Installation
-Use binary packages from [releases page](https://github.com/lomik/go-carbon/releases) or build manually (requires golang 1.8+):
+Use binary packages from [releases page](https://github.com/lomik/go-carbon/releases) or build manually:
 ```
 # build binary
 git clone https://github.com/lomik/go-carbon.git
 cd go-carbon
 make submodules
 make
+
+# build rpm (centos 6)
+make rpm
+
+# build debian/ubuntu package
+make deb
+
+# Install debian dependencies: 
+# You need to have golang >= 1.8 (debian testing, ubuntu 17.04+, or use godeb to get newest version)
+apt-get install golang 
+
+# hand-made install
+sudo install -m 0755 go-carbon /usr/local/bin/go-carbon
+sudo go-carbon --config-print-default > /usr/local/etc/carbon.conf
+sudo vim /usr/local/etc/carbon.conf
+sudo go-carbon --config /usr/local/etc/carbon.conf --daemon
 ```
 
 ## Configuration
@@ -66,24 +69,28 @@ Usage of go-carbon:
 ```
 [common]
 # Run as user. Works only in daemon mode
-user = "carbon"
+user = ""
+# If logfile is empty use stderr
+logfile = "/var/log/go-carbon/go-carbon.log"
+# Logging error level. Valid values: "debug", "info", "warn", "warning", "error"
+log-level = "info"
 # Prefix for store all internal go-carbon graphs. Supported macroses: {host}
 graph-prefix = "carbon.agents.{host}"
-# Endpoint for store internal carbon metrics. Valid values: "" or "local", "tcp://host:port", "udp://host:port"
-metric-endpoint = "local"
 # Interval of storing internal metrics. Like CARBON_METRIC_INTERVAL
 metric-interval = "1m0s"
-# Increase for configuration with multi persister workers
-max-cpu = 4
+# Endpoint for store internal carbon metrics. Valid values: "" or "local", "tcp://host:port", "udp://host:port"
+metric-endpoint = ""
+# Increase for configuration with multi persisters
+max-cpu = 1
 
 [whisper]
-data-dir = "/var/lib/graphite/whisper"
+data-dir = "/data/graphite/whisper/"
 # http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-schemas-conf. Required
-schemas-file = "/etc/go-carbon/storage-schemas.conf"
+schemas-file = "/data/graphite/schemas"
 # http://graphite.readthedocs.org/en/latest/config-carbon.html#storage-aggregation-conf. Optional
-aggregation-file = "/etc/go-carbon/storage-aggregation.conf"
-# Worker threads count. Metrics sharded by "crc32(metricName) % workers"
-workers = 8
+aggregation-file = ""
+# Workers count. Metrics sharded by "crc32(metricName) % workers"
+workers = 1
 # Limits the number of whisper update_many() calls per second. 0 - no limit
 max-updates-per-second = 0
 # Sparse file creation
@@ -104,7 +111,7 @@ write-strategy = "max"
 [udp]
 listen = ":2003"
 enabled = true
-# Enable optional logging of incomplete messages (chunked by max UDP packet size)
+# Enable optional logging of incomplete messages (chunked by MTU)
 log-incomplete = false
 # Optional internal queue between receiver and cache
 buffer-size = 0
@@ -117,9 +124,9 @@ buffer-size = 0
 
 [pickle]
 listen = ":2004"
+enabled = true
 # Limit message size for prevent memory overflow
 max-message-size = 67108864
-enabled = true
 # Optional internal queue between receiver and cache
 buffer-size = 0
 
@@ -130,91 +137,43 @@ enabled = true
 read-timeout = "30s"
 
 [carbonserver]
-# Please NOTE: carbonserver is not intended to fully replace graphite-web
-# It acts as a "REMOTE_STORAGE" for graphite-web or carbonzipper/carbonapi
 listen = "127.0.0.1:8080"
 # Carbonserver support is still experimental and may contain bugs
 # Or be incompatible with github.com/grobian/carbonserver
 enabled = false
 # Buckets to track response times
 buckets = 10
+# Maximum amount of globs in a single metric
+max-globs = 100
 # carbonserver-specific metrics will be sent as counters
 # For compatibility with grobian/carbonserver
 metrics-as-counters = false
 # Read and Write timeouts for HTTP server
 read-timeout = "60s"
 write-timeout = "60s"
+# carbonserver keeps track of all available whisper files
+# in memory. This determines how often it will check FS
+# for new metrics.
+scan-frequency = "5m0s"
 # Enable /render cache, it will cache the result for 1 minute
 query-cache-enabled = true
 # 0 for unlimited
 query-cache-size-mb = 0
 # Enable /metrics/find cache, it will cache the result for 5 minutes
 find-cache-enabled = true
-# Control trigram index
-#  This index is used to speed-up /find requests
-#  However, it will lead to increased memory consumption
-#  Estimated memory consumption is approx. 500 bytes per each metric on disk
-#  Another drawback is that it will recreate index every scan-frequency interval
-#  All new/deleted metrics will still be searchable until index is recreated
-trigram-index = true
-# carbonserver keeps track of all available whisper files
-# in memory. This determines how often it will check FS
-# for new or deleted metrics.
-scan-frequency = "5m0s"
-# Maximum amount of globs in a single metric in index
-# This value is used to speed-up /find requests with
-# a lot of globs, but will lead to increased memory consumption
-max-globs = 100
-# graphite-web-10-mode
-# Use Graphite-web 1.0 native structs for pickle response
-# This mode will break compatibility with graphite-web 0.9.x
-# If false, carbonserver won't send graphite-web 1.0 specific structs
-# That might degrade performance of the cluster
-# But will be compatible with both graphite-web 1.0 and 0.9.x
-graphite-web-10-strict-mode = true
-# Allows to keep track for "last time readed" between restarts, leave empty to disable
-internal-stats-dir = ""
+
 
 [dump]
 # Enable dump/restore function on USR2 signal
 enabled = false
 # Directory for store dump data. Should be writeable for carbon
-path = "/var/lib/graphite/dump/"
+path = ""
 # Restore speed. 0 - unlimited
 restore-per-second = 0
 
 [pprof]
 listen = "localhost:7007"
 enabled = false
-
-# Default logger
-[[logging]]
-# logger name
-# available loggers:
-# * "" - default logger for all messages without configured special logger
-# @TODO
-logger = ""
-# Log output: filename, "stderr", "stdout", "none", "" (same as "stderr")
-file = "/var/log/go-carbon/go-carbon.log"
-# Log level: "debug", "info", "warn", "error", "dpanic", "panic", and "fatal"
-level = "info"
-# Log format: "json", "console", "mixed"
-encoding = "mixed"
-# Log time format: "millis", "nanos", "epoch", "iso8601"
-encoding-time = "iso8601"
-# Log duration format: "seconds", "nanos", "string"
-encoding-duration = "seconds"
-
-# You can define multiply loggers:
-
-# Copy errors to stderr for systemd
-# [[logging]]
-# logger = ""
-# file = "stderr"
-# level = "error"
-# encoding = "mixed"
-# encoding-time = "iso8601"
-# encoding-duration = "seconds"
 ```
 
 ### OS tuning
@@ -271,32 +230,11 @@ With settings above applied, best write-strategy to use is "noop"
 
 ## Changelog
 ##### master
-
-##### version 0.10.0
-Breaking changes:
-
-* common: logfile and log-level in common config section are deprecated
-* changed config defaults:
-  * user changed to `carbon`
-  * whisper directory changed to `/var/lib/graphite/whisper/`
-  * schemas config changed to `/etc/go-carbon/storage-schemas.conf`
-* rpm:
-  * binary moved to `/usr/bin/go-carbon`
-  * configs moved to `/etc/go-carbon/`
-* deb:
-  * binary moved to `/usr/bin/go-carbon`
-
-Other changes:
-
 * common: Requires Go 1.8 or newer
 * common: Logging refactored. Format changed to structured JSON. Added support of multiple logging handlers with separate output, level and encoding
-* dump/restore: New dump format. Added `go-carbon -cat filename` command for printing dump to console. New version of go-carbon can read old dump
-* dump/restore: [fix] go-carbon can not stop after dump (with enabled dump and carbonserver)
 * carbonserver: [feature] IdleTimeout is now configurable in carbonserver part
-* carbonserver: [feature] support /render query cache (query-cache-\* options in config file)
-* carbonserver: [feature] support /metrics/find cache (find-cache-\* option in config file)
-* carbonserver: [feature] support /metrics/details handler, that returns information about metrics (require enabled trigram-index)
-* carbonserver: [feature] Add config option to disable trigram index (before that to disable index you should set scan-interval to 0)
+* carbonserver: [feature] support /render query cache (query-cache-* options in config file)
+* carbonserver: [feature] support /metrics/find cache (find-cache-* option in config file)
 * carbonserver: [fix] fix #146 (metrics_known was broken if metrics were not sent as counters)
 
 ##### version 0.9.1

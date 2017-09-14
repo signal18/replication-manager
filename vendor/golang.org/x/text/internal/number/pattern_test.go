@@ -12,78 +12,48 @@ import (
 
 var testCases = []struct {
 	pat  string
-	want *Pattern
+	want *Format
 }{{
 	"#",
-	&Pattern{
+	&Format{
 		FormatWidth: 1,
 		// TODO: Should MinIntegerDigits be 1?
 	},
 }, {
 	"0",
-	&Pattern{
+	&Format{
 		FormatWidth:      1,
 		MinIntegerDigits: 1,
 	},
 }, {
-	"+0",
-	&Pattern{
-		Affix:            "\x01+\x00",
-		FormatWidth:      2,
-		MinIntegerDigits: 1,
-	},
-}, {
-	"0+",
-	&Pattern{
-		Affix:            "\x00\x01+",
-		FormatWidth:      2,
-		MinIntegerDigits: 1,
-	},
-}, {
 	"0000",
-	&Pattern{
+	&Format{
 		FormatWidth:      4,
 		MinIntegerDigits: 4,
 	},
 }, {
 	".#",
-	&Pattern{
+	&Format{
 		FormatWidth:       2,
 		MaxFractionDigits: 1,
 	},
 }, {
 	"#0.###",
-	&Pattern{
+	&Format{
 		FormatWidth:       6,
 		MinIntegerDigits:  1,
 		MaxFractionDigits: 3,
 	},
 }, {
 	"#0.######",
-	&Pattern{
+	&Format{
 		FormatWidth:       9,
 		MinIntegerDigits:  1,
 		MaxFractionDigits: 6,
 	},
 }, {
-	"#,0",
-	&Pattern{
-		FormatWidth:      3,
-		GroupingSize:     [2]uint8{1, 0},
-		MinIntegerDigits: 1,
-	},
-}, {
-	"#,0.00",
-	&Pattern{
-		FormatWidth:       6,
-		GroupingSize:      [2]uint8{1, 0},
-		MinIntegerDigits:  1,
-		MinFractionDigits: 2,
-		MaxFractionDigits: 2,
-	},
-}, {
 	"#,##0.###",
-	&Pattern{
+	&Format{
 		FormatWidth:       9,
 		GroupingSize:      [2]uint8{3, 0},
 		MinIntegerDigits:  1,
@@ -91,7 +61,7 @@ var testCases = []struct {
 	},
 }, {
 	"#,##,##0.###",
-	&Pattern{
+	&Format{
 		FormatWidth:       12,
 		GroupingSize:      [2]uint8{3, 2},
 		MinIntegerDigits:  1,
@@ -100,7 +70,7 @@ var testCases = []struct {
 }, {
 	// Ignore additional separators.
 	"#,####,##,##0.###",
-	&Pattern{
+	&Format{
 		FormatWidth:       17,
 		GroupingSize:      [2]uint8{3, 2},
 		MinIntegerDigits:  1,
@@ -108,26 +78,21 @@ var testCases = []struct {
 	},
 }, {
 	"#E0",
-	&Pattern{
+	&Format{
 		FormatWidth:       3,
 		MaxIntegerDigits:  1,
 		MinExponentDigits: 1,
 	},
 }, {
-	// At least one exponent digit is required. As long as this is true, one can
-	// determine that scientific rendering is needed if MinExponentDigits > 0.
-	"#E#",
-	nil,
-}, {
 	"0E0",
-	&Pattern{
+	&Format{
 		FormatWidth:       3,
 		MinIntegerDigits:  1,
 		MinExponentDigits: 1,
 	},
 }, {
 	"##00.0#E0",
-	&Pattern{
+	&Format{
 		FormatWidth:       9,
 		MinIntegerDigits:  2,
 		MaxIntegerDigits:  4,
@@ -137,7 +102,7 @@ var testCases = []struct {
 	},
 }, {
 	"#00.0E+0",
-	&Pattern{
+	&Format{
 		FormatWidth:       8,
 		Flags:             AlwaysExpSign,
 		MinIntegerDigits:  2,
@@ -155,7 +120,7 @@ var testCases = []struct {
 }, {
 	// significant digits
 	"@",
-	&Pattern{
+	&Format{
 		FormatWidth:          1,
 		MinSignificantDigits: 1,
 		MaxSignificantDigits: 1,
@@ -163,14 +128,14 @@ var testCases = []struct {
 }, {
 	// significant digits
 	"@@@@",
-	&Pattern{
+	&Format{
 		FormatWidth:          4,
 		MinSignificantDigits: 4,
 		MaxSignificantDigits: 4,
 	},
 }, {
 	"@###",
-	&Pattern{
+	&Format{
 		FormatWidth:          4,
 		MinSignificantDigits: 1,
 		MaxSignificantDigits: 4,
@@ -178,7 +143,7 @@ var testCases = []struct {
 }, {
 	// Exponents in significant digits mode gets normalized.
 	"@@E0",
-	&Pattern{
+	&Format{
 		FormatWidth:       4,
 		MinIntegerDigits:  1,
 		MaxIntegerDigits:  1,
@@ -188,7 +153,7 @@ var testCases = []struct {
 	},
 }, {
 	"@###E00",
-	&Pattern{
+	&Format{
 		FormatWidth:       7,
 		MinIntegerDigits:  1,
 		MaxIntegerDigits:  1,
@@ -203,7 +168,7 @@ var testCases = []struct {
 }, {
 	//alternative negative pattern
 	"#0.###;(#0.###)",
-	&Pattern{
+	&Format{
 		Affix:             "\x00\x00\x01(\x01)",
 		NegOffset:         2,
 		FormatWidth:       6,
@@ -211,9 +176,9 @@ var testCases = []struct {
 		MaxFractionDigits: 3,
 	},
 }, {
-	// Rounding increment
+	// Rounding increments
 	"1.05",
-	&Pattern{
+	&Format{
 		RoundIncrement:    105,
 		FormatWidth:       4,
 		MinIntegerDigits:  1,
@@ -221,21 +186,10 @@ var testCases = []struct {
 		MaxFractionDigits: 2,
 	},
 }, {
-	// Rounding increment with grouping
-	"1,05",
-	&Pattern{
-		RoundIncrement:    105,
-		FormatWidth:       4,
-		GroupingSize:      [2]uint8{2, 0},
-		MinIntegerDigits:  3,
-		MinFractionDigits: 0,
-		MaxFractionDigits: 0,
-	},
-}, {
 	"0.0%",
-	&Pattern{
+	&Format{
 		Affix:             "\x00\x01%",
-		DigitShift:        2,
+		Multiplier:        100,
 		FormatWidth:       4,
 		MinIntegerDigits:  1,
 		MinFractionDigits: 1,
@@ -243,9 +197,9 @@ var testCases = []struct {
 	},
 }, {
 	"0.0‰",
-	&Pattern{
+	&Format{
 		Affix:             "\x00\x03‰",
-		DigitShift:        3,
+		Multiplier:        1000,
 		FormatWidth:       4,
 		MinIntegerDigits:  1,
 		MinFractionDigits: 1,
@@ -253,7 +207,7 @@ var testCases = []struct {
 	},
 }, {
 	"#,##0.00¤",
-	&Pattern{
+	&Format{
 		Affix:             "\x00\x02¤",
 		FormatWidth:       9,
 		GroupingSize:      [2]uint8{3, 0},
@@ -263,9 +217,9 @@ var testCases = []struct {
 	},
 }, {
 	"#,##0.00 ¤;(#,##0.00 ¤)",
-	&Pattern{Affix: "\x00\x04\u00a0¤\x01(\x05\u00a0¤)",
+	&Format{Affix: "\x00\x04\u00a0¤\x01(\x05\u00a0¤)",
 		NegOffset:         6,
-		DigitShift:        0,
+		Multiplier:        0,
 		FormatWidth:       10,
 		GroupingSize:      [2]uint8{3, 0},
 		MinIntegerDigits:  1,
@@ -275,28 +229,28 @@ var testCases = []struct {
 }, {
 	// padding
 	"*x#",
-	&Pattern{
+	&Format{
 		PadRune:     'x',
 		FormatWidth: 1,
 	},
 }, {
 	// padding
 	"#*x",
-	&Pattern{
+	&Format{
 		PadRune:     'x',
 		FormatWidth: 1,
 		Flags:       PadBeforeSuffix,
 	},
 }, {
 	"*xpre#suf",
-	&Pattern{
+	&Format{
 		Affix:       "\x03pre\x03suf",
 		PadRune:     'x',
 		FormatWidth: 7,
 	},
 }, {
 	"pre*x#suf",
-	&Pattern{
+	&Format{
 		Affix:       "\x03pre\x03suf",
 		PadRune:     'x',
 		FormatWidth: 7,
@@ -304,7 +258,7 @@ var testCases = []struct {
 	},
 }, {
 	"pre#*xsuf",
-	&Pattern{
+	&Format{
 		Affix:       "\x03pre\x03suf",
 		PadRune:     'x',
 		FormatWidth: 7,
@@ -312,25 +266,12 @@ var testCases = []struct {
 	},
 }, {
 	"pre#suf*x",
-	&Pattern{
+	&Format{
 		Affix:       "\x03pre\x03suf",
 		PadRune:     'x',
 		FormatWidth: 7,
 		Flags:       PadAfterSuffix,
 	},
-}, {
-	`* #0 o''clock`,
-	&Pattern{Affix: "\x00\x09 o\\'clock",
-		FormatWidth:      10,
-		PadRune:          32,
-		MinIntegerDigits: 0x1},
-}, {
-	`'123'* #0'456'`,
-	&Pattern{Affix: "\x05'123'\x05'456'",
-		FormatWidth:      8,
-		PadRune:          32,
-		MinIntegerDigits: 0x1,
-		Flags:            PadAfterPrefix},
 }, {
 	// no duplicate padding
 	"*xpre#suf*x", nil,
@@ -341,21 +282,19 @@ var testCases = []struct {
 
 func TestParsePattern(t *testing.T) {
 	for i, tc := range testCases {
-		t.Run(tc.pat, func(t *testing.T) {
-			f, err := ParsePattern(tc.pat)
-			if !reflect.DeepEqual(f, tc.want) {
-				t.Errorf("%d:%s:\ngot %#v;\nwant %#v", i, tc.pat, f, tc.want)
-			}
-			if got, want := err != nil, tc.want == nil; got != want {
-				t.Errorf("%d:%s:error: got %v; want %v", i, tc.pat, err, want)
-			}
-		})
+		f, err := ParsePattern(tc.pat)
+		if !reflect.DeepEqual(f, tc.want) {
+			t.Errorf("%d:%s:\ngot %#v;\nwant %#v", i, tc.pat, f, tc.want)
+		}
+		if got, want := err != nil, tc.want == nil; got != want {
+			t.Errorf("%d:%s:error: got %v; want %v", i, tc.pat, err, want)
+		}
 	}
 }
 
 func TestPatternSize(t *testing.T) {
-	if sz := unsafe.Sizeof(Pattern{}); sz > 48 {
-		t.Errorf("got %d; want <= 48", sz)
+	if sz := unsafe.Sizeof(Format{}); sz > 48 {
+		t.Errorf("got %d; want 48", sz)
 	}
 
 }

@@ -56,6 +56,9 @@ func (impl Implementation) Dgeqp3(m, n int, a []float64, lda int, jpvt []int, ta
 		}
 	}
 	minmn := min(m, n)
+	if len(tau) != minmn {
+		panic(badTau)
+	}
 	if len(work) < max(1, lwork) {
 		panic(badWork)
 	}
@@ -73,10 +76,6 @@ func (impl Implementation) Dgeqp3(m, n int, a []float64, lda int, jpvt []int, ta
 
 	if lwork == -1 {
 		return
-	}
-
-	if len(tau) < minmn {
-		panic(badTau)
 	}
 
 	bi := blas64.Implementation()

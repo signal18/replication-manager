@@ -12,7 +12,7 @@ import (
 
 	trigram "github.com/dgryski/go-trigram"
 	"github.com/lomik/go-carbon/cache"
-	pb "github.com/lomik/go-carbon/helper/carbonzipperpb"
+	pb "github.com/lomik/go-carbon/carbonzipperpb3"
 	"github.com/lomik/go-carbon/points"
 	whisper "github.com/lomik/go-whisper"
 	"go.uber.org/zap"
@@ -358,8 +358,8 @@ func TestGetMetricsListEmpty(t *testing.T) {
 	}
 
 	metrics, err := carbonserver.getMetricsList()
-	if err != errMetricsListEmpty {
-		t.Errorf("err: '%v', expected: '%v'", err, errMetricsListEmpty)
+	if err != metricsListEmptyError {
+		t.Errorf("err: '%v', expected: '%v'", err, metricsListEmptyError)
 	}
 	if metrics != nil {
 		t.Errorf("metrics: '%v', expected: 'nil'", err)

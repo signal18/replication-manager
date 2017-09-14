@@ -21,7 +21,6 @@ package viper
 
 import (
 	"bytes"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"log"
@@ -53,7 +52,7 @@ func init() {
 type remoteConfigFactory interface {
 	Get(rp RemoteProvider) (io.Reader, error)
 	Watch(rp RemoteProvider) (io.Reader, error)
-	WatchChannel(rp RemoteProvider) (<-chan *RemoteResponse, chan bool)
+	WatchChannel(rp RemoteProvider)(<-chan *RemoteResponse, chan bool)
 }
 
 // RemoteConfig is optional, see the remote package
@@ -597,33 +596,32 @@ func (v *Viper) Get(key string) interface{} {
 		return nil
 	}
 
+	valType := val
 	if v.typeByDefValue {
 		// TODO(bep) this branch isn't covered by a single test.
-		valType := val
 		path := strings.Split(lcaseKey, v.keyDelim)
 		defVal := v.searchMap(v.defaults, path)
 		if defVal != nil {
 			valType = defVal
 		}
-
-		switch valType.(type) {
-		case bool:
-			return cast.ToBool(val)
-		case string:
-			return cast.ToString(val)
-		case int64, int32, int16, int8, int:
-			return cast.ToInt(val)
-		case float64, float32:
-			return cast.ToFloat64(val)
-		case time.Time:
-			return cast.ToTime(val)
-		case time.Duration:
-			return cast.ToDuration(val)
-		case []string:
-			return cast.ToStringSlice(val)
-		}
 	}
 
+	switch valType.(type) {
+	case bool:
+		return cast.ToBool(val)
+	case string:
+		return cast.ToString(val)
+	case int64, int32, int16, int8, int:
+		return cast.ToInt(val)
+	case float64, float32:
+		return cast.ToFloat64(val)
+	case time.Time:
+		return cast.ToTime(val)
+	case time.Duration:
+		return cast.ToDuration(val)
+	case []string:
+		return cast.ToStringSlice(val)
+	}
 	return val
 }
 
@@ -721,15 +719,7 @@ func (v *Viper) GetSizeInBytes(key string) uint {
 // UnmarshalKey takes a single key and unmarshals it into a Struct.
 func UnmarshalKey(key string, rawVal interface{}) error { return v.UnmarshalKey(key, rawVal) }
 func (v *Viper) UnmarshalKey(key string, rawVal interface{}) error {
-	err := decode(v.Get(key), defaultDecoderConfig(rawVal))
-
-	if err != nil {
-		return err
-	}
-
-	v.insensitiviseMaps()
-
-	return nil
+	return mapstructure.Decode(v.Get(key), rawVal)
 }
 
 // Unmarshal unmarshals the config into a Struct. Make sure that the tags
@@ -896,9 +886,7 @@ func (v *Viper) find(lcaseKey string) interface{} {
 			return cast.ToBool(flag.ValueString())
 		case "stringSlice":
 			s := strings.TrimPrefix(flag.ValueString(), "[")
-			s = strings.TrimSuffix(s, "]")
-			res, _ := readAsCSV(s)
-			return res
+			return strings.TrimSuffix(s, "]")
 		default:
 			return flag.ValueString()
 		}
@@ -965,9 +953,7 @@ func (v *Viper) find(lcaseKey string) interface{} {
 			return cast.ToBool(flag.ValueString())
 		case "stringSlice":
 			s := strings.TrimPrefix(flag.ValueString(), "[")
-			s = strings.TrimSuffix(s, "]")
-			res, _ := readAsCSV(s)
-			return res
+			return strings.TrimSuffix(s, "]")
 		default:
 			return flag.ValueString()
 		}
@@ -975,15 +961,6 @@ func (v *Viper) find(lcaseKey string) interface{} {
 	// last item, no need to check shadowing
 
 	return nil
-}
-
-func readAsCSV(val string) ([]string, error) {
-	if val == "" {
-		return []string{}, nil
-	}
-	stringReader := strings.NewReader(val)
-	csvReader := csv.NewReader(stringReader)
-	return csvReader.Read()
 }
 
 // IsSet checks to see if the key has been set in any of the data locations.
