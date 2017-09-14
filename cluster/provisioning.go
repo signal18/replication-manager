@@ -685,11 +685,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 	}
 
 	cluster.sme.RemoveFailoverState()
-	time.Sleep(4 * time.Second)
-	err = cluster.TopologyDiscover()
-	if err != nil {
-		return errors.New("Can't found topology after bootstrap")
-	}
+	// speed up topology discovery
+	cluster.TopologyDiscover()
+
 	//bootstrapChan <- true
 	return nil
 }
