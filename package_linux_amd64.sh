@@ -26,20 +26,15 @@ if [ $nobuild -eq 0 ]; then
 fi
 
 echo "# Cleaning up previous builds"
-rm -rf build
-rm -rf buildtar
-rm *.tar.gz
-rm *.deb
-rm *.rpm
+rm -rf build buildtar
+rm -f *.tar.gz *.deb *.rpm
 mkdir -p build/usr/bin
 
 echo "# Building packages replication-manager-cli"
 
 cflags=(-m "$maintainer" --license "$license" -v $version)
 
-rm -rf build/usr/share
-rm -rf build/usr/etc
-rm -rf build/var
+rm -rf build/usr/share build/usr/etc build/var
 cp replication-manager-cli build/usr/bin/
 fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-client --description "$description - client package" .
 fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-client --description "$description - client package" .
@@ -99,6 +94,9 @@ done
 echo "# Building arbitrator packages"
 rm -rf build/etc
 rm -rf build/usr/share
+mkdir -p build/etc/replication-manager
+mkdir -p build/etc/systemd/system
+mkdir -p build/etc/init.d
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
