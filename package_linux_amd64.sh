@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# exit on error
+set -e
+
 nobuild=0
 if [ "$1" != "" ]; then
   if [ "$1" = "--no-build" ]; then
