@@ -469,22 +469,21 @@ func (server *ServerMonitor) Refresh() error {
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
-		//server.Replications = make([]dbhelper.SlaveStatus, 1)
 		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn)
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not get slaves status %s", err)
 		return err
 	}
+	// select a replication status get an err is teh repliciations array is empty
 	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
+		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		server.IsSlave = false
-		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)
 		server.UsingGtid = ""
 		server.IOThread = "No"
 		server.SQLThread = "No"
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
-		//server.MasterServerID = 0 Do not reset as we may need it for recovery
 		server.MasterHost = ""
 		server.MasterPort = "3306"
 		server.IOErrno = 0
@@ -517,7 +516,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
 	server.ReplicationHealth = server.replicationCheck()
-	// if MaxScale exit the variables and status part
+	// if MaxScale exit at fetch variables and status part as not supported
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
@@ -601,7 +600,7 @@ func (server *ServerMonitor) replicationCheck() string {
 	}
 
 	if server.IsRelay == false && server.IsMaxscale == false {
-
+		// when replication stopped Valid is null
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 
 			//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
