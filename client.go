@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"syscall"
+
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -29,6 +31,7 @@ import (
 	"github.com/signal18/replication-manager/termlog"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -73,6 +76,13 @@ var cliConn = http.Client{
 	Timeout:   1200 * time.Second,
 }
 
+func cliGetpasswd() string {
+	fmt.Print("Enter Password: ")
+	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
+	password := string(bytePassword)
+	return strings.TrimSpace(password)
+}
+
 func cliInit(needcluster bool) {
 	var err error
 	cliClusters, err = cliGetClusters()
@@ -82,8 +92,13 @@ func cliInit(needcluster bool) {
 	}
 	cliToken, err = cliLogin()
 	if err != nil {
-		log.WithError(err).Fatal()
-		return
+		cliPassword = cliGetpasswd()
+
+		cliToken, err = cliLogin()
+		if err != nil {
+			fmt.Printf("\n'%s'\n", err)
+			os.Exit(14)
+		}
 	}
 	allCLusters, _ := cliGetAllClusters()
 	if len(cliClusters) != 1 && needcluster {
@@ -136,14 +151,14 @@ func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	clientCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	clientCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	clientCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	clientCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	clientCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	clientCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 
 	apiCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	apiCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	apiCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	apiCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	apiCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	apiCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -152,7 +167,7 @@ func init() {
 	apiCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 
 	switchoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	switchoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	switchoverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	switchoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	switchoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	switchoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -160,21 +175,21 @@ func init() {
 	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 
 	failoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	failoverCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	failoverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	failoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	failoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	failoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	failoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 
 	topologyCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	topologyCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	topologyCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	topologyCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	topologyCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	topologyCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	topologyCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 
 	testCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	testCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	testCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	testCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	testCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	testCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -189,7 +204,7 @@ func init() {
 	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 
 	bootstrapCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	bootstrapCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	bootstrapCmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -198,7 +213,7 @@ func init() {
 	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
 
 	statusCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	statusCmd.Flags().StringVar(&cliPassword, "password", "mariadb", "Paswword of replication-manager")
+	statusCmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
 	statusCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	statusCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	statusCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -609,7 +624,7 @@ var clientCmd = &cobra.Command{
 			pprof.WriteHeapProfile(f)
 			f.Close()
 		}
-		log.Println(cliToken)
+		//		log.Println(cliToken)
 	},
 }
 

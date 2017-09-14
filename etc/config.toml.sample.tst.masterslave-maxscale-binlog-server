@@ -224,7 +224,7 @@ http-bind-address = "0.0.0.0"
 ## API ##
 #########
 
-# api-credential = "admin:mariadb"
+# api-credential = "admin:repman"
 # api-port = "3000"
 
 ############

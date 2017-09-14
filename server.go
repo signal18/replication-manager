@@ -145,7 +145,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that possible master have equal binlog filters")
 	monitorCmd.Flags().BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "3000", "Rest API listen port")
-	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:mariadb", "Rest API user:password")
+	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:repman", "Rest API user:password")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
@@ -366,7 +366,7 @@ func initDeprecated() {
 	monitorCmd.Flags().MarkDeprecated("master-connection", "Deprecate for replication-master-connection")
 	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "master-connect-retry", 10, "Specifies how many seconds to wait between slave connect retries to master")
 	monitorCmd.Flags().MarkDeprecated("master-connect-retry", "Deprecate for replication-master-connection-retry")
-	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:mariadb", "Rest API user:password")
+	monitorCmd.Flags().StringVar(&conf.APIUser, "api-user", "admin:repman", "Rest API user:password")
 	monitorCmd.Flags().MarkDeprecated("api-user", "Deprecate for 	api-credential")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover failover")
 	monitorCmd.Flags().MarkDeprecated("readonly", "Deprecate for failover-readonly-state")
