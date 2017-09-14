@@ -403,7 +403,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -435,7 +435,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -463,7 +463,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -485,7 +485,7 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -498,7 +498,7 @@ func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.MasterFailover(true)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -512,7 +512,7 @@ func handlerMuxStartTraffic(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SetTraffic(true)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -526,7 +526,7 @@ func handlerMuxStopTraffic(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SetTraffic(false)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -545,7 +545,6 @@ func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -588,12 +587,10 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 		}
 		err := mycluster.BootstrapReplication()
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error Bootstrap Replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -612,7 +609,6 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -631,7 +627,6 @@ func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -645,7 +640,7 @@ func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.ResetFailoverCtr()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -673,7 +668,6 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 		mycluster.SwitchoverWaitTest()
 		mycluster.SetPrefMaster(savedPrefMaster)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -702,12 +696,11 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err := e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -720,7 +713,6 @@ func handlerMuxSwitchInteractive(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.ToggleInteractive()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -734,7 +726,6 @@ func handlerMuxSwitchVerbosity(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchVerbosity()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -747,7 +738,6 @@ func handlerMuxSwitchRejoin(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchRejoin()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -760,7 +750,6 @@ func handlerMuxSwitchRejoinMysqldump(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchRejoinDump()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -773,7 +762,6 @@ func handlerMuxSwitchRejoinFlashback(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchRejoinFlashback()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -786,7 +774,6 @@ func handlerMuxSwitchRejoinSemisync(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchRejoinSemisync()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -799,7 +786,6 @@ func handlerMuxSwitchRplchecks(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchRplChecks()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -812,7 +798,6 @@ func handlerMuxSwitchSwitchoverSync(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchSwitchoverSync()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -825,7 +810,6 @@ func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchFailSync()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -838,7 +822,7 @@ func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchReadOnly()
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -875,7 +859,7 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -922,7 +906,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		mycluster.SetTestStartCluster(false)
 		mycluster.SetTestStopCluster(false)
@@ -950,7 +934,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1013,7 +997,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1027,7 +1011,7 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 		initConfig()
 		mycluster.ReloadConfig(confs[vars["clusterName"]])
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1042,7 +1026,7 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 		mycluster.LogPrintf("INFO", "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
 		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1057,7 +1041,7 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.StopDatabaseService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1071,7 +1055,7 @@ func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.StartDatabaseService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1085,7 +1069,7 @@ func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.InitDatabaseService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1099,7 +1083,7 @@ func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.UnprovisionDatabaseService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1113,7 +1097,7 @@ func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		mycluster.InitProxyService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -1127,7 +1111,7 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		mycluster.UnprovisionProxyService(node)
 	} else {
-		mycluster.LogPrintf("ERROR", "No cluster Found with name %s", vars["clusterName"])
+
 		http.Error(w, "No cluster", 500)
 		return
 	}

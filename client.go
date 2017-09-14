@@ -90,12 +90,41 @@ func cliInit(needcluster bool) {
 		err = errors.New("No cluster specify")
 		log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
 	}
+	if cliClusterInServerList() == false {
+		fmt.Println("Cluster not found")
+		os.Exit(10)
+	}
 	cliServers, err = cliGetServers()
 	if err != nil {
 		log.WithError(err).Fatal()
 		return
 	}
 }
+
+func cliClusterInServerList() bool {
+	if cfgGroup == "" {
+		return true
+	}
+	var isValueInList func(value string, list []string) bool
+	isValueInList = func(value string, list []string) bool {
+		for _, v := range list {
+			if v == value {
+				return true
+			}
+		}
+		return false
+	}
+
+	clinput := strings.Split(cfgGroup, ",")
+	for _, ci := range clinput {
+		if isValueInList(ci, cliClusters) == false {
+			return false
+		}
+	}
+
+	return true
+}
+
 func init() {
 	rootCmd.AddCommand(clientCmd)
 	rootCmd.AddCommand(switchoverCmd)
@@ -183,6 +212,7 @@ var bootstrapCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
+
 		if cliBootstrapWithProvisioning == true {
 			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/services/provision"
 			_, err := cliAPICmd(urlpost, nil)
@@ -586,15 +616,11 @@ var clientCmd = &cobra.Command{
 func cliGetClusters() ([]string, error) {
 	var cl []string
 	var err error
-	if cfgGroup != "" {
-		cl = strings.Split(cfgGroup, ",")
-	} else {
-		cl, err = cliGetAllClusters()
-		//		log.Printf("%s", cl)
-		if err != nil {
-			return cl, err
-		}
+	cl, err = cliGetAllClusters()
+	if err != nil {
+		return cl, err
 	}
+
 	return cl, nil
 }
 
@@ -816,19 +842,21 @@ func cliGetAllClusters() ([]string, error) {
 	req.Header.Set("Authorization", bearer)
 	resp, err := cliConn.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return res, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return res, err
 	}
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", "ici")
+
+		log.Println("ERROR", err)
 		return res, err
 	}
 	return r.Clusters, nil
@@ -983,13 +1011,13 @@ func cliClusterCmd(command string, params []RequetParam) error {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := cliConn.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return err
 	}
 	cliTlog.Add(string(body))
@@ -1013,18 +1041,19 @@ func cliAPICmd(urlpost string, params []RequetParam) (string, error) {
 	req.Header.Set("Authorization", bearer)
 	resp, err := cliConn.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return "", err
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR", err)
 		return "", err
 	}
 	if resp.StatusCode != 200 {
 		return "", errors.New(string(body))
 	}
+
 	return string(body), nil
 }
