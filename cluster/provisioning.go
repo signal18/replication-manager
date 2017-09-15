@@ -166,7 +166,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 	defer wg.Done()
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	for exitloop < 15 {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting switchover end")
@@ -192,7 +192,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 	exitloop := 0
 
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	for exitloop < 15 {
 
 		select {
 		case <-ticker.C:
@@ -206,7 +206,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		}
 
 	}
-	if exitloop < 30 {
+	if exitloop < 15 {
 		cluster.LogPrintf("INFO", "Rejoin Finished")
 
 	} else {

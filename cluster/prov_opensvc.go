@@ -93,38 +93,34 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
-	agents := opensvc.GetNodes()
-	for _, node := range agents {
-		for _, svc := range node.Svc {
-			if db.Id == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-
-				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-				if err != nil {
-					cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
-				}
-				//	opensvc.DeleteService(svc.Svc_id)
+	node, _ := cluster.FoundDatabaseAgent(db)
+	for _, svc := range node.Svc {
+		if db.Id == svc.Svc_name {
+			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 			}
+			//	opensvc.DeleteService(svc.Svc_id)
 		}
 	}
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	opensvc := cluster.OpenSVCConnect()
-	agents := opensvc.GetNodes()
-	for _, node := range agents {
-		for _, svc := range node.Svc {
-			if prx.Id == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-				if err != nil {
-					cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
-				}
-				//		opensvc.DeleteService(svc.Svc_id)
-
+	//agents := opensvc.GetNodes()
+	node, _ := cluster.FoundProxyAgent(prx)
+	for _, svc := range node.Svc {
+		if prx.Id == svc.Svc_name {
+			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 			}
+			//		opensvc.DeleteService(svc.Svc_id)
 		}
 	}
+
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
@@ -227,11 +223,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			return err
 		}
 	}
-	err = svc.DeteteServiceTags(idsrv)
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't delete service tags")
-		return err
-	}
+	//err = svc.DeteteServiceTags(idsrv)
+	//if err != nil {
+	//	cluster.LogPrintf("ERROR", "Can't delete service tags")
+	//	return err
+	//}
 	srvlist := make([]string, len(cluster.servers))
 	for i, s := range cluster.servers {
 		srvlist[i] = s.Host

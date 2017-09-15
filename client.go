@@ -73,7 +73,7 @@ type RequetParam struct {
 
 var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-	Timeout:   1200 * time.Second,
+	Timeout:   1800 * time.Second,
 }
 
 func cliGetpasswd() string {
