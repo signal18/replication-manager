@@ -279,8 +279,12 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 
+	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	if err != nil {
+		log.Println("ERROR", "JWT API can't start: %s", err)
+	}
 	log.Println("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
-	http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+
 }
 
 //////////////////////////////////////////

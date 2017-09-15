@@ -214,8 +214,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	var idsrv string
 	mysrv, err := svc.GetServiceFromName(prx.Id)
 	if err == nil {
-		cluster.LogPrintf("INFO", "Found existing service %s service %s", prx.Id, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
+		cluster.LogPrintf("INFO", "Found existing service %s service %s", prx.Id, idsrv)
+
 	} else {
 		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
 		if err != nil {
@@ -223,6 +224,8 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			return err
 		}
 	}
+	cluster.LogPrintf("INFO", "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
+
 	//err = svc.DeteteServiceTags(idsrv)
 	//if err != nil {
 	//	cluster.LogPrintf("ERROR", "Can't delete service tags")
