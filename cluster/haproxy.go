@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -13,7 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/tanji/replication-manager/haproxy"
+	"github.com/signal18/replication-manager/haproxy"
 )
 
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
@@ -40,23 +41,23 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		WorkingDir:    filepath.Join(cluster.conf.WorkingDir + "/"),
 	}
 
-	log.Printf("Haproxy loading haproxy config at %s", haproxyconfigPath)
+	cluster.LogPrintf("INFO", "Haproxy loading haproxy config at %s", haproxyconfigPath)
 	err := haConfig.GetConfigFromDisk()
 	if err != nil {
-		log.Printf("Haproxy did not find an haproxy config...initializing new config")
+		cluster.LogPrintf("INFO", "Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
 	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: cluster.conf.HaproxyWritePort, BindIp: cluster.conf.HaproxyWriteBindIp}
 	if err := haConfig.AddFrontend(&few); err != nil {
-		log.Printf("Failed to add frontend write ")
+		cluster.LogPrintf("ERROR", "Failed to add frontend write ")
 	} else {
 		if err := haConfig.AddFrontend(&few); err != nil {
-			log.Printf("Should return nil on already existing frontend")
+			cluster.LogPrintf("ERROR", "Haproxy should return nil on already existing frontend")
 		}
 
 	}
 	if result, _ := haConfig.GetFrontend("my_write_frontend"); result.Name != "my_write_frontend" {
-		log.Printf("Failed to add frontend write")
+		cluster.LogPrintf("ERROR", "Haproxy failed to add frontend write")
 	}
 	bew := haproxy.Backend{Name: "service_write", Mode: "tcp"}
 	haConfig.AddBackend(&bew)
@@ -75,20 +76,20 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: cluster.conf.HaproxyReadPort, BindIp: cluster.conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
-		log.Printf("Failed to add frontend read")
+		cluster.LogPrintf("ERROR", "Haproxy failed to add frontend read")
 	} else {
 		if err := haConfig.AddFrontend(&fer); err != nil {
-			log.Printf("Should return nil on already existing frontend")
+			cluster.LogPrintf("ERROR", "Haproxy should return nil on already existing frontend")
 		}
 	}
 	if result, _ := haConfig.GetFrontend("my_read_frontend"); result.Name != "my_read_frontend" {
-		log.Printf("Failed to get frontend")
+		cluster.LogPrintf("ERROR", "Haproxy failed to get frontend")
 	}
 	/* End add front end */
 
 	ber := haproxy.Backend{Name: "service_read", Mode: "tcp"}
 	if err := haConfig.AddBackend(&ber); err != nil {
-		log.Printf("Failed to add backend Read")
+		cluster.LogPrintf("ERROR", "Haproxy failed to add backend for service_read")
 	}
 
 	//var checksum64 string
@@ -99,7 +100,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
 		s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 		if err := haConfig.AddServer("service_read", &s); err != nil {
-			log.Printf("Failed to add server")
+			cluster.LogPrintf("ERROR", "Failed to add server in Haproxy for service_read")
 		}
 
 	}
@@ -109,16 +110,22 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		log.Fatal("Could not render initial haproxy config, exiting...")
 		os.Exit(1)
 	}
-
-	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		log.Printf("Haproxy pidfile exists at %s, proceeding...", haConfig.PidFile)
+	if cluster.conf.Enterprise {
+		/*cf, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "-haproxy.cfg") // just pass the file name
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Haproxy can't log generated config for provisioning %s", err)
+		}
+		cluster.OpenSVCProvisionReloadHaproxyConf(string(cf))*/
+		cluster.OpenSVCProvisionReloadHaproxyConf("test")
 	} else {
-		log.Println("Created new pidfile...")
-	}
 
-	err = haRuntime.Reload(&haConfig)
-	if err != nil {
-		log.Fatal("Error while reloading haproxy: " + err.Error())
-		os.Exit(1)
+		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
+			cluster.LogPrintf("WARNING", "Haproxy pidfile exists at %s, proceeding with reload config...", haConfig.PidFile)
+		}
+		err = haRuntime.Reload(&haConfig)
+		if err != nil {
+			log.Fatal("Error while reloading haproxy: " + err.Error())
+			os.Exit(1)
+		}
 	}
 }

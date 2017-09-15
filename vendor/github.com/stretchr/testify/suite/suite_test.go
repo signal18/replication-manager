@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // SuiteRequireTwice is intended to test the usage of suite.Require in two
@@ -20,7 +19,7 @@ type SuiteRequireTwice struct{ Suite }
 // A regression would result on these tests panicking rather than failing.
 func TestSuiteRequireTwice(t *testing.T) {
 	ok := testing.RunTests(
-		allTestsFilter,
+		func(_, _ string) (bool, error) { return true, nil },
 		[]testing.InternalTest{{
 			Name: "TestSuiteRequireTwice",
 			F: func(t *testing.T) {
@@ -268,19 +267,16 @@ func (sc *StdoutCapture) StopCapture() (string, error) {
 }
 
 func TestSuiteLogging(t *testing.T) {
+	testT := testing.T{}
+
 	suiteLoggingTester := new(SuiteLoggingTester)
+
 	capture := StdoutCapture{}
-	internalTest := testing.InternalTest{
-		Name: "SomeTest",
-		F: func(subT *testing.T) {
-			Run(subT, suiteLoggingTester)
-		},
-	}
 	capture.StartCapture()
-	testing.RunTests(allTestsFilter, []testing.InternalTest{internalTest})
+	Run(&testT, suiteLoggingTester)
 	output, err := capture.StopCapture()
-	require.NoError(t, err, "Got an error trying to capture stdout and stderr!")
-	require.NotEmpty(t, output, "output content must not be empty")
+
+	assert.Nil(t, err, "Got an error trying to capture stdout!")
 
 	// Failed tests' output is always printed
 	assert.Contains(t, output, "TESTLOGFAIL")

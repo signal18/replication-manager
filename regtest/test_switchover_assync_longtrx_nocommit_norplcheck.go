@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package regtest
@@ -8,50 +9,40 @@ package regtest
 import (
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetRplMaxDelay(8)
 	cluster.SetRplChecks(false)
 
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-
 	SaveMasterURL := cluster.GetMaster().URL
 	db, err := cluster.GetClusterProxyConn()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Can't take proxy conn %s ", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
-	go dbhelper.InjectLongTrx(db, 20)
-	time.Sleep(2 * time.Second)
+	dbhelper.InjectTrxWithoutCommit(db)
+	time.Sleep(12 * time.Second)
 	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
-
 	cluster.SwitchoverWaitTest()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.EnableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogPrintf("ERROR", "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
 		return false
-
 	}
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

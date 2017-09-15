@@ -113,8 +113,6 @@ var enforceTestCases = []struct {
 		{"α͵α", "α͵α", nil},
 		{"͵͵α", "͵͵α", nil}, // The numeric sign is itself Greek.
 		{"α͵͵α", "α͵͵α", nil},
-		{"α͵͵", "", errContext},
-		{"α͵͵a", "", errContext},
 	}},
 
 	{"Context Rule 5+6", NewFreeform(), []testCase{

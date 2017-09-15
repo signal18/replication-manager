@@ -31,14 +31,14 @@
 14:58:42,817 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 14:58:42,872 disk#1001      INFO    provisioned
 14:58:42,880 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-14:58:42,891 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-14:58:42,917 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+14:58:42,891 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+14:58:42,917 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 14:58:42,926 fs#00          INFO    provisioned
-14:58:42,943 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-14:58:42,966 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-14:58:42,996 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+14:58:42,943 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+14:58:42,966 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+14:58:42,996 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 14:58:43,006 fs#01          INFO    provisioned
-14:58:43,024 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+14:58:43,024 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 14:58:43,034 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 14:58:45,363 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -297,7 +297,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 14:58:48,866 ip#01          INFO    bridge mode
 14:58:48,892 ip#01          INFO    create symlink /var/run/netns/21034 -> /proc/21034/ns/net
 14:58:48,956 ip#01          INFO    /sbin/ip link add name veth1pl21034 mtu 1500 type veth peer name veth1pg21034 mtu 1500
-14:58:48,961 ip#01          INFO    /sbin/ip link set veth1pl21034 master br0
+14:58:48,961 ip#01          INFO    /sbin/ip link set veth1pl21034 master br-prd
 14:58:48,964 ip#01          INFO    /sbin/ip link set veth1pl21034 up
 14:58:48,967 ip#01          INFO    /sbin/ip link set veth1pg21034 netns 21034
 14:58:48,984 ip#01          INFO    /sbin/ip netns exec 21034 ip link set veth1pg21034 name eth1
@@ -481,12 +481,12 @@ a stack has been saved to the rpc log
 15:15:27,560 disk#01        INFO    loop /srv/4832677178583133704_pod01.dsk is already up
 15:15:27,601 disk#1001      INFO    already provisionned
 15:15:27,608 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-15:15:27,623 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+15:15:27,623 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 15:15:27,648 fs#00          INFO    provisioned
-15:15:27,660 fs#00          INFO    zfs zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
-15:15:27,676 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+15:15:27,660 fs#00          INFO    ext4 zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
+15:15:27,676 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 15:15:27,703 fs#01          INFO    provisioned
-15:15:27,714 fs#01          INFO    zfs zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
+15:15:27,714 fs#01          INFO    ext4 zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
 15:15:27,714 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 15:15:29,855 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -551,10 +551,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208030
-15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on agent1
+15:15:29,930 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:15:29,972 ip#01          INFO    skip allocate: an ip is already defined
-15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br0
-15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on agent1
+15:15:30,036 ip#01          INFO    192.168.100.70 is already up on br-prd
+15:15:30,176 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:15:30,442                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:15:30,442                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 a stack has been saved to the rpc log

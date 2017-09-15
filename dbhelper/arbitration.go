@@ -1,7 +1,7 @@
 package dbhelper
 
 import "github.com/jmoiron/sqlx"
-import log "github.com/Sirupsen/logrus"
+import log "github.com/sirupsen/logrus"
 
 func SetHeartbeatTable(db *sqlx.DB) error {
 

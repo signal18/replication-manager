@@ -1,4 +1,4 @@
-package: github.com/tanji/replication-manager
+package: github.com/signal18/replication-manager
 import:
 - package: github.com/go-sql-driver/mysql
   version: ^1.2.0

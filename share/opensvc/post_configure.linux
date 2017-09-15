@@ -28,7 +28,8 @@ svcmgr -s opensvc-collector create --provision --interactive --template /usr/sha
 
 nodemgr set --param node.dbopensvc --value https://collector
 nodemgr register --user=replication-manager@localhost.localdomain --password=mariadb
-nodemgr set --param node.repocomp --value https://mrm:10001/repocomp
+nodemgr set --param node.repocomp --value http://mrm:10001/repocomp
+nodemgr updatecomp
 
 # activer le mode pull https://docs.opensvc.com/fr/agent.architecture.html
 # Type=forking dans le dequee

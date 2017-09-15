@@ -1,0 +1,7 @@
+2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
+2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
+2017/08/04 18:50:06 [ux_dck_zpool_loop] INFO  - Failover in automatic mode
+2017/08/04 18:50:06 [ux_dck_zpool_loop] ERROR - File error: open /var/lib/replication-manager/ux_dck_zpool_loop.json: no such file or directory
+
+2017/08/04 18:50:08 [ux_dck_zpool_loop] TESTI - testFailoverReplAllDelayInteractive

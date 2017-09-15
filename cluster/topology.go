@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -17,9 +18,9 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 type topologyError struct {
@@ -168,6 +169,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf("DEBUG", "Entering topology detection")
 	}
+	// Check topology Cluster is down
+	cluster.TopologyClusterDown()
 
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
@@ -214,7 +217,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.LogPrintf("DEBUG", "Privilege check on %s", sv.URL)
 		}
 		if sv.State != "" && !sv.IsDown() && sv.IsRelay == false {
-			myhost := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
+			myhost, err := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Cant get host for connection user on %s: %s", sv.URL, err)
+			}
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
@@ -249,7 +255,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					}
 					// Additional health checks go here
 					if sv.acidTest() == false && cluster.sme.IsDiscovered() {
-						cluster.sme.AddState("WARN00007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+						cluster.sme.AddState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 					}
 				}
 			}
@@ -363,7 +369,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN00003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
 		for _, s := range cluster.servers {
@@ -372,12 +378,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN00004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getPreferedMaster()
 			if server != nil {
 				dbhelper.SetReadOnly(server.Conn, false)
 			} else {
-				cluster.sme.AddState("WARN00006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
+				cluster.sme.AddState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
 			}
 		}
 	}
@@ -503,7 +509,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
-				if sl.Delay.Int64 <= cluster.conf.SwitchMaxDelay && sl.SQLThread == "Yes" {
+				if sl.Delay.Int64 <= cluster.conf.FailMaxDelay && sl.SQLThread == "Yes" {
 					cluster.master.RplMasterStatus = true
 				}
 
@@ -520,8 +526,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
-	// Check topology Cluster is down
-	cluster.TopologyClusterDown()
+
 	// Fecth service Status
 	/*	if cluster.conf.Enterprise {
 		status, err := cluster.GetOpenSVCSeviceStatus()
@@ -530,35 +535,45 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
 		}
 	}*/
-	if cluster.sme.CanMonitor() {
+	if cluster.sme.IsFailable() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
+}
+
+func (cluster *Cluster) IsProvision() bool {
+	for _, s := range cluster.servers {
+		if s.State == stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+			return false
+		}
+	}
+	return true
+
 }
 
 // TopologyClusterDown track state all ckuster down
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
 	if cluster.master == nil || cluster.master.State == stateFailed {
-		if cluster.conf.Interactive == false {
-			allslavefailed := true
-			for _, s := range cluster.slaves {
-				if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
-					allslavefailed = false
-				}
-			}
-			if allslavefailed {
-				if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
-					// forget the master if safe mode
-					cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
-					cluster.lastmaster = cluster.master
-					cluster.master = nil
-
-				}
-				cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
-				return true
+		//	if cluster.conf.Interactive == false {
+		allslavefailed := true
+		for _, s := range cluster.slaves {
+			if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+				allslavefailed = false
 			}
 		}
+		if allslavefailed {
+			if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
+				// forget the master if safe mode
+				cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+				cluster.lastmaster = cluster.master
+				cluster.master = nil
+
+			}
+			cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+			return true
+		}
+		//}
 	}
 	return false
 }

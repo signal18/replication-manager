@@ -1,6 +1,9 @@
+// +build agent
+
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -17,8 +20,8 @@ import (
 	//	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tanji/replication-manager/cluster"
-	//	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/cluster"
+	//	"github.com/signal18/replication-manager/misc"
 )
 
 func init() {

@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -266,15 +267,15 @@ func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	return "N/A"
 }
 
-func GetHostFromConnection(db *sqlx.DB, user string) string {
+func GetHostFromConnection(db *sqlx.DB, user string) (string, error) {
 
 	var value string
 	err := db.QueryRowx("select user()").Scan(&value)
 	if err != nil {
-		log.Println("ERROR: Could not get spider shards", err)
-		return "N/A"
+		log.Println("ERROR: Could not get SQL User()", err)
+		return "N/A", err
 	}
-	return strings.Split(value, "@")[1]
+	return strings.Split(value, "@")[1], nil
 
 }
 
@@ -716,6 +717,10 @@ func StopSlaveIOThread(db *sqlx.DB) error {
 	_, err := db.Exec("STOP SLAVE IO_THREAD")
 	return err
 }
+func StopSlaveSQLThread(db *sqlx.DB) error {
+	_, err := db.Exec("STOP SLAVE SQL_THREAD")
+	return err
+}
 
 func StopAllSlaves(db *sqlx.DB) error {
 	_, err := db.Exec("STOP ALL SLAVES")
@@ -1117,7 +1122,7 @@ func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 	return checkres, err
 }
 
-func InjectTrxWithoutCommit(db *sqlx.DB, time int) error {
+func InjectTrxWithoutCommit(db *sqlx.DB) error {
 	benchWarmup(db)
 	_, err := db.Exec("START TRANSACTION")
 	if err != nil {

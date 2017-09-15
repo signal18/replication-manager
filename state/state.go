@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -8,10 +9,13 @@
 
 package state
 
-import "fmt"
-import "time"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
 import "strconv"
-import "sync"
 
 type State struct {
 	ErrType string
@@ -70,6 +74,29 @@ type StateMachine struct {
 	sync.Mutex
 }
 
+type Sla struct {
+	firsttime      int64
+	uptime         int64
+	uptimeFailable int64
+	uptimeSemisync int64
+}
+
+func (SM *StateMachine) GetSla() Sla {
+	var mySla Sla
+	mySla.firsttime = SM.firsttime
+	mySla.uptime = SM.uptime
+	mySla.uptimeFailable = SM.uptimeFailable
+	mySla.uptimeSemisync = SM.uptimeSemisync
+	return mySla
+}
+
+func (SM *StateMachine) SetSla(mySla Sla) {
+	SM.firsttime = mySla.firsttime
+	SM.uptime = mySla.uptime
+	SM.uptimeFailable = mySla.uptimeFailable
+	SM.uptimeSemisync = mySla.uptimeSemisync
+}
+
 func (SM *StateMachine) Init() {
 
 	SM.CurState = NewMap()
@@ -108,12 +135,15 @@ func (SM *StateMachine) AddState(key string, s State) {
 
 func (SM *StateMachine) IsInState(key string) bool {
 	SM.Lock()
-	if SM.CurState.Search(key) == false {
+	//log.Printf("%s,%s", key, SM.OldState.Search(key))
+	//CurState may not be valid depending when it's call because empty at every ticker so may have not collected the state yet
+
+	if SM.OldState.Search(key) == false {
 		SM.Unlock()
 		return false
 	} else {
 		SM.Unlock()
-		return false
+		return true
 	}
 }
 
@@ -161,7 +191,18 @@ func (SM *StateMachine) GetUptimeFailable() string {
 }
 
 func (SM *StateMachine) IsFailable() bool {
-	return SM.CanMonitor()
+
+	SM.Lock()
+	for _, value := range *SM.OldState {
+		if value.ErrType == "ERROR" {
+			SM.Unlock()
+			return false
+		}
+	}
+	SM.discovered = true
+	SM.Unlock()
+	return true
+
 }
 
 func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {

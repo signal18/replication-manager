@@ -60,6 +60,8 @@ OUPUT:
 ./replication-manager api  --url="https://127.0.0.1:3000/api/status"  
 ```
 
+/api/clusters/{clusterName}/status
+
 # API protected endpoints
 
 /api/clusters/{clusterName}/actions/switchover
@@ -71,6 +73,8 @@ OUPUT:
 /api/clusters/{clusterName}/actions/replication/cleanup
 
 /api/clusters/{clusterName}/actions/services todo
+
+/api/clusters/{clusterName}/actions/services/provision
 
 /api/clusters/{clusterName}/actions/start-traffic
 
@@ -97,7 +101,7 @@ List agents services resources
 /api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision
 
 /api/clusters/{clusterName}/proxies/{proxyName}/actions/provision
-  
+
 /api/clusters/{clusterName}/topology/servers
 
 /api/clusters/{clusterName}/topology/master

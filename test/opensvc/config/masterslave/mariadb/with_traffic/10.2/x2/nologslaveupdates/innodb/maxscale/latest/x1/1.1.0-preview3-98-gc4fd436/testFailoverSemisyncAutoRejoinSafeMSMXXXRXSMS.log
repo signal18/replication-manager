@@ -22,12 +22,12 @@
 15:49:18,251 disk#01        INFO    loop /srv/4832677178583133704_pod01.dsk is already up
 15:49:18,296 disk#1001      INFO    already provisionned
 15:49:18,304 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-15:49:18,320 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+15:49:18,320 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 15:49:18,332 fs#00          INFO    provisioned
-15:49:18,342 fs#00          INFO    zfs zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
-15:49:18,358 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+15:49:18,342 fs#00          INFO    ext4 zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
+15:49:18,358 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 15:49:18,368 fs#01          INFO    provisioned
-15:49:18,377 fs#01          INFO    zfs zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
+15:49:18,377 fs#01          INFO    ext4 zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
 15:49:18,378 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 15:49:20,324 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -92,10 +92,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208635
-15:49:20,404 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on agent1
+15:49:20,404 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
 15:49:20,451 ip#01          INFO    skip allocate: an ip is already defined
-15:49:20,519 ip#01          INFO    192.168.100.70 is already up on br0
-15:49:20,654 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on agent1
+15:49:20,519 ip#01          INFO    192.168.100.70 is already up on br-prd
+15:49:20,654 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
 15:49:20,935                INFO    send /etc/opensvc/4832677178583133704.conf to collector
 15:49:20,936                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 a stack has been saved to the rpc log
@@ -126,12 +126,12 @@ use '-f' to override the following errors:
 /srv/17311646700765639015_pod01.dsk is part of exported pool 'zp17311646700765639015_pod01'
 15:49:29,963 disk#1001      INFO    provisioned
 15:49:29,966 disk#1001      INFO    zpool import -f -o cachefile=/var/lib/opensvc/zpool.cache zp17311646700765639015_pod01
-15:49:30,463 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+15:49:30,463 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 15:49:30,472 fs#00          INFO    provisioned
-15:49:30,489 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
-15:49:30,518 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+15:49:30,489 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+15:49:30,518 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 15:49:30,528 fs#01          INFO    provisioned
-15:49:30,546 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+15:49:30,546 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
 15:49:30,557 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 15:49:32,848 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -206,7 +206,7 @@ total duration: 0:00:00.210443
 15:49:36,368 ip#01          INFO    bridge mode
 15:49:36,398 ip#01          INFO    create symlink /var/run/netns/6486 -> /proc/6486/ns/net
 15:49:36,469 ip#01          INFO    /sbin/ip link add name veth1pl6486 mtu 1500 type veth peer name veth1pg6486 mtu 1500
-15:49:36,474 ip#01          INFO    /sbin/ip link set veth1pl6486 master br0
+15:49:36,474 ip#01          INFO    /sbin/ip link set veth1pl6486 master br-prd
 15:49:36,478 ip#01          INFO    /sbin/ip link set veth1pl6486 up
 15:49:36,482 ip#01          INFO    /sbin/ip link set veth1pg6486 netns 6486
 15:49:36,490 ip#01          INFO    /sbin/ip netns exec 6486 ip link set veth1pg6486 name eth1
@@ -225,7 +225,7 @@ a stack has been saved to the rpc log
 
 2017/08/03 17:49:41 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 17:49:41 [ux_dck_zpool_loop] INFO  - Database started
-2017/08/03 17:49:48 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 17:49:48 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 17:49:48 [ux_dck_zpool_loop] ERROR - MaxScale server name undiscovered
 2017/08/03 17:49:48 [ux_dck_zpool_loop] STATE - INF00001 CLOSING Server 192.168.100.71 is down
 2017/08/03 17:49:48 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -246,12 +246,12 @@ a stack has been saved to the rpc log
 15:49:44,358 disk#01        INFO    loop /srv/10940044185188150515_pod01.dsk is already up
 15:49:44,429 disk#1001      INFO    already provisionned
 15:49:44,438 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-15:49:44,455 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+15:49:44,455 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 15:49:44,466 fs#00          INFO    provisioned
-15:49:44,483 fs#00          INFO    zfs zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
-15:49:44,508 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+15:49:44,483 fs#00          INFO    ext4 zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
+15:49:44,508 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 15:49:44,517 fs#01          INFO    provisioned
-15:49:44,532 fs#01          INFO    zfs zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
+15:49:44,532 fs#01          INFO    ext4 zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
 15:49:44,533 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 15:49:46,708 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -274,10 +274,10 @@ check passed, skip fix
  mariadb.svc.mrm.proxy.cnf
 0 error
 total duration: 0:00:00.107156
-15:49:46,788 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on agent2
+15:49:46,788 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 15:49:46,834 ip#01          INFO    skip allocate: an ip is already defined
-15:49:46,894 ip#01          INFO    192.168.100.50 is already up on br0
-15:49:47,031 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on agent2
+15:49:46,894 ip#01          INFO    192.168.100.75 is already up on br-prd
+15:49:47,031 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
 15:49:47,260                INFO    send /etc/opensvc/10940044185188150515.conf to collector
 15:49:47,261                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
 
@@ -302,7 +302,7 @@ total duration: 0:00:00.107156
 2017/08/03 17:50:04 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 17:50:05 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/03 17:50:05 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/03 17:50:05 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 17:50:05 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 17:50:05 [ux_dck_zpool_loop] TEST  - Starting Test testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS
 2017/08/03 17:50:05 [ux_dck_zpool_loop] BENCH - PreparedExecConcurrent2 10 iterations
  34.398242ms 	    291 queries/sec	    8 allocs/query	    791 B/query
@@ -495,7 +495,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:23 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
 2017/08/03 17:53:23 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
 2017/08/03 17:53:23 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
-2017/08/03 17:53:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 17:53:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 17:53:23 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:23 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 17:53:24 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
@@ -508,7 +508,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:25 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:25 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:25 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:26 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:26 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:26 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:27 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:27 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
@@ -519,7 +519,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:27 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:27 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:27 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:28 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:28 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:28 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:29 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:29 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -530,7 +530,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:29 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:29 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:29 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:30 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:30 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:30 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:31 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:31 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -541,7 +541,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:31 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 17:53:31 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:31 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 17:53:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:32 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:33 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:33 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -552,7 +552,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:33 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:33 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:33 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:34 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:34 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:34 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:35 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:35 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -563,7 +563,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:35 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:35 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:35 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:36 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:37 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:37 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -574,7 +574,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:37 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:37 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:37 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:38 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:39 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:39 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -585,7 +585,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:39 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:39 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:39 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:40 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:41 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:41 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -596,7 +596,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:41 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 17:53:41 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:41 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 17:53:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:42 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:43 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:43 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
@@ -607,7 +607,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:43 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:43 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:43 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:44 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:44 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:44 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:45 [ux_dck_zpool_loop] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.71
@@ -618,7 +618,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:45 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 17:53:45 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 17:53:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:46 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:47 [ux_dck_zpool_loop] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.71
@@ -629,7 +629,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:47 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:47 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 17:53:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 17:53:48 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:49 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:49 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
@@ -640,7 +640,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:49 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:49 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: no route to host
+2017/08/03 17:53:49 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: no route to host
 2017/08/03 17:53:50 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 17:53:50 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
@@ -649,7 +649,7 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.71
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
-2017/08/03 17:53:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 17:53:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:50 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 17:53:51 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
@@ -660,10 +660,10 @@ Finished... Total running time: 58.113189ms
 2017/08/03 17:53:51 [ux_dck_zpool_loop] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.70
 2017/08/03 17:53:51 [ux_dck_zpool_loop] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.70
 2017/08/03 17:53:51 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 17:53:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 17:53:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 17:53:51 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 17:53:51 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 17:53:52 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
 2017/08/03 17:53:52 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/03 17:53:52 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/03 17:53:52 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinSafeMSMXXXRXSMS                -> {testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS PASS ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker agent1,agent2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker agent2 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker agent1,agent2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker agent2 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf}}
+2017/08/03 17:53:52 [ux_dck_zpool_loop] TEST  - Result FailoverSemisyncAutoRejoinSafeMSMXXXRXSMS                -> {testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS PASS ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.75 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.75 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf}}

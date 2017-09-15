@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package regtest
@@ -9,14 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
 	cluster.SetRplChecks(false)
@@ -41,7 +39,7 @@ func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, tes
 
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
@@ -54,16 +52,15 @@ func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, tes
 	time.Sleep(2 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
 	if cluster.CheckSlavesRunning() == false {
 		cluster.LogPrintf("ERROR", "Replication issue")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
-	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

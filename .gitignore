@@ -1,9 +1,9 @@
 *~
-replication-manager
+replication-manager*
 *.rpm
 *.deb
 copyright.*
 *.tar.gz
-build
+build*
 maxscale*.rpm
 data/*

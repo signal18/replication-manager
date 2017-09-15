@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -13,11 +14,11 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/tanji/replication-manager/config"
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 	// Provisoning to add flags for compile
 	WithProvisioning      string
 	WithArbitration       string
+	WithArbitrationClient string
 	WithProxysql          string
 	WithHaproxy           string
 	WithMaxscale          string
@@ -42,24 +44,71 @@ var (
 	WithEnforce           string
 	WithDeprecate         string
 	WithOpenSVC           string
+	WithMultiTiers        string
 
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
-	Build string
+	Build  string
+	GoOS   string
+	GoArch string
 )
 var confs = make(map[string]config.Config)
+var currentClusterName string
+
+type Settings struct {
+	Enterprise          string   `json:"enterprise"`
+	Interactive         string   `json:"interactive"`
+	FailoverCtr         string   `json:"failoverctr"`
+	MaxDelay            string   `json:"maxdelay"`
+	Faillimit           string   `json:"faillimit"`
+	LastFailover        string   `json:"lastfailover"`
+	MonHearbeats        string   `json:"monheartbeats"`
+	Uptime              string   `json:"uptime"`
+	UptimeFailable      string   `json:"uptimefailable"`
+	UptimeSemiSync      string   `json:"uptimesemisync"`
+	RplChecks           string   `json:"rplchecks"`
+	FailSync            string   `json:"failsync"`
+	SwitchSync          string   `json:"switchsync"`
+	Verbose             string   `json:"verbose"`
+	Rejoin              string   `json:"rejoin"`
+	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
+	RejoinSemiSync      string   `json:"rejoinsemisync"`
+	RejoinFlashback     string   `json:"rejoinflashback"`
+	RejoinUnsafe        string   `json:"rejoinunsafe"`
+	RejoinDump          string   `json:"rejoindump"`
+	Test                string   `json:"test"`
+	Heartbeat           string   `json:"heartbeat"`
+	Status              string   `json:"runstatus"`
+	ConfGroup           string   `json:"confgroup"`
+	MonitoringTicker    string   `json:"monitoringticker"`
+	FailResetTime       string   `json:"failresettime"`
+	ToSessionEnd        string   `json:"tosessionend"`
+	HttpAuth            string   `json:"httpauth"`
+	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
+	Clusters            []string `json:"clusters"`
+	RegTests            []string `json:"regtests"`
+	Topology            string   `json:"topology"`
+}
+type heartbeat struct {
+	UUID    string `json:"uuid"`
+	Secret  string `json:"secret"`
+	Cluster string `json:"cluster"`
+	Master  string `json:"master"`
+	UID     int    `json:"id"`
+	Status  string `json:"status"`
+	Hosts   int    `json:"hosts"`
+	Failed  int    `json:"failed"`
+}
 
 func init() {
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
-	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
-	rootCmd.PersistentFlags().IntVar(&conf.LogLevel, "log-level", 0, "Log verbosity level")
 	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "/tmp/repmgr.mprof", "Write a memory profile to a file readable by pprof")
 
 	viper.BindPFlags(rootCmd.PersistentFlags())
@@ -88,7 +137,6 @@ func initConfig() {
 			log.Fatal("No config file etc/replication-manager/config.toml ")
 		}
 	}
-
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
@@ -141,10 +189,13 @@ func initConfig() {
 			if gl != "" {
 				clusterconf := conf
 				cf2 := viper.Sub("Default")
+				initAlias(cf2)
+
 				cf2.Unmarshal(&clusterconf)
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
 				cf2 = viper.Sub(gl)
+				initAlias(cf2)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
@@ -179,6 +230,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "replication-manager",
 	Short: "Replication Manager tool for MariaDB and MySQL",
+	// Copyright 2017 Signal 18 SARL
 	Long: `replication-manager allows users to monitor interactively MariaDB 10.x and MySQL GTID replication health
 and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -195,4 +247,38 @@ var versionCmd = &cobra.Command{
 		fmt.Println("Full Version: ", FullVersion)
 		fmt.Println("Build Time: ", Build)
 	},
+}
+
+func initAlias(v *viper.Viper) {
+	v.RegisterAlias("replication-master-connection", "replication-source-name")
+	v.RegisterAlias("logfile", "log-file")
+	v.RegisterAlias("wait-kill", "switchover-wait-kill")
+	v.RegisterAlias("user", "db-servers-credential")
+	v.RegisterAlias("hosts", "db-servers-hosts")
+	v.RegisterAlias("hosts-tls-ca-cert", "db-servers-tls-ca-cert")
+	v.RegisterAlias("hosts-tls-client-key", "db-servers-tls-client-key")
+	v.RegisterAlias("hosts-tls-client-cert", "db-servers-tls-client-cert")
+	v.RegisterAlias("connect-timeout", "db-servers-connect-timeout")
+	v.RegisterAlias("rpluser", "replication-credential")
+	v.RegisterAlias("prefmaster", "db-servers-prefered-master")
+	v.RegisterAlias("ignore-servers", "db-servers-ignored-hosts")
+	v.RegisterAlias("master-connection", "replication-master-connection")
+	v.RegisterAlias("master-connect-retry", "replication-master-connection-retry")
+	v.RegisterAlias("api-user", "api-credential")
+	v.RegisterAlias("readonly", "failover-readonly-state")
+	v.RegisterAlias("maxscale-host", "maxscale-servers")
+	v.RegisterAlias("mdbshardproxy-hosts", "mdbshardproxy-servers")
+	v.RegisterAlias("multimaster", "replication-multi-master")
+	v.RegisterAlias("multi-tier-slaver", "replication-multi-tier-slave")
+	v.RegisterAlias("pre-failover-script", "failover-pre-script")
+	v.RegisterAlias("post-failover-script", "failover-post-script")
+	v.RegisterAlias("rejoin-script", "autorejoin-script")
+	v.RegisterAlias("share-directory", "monitoring-sharedir")
+	v.RegisterAlias("working-directory", "monitoring-datadir")
+	v.RegisterAlias("interactive", "failover-mode")
+	v.RegisterAlias("failcount", "failover-falsepositive-ping-counter")
+	v.RegisterAlias("wait-write-query", "switchover-wait-write-query")
+	v.RegisterAlias("wait-trx", "switchover-wait-trx")
+	v.RegisterAlias("gtidcheck", "switchover-at-equal-gtid")
+	v.RegisterAlias("maxdelay", "failover-max-slave-delay")
 }

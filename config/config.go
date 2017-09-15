@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -9,40 +10,67 @@
 package config
 
 type Config struct {
-	WorkingDir                         string `mapstructure:"working-directory"`
-	ShareDir                           string `mapstructure:"share-directory"`
-	User                               string `mapstructure:"user"`
-	Hosts                              string `mapstructure:"hosts"`
-	HostsTLSCA                         string `mapstructure:"hosts-tls-ca-cert"`
-	HostsTLSKEY                        string `mapstructure:"hosts-tls-client-key"`
-	HostsTLSCLI                        string `mapstructure:"hosts-tls-client-cert"`
-	Socket                             string `mapstructure:"socket"`
-	RplUser                            string `mapstructure:"rpluser"`
+	WorkingDir                         string `mapstructure:"monitoring-datadir"`
+	ShareDir                           string `mapstructure:"monitoring-sharedir"`
+	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
+	Socket                             string `mapstructure:"monitoring-socket"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
-	PreScript                          string `mapstructure:"pre-failover-script"`
-	PostScript                         string `mapstructure:"post-failover-script"`
-	RejoinScript                       string `mapstructure:"rejoin-script"`
-	PrefMaster                         string `mapstructure:"prefmaster"`
-	IgnoreSrv                          string `mapstructure:"ignore-servers"`
+	LogFile                            string `mapstructure:"log-file"`
+	LogSyslog                          bool   `mapstructure:"log-syslog"`
+	LogLevel                           int    `mapstructure:"log-level"`
+	User                               string `mapstructure:"db-servers-credential"`
+	Hosts                              string `mapstructure:"db-servers-hosts"`
+	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert"`
+	HostsTLSKEY                        string `mapstructure:"db-servers-tls-client-key"`
+	HostsTLSCLI                        string `mapstructure:"db-servers-tls-client-cert"`
+	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
+	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
+	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
+	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout"`
+	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
+	DbServerLocality                   string `mapstructure:"db-servers-locality"`
+	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
+	RplUser                            string `mapstructure:"replication-credential"`
+	MasterConn                         string `mapstructure:"replication-source-name"`
+	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
+	MultiMaster                        bool   `mapstructure:"replication-multi-master"`
+	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx"`
 	SwitchWaitWrite                    int    `mapstructure:"switchover-wait-write-query"`
 	SwitchGtidCheck                    bool   `mapstructure:"switchover-at-equal-gtid"`
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
-	ReadOnly                           bool   `mapstructure:"readonly"`
+	FailLimit                          int    `mapstructure:"failover-limit"`
+	PreScript                          string `mapstructure:"failover-pre-script"`
+	PostScript                         string `mapstructure:"failover-post-script"`
+	ReadOnly                           bool   `mapstructure:"failover-readonly-state"`
+	FailTime                           int64  `mapstructure:"failover-time-limit"`
+	FailSync                           bool   `mapstructure:"failover-at-sync"`
+	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
+	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
+	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
+	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter"`
+	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
+	FailMode                           string `mapstructure:"failover-mode"`
+	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
+	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
+	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
+	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
+	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
+	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
+	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Autorejoin                         bool   `mapstructure:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
+	RejoinScript                       string `mapstructure:"autrejoin-script"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
-	LogFile                            string `mapstructure:"logfile"`
-	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
-	Timeout                            int    `mapstructure:"connect-timeout"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
+	RplChecks                          bool   `mapstructure:"check-replication-state"`
 	ForceSlaveHeartbeat                bool   `mapstructure:"force-slave-heartbeat"`
 	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`
 	ForceSlaveHeartbeatRetry           int    `mapstructure:"force-slave-heartbeat-retry"`
@@ -61,10 +89,6 @@ type Config struct {
 	ForceSyncBinlog                    bool   `mapstructure:"force-sync-binlog"`
 	ForceSyncInnoDB                    bool   `mapstructure:"force-sync-innodb"`
 	ForceNoslaveBehind                 bool   `mapstructure:"force-noslave-behind"`
-	RplChecks                          bool
-	MasterConn                         string `mapstructure:"master-connection"`
-	MultiMaster                        bool   `mapstructure:"multimaster"`
-	MultiTierSlave                     bool   `mapstructure:"multi-tier-slave"`
 	Spider                             bool   `mapstructure:"spider"`
 	BindAddr                           string `mapstructure:"http-bind-address"`
 	HttpPort                           string `mapstructure:"http-port"`
@@ -77,28 +101,12 @@ type Config struct {
 	MailFrom                           string `mapstructure:"mail-from"`
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
-	MasterConnectRetry                 int    `mapstructure:"master-connect-retry"`
-	FailLimit                          int    `mapstructure:"failover-limit"`
-	FailTime                           int64  `mapstructure:"failover-time-limit"`
-	FailSync                           bool   `mapstructure:"failover-at-sync"`
-	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler"`
-	FailEventStatus                    bool   `mapstructure:"failover-event-status"`
-	FailRestartUnsafe                  bool   `mapstructure:"failover-restart-unsafe"`
-	MaxFail                            int    `mapstructure:"failcount"`
-	FailResetTime                      int64  `mapstructure:"failcount-reset-time"`
-	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay"`
-	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat"`
-	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale"`
-	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout"`
-	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout"`
-	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external"`
-	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
 	MdbsProxyOn                        bool   `mapstructure:"mdbshardproxy"`
-	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-hosts"`
+	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-servers"`
 	MdbsProxyUser                      string `mapstructure:"mdbshardproxy-user"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
-	MxsHost                            string `mapstructure:"maxscale-host"`
+	MxsHost                            string `mapstructure:"maxscale-servers"`
 	MxsPort                            string `mapstructure:"maxscale-port"`
 	MxsUser                            string `mapstructure:"maxscale-user"`
 	MxsPass                            string `mapstructure:"maxscale-pass"`
@@ -112,16 +120,23 @@ type Config struct {
 	MxsGetInfoMethod                   string `mapstructure:"maxscale-get-info-method"`
 	MxsServerMatchPort                 bool   `mapstructure:"maxscale-server-match-port"`
 	HaproxyOn                          bool   `mapstructure:"haproxy"`
+	HaproxyHosts                       string `mapstructure:"haproxy-servers"`
 	HaproxyWritePort                   int    `mapstructure:"haproxy-write-port"`
 	HaproxyReadPort                    int    `mapstructure:"haproxy-read-port"`
 	HaproxyStatPort                    int    `mapstructure:"haproxy-stat-port"`
 	HaproxyWriteBindIp                 string `mapstructure:"haproxy-ip-write-bind"`
 	HaproxyReadBindIp                  string `mapstructure:"haproxy-ip-read-bind"`
 	HaproxyBinaryPath                  string `mapstructure:"haproxy-binary-path"`
+	ProxysqlOn                         bool   `mapstructure:"proxysql"`
+	ProxysqlHosts                      string `mapstructure:"proxysql-servers"`
+	ProxysqlWritePort                  int    `mapstructure:"proxysql-write-port"`
+	ProxysqlReadPort                   int    `mapstructure:"proxysql-read-port"`
+	ProxysqlStatPort                   int    `mapstructure:"proxysql-stat-port"`
+	ProxysqlWriteBindIp                string `mapstructure:"proxysql-ip-write-bind"`
+	ProxysqlReadBindIp                 string `mapstructure:"proxysql-ip-read-bind"`
+	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path"`
+	ProxysqlUser                       string `mapstructure:"proxysql-credentail"`
 	KeyPath                            string `mapstructure:"keypath"`
-	LogLevel                           int    `mapstructure:"log-level"`
-	Test                               bool   `mapstructure:"test"`
-	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`
 	GraphiteEmbedded                   bool   `mapstructure:"graphite-embedded"`
@@ -135,19 +150,19 @@ type Config struct {
 	SysbenchBinaryPath                 string `mapstructure:"sysbench-binary-path"`
 	SysbenchTime                       int    `mapstructure:"sysbench-time"`
 	SysbenchThreads                    int    `mapstructure:"sysbench-threads"`
-	MariaDBBinaryPath                  string `mapstructure:"mariadb-binary-path"`
 	Arbitration                        bool   `mapstructure:"arbitration-external"`
 	ArbitrationSasSecret               string `mapstructure:"arbitration-external-secret"`
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
-	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	FailForceGtid                      bool   //suspicious code
-	RegTestStopCluster                 bool   //used by regtest to stop cluster
+	Test                               bool   `mapstructure:"test"`
+	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Enterprise                         bool   //used to talk to opensvc collector
 	ProvHost                           string `mapstructure:"opensvc-host"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user"`
 	ProvUser                           string `mapstructure:"opensvc-user"`
+	ProvDBServerPath                   string `mapstructure:"prov-db-localhost-binary-path"`
 	ProvType                           string `mapstructure:"prov-db-service-type"`
 	ProvAgents                         string `mapstructure:"prov-db-agents"`
 	ProvMem                            string `mapstructure:"prov-db-memory"`
@@ -176,8 +191,14 @@ type Config struct {
 	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
 	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
-	ProvProxImg                        string `mapstructure:"prov-proxy-docker-img"`
-	APIUser                            string `mapstructure:"api-user"`
+	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
+	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
+	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
+	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
+	APIBind                            string `mapstructure:"api-bind"`
+	AlertScript                        string `mapstructure:"alert-script"`
 	ConfigFile                         string `mapstructure:"config"`
+	GoOS                               string `mapstructure:"goos"`
+	GoArch                             string `mapstructure:"goarch"`
 }

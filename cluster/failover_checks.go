@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -15,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (cluster *Cluster) CheckFailed() {
@@ -27,16 +28,16 @@ func (cluster *Cluster) CheckFailed() {
 		return
 	}
 	if cluster.master != nil {
-		if cluster.master.State == stateFailed {
-			if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
-				if cluster.isExternalOk() == false {
-					if cluster.isActiveArbitration() == true {
-						if cluster.isMaxClusterFailoverCountReach() == false {
-							if cluster.isOneSlaveHeartbeatIncreasing() == false {
-								if cluster.isMaxscaleSupectRunning() == false {
-									if cluster.isBeetwenFailoverTimeTooShort() == false {
-										if cluster.isFirstSlave() == false {
-											if cluster.isFoundCandidateMaster() == true {
+		if cluster.isFoundCandidateMaster() == true {
+			if cluster.isBeetwenFailoverTimeTooShort() == false {
+				if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
+					if cluster.master.State == stateFailed {
+						if cluster.isExternalOk() == false {
+							if cluster.isActiveArbitration() == true {
+								if cluster.isMaxClusterFailoverCountReach() == false {
+									if cluster.isOneSlaveHeartbeatIncreasing() == false {
+										if cluster.isMaxscaleSupectRunning() == false {
+											if cluster.isFirstSlave() == false {
 												cluster.MasterFailover(true)
 												cluster.failoverCond.Send <- true
 											}
@@ -45,11 +46,12 @@ func (cluster *Cluster) CheckFailed() {
 								}
 							}
 						}
+					} else {
+						cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 					}
 				}
-			} else {
-				cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 			}
+
 		}
 
 	} else {

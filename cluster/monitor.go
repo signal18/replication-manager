@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -10,6 +11,7 @@ package cluster
 
 import (
 	"database/sql"
+	"os/exec"
 	//"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,12 +25,12 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/alert"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/graphite"
-	"github.com/tanji/replication-manager/gtid"
+	"github.com/signal18/replication-manager/alert"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/gtid"
 
-	"github.com/tanji/replication-manager/misc"
+	"github.com/signal18/replication-manager/misc"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -96,6 +98,8 @@ type ServerMonitor struct {
 	HaveBinlogCompress          bool
 	HaveLogSlaveUpdates         bool
 	HaveGtidStrictMode          bool
+	HaveWsrep                   bool
+	IsWsrepSync                 bool
 	Version                     int
 	IsMaxscale                  bool
 	IsRelay                     bool
@@ -165,7 +169,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
@@ -179,7 +183,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 	server.DSN = mydsn()
 	if cluster.haveDBTLSCert {
 		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
-		server.DSN = server.DSN + ",tls=tlsconfig"
+		server.DSN = server.DSN + "&tls=tlsconfig"
 	}
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
@@ -197,7 +201,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	}
 
 	if server.ClusterGroup.conf.LogLevel > 2 {
-		// LogPrint("DEBUG: Checking server", server.Host)
+		// server.ClusterGroup.LogPrintf("INFO", "Checking server %s", server.Host)
 	}
 
 	var conn *sqlx.DB
@@ -271,10 +275,28 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 				}
 			}
 		}
+		if server.ClusterGroup.conf.AlertScript != "" {
+			server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
+			var out []byte
+			out, err = exec.Command(server.ClusterGroup.conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+			}
+			server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
+		}
+	}
+
+	// clean crashes
+	if server.State == stateMaster || server.State == stateSlave || server.State == stateSlaveErr || server.State == stateSlaveLate {
+		crash := server.ClusterGroup.getCrash(server.URL)
+		if crash != nil {
+			server.ClusterGroup.LogPrintf("INFO", "Cleaning old crash info: %s", server.URL)
+			crash.delete(&server.ClusterGroup.crashes)
+		}
 	}
 	// Reset FailCount
 
-	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) && (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime) {
+	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime)*/ {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -308,7 +330,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
-	} else if errss == nil && server.PrevState == stateFailed {
+	} else if errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
 		server.rejoinSlave(ss)
 	}
 
@@ -447,21 +469,21 @@ func (server *ServerMonitor) Refresh() error {
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
-		//server.Replications = make([]dbhelper.SlaveStatus, 1)
 		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn)
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not get slaves status %s", err)
+		return err
 	}
+	// select a replication status get an err is teh repliciations array is empty
 	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
+		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		server.IsSlave = false
-		//	server.ClusterGroup.LogPrintf("ERROR: Could not get show slave status on %s", server.DSN)
 		server.UsingGtid = ""
 		server.IOThread = "No"
 		server.SQLThread = "No"
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
-		//server.MasterServerID = 0 Do not reset as we may need it for recovery
 		server.MasterHost = ""
 		server.MasterPort = "3306"
 		server.IOErrno = 0
@@ -494,7 +516,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
 	}
 	server.ReplicationHealth = server.replicationCheck()
-	// if MaxScale exit the variables and status part
+	// if MaxScale exit at fetch variables and status part as not supported
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
@@ -515,6 +537,12 @@ func (server *ServerMonitor) Refresh() error {
 		server.SemiSyncSlaveStatus = true
 	} else {
 		server.SemiSyncSlaveStatus = false
+	}
+
+	if server.Status["WSREP_LOCAL_STATE"] == "4" {
+		server.IsWsrepSync = true
+	} else {
+		server.IsWsrepSync = false
 	}
 
 	//monitor haproxy
@@ -558,7 +586,10 @@ func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveSt
 
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
-	if server.ClusterGroup.sme.IsInFailover() || server.State == stateSuspect || server.State == stateFailed || server.IsSlave == false {
+	if server.ClusterGroup.sme.IsInFailover() {
+		return "In Failover"
+	}
+	if (server.State == stateSuspect || server.State == stateFailed) && server.IsSlave == false {
 		return "Master OK"
 	}
 
@@ -569,7 +600,7 @@ func (server *ServerMonitor) replicationCheck() string {
 	}
 
 	if server.IsRelay == false && server.IsMaxscale == false {
-
+		// when replication stopped Valid is null
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 
 			//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
@@ -591,7 +622,7 @@ func (server *ServerMonitor) replicationCheck() string {
 		}
 
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.FailMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateSlaveLate
 			} else {
 				server.State = stateSlave
@@ -619,7 +650,7 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Running OK"
 		}
 		if server.Delay.Int64 > 0 {
-			if server.Delay.Int64 > server.ClusterGroup.conf.SwitchMaxDelay && server.ClusterGroup.conf.RplChecks == true {
+			if server.Delay.Int64 > server.ClusterGroup.conf.FailMaxDelay && server.ClusterGroup.conf.RplChecks == true {
 				server.State = stateRelayLate
 			} else {
 				server.State = stateRelay

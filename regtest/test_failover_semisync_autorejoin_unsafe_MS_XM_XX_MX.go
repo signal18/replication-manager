@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package regtest
@@ -9,14 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetFailoverCtr(0)
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
@@ -51,7 +49,7 @@ func testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *cluster.Cluster, co
 
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
@@ -72,22 +70,20 @@ func testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *cluster.Cluster, co
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
-			cluster.CloseTestCluster(conf, test)
+
 			return false
 		}
 	}
 	time.Sleep(10 * time.Second)
 	if cluster.ChecksumBench() != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	if len(cluster.GetServers()) == 2 && SaveMasterURL != cluster.GetMaster().URL {
 		cluster.LogPrintf("ERROR", "Unexpected master for 2 nodes cluster")
 		return false
 	}
-
-	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

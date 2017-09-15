@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/state"
 )
+
+var dockerMinusRm bool
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
@@ -44,7 +46,9 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxFSPool = cluster.conf.ProvProxDiskPool
 	svc.ProvProxFSMode = cluster.conf.ProvProxDiskType
 	svc.ProvProxFSPath = cluster.conf.ProvProxDiskDevice
-	svc.ProvProxDockerImg = cluster.conf.ProvProxImg
+	svc.ProvProxDockerMaxscaleImg = cluster.conf.ProvProxMaxscaleImg
+	svc.ProvProxDockerHaproxyImg = cluster.conf.ProvProxHaproxyImg
+	svc.ProvProxDockerProxysqlImg = cluster.conf.ProvProxProxysqlImg
 	svc.Verbose = 1
 
 	return svc
@@ -57,14 +61,30 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		for _, svc := range node.Svc {
 			for _, db := range cluster.servers {
 				if db.Id == svc.Svc_name {
-					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					if err != nil {
+						cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+					} else {
+						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+						if err != nil {
+							cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+						}
+					}
+					//opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 			for _, prx := range cluster.proxies {
 				if prx.Id == svc.Svc_name {
-					idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					cluster.OpenSVCWaitDequeue(opensvc, idaction)
+					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+					if err != nil {
+						cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
+					} else {
+						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+						if err != nil {
+							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
+						}
+					}
+					//opensvc.DeleteService(svc.Svc_id)
 				}
 			}
 		}
@@ -73,29 +93,34 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
-	agents := opensvc.GetNodes()
-	for _, node := range agents {
-		for _, svc := range node.Svc {
-			if db.Id == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				cluster.OpenSVCWaitDequeue(opensvc, idaction)
+	node, _ := cluster.FoundDatabaseAgent(db)
+	for _, svc := range node.Svc {
+		if db.Id == svc.Svc_name {
+			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 			}
+			//	opensvc.DeleteService(svc.Svc_id)
 		}
 	}
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	opensvc := cluster.OpenSVCConnect()
-	agents := opensvc.GetNodes()
-	for _, node := range agents {
-		for _, svc := range node.Svc {
-			if prx.Id == svc.Svc_name {
-				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				cluster.OpenSVCWaitDequeue(opensvc, idaction)
-
+	//agents := opensvc.GetNodes()
+	node, _ := cluster.FoundProxyAgent(prx)
+	for _, svc := range node.Svc {
+		if prx.Id == svc.Svc_name {
+			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 			}
+			//		opensvc.DeleteService(svc.Svc_id)
 		}
 	}
+
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
@@ -169,13 +194,43 @@ func (cluster *Cluster) OpenSVCProvisionCluster() error {
 	return err
 }
 
+func (cluster *Cluster) OpenSVCProvisionProxies() error {
+
+	for _, prx := range cluster.proxies {
+		cluster.OpenSVCProvisionProxyService(prx)
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.FoundProxyAgent(prx)
 	if err != nil {
 		return err
 	}
+	// Unprovision if already in OpenSVC
 
+	var idsrv string
+	mysrv, err := svc.GetServiceFromName(prx.Id)
+	if err == nil {
+		idsrv = mysrv.Svc_id
+		cluster.LogPrintf("INFO", "Found existing service %s service %s", prx.Id, idsrv)
+
+	} else {
+		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Can't create OpenSVC proxy service")
+			return err
+		}
+	}
+	cluster.LogPrintf("INFO", "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
+
+	//err = svc.DeteteServiceTags(idsrv)
+	//if err != nil {
+	//	cluster.LogPrintf("ERROR", "Can't delete service tags")
+	//	return err
+	//}
 	srvlist := make([]string, len(cluster.servers))
 	for i, s := range cluster.servers {
 		srvlist[i] = s.Host
@@ -195,7 +250,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
 	if prx.Type == proxySpider {
@@ -212,18 +271,55 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
-			cluster.LogPrintf("INFO", "%s", task.Stderr)
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
 		}
 	}
-	return nil
-}
+	if prx.Type == proxyHaproxy {
+		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+			res, err := cluster.GetHaproxyTemplate(svc, strings.Join(srvlist, " "), agent, prx)
+			if err != nil {
+				return err
+			}
+			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			if err != nil {
+				return err
+			}
 
-func (cluster *Cluster) OpenSVCProvisionProxies() error {
-
-	for _, prx := range cluster.proxies {
-		cluster.OpenSVCProvisionProxyService(prx)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
+		}
 	}
+	if prx.Type == proxySqlproxy {
+		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+			res, err := cluster.GetProxysqlTemplate(svc, strings.Join(srvlist, " "), agent, prx)
+			if err != nil {
+				return err
+			}
+			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			if err != nil {
+				return err
+			}
 
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			if task != nil {
+				cluster.LogPrintf("INFO", "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf("ERROR", "Can't fetch task")
+			}
+		}
+	}
 	return nil
 }
 
@@ -231,31 +327,33 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 
 	svc := cluster.OpenSVCConnect()
 	var taglist []string
-	taglist = strings.Split(svc.ProvTags, ",")
-	svctags, _ := svc.GetTags()
 
 	agent, err := cluster.FoundDatabaseAgent(s)
 	if err != nil {
 		return err
 	}
 
-	// create template && bootstrap
-	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
-	if err != nil {
-		return err
-	}
+	// Unprovision if already in OpenSVC
+	var idsrv string
 	mysrv, err := svc.GetServiceFromName(s.Id)
 	if err == nil {
-		cluster.LogPrintf("INFO", "Provisioning delete service %s", mysrv.Svc_id)
-		svc.DeleteService(mysrv.Svc_id)
+		cluster.LogPrintf("INFO", "Found opensvc database service %s service %s", s.Id, mysrv.Svc_id)
+		idsrv = mysrv.Svc_id
+	} else {
+		idsrv, err = svc.CreateService(s.Id, "MariaDB")
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
+			return err
+		}
 	}
-	//	idsrv := mysrv.Svc_id
-	//	if idsrv == "" || err != nil {
-	idsrv, err := svc.CreateService(s.Id, "MariaDB")
+
+	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't create service")
+		cluster.LogPrintf("ERROR", "Can't delete service tags")
+		return err
 	}
-	//	}
+	taglist = strings.Split(svc.ProvTags, ",")
+	svctags, _ := svc.GetTags()
 	for _, tag := range taglist {
 		idtag, err := svc.GetTagIdFromTags(svctags, tag)
 		if err != nil {
@@ -263,11 +361,21 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 		}
 		svc.SetServiceTag(idtag, idsrv)
 	}
+
+	// create template && bootstrap
+	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
+	if err != nil {
+		return err
+	}
 	idtemplate, _ := svc.CreateTemplate(s.Id, res)
 	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)
 	cluster.OpenSVCWaitDequeue(svc, idaction)
 	task := svc.GetAction(strconv.Itoa(idaction))
-	cluster.LogPrintf("INFO", "%s", task.Stderr)
+	if task != nil {
+		cluster.LogPrintf("INFO", "%s", task.Stderr)
+	} else {
+		cluster.LogPrintf("ERROR", "Can't fetch task")
+	}
 	cluster.WaitDatabaseStart(s)
 
 	return nil
@@ -284,7 +392,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) {
+func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
 	ct := 0
 	for {
 		time.Sleep(2 * time.Second)
@@ -296,7 +404,7 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 			cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "T" {
-			break
+			return nil
 		}
 		ct++
 		if ct > 200 {
@@ -304,9 +412,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		}
 
 	}
+	return errors.New("Waiting to long more 400s for OpenSVC dequeue")
 }
 
-func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
+/*func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 
 	svc := cluster.OpenSVCConnect()
 	servers := cluster.GetServers()
@@ -349,7 +458,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 						cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 					}
 					if status == "W" {
-						cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+						cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
 					}
 					if status == "T" {
 						break
@@ -360,14 +469,19 @@ func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
 					}
 
 				}
+
 				task := svc.GetAction(strconv.Itoa(idaction))
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				if task != nil {
+					cluster.LogPrintf("INFO", "%s", task.Stderr)
+				} else {
+					cluster.LogPrintf("ERROR", "Can't fetch task")
+				}
 			}
 		}
 	}
 
 	return nil
-}
+}*/
 
 // OpenSVCSeviceStatus 0 not provision , 1 prov and up ,2 on error error
 func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
@@ -378,6 +492,128 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 		return 0, err
 	}
 	return srvStatus, nil
+}
+
+func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+
+	ipPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerHaproxyTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + collector.ProvPwd + `
+network = ` + network + `
+gateway =  ` + collector.ProvProxNetGateway + `
+netmask =  ` + collector.ProvProxNetMask + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + collector.ProvProxNetMask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_http = 80
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+`
+	log.Println(conf)
+	return conf, nil
+}
+
+func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+
+	ipPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerProxysqlTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + collector.ProvPwd + `
+network = ` + network + `
+gateway =  ` + collector.ProvProxNetGateway + `
+netmask =  ` + collector.ProvProxNetMask + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + collector.ProvProxNetMask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_http = 80
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+`
+	log.Println(conf)
+	return conf, nil
 }
 
 func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
@@ -399,7 +635,7 @@ show_disabled = false
 	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
-	conf = conf + cluster.GetPodDockerProxyTemplate(collector, pod)
+	conf = conf + cluster.GetPodDockerMaxscaleTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
 `
@@ -420,7 +656,9 @@ mysql_root_password = ` + collector.ProvPwd + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img = ` + collector.ProvProxDockerImg + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
 vip_addr =  ` + prx.Host + `
 vip_netmask =  ` + collector.ProvProxNetMask + `
 port_rw = ` + strconv.Itoa(prx.WritePort) + `
@@ -596,7 +834,7 @@ type = ` + collector.ProvFSType + `
 			fs = fs + `
 dev = /dev/{svcname}_` + pod + `/pod` + pod + `
 vg = {svcname}_` + pod + `
-size = ` + strconv.Itoa(lvsize) + `g
+size = 100%FREE
 `
 		} else if collector.ProvFSPool == "zpool" {
 			fs = fs + `
@@ -625,9 +863,9 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		return string("")
 	}
 	conf = conf + `
-docker_daemon_private = false
+docker_daemon_private = true
 docker_data_dir = {env.base_dir}/docker
-docker_daemon_args = --log-opt max-size=1m --storage-driver=aufs
+docker_daemon_args = --log-opt max-size=1m --storage-driver=overlay
 `
 
 	if collector.ProvFSMode == "loopback" {
@@ -693,13 +931,16 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
- --rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
 
-func (cluster *Cluster) GetPodDockerProxyTemplate(collector opensvc.Collector, pod string) string {
+func (cluster *Cluster) GetPodDockerMaxscaleTemplate(collector opensvc.Collector, pod string) string {
 	var vm string
 	if collector.ProvProxMicroSrv == "docker" {
 		vm = vm + `
@@ -717,8 +958,65 @@ run_image = {env.maxscale_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
-		--rm
 `
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodDockerHaproxyTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvProxMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.haproxy_img}
+run_args = --net=container:{svcname}.container.00` + pod + `
+    -v /etc/localtime:/etc/localtime:ro
+    -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc/haproxy:rw
+`
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodDockerProxysqlTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvProxMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.proxysql_img}
+run_args = --net=container:{svcname}.container.00` + pod + `
+    -v /etc/localtime:/etc/localtime:ro
+    -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
+`
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
 	}
 	return vm
 }
@@ -737,4 +1035,10 @@ info = 50
 `
 	}
 	return vm
+}
+
+func (cluster *Cluster) OpenSVCProvisionReloadHaproxyConf(Conf string) string {
+	svc := cluster.OpenSVCConnect()
+	svc.SetRulesetVariableValue("mariadb.svc.mrm.proxt.cnf.haproxy", "proxy_cnf_haproxy", Conf)
+	return ""
 }

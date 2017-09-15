@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -15,17 +16,17 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
 
-	"github.com/tanji/replication-manager/cluster/nbc"
-	"github.com/tanji/replication-manager/config"
-	"github.com/tanji/replication-manager/crypto"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
-	"github.com/tanji/replication-manager/termlog"
+	"github.com/signal18/replication-manager/cluster/nbc"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/termlog"
 )
 
 type Cluster struct {
@@ -178,11 +179,11 @@ func (cluster *Cluster) Run() {
 			}
 			// switchover / failover only on Active
 			cluster.CheckFailed()
-			states := cluster.sme.GetStates()
-			for i := range states {
-				cluster.LogPrintf("STATE", states[i])
-			}
 			if !cluster.sme.IsInFailover() {
+				states := cluster.sme.GetStates()
+				for i := range states {
+					cluster.LogPrintf("STATE", states[i])
+				}
 				cluster.sme.ClearState()
 			}
 
@@ -190,7 +191,7 @@ func (cluster *Cluster) Run() {
 			case sig := <-cluster.switchoverChan:
 				if sig {
 					if cluster.runStatus == "A" {
-						cluster.LogPrint("Signaling Switchover..")
+						cluster.LogPrintf("INFO", "Signaling Switchover...")
 						cluster.MasterFailover(false)
 						cluster.switchoverCond.Send <- true
 					} else {
@@ -210,11 +211,13 @@ func (cluster *Cluster) Save() error {
 	type Save struct {
 		Servers string    `json:"servers"`
 		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
 	}
 
 	var clsave Save
 	clsave.Crashes = cluster.crashes
 	clsave.Servers = cluster.conf.Hosts
+	clsave.SLA = cluster.sme.GetSla()
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := ioutil.WriteFile(cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json", saveJson, 0644)
 	if err != nil {
@@ -228,12 +231,13 @@ func (cluster *Cluster) ReloadFromSave() error {
 	type Save struct {
 		Servers string    `json:"servers"`
 		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
 	}
 
 	var clsave Save
 	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".json")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "File error: %v\n", err)
+		cluster.LogPrintf("WARN", "File error: %v\n", err)
 		return err
 	}
 	err = json.Unmarshal(file, &clsave)
@@ -241,7 +245,11 @@ func (cluster *Cluster) ReloadFromSave() error {
 		cluster.LogPrintf("ERROR", "File error: %v\n", err)
 		return err
 	}
+	if len(clsave.Crashes) > 0 {
+		cluster.LogPrintf("INFO", "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
+	}
 	cluster.crashes = clsave.Crashes
+	cluster.sme.SetSla(clsave.SLA)
 	return nil
 }
 
@@ -444,6 +452,15 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	return nil
 }
 
+func (cluster *Cluster) IsInHostList(host string) bool {
+	for _, v := range cluster.hostList {
+		if v == host {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) ToggleInteractive() {
 	if cluster.conf.Interactive == true {
 		cluster.conf.Interactive = false
@@ -568,7 +585,7 @@ func (cluster *Cluster) SwitchRplChecks() {
 }
 
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
-	cluster.conf.SwitchMaxDelay = delay
+	cluster.conf.FailMaxDelay = delay
 }
 
 func (cluster *Cluster) SetCleanAll(check bool) {
@@ -753,6 +770,10 @@ func (cluster *Cluster) Close() {
 
 func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
+}
+
+func (cluster *Cluster) GetStatus() bool {
+	return cluster.sme.IsFailable()
 }
 
 func (cluster *Cluster) agentFlagCheck() {

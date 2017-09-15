@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package regtest
@@ -8,20 +9,17 @@ package regtest
 import (
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
+
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
-		cluster.CloseTestCluster(conf, test)
 		return false
 	}
 	time.Sleep(2 * time.Second)
@@ -35,10 +33,8 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 		SaveMasterURL := cluster.GetMaster().URL
 		cluster.SwitchoverWaitTest()
 		cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
-
 		if SaveMasterURL == cluster.GetMaster().URL {
 			cluster.LogPrintf("ERROR", "same server URL after switchover")
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
@@ -46,15 +42,12 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	for _, s := range cluster.GetSlaves() {
 		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
 			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 		if s.MasterServerID != cluster.GetMaster().ServerID {
 			cluster.LogPrintf("ERROR", "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
-			cluster.CloseTestCluster(conf, test)
 			return false
 		}
 	}
-	cluster.CloseTestCluster(conf, test)
 	return true
 }

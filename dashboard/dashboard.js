@@ -209,10 +209,10 @@ $scope.stop = function(server) {
 };
 
 
-$scope.inttoggle = function() {
-var r = confirm("Confirm Mode Change");
+$scope.toggletraffic = function() {
+var r = confirm("Confirm toggle traffic");
 if (r == true) {
-  var response = $http.get('/interactive');
+  var response = $http.get('/toggletraffic');
   response.success(function(data, status, headers, config) {
       console.log("Ok.");
     });

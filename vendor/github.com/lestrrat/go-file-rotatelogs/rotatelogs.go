@@ -99,7 +99,6 @@ func New(pattern string, options ...Option) (*RotateLogs, error) {
 	rl.globPattern = globPattern
 	rl.pattern = strfobj
 	rl.rotationTime = 24 * time.Hour
-	rl.maxAge = 7 * 24 * time.Hour
 	for _, opt := range options {
 		opt.Configure(&rl)
 	}

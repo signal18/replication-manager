@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -14,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/nsf/termbox-go"
 )
@@ -82,7 +83,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
-	if level == "DEBUG" && cluster.conf.LogLevel > 1 {
+	if level == "DEBUG" && cluster.conf.LogLevel <= 1 {
 		// Only print debug messages if loglevel > 1
 	} else {
 		if cluster.conf.LogFile != "" {
@@ -106,6 +107,10 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			log.WithField("cluster", cluster.cfgGroup).Debugf(cliformat, args...)
 		case "WARN":
 			log.WithField("cluster", cluster.cfgGroup).Warnf(cliformat, args...)
+		case "TEST":
+			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "test"}).Infof(cliformat, args...)
+		case "BENCH":
+			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "benchmark"}).Infof(cliformat, args...)
 		case "ALERT":
 			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "alert"}).Warnf(cliformat, args...)
 		case "STATE":

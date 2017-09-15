@@ -1,6 +1,9 @@
+// +build server
+
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -18,54 +21,19 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/opensvc"
-	"github.com/tanji/replication-manager/regtest"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/state"
+	log "github.com/sirupsen/logrus"
 )
 
 type HandlerManager struct {
 	Gelada    *gelada.Gelada
 	AuthGuard *authguard.AuthGuard
-}
-
-type Settings struct {
-	Enterprise          string   `json:"enterprise"`
-	Interactive         string   `json:"interactive"`
-	FailoverCtr         string   `json:"failoverctr"`
-	MaxDelay            string   `json:"maxdelay"`
-	Faillimit           string   `json:"faillimit"`
-	LastFailover        string   `json:"lastfailover"`
-	MonHearbeats        string   `json:"monheartbeats"`
-	Uptime              string   `json:"uptime"`
-	UptimeFailable      string   `json:"uptimefailable"`
-	UptimeSemiSync      string   `json:"uptimesemisync"`
-	RplChecks           string   `json:"rplchecks"`
-	FailSync            string   `json:"failsync"`
-	SwitchSync          string   `json:"switchsync"`
-	Verbose             string   `json:"verbose"`
-	Rejoin              string   `json:"rejoin"`
-	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
-	RejoinSemiSync      string   `json:"rejoinsemisync"`
-	RejoinFlashback     string   `json:"rejoinflashback"`
-	RejoinUnsafe        string   `json:"rejoinunsafe"`
-	RejoinDump          string   `json:"rejoindump"`
-	Test                string   `json:"test"`
-	Heartbeat           string   `json:"heartbeat"`
-	Status              string   `json:"runstatus"`
-	ConfGroup           string   `json:"confgroup"`
-	MonitoringTicker    string   `json:"monitoringticker"`
-	FailResetTime       string   `json:"failresettime"`
-	ToSessionEnd        string   `json:"tosessionend"`
-	HttpAuth            string   `json:"httpauth"`
-	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
-	Clusters            []string `json:"clusters"`
-	RegTests            []string `json:"regtests"`
-	Topology            string   `json:"topology"`
 }
 
 type alerts struct {
@@ -211,6 +179,8 @@ func httpserver() {
 		router.HandleFunc("/repocomp/current", handlerRepoComp)
 		router.HandleFunc("/unprovision", handlerUnprovision)
 		router.HandleFunc("/rolling", handlerRollingUpgrade)
+		router.HandleFunc("/toggletraffic", handlerTraffic)
+
 		// wrap around our router
 		http.Handle("/", g.GlobalAuth(router))
 	} else {
@@ -221,6 +191,7 @@ func httpserver() {
 		http.HandleFunc("/start", handlerStartServer)
 		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/runonetest", handlerSetOneTest)
+		http.HandleFunc("/toggletraffic", handlerTraffic)
 		http.HandleFunc("/master", handlerMaster)
 		http.HandleFunc("/slaves", handlerSlaves)
 		http.HandleFunc("/agents", handlerAgents)
@@ -264,6 +235,7 @@ func httpserver() {
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	mycluster := r.URL.Query().Get("cluster")
 	currentCluster = clusters[mycluster]
+	currentClusterName = mycluster
 	for _, gl := range cfgGroupList {
 		clusters[gl].SetCfgGroupDisplay(mycluster)
 	}
@@ -311,6 +283,7 @@ func handlerServers(w http.ResponseWriter, r *http.Request) {
 func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(currentCluster.GetCrashes())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
@@ -329,6 +302,12 @@ func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(data)
+
+}
+
+func handlerTraffic(w http.ResponseWriter, r *http.Request) {
+
+	currentCluster.SetTraffic(!currentCluster.GetTraffic())
 
 }
 
@@ -488,7 +467,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
 	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
 	s.RejoinUnsafe = fmt.Sprintf("%v", currentCluster.GetConf().FailRestartUnsafe)
-	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().SwitchMaxDelay)
+	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().FailMaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
 	s.MonHearbeats = fmt.Sprintf("%d", currentCluster.GetStateMachine().GetHeartbeats())
@@ -1044,8 +1023,10 @@ func checkAuth(u, p string) bool {
 
 // test if file exists
 func testFile(fn string) error {
+
 	f, err := os.Open(conf.HttpRoot + "/" + fn)
 	if err != nil {
+		log.Printf("error no file %s", conf.HttpRoot+"/"+fn)
 		return err
 	}
 	f.Close()

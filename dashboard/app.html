@@ -77,7 +77,7 @@
             <table width="100%">
                <tr>
                   <td>
-                     <h1><span class="title"><img src="/static/logo.png"/>Replication Manager</span></h1>
+			  <h1><span class="title"><img src="/static/logo.png" alt="Replication Manager"/></span></h1>
                   </td>
                   <td >
                      <form align=right action="/logout" method="post">
@@ -172,10 +172,10 @@
                                  <button width=15 height=15	type="button"  ng-click="maintenance(server.Id)">
                                  <img width=15 height=15 src="/static/maintenance.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="stop(server.Id)">
+                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15	type="button"  ng-click="stop(server.Id)">
                                  <img width=15 height=15 src="/static/stop.png">
                                  </button>
-                                 <button ng-if="settings.enterprise=='true'" width=15 height=15	type="button"  ng-click="start(server.Id)">
+                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15	type="button"  ng-click="start(server.Id)">
                                  <img width=15 height=15 src="/static/start.png">
                                  </button >
                               </td>
@@ -188,11 +188,13 @@
                                  <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
                                  <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
                                  <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                                 <button ng-if="settings.httpbootstrapbutton=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                 <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
+                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button>
+
                                  <label for="test" action="/runonetest" >
                                     <p class="sectionheader">Tests: </p>
                                  </label>

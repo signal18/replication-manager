@@ -31,14 +31,14 @@
 16:53:11,165 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 16:53:11,240 disk#1001      INFO    provisioned
 16:53:11,248 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-16:53:11,260 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-16:53:11,280 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+16:53:11,260 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+16:53:11,280 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 16:53:11,289 fs#00          INFO    provisioned
-16:53:11,307 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-16:53:11,329 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-16:53:11,354 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+16:53:11,307 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+16:53:11,329 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+16:53:11,354 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 16:53:11,365 fs#01          INFO    provisioned
-16:53:11,383 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+16:53:11,383 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 16:53:11,393 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 16:53:13,632 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -297,7 +297,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 16:53:17,122 ip#01          INFO    bridge mode
 16:53:17,149 ip#01          INFO    create symlink /var/run/netns/31508 -> /proc/31508/ns/net
 16:53:17,210 ip#01          INFO    /sbin/ip link add name veth1pl31508 mtu 1500 type veth peer name veth1pg31508 mtu 1500
-16:53:17,215 ip#01          INFO    /sbin/ip link set veth1pl31508 master br0
+16:53:17,215 ip#01          INFO    /sbin/ip link set veth1pl31508 master br-prd
 16:53:17,218 ip#01          INFO    /sbin/ip link set veth1pl31508 up
 16:53:17,222 ip#01          INFO    /sbin/ip link set veth1pg31508 netns 31508
 16:53:17,236 ip#01          INFO    /sbin/ip netns exec 31508 ip link set veth1pg31508 name eth1
@@ -341,14 +341,14 @@ a stack has been saved to the rpc log
 16:53:40,091 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
 16:53:40,153 disk#1001      INFO    provisioned
 16:53:40,160 disk#1001      INFO    zp17311646700765639015_pod01 is already up
-16:53:40,175 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
-16:53:40,204 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+16:53:40,175 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+16:53:40,204 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 16:53:40,214 fs#00          INFO    provisioned
-16:53:40,232 fs#00          INFO    /sbin/zfs mount zp17311646700765639015_00/docker
-16:53:40,255 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
-16:53:40,284 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+16:53:40,232 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+16:53:40,255 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+16:53:40,284 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 16:53:40,295 fs#01          INFO    provisioned
-16:53:40,313 fs#01          INFO    /sbin/zfs mount zp17311646700765639015_pod01/pod01
+16:53:40,313 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
 16:53:40,323 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 16:53:42,564 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -607,7 +607,7 @@ total duration: 0:00:00.533255
 16:53:46,063 ip#01          INFO    bridge mode
 16:53:46,092 ip#01          INFO    create symlink /var/run/netns/25207 -> /proc/25207/ns/net
 16:53:46,158 ip#01          INFO    /sbin/ip link add name veth1pl25207 mtu 1500 type veth peer name veth1pg25207 mtu 1500
-16:53:46,163 ip#01          INFO    /sbin/ip link set veth1pl25207 master br0
+16:53:46,163 ip#01          INFO    /sbin/ip link set veth1pl25207 master br-prd
 16:53:46,168 ip#01          INFO    /sbin/ip link set veth1pl25207 up
 16:53:46,171 ip#01          INFO    /sbin/ip link set veth1pg25207 netns 25207
 16:53:46,187 ip#01          INFO    /sbin/ip netns exec 25207 ip link set veth1pg25207 name eth1
@@ -653,14 +653,14 @@ a stack has been saved to the rpc log
 16:54:07,415 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
 16:54:07,470 disk#1001      INFO    provisioned
 16:54:07,477 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-16:54:07,490 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
-16:54:07,514 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+16:54:07,490 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+16:54:07,514 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 16:54:07,527 fs#00          INFO    provisioned
-16:54:07,545 fs#00          INFO    /sbin/zfs mount zp10940044185188150515_00/docker
-16:54:07,567 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
-16:54:07,588 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+16:54:07,545 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+16:54:07,567 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+16:54:07,588 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 16:54:07,597 fs#01          INFO    provisioned
-16:54:07,614 fs#01          INFO    /sbin/zfs mount zp10940044185188150515_pod01/pod01
+16:54:07,614 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
 16:54:07,624 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 16:54:10,083 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -728,15 +728,15 @@ total duration: 0:00:00.429159
 16:54:10,369 container#0001 INFO    wait for up status
 16:54:10,396 container#0001 INFO    wait for container operational
 16:54:10,440 ip#01          INFO    skip allocate: an ip is already defined
-16:54:10,517 ip#01          INFO    checking 192.168.100.50 availability
+16:54:10,517 ip#01          INFO    checking 192.168.100.75 availability
 16:54:13,581 ip#01          INFO    bridge mode
 16:54:13,609 ip#01          INFO    create symlink /var/run/netns/26804 -> /proc/26804/ns/net
 16:54:13,681 ip#01          INFO    /sbin/ip link add name veth1pl26804 mtu 1500 type veth peer name veth1pg26804 mtu 1500
-16:54:13,686 ip#01          INFO    /sbin/ip link set veth1pl26804 master br0
+16:54:13,686 ip#01          INFO    /sbin/ip link set veth1pl26804 master br-prd
 16:54:13,691 ip#01          INFO    /sbin/ip link set veth1pl26804 up
 16:54:13,694 ip#01          INFO    /sbin/ip link set veth1pg26804 netns 26804
 16:54:13,718 ip#01          INFO    /sbin/ip netns exec 26804 ip link set veth1pg26804 name eth1
-16:54:13,786 ip#01          INFO    /sbin/ip netns exec 26804 ip addr add 192.168.100.50/24 dev eth1
+16:54:13,786 ip#01          INFO    /sbin/ip netns exec 26804 ip addr add 192.168.100.75/24 dev eth1
 16:54:13,858 ip#01          INFO    /sbin/ip netns exec 26804 ip link set eth1 up
 16:54:13,894 ip#01          INFO    /sbin/ip netns exec 26804 ip route replace default via 192.168.100.254
 16:54:13,935 ip#01          INFO    remove /var/run/netns/26804
@@ -752,8 +752,8 @@ a stack has been saved to the rpc log
 2017/08/03 18:54:18 [ux_dck_zpool_loop] STATE - WARN0045 CLOSING Provision task is in queue
 2017/08/03 18:54:20 [ux_dck_zpool_loop] INFO  - Cleaning up replication on existing servers
 2017/08/03 18:54:30 [ux_dck_zpool_loop] INFO  - Environment bootstrapped with 192.168.100.70 as master
-2017/08/03 18:54:30 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/03 18:54:30 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 18:54:30 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
+2017/08/03 18:54:30 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
@@ -763,11 +763,11 @@ a stack has been saved to the rpc log
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:54:30 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:54:32 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/03 18:54:32 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
 2017/08/03 18:54:32 [ux_dck_zpool_loop] TEST  - Waiting Bootstrap and discovery
 2017/08/03 18:54:32 [ux_dck_zpool_loop] TEST  - Cluster is Bootstraped and discovery
-2017/08/03 18:54:32 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
-2017/08/03 18:54:32 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.50:3307
+2017/08/03 18:54:32 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
+2017/08/03 18:54:32 [ux_dck_zpool_loop] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.75:3307
 2017/08/03 18:54:32 [ux_dck_zpool_loop] TEST  - Starting Test testFailoverAssyncAutoRejoinFlashback
 2017/08/03 18:54:32 [ux_dck_zpool_loop] BENCH - /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=root --mysql-password=mariadb --mysql-host=127.0.0.1 --mysql-port=3306 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
 2017/08/03 18:54:32 [ux_dck_zpool_loop] ERROR - exit status 1
@@ -775,7 +775,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:54:32 [ux_dck_zpool_loop] ERROR - exit status 1
 2017/08/03 18:54:32 [ux_dck_zpool_loop] BENCH - /usr/local/bin/sysbench --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=root --mysql-password=mariadb --mysql-host=127.0.0.1 --mysql-port=3306 --max-time=60--oltp-test-mode=complex --max-requests=0 --num-threads=4 run
 2017/08/03 18:54:32 [ux_dck_zpool_loop] ERROR - exit status 1
-2017/08/03 18:54:36 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.50:3307
+2017/08/03 18:54:36 [ux_dck_zpool_loop] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.75:3307
 2017/08/03 18:54:38 [ux_dck_zpool_loop] TEST  - Waiting Failover end
 2017/08/03 18:54:40 [ux_dck_zpool_loop] INFO  - Master Failure detected! Retry 1/3
 2017/08/03 18:54:40 [ux_dck_zpool_loop] ALERT - Server 192.168.100.70 state changed from Master to Suspect
@@ -806,7 +806,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:54:50 [ux_dck_zpool_loop] INFO  - master_log_pos=5431
 2017/08/03 18:54:50 [ux_dck_zpool_loop] INFO  - Candidate was in sync=true
 2017/08/03 18:54:50 [ux_dck_zpool_loop] INFO  - Stopping slave thread on new master
-2017/08/03 18:54:50 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.50 3307
+2017/08/03 18:54:50 [ux_dck_zpool_loop] INFO  - Init maxscale 192.168.100.75 3307
 2017/08/03 18:54:50 [ux_dck_zpool_loop] TEST  - Waiting Failover end
 2017/08/03 18:54:52 [ux_dck_zpool_loop] TEST  - Waiting Failover end
 2017/08/03 18:54:52 [ux_dck_zpool_loop] INFO  - Resetting slave on new master and set read/write mode on
@@ -1157,7 +1157,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
-2017/08/03 18:56:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 18:56:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 18:56:32 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:32 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1166,7 +1166,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:32 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:56:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 18:56:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 18:56:34 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:35 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:35 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1176,7 +1176,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:35 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:35 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:56:36 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:37 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:37 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:37 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
@@ -1185,7 +1185,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:37 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:56:37 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:56:38 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:39 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:39 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:39 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
@@ -1194,7 +1194,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:39 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:39 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:40 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:41 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:41 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:41 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1203,7 +1203,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:41 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:41 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:42 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:43 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:43 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:43 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1212,7 +1212,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:43 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:43 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:44 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:44 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:44 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:45 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:45 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1221,7 +1221,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:45 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:45 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:46 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:47 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:47 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
@@ -1229,7 +1229,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:47 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:56:47 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
-2017/08/03 18:56:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:49 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:50 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:50 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1239,7 +1239,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:50 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:56:50 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:56:51 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:51 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:52 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:52 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:52 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1247,7 +1247,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:52 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:56:52 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:52 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:56:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:53 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:53 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:54 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:54 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1256,7 +1256,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:54 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:54 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:54 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:56:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:55 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:55 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:56 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:56 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1265,7 +1265,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:56 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:56:56 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:56 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:56:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:57 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:57 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:56:58 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:58 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1275,7 +1275,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:58 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:56:58 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:56:58 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:56:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:56:59 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:56:59 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:56:59 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:56:59 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1284,7 +1284,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:56:59 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:56:59 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:00 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:01 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:01 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:01 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1293,7 +1293,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:01 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:01 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:02 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:03 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:03 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:03 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1302,7 +1302,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:03 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:03 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:04 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:05 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:05 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:05 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
@@ -1311,7 +1311,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:05 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:05 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:06 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:07 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:07 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:07 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
@@ -1320,7 +1320,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:07 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:07 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:08 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:09 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:09 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:09 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1329,7 +1329,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:09 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:09 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:10 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:10 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:10 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:11 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:11 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:11 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
@@ -1338,7 +1338,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:11 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:11 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:57:12 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:12 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:12 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:13 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:13 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:13 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
@@ -1347,7 +1347,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:13 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:13 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:14 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:15 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:15 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:15 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1356,7 +1356,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:15 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:15 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:16 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:16 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:16 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:17 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:17 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:17 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
@@ -1364,7 +1364,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:17 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:17 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:17 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 18:57:18 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:18 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:19 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:20 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:20 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1373,7 +1373,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:20 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:20 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:20 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:21 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:21 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:22 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:22 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1382,7 +1382,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:22 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:22 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:22 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:23 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:23 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:24 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:24 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1391,7 +1391,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:24 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:24 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:24 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:24 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:24 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:25 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:25 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:25 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1400,7 +1400,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:25 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:25 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:25 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:25 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:27 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:27 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:27 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1409,7 +1409,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:27 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:27 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:27 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:27 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:28 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:28 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:28 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1418,7 +1418,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:28 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:28 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:28 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:28 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:28 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:30 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:30 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:30 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1427,7 +1427,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:30 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:30 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:30 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:30 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:30 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:32 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:32 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:32 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1436,7 +1436,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:32 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:32 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:32 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:32 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:34 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:34 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:34 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1445,7 +1445,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:34 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:34 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:34 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:34 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:34 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:36 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:36 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:36 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1454,7 +1454,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:36 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:36 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:36 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:36 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:38 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:38 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:38 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1463,7 +1463,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:38 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:38 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:38 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:38 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:40 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:40 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:40 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1472,7 +1472,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:40 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:57:40 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:40 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:57:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:40 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:42 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:42 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:42 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1481,7 +1481,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:42 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:42 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:57:42 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
-2017/08/03 18:57:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:42 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:44 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:45 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:45 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1491,7 +1491,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:57:45 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:45 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:46 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:46 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:47 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:47 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1513,14 +1513,14 @@ a stack has been saved to the rpc log
 16:57:35,584 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
 16:57:35,642 disk#1001      INFO    provisioned
 16:57:35,649 disk#1001      INFO    zp4832677178583133704_pod01 is already up
-16:57:35,660 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
-16:57:35,683 fs#00          INFO    /sbin/zfs set refquota=2048M zp4832677178583133704_00/docker
+16:57:35,660 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+16:57:35,683 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
 16:57:35,691 fs#00          INFO    provisioned
-16:57:35,709 fs#00          INFO    /sbin/zfs mount zp4832677178583133704_00/docker
-16:57:35,731 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
-16:57:35,758 fs#01          INFO    /sbin/zfs set refquota=1024M zp4832677178583133704_pod01/pod01
+16:57:35,709 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+16:57:35,731 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+16:57:35,758 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
 16:57:35,767 fs#01          INFO    provisioned
-16:57:35,783 fs#01          INFO    /sbin/zfs mount zp4832677178583133704_pod01/pod01
+16:57:35,783 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
 16:57:35,793 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
 16:57:38,004 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -1779,7 +1779,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 16:57:43,422 ip#01          INFO    bridge mode
 16:57:43,448 ip#01          INFO    create symlink /var/run/netns/4284 -> /proc/4284/ns/net
 16:57:43,515 ip#01          INFO    /sbin/ip link add name veth1pl4284 mtu 1500 type veth peer name veth1pg4284 mtu 1500
-16:57:43,520 ip#01          INFO    /sbin/ip link set veth1pl4284 master br0
+16:57:43,520 ip#01          INFO    /sbin/ip link set veth1pl4284 master br-prd
 16:57:43,523 ip#01          INFO    /sbin/ip link set veth1pl4284 up
 16:57:43,526 ip#01          INFO    /sbin/ip link set veth1pg4284 netns 4284
 16:57:43,544 ip#01          INFO    /sbin/ip netns exec 4284 ip link set veth1pg4284 name eth1
@@ -1796,7 +1796,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 16:57:47,249                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
 
 2017/08/03 18:57:48 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:48 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:49 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:49 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:49 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
@@ -1807,7 +1807,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 2017/08/03 18:57:49 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 18:57:49 [ux_dck_zpool_loop] INFO  - Database started
 2017/08/03 18:57:50 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:51 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:51 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:51 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1817,7 +1817,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 2017/08/03 18:57:51 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:51 [ux_dck_zpool_loop] INFO  - Provisioning delete service f2e4f4d3-c2c7-4939-a1b4-c89c714d195d
 2017/08/03 18:57:52 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:57:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:53 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:53 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:57:53 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
@@ -1833,8 +1833,8 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 2017/08/03 18:57:54 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:54 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:54 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
-2017/08/03 18:57:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:57:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
+2017/08/03 18:57:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:57:56 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:56 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:56 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1843,7 +1843,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 2017/08/03 18:57:56 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:57:56 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:56 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
-2017/08/03 18:57:56 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:56 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:58 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:57:58 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:57:58 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1852,7 +1852,7 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 2017/08/03 18:57:58 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:57:58 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:57:58 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:57:58 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:57:58 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:57:58 [ux_dck_zpool_loop] INFO  - 16:57:54,541 disk#00        INFO    already provisionned
 16:57:54,574 disk#00        INFO    loop /srv/17311646700765639015_docker.dsk is already up
 16:57:54,610 disk#0000      INFO    already provisionned
@@ -1861,12 +1861,12 @@ c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
 16:57:54,666 disk#01        INFO    loop /srv/17311646700765639015_pod01.dsk is already up
 16:57:54,703 disk#1001      INFO    already provisionned
 16:57:54,710 disk#1001      INFO    zp17311646700765639015_pod01 is already up
-16:57:54,727 fs#00          INFO    /sbin/zfs set refquota=2048M zp17311646700765639015_00/docker
+16:57:54,727 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
 16:57:54,740 fs#00          INFO    provisioned
-16:57:54,749 fs#00          INFO    zfs zp17311646700765639015_00/docker@/srv/17311646700765639015/docker is already mounted
-16:57:54,768 fs#01          INFO    /sbin/zfs set refquota=1024M zp17311646700765639015_pod01/pod01
+16:57:54,749 fs#00          INFO    ext4 zp17311646700765639015_00/docker@/srv/17311646700765639015/docker is already mounted
+16:57:54,768 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
 16:57:54,802 fs#01          INFO    provisioned
-16:57:54,810 fs#01          INFO    zfs zp17311646700765639015_pod01/pod01@/srv/17311646700765639015/pod01 is already mounted
+16:57:54,810 fs#01          INFO    ext4 zp17311646700765639015_pod01/pod01@/srv/17311646700765639015/pod01 is already mounted
 16:57:54,811 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
 16:57:56,814 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.db attached
@@ -1931,10 +1931,10 @@ check passed, skip fix
  mariadb.svc.mrm.db.cnf
 0 error
 total duration: 0:00:00.208212
-16:57:56,888 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on agent2
+16:57:56,888 container#0001 INFO    container docker container 17311646700765639015.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
 16:57:56,931 ip#01          INFO    skip allocate: an ip is already defined
-16:57:56,994 ip#01          INFO    192.168.100.71 is already up on br0
-16:57:57,132 container#2001 INFO    container docker container 17311646700765639015.container.2001@mariadb:10.2 already started on agent2
+16:57:56,994 ip#01          INFO    192.168.100.71 is already up on br-prd
+16:57:57,132 container#2001 INFO    container docker container 17311646700765639015.container.2001@mariadb:10.2 already started on node-1-2.vdc.opensvc.com
 16:57:57,348                INFO    send /etc/opensvc/17311646700765639015.conf to collector
 16:57:57,349                INFO    update /var/lib/opensvc/17311646700765639015/last_pushed_config timestamp
 a stack has been saved to the rpc log
@@ -1946,7 +1946,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:00 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:58:00 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:58:00 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
-2017/08/03 18:58:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:58:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:58:00 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:58:00 [ux_dck_zpool_loop] INFO  - Waiting for database start
 2017/08/03 18:58:00 [ux_dck_zpool_loop] INFO  - Database started
@@ -1957,7 +1957,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:02 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:58:02 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:58:02 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:58:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:58:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:58:02 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:58:04 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:04 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
@@ -1967,7 +1967,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:04 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
 2017/08/03 18:58:04 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:58:04 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
-2017/08/03 18:58:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:58:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:58:06 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:06 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:06 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1976,7 +1976,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:06 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:58:06 [ux_dck_zpool_loop] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
 2017/08/03 18:58:06 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
-2017/08/03 18:58:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:58:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:58:08 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:08 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:08 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -1985,7 +1985,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:08 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.70
 2017/08/03 18:58:08 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:58:08 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.70
-2017/08/03 18:58:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: connect: host is down
+2017/08/03 18:58:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: connect: host is down
 2017/08/03 18:58:10 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:10 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:10 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2008,14 +2008,14 @@ a stack has been saved to the rpc log
 16:58:03,107 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
 16:58:03,164 disk#1001      INFO    provisioned
 16:58:03,171 disk#1001      INFO    zp10940044185188150515_pod01 is already up
-16:58:03,182 fs#00          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
-16:58:03,206 fs#00          INFO    /sbin/zfs set refquota=2048M zp10940044185188150515_00/docker
+16:58:03,182 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+16:58:03,206 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
 16:58:03,218 fs#00          INFO    provisioned
-16:58:03,234 fs#00          INFO    /sbin/zfs mount zp10940044185188150515_00/docker
-16:58:03,256 fs#01          INFO    /sbin/zfs create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
-16:58:03,281 fs#01          INFO    /sbin/zfs set refquota=1024M zp10940044185188150515_pod01/pod01
+16:58:03,234 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+16:58:03,256 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+16:58:03,281 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
 16:58:03,293 fs#01          INFO    provisioned
-16:58:03,310 fs#01          INFO    /sbin/zfs mount zp10940044185188150515_pod01/pod01
+16:58:03,310 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
 16:58:03,319 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 16:58:05,603 fs#01          INFO    output:
 moduleset mariadb.svc.mrm.proxy is already attached to this service
@@ -2083,15 +2083,15 @@ total duration: 0:00:00.432648
 16:58:05,879 container#0001 INFO    wait for up status
 16:58:05,904 container#0001 INFO    wait for container operational
 16:58:05,948 ip#01          INFO    skip allocate: an ip is already defined
-16:58:06,013 ip#01          INFO    checking 192.168.100.50 availability
+16:58:06,013 ip#01          INFO    checking 192.168.100.75 availability
 16:58:09,101 ip#01          INFO    bridge mode
 16:58:09,128 ip#01          INFO    create symlink /var/run/netns/29275 -> /proc/29275/ns/net
 16:58:09,198 ip#01          INFO    /sbin/ip link add name veth1pl29275 mtu 1500 type veth peer name veth1pg29275 mtu 1500
-16:58:09,201 ip#01          INFO    /sbin/ip link set veth1pl29275 master br0
+16:58:09,201 ip#01          INFO    /sbin/ip link set veth1pl29275 master br-prd
 16:58:09,204 ip#01          INFO    /sbin/ip link set veth1pl29275 up
 16:58:09,208 ip#01          INFO    /sbin/ip link set veth1pg29275 netns 29275
 16:58:09,218 ip#01          INFO    /sbin/ip netns exec 29275 ip link set veth1pg29275 name eth1
-16:58:09,274 ip#01          INFO    /sbin/ip netns exec 29275 ip addr add 192.168.100.50/24 dev eth1
+16:58:09,274 ip#01          INFO    /sbin/ip netns exec 29275 ip addr add 192.168.100.75/24 dev eth1
 16:58:09,342 ip#01          INFO    /sbin/ip netns exec 29275 ip link set eth1 up
 16:58:09,374 ip#01          INFO    /sbin/ip netns exec 29275 ip route replace default via 192.168.100.254
 16:58:09,418 ip#01          INFO    remove /var/run/netns/29275
@@ -2259,7 +2259,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:47 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:47 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:58:47 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
-2017/08/03 18:58:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: getsockopt: connection refused
+2017/08/03 18:58:47 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: getsockopt: connection refused
 2017/08/03 18:58:47 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
 2017/08/03 18:58:47 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:47 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
@@ -2280,7 +2280,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:49 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:58:49 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 18:58:49 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/03 18:58:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:58:50 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:58:50 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:51 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:51 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2293,7 +2293,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:51 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
 2017/08/03 18:58:51 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:51 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
-2017/08/03 18:58:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:58:52 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:58:52 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:53 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:53 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2307,7 +2307,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:53 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:53 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:58:54 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:58:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:58:54 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:58:55 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:55 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:58:55 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
@@ -2319,7 +2319,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:55 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:55 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:58:55 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:58:56 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:58:56 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:58:56 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:58:57 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:57 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2333,7 +2333,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:57 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
 2017/08/03 18:58:57 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:58 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:58:58 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:58:58 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:58:59 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:58:59 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
 2017/08/03 18:58:59 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
@@ -2345,7 +2345,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:58:59 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:58:59 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:58:59 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:59:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:00 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:00 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:01 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:01 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2358,7 +2358,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:01 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:59:01 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 18:59:01 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/03 18:59:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:02 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:02 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:03 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:03 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2371,7 +2371,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:03 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
 2017/08/03 18:59:03 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:59:03 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
-2017/08/03 18:59:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:04 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:04 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:05 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:05 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
@@ -2384,7 +2384,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:05 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:59:05 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:59:05 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:59:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:06 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:06 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:07 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:07 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2397,7 +2397,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:07 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:59:07 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
 2017/08/03 18:59:07 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
-2017/08/03 18:59:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:08 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:08 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:09 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:09 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2411,7 +2411,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:09 [ux_dck_zpool_loop] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.71
 2017/08/03 18:59:09 [ux_dck_zpool_loop] STATE - WARN0056 No compression of binlog on slave 192.168.100.71
 2017/08/03 18:59:10 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
-2017/08/03 18:59:10 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:10 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:11 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:11 [ux_dck_zpool_loop] STATE - ERR00012 CLOSING Could not find a master in topology
 2017/08/03 18:59:11 [ux_dck_zpool_loop] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
@@ -2423,7 +2423,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:11 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:59:11 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:59:11 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:59:12 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:12 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:12 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:13 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:13 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2436,7 +2436,7 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:13 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
 2017/08/03 18:59:13 [ux_dck_zpool_loop] STATE - WARN0045 Provision task is in queue
 2017/08/03 18:59:13 [ux_dck_zpool_loop] STATE - INF00001 Server 192.168.100.70 is down
-2017/08/03 18:59:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:14 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:14 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:15 [ux_dck_zpool_loop] INFO  - In Failover, skip checking failed master
 2017/08/03 18:59:15 [ux_dck_zpool_loop] STATE - ERR00010 CLOSING Could not find a slave in topology
@@ -2449,9 +2449,9 @@ a stack has been saved to the rpc log
 2017/08/03 18:59:15 [ux_dck_zpool_loop] STATE - WARN0058 No GTID strict mode on slave 192.168.100.71
 2017/08/03 18:59:15 [ux_dck_zpool_loop] STATE - WARN0068 No compression of binlog on slave 192.168.100.70
 2017/08/03 18:59:15 [ux_dck_zpool_loop] STATE - WARN0070 No GTID strict mode on master 192.168.100.70
-2017/08/03 18:59:16 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.50:4007: i/o timeout
+2017/08/03 18:59:16 [ux_dck_zpool_loop] ERROR - dial tcp 192.168.100.75:4007: i/o timeout
 2017/08/03 18:59:16 [ux_dck_zpool_loop] DEBUG - In Failover skip topology detection
 2017/08/03 18:59:17 [ux_dck_zpool_loop] INFO  - hostlist: 192.168.100.70,192.168.100.71 [192.168.100.70 192.168.100.71]
 2017/08/03 18:59:17 [ux_dck_zpool_loop] INFO  - Loading 1 proxies
 2017/08/03 18:59:17 [ux_dck_zpool_loop] INFO  - Loading Maxscale...
-2017/08/03 18:59:17 [ux_dck_zpool_loop] TEST  - Result FailoverAssyncAutoRejoinFlashback                        -> {testFailoverAssyncAutoRejoinFlashback FAIL ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAssyncAutoRejoinFlashback.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.50 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker agent1,agent2 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254 docker agent2 1G zfs zpool /srv loopback br0 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf} {         %!s(bool=false) %!s(bool=false)      %!s(int64=0) %!s(int64=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(int64=0) %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false)   %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(bool=false)    %!s(int=0) %!s(int=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int64=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false) %!s(bool=false)   %!s(bool=false)     %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(int=0)     %!s(int=0) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false)  %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0)  %!s(int=0) %!s(int=0)  %!s(bool=false)   %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)                                   }}
+2017/08/03 18:59:17 [ux_dck_zpool_loop] TEST  - Result FailoverAssyncAutoRejoinFlashback                        -> {testFailoverAssyncAutoRejoinFlashback FAIL ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.70,192.168.100.71     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.70  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAssyncAutoRejoinFlashback.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.75 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf} {         %!s(bool=false) %!s(bool=false)      %!s(int64=0) %!s(int64=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(int64=0) %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false)   %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(bool=false)    %!s(int=0) %!s(int=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int64=0) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false) %!s(bool=false)   %!s(bool=false)     %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(bool=false) %!s(int=0) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(int=0) %!s(int=0) %!s(int=0)     %!s(int=0) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false)  %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0) %!s(int=0)  %!s(int=0) %!s(int=0)  %!s(bool=false)   %!s(int=0)  %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false)                                   }}

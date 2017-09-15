@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package regtest
@@ -9,14 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetMultiTierSlave(true)
-	if cluster.InitTestCluster(conf, test) == false {
-		return false
-	}
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)
 	cluster.SetRplChecks(false)
@@ -26,9 +24,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	cluster.DisableSemisync()
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
-	//clusteruster.DelayAllSlaves()
-	//cluster.PrepareBench()
-	//go clusteruster.RunBench()
+
 	go cluster.RunSysbench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
@@ -40,7 +36,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 
 	if cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 
@@ -52,7 +48,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
 		cluster.LogPrintf("ERROR", "Inconsitant slave")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	time.Sleep(8 * time.Second)
@@ -60,16 +56,14 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	cluster.LogPrintf("TEST", "Pointing to relay %s", relay.DSN)
 	if relay == nil {
 		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
 	if relay.IsRelay == false {
 		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
-		cluster.CloseTestCluster(conf, test)
+
 		return false
 	}
-
-	cluster.CloseTestCluster(conf, test)
 
 	return true
 }

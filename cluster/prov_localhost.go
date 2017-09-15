@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -8,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 func readPidFromFile(pidfile string) (string, error) {
@@ -71,6 +71,9 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	mvCommand.Run()
 	time.Sleep(time.Millisecond * 2000)
 	err := cluster.StartDatabaseService(server)
+	if err != nil {
+		return err
+	}
 	time.Sleep(time.Millisecond * 2000)
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
@@ -83,9 +86,14 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 }
 
 func (cluster *Cluster) LocalhostStopDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
-	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
-	killCmd.Run()
+	_, err := server.Conn.Exec("SHUTDOWN")
+	if err != nil {
+		cluster.LogPrintf("TEST", "Shutdown failed %s", err)
+	}
+	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
+
+	//	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
+	//	killCmd.Run()
 	return nil
 }
 

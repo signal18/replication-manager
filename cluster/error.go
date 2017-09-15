@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -25,7 +26,7 @@ var clusterError = map[string]string{
 	"ERR00018": "Could not connect to MaxScale: %s",
 	"ERR00019": "Could not get MaxScale maxadmin server list: %s",
 	"ERR00020": "Could not get MaxScale maxinfo server list: %s",
-	"ERR00021": "All cluster down in non-interactive mode",
+	"ERR00021": "All cluster db servers down",
 	"ERR00022": "Running in passive mode",
 	"ERR00023": "Constraint failed: state %s, conf.Interactive %t cluster.isMaxMasterFailedCountReach %t",
 	"ERR00024": "Constraint failed: isExternalOk %t,isActiveArbitration %t,isBeetwenFailoverTimeTooShort %t ,isMaxClusterFailoverCountReach %t, isOneSlaveHeartbeatIncreasing %t, isMaxscaleSupectRunning %t",
@@ -43,6 +44,7 @@ var clusterError = map[string]string{
 	"ERR00036": "Skip slave in election %s is relay",
 	"ERR00037": "Skip slave in election %s in ignore list",
 	"ERR00038": "Skip slave in election %s repl not electable for failover",
+	"ERR00039": "Skip slave in election %s repl not electable",
 	"ERR00040": "Skip slave in election %s does not ping or has no binlogs",
 	"ERR00041": "Skip slave in election %s has more than %d seconds of replication delay (%d)",
 	"ERR00042": "Skip slave in election %s SQL Thread is stopped",

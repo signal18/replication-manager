@@ -1,0 +1,34 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+# TOPOLOGY
+# --------
+
+[osx_dck_nopool_loop]
+title = "ClusterEnterpriseMasterSlave"
+db-servers-hosts = "172.18.0.2,172.18.0.3"
+db-servers-prefered-master = "172.18.0.2"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+
+replication-credential = "root:mariadb"
+
+prov-db-agents = "macbook-pro-de-apple-2.local"
+prov-db-service-type = "docker"
+prov-db-disk-fs = "hfs"
+prov-db-disk-pool = "none"
+prov-db-disk-type = "loopback"
+prov-db-disk-device = "/srv"
+prov-db-net-iface = "tap1"
+prov-db-net-gateway = "172.18.0.1"
+prov-db-net-mask = "255.255.255.0"
+prov-db-docker-img = "mariadb:latest"
+prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
+
+
+[default]
+opensvc-host = "ci.signal18.io:9443"
+http-bootstrap-button = true

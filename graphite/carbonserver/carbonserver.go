@@ -35,15 +35,15 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	logger "github.com/Sirupsen/logrus"
+	logger "github.com/sirupsen/logrus"
 	"github.com/dgryski/httputil"
 	"github.com/gogo/protobuf/proto"
-	pb "github.com/tanji/replication-manager/graphite/carbonzipperpb"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
 	trigram "github.com/dgryski/go-trigram"
-	"github.com/tanji/replication-manager/graphite/helper"
-	pickle "github.com/tanji/replication-manager/graphite/og-rek"
-	"github.com/tanji/replication-manager/graphite/points"
-	whisper "github.com/tanji/replication-manager/graphite/whisper"
+	"github.com/signal18/replication-manager/graphite/helper"
+	pickle "github.com/signal18/replication-manager/graphite/og-rek"
+	"github.com/signal18/replication-manager/graphite/points"
+	whisper "github.com/signal18/replication-manager/graphite/whisper"
 )
 
 type metricStruct struct {

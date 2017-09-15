@@ -1,3 +1,11 @@
+// +build server
+
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
+// Author: Stephane Varoqui  <svaroqui@gmail.com>
+// License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
+// See LICENSE in this directory for the integral text.
+
 package main
 
 import (
@@ -13,14 +21,14 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
-	"github.com/tanji/replication-manager/cluster"
-	"github.com/tanji/replication-manager/regtest"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/regtest"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -105,6 +113,13 @@ func apiserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
 	))
+	router.Handle("/api/timeout", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
+	))
+	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
+	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
@@ -170,10 +185,16 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplicationCleanup)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/services/bootstrap", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/services/provision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapServices)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProvisionServices)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStopTraffic)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/start-traffic", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
@@ -258,8 +279,12 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 
-	log.Println("Now listening on localhost:3000")
-	http.ListenAndServeTLS("0.0.0.0:3000", conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	if err != nil {
+		log.Println("ERROR", "JWT API can't start: %s", err)
+	}
+	log.Println("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
+
 }
 
 //////////////////////////////////////////
@@ -359,26 +384,31 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		data, _ := json.Marshal(mycluster.GetServers())
+		var srvs []*cluster.ServerMonitor
 
-	data, _ := json.Marshal(mycluster.GetServers())
-	var srvs []*cluster.ServerMonitor
+		err := json.Unmarshal(data, &srvs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
 
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
+		for i := range srvs {
+			srvs[i].Pass = "XXXXXXXX"
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err = e.Encode(srvs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
 
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err = e.Encode(srvs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -387,26 +417,30 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		data, _ := json.Marshal(mycluster.GetSlaves())
+		var srvs []*cluster.ServerMonitor
 
-	data, _ := json.Marshal(mycluster.GetSlaves())
-	var srvs []*cluster.ServerMonitor
+		err := json.Unmarshal(data, &srvs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+		for i := range srvs {
+			srvs[i].Pass = "XXXXXXXX"
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err = e.Encode(srvs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
 
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err = e.Encode(srvs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -415,20 +449,26 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	data, _ := json.Marshal(mycluster.GetProxies())
-	var prxs []*cluster.Proxy
-	err := json.Unmarshal(data, &prxs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err = e.Encode(prxs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+	if mycluster != nil {
+		data, _ := json.Marshal(mycluster.GetProxies())
+		var prxs []*cluster.Proxy
+		err := json.Unmarshal(data, &prxs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err = e.Encode(prxs)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -437,14 +477,20 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 	a := new(alerts)
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	a.Errors = mycluster.GetStateMachine().GetOpenErrors()
-	a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(a)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+	if mycluster != nil {
+		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
+		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(a)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -453,7 +499,13 @@ func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.MasterFailover(true)
+	if mycluster != nil {
+		mycluster.MasterFailover(true)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 
@@ -461,7 +513,13 @@ func handlerMuxStartTraffic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SetTraffic(true)
+	if mycluster != nil {
+		mycluster.SetTraffic(true)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 
@@ -469,7 +527,13 @@ func handlerMuxStopTraffic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SetTraffic(false)
+	if mycluster != nil {
+		mycluster.SetTraffic(false)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 
@@ -477,10 +541,15 @@ func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	err := mycluster.BootstrapReplicationCleanup()
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error Cleanup Replication: %s", err)
-		http.Error(w, err.Error(), 500)
+	if mycluster != nil {
+		err := mycluster.BootstrapReplicationCleanup()
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error Cleanup Replication: %s", err)
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
@@ -490,39 +559,43 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
 
-	switch vars["topology"] {
-	case "master-slave":
-		mycluster.SetMultiTierSlave(false)
-		mycluster.SetForceSlaveNoGtid(false)
-		mycluster.SetMultiMaster(false)
-		mycluster.SetBinlogServer(false)
-	case "master-slave-no-gtid":
-		mycluster.SetMultiTierSlave(false)
-		mycluster.SetForceSlaveNoGtid(true)
-		mycluster.SetMultiMaster(false)
-		mycluster.SetBinlogServer(false)
-	case "multi-master":
-		mycluster.SetMultiTierSlave(false)
-		mycluster.SetForceSlaveNoGtid(false)
-		mycluster.SetMultiMaster(true)
-		mycluster.SetBinlogServer(false)
-	case "multi-tier-slave":
-		mycluster.SetMultiTierSlave(true)
-		mycluster.SetForceSlaveNoGtid(false)
-		mycluster.SetMultiMaster(false)
-		mycluster.SetBinlogServer(false)
-	case "maxscale-binlog":
-		mycluster.SetMultiTierSlave(false)
-		mycluster.SetForceSlaveNoGtid(false)
-		mycluster.SetMultiMaster(false)
-		mycluster.SetBinlogServer(true)
-	case "multi-master-ring":
-	}
-	err := mycluster.BootstrapReplication()
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error Bootstrap Replication: %s", err)
-		http.Error(w, err.Error(), 500)
+		switch vars["topology"] {
+		case "master-slave":
+			mycluster.SetMultiTierSlave(false)
+			mycluster.SetForceSlaveNoGtid(false)
+			mycluster.SetMultiMaster(false)
+			mycluster.SetBinlogServer(false)
+		case "master-slave-no-gtid":
+			mycluster.SetMultiTierSlave(false)
+			mycluster.SetForceSlaveNoGtid(true)
+			mycluster.SetMultiMaster(false)
+			mycluster.SetBinlogServer(false)
+		case "multi-master":
+			mycluster.SetMultiTierSlave(false)
+			mycluster.SetForceSlaveNoGtid(false)
+			mycluster.SetMultiMaster(true)
+			mycluster.SetBinlogServer(false)
+		case "multi-tier-slave":
+			mycluster.SetMultiTierSlave(true)
+			mycluster.SetForceSlaveNoGtid(false)
+			mycluster.SetMultiMaster(false)
+			mycluster.SetBinlogServer(false)
+		case "maxscale-binlog":
+			mycluster.SetMultiTierSlave(false)
+			mycluster.SetForceSlaveNoGtid(false)
+			mycluster.SetMultiMaster(false)
+			mycluster.SetBinlogServer(true)
+		case "multi-master-ring":
+		}
+		err := mycluster.BootstrapReplication()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
@@ -532,23 +605,33 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	err := mycluster.BootstrapServices()
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services: ", err)
-		http.Error(w, err.Error(), 500)
+	if mycluster != nil {
+		err := mycluster.BootstrapServices()
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services: ", err)
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
 }
 
-func handlerMuxBootstrap(w http.ResponseWriter, r *http.Request) {
+func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	err := mycluster.Bootstrap()
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services + replication ", err)
-		http.Error(w, err.Error(), 500)
+	if mycluster != nil {
+		err := mycluster.Bootstrap()
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services + replication ", err)
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
@@ -558,48 +641,71 @@ func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.ResetFailoverCtr()
+	if mycluster != nil {
+		mycluster.ResetFailoverCtr()
+	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 
 func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if mycluster.IsMasterFailed() {
-		mycluster.LogPrintf("ERROR", " Master failed, cannot initiate switchover")
-		http.Error(w, "Master failed", http.StatusBadRequest)
+	if mycluster != nil {
+		mycluster.LogPrintf("INFO", "Rest API receive switchover request")
+		savedPrefMaster := mycluster.GetConf().PrefMaster
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if mycluster.IsMasterFailed() {
+			mycluster.LogPrintf("ERROR", "Master failed, cannot initiate switchover")
+			http.Error(w, "Master failed", http.StatusBadRequest)
+			return
+		}
+		r.ParseForm() // Parses the request body
+		newPrefMaster := r.Form.Get("prefmaster")
+		mycluster.LogPrintf("INFO", "Was ask for prefered master: %s", newPrefMaster)
+		if mycluster.IsInHostList(newPrefMaster) {
+			mycluster.SetPrefMaster(newPrefMaster)
+		}
+		mycluster.SwitchoverWaitTest()
+		mycluster.SetPrefMaster(savedPrefMaster)
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
 	}
-	mycluster.LogPrintf("INFO", "Rest API receive switchover request")
-	mycluster.SwitchoverWaitTest()
 	return
 }
 
 func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	m := mycluster.GetMaster()
-	var srvs *cluster.ServerMonitor
-	if m != nil {
+	if mycluster != nil {
+		m := mycluster.GetMaster()
+		var srvs *cluster.ServerMonitor
+		if m != nil {
 
-		data, _ := json.Marshal(m)
+			data, _ := json.Marshal(m)
 
-		err := json.Unmarshal(data, &srvs)
+			err := json.Unmarshal(data, &srvs)
+			if err != nil {
+				mycluster.LogPrintf("ERROR", "API Error decoding JSON: ", err)
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			srvs.Pass = "XXXXXXXX"
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error decoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
-		srvs.Pass = "XXXXXXXX"
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(srvs)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -608,7 +714,12 @@ func handlerMuxSwitchInteractive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.ToggleInteractive()
+	if mycluster != nil {
+		mycluster.ToggleInteractive()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 
@@ -616,63 +727,109 @@ func handlerMuxSwitchVerbosity(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchVerbosity()
+	if mycluster != nil {
+		mycluster.SwitchVerbosity()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchRejoin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchRejoin()
+	if mycluster != nil {
+		mycluster.SwitchRejoin()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchRejoinMysqldump(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchRejoinDump()
+	if mycluster != nil {
+		mycluster.SwitchRejoinDump()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchRejoinFlashback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchRejoinFlashback()
+	if mycluster != nil {
+		mycluster.SwitchRejoinFlashback()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchRejoinSemisync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchRejoinSemisync()
+	if mycluster != nil {
+		mycluster.SwitchRejoinSemisync()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchRplchecks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchRplChecks()
+	if mycluster != nil {
+		mycluster.SwitchRplChecks()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchSwitchoverSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchSwitchoverSync()
+	if mycluster != nil {
+		mycluster.SwitchSwitchoverSync()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchFailSync()
+	if mycluster != nil {
+		mycluster.SwitchFailSync()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.SwitchReadOnly()
+	if mycluster != nil {
+		mycluster.SwitchReadOnly()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 	return
 }
 func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
@@ -696,12 +853,18 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(mycluster.GetCrashes())
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetCrashes())
+		if err != nil {
+			log.Println("Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -710,30 +873,51 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	regtest := new(regtest.RegTest)
-	res := regtest.RunAllTests(mycluster, vars["testName"])
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
+	if mycluster != nil {
+		r.ParseForm() // Parses the request body
+		if r.Form.Get("provision") == "true" {
+			mycluster.SetTestStartCluster(true)
+		}
+		if r.Form.Get("unprovision") == "true" {
+			mycluster.SetTestStopCluster(true)
+		}
+		regtest := new(regtest.RegTest)
+		res := regtest.RunAllTests(mycluster, vars["testName"])
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
 
-	if len(res) > 0 {
-		err := e.Encode(res[0])
-		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
+		if len(res) > 0 {
+			err := e.Encode(res[0])
+			if err != nil {
+				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+				http.Error(w, "Encoding error", 500)
+				mycluster.SetTestStartCluster(false)
+				mycluster.SetTestStopCluster(false)
+				return
+			}
+		} else {
+			var test cluster.Test
+			test.Result = "FAIL"
+			test.Name = vars["testName"]
+			err := e.Encode(test)
+			if err != nil {
+				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+				http.Error(w, "Encoding error", 500)
+				mycluster.SetTestStartCluster(false)
+				mycluster.SetTestStopCluster(false)
+				return
+			}
+
 		}
 	} else {
-		var test cluster.Test
-		test.Result = "FAIL"
-		test.Name = vars["testName"]
-		err := e.Encode(test)
-		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
 
+		http.Error(w, "No cluster", 500)
+		mycluster.SetTestStartCluster(false)
+		mycluster.SetTestStopCluster(false)
+		return
 	}
+	mycluster.SetTestStartCluster(false)
+	mycluster.SetTestStopCluster(false)
 	return
 }
 
@@ -741,15 +925,21 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	regtest := new(regtest.RegTest)
+	if mycluster != nil {
+		regtest := new(regtest.RegTest)
 
-	res := regtest.RunAllTests(mycluster, "ALL")
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(res)
-	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+		res := regtest.RunAllTests(mycluster, "ALL")
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(res)
+		if err != nil {
+			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
@@ -758,55 +948,61 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	s := new(Settings)
-	s.Enterprise = fmt.Sprintf("%v", mycluster.GetConf().Enterprise)
-	s.Interactive = fmt.Sprintf("%v", mycluster.GetConf().Interactive)
-	s.RplChecks = fmt.Sprintf("%v", mycluster.GetConf().RplChecks)
-	s.FailSync = fmt.Sprintf("%v", mycluster.GetConf().FailSync)
-	s.SwitchSync = fmt.Sprintf("%v", mycluster.GetConf().SwitchSync)
-	s.Rejoin = fmt.Sprintf("%v", mycluster.GetConf().Autorejoin)
-	s.RejoinBackupBinlog = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinBackupBinlog)
-	s.RejoinSemiSync = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinSemisync)
-	s.RejoinFlashback = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinFlashback)
-	s.RejoinDump = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinMysqldump)
-	s.RejoinUnsafe = fmt.Sprintf("%v", mycluster.GetConf().FailRestartUnsafe)
-	s.MaxDelay = fmt.Sprintf("%v", mycluster.GetConf().SwitchMaxDelay)
-	s.FailoverCtr = fmt.Sprintf("%d", mycluster.GetFailoverCtr())
-	s.Faillimit = fmt.Sprintf("%d", mycluster.GetConf().FailLimit)
-	s.MonHearbeats = fmt.Sprintf("%d", mycluster.GetStateMachine().GetHeartbeats())
-	s.Uptime = mycluster.GetStateMachine().GetUptime()
-	s.UptimeFailable = mycluster.GetStateMachine().GetUptimeFailable()
-	s.UptimeSemiSync = mycluster.GetStateMachine().GetUptimeSemiSync()
-	s.Test = fmt.Sprintf("%v", mycluster.GetConf().Test)
-	s.Heartbeat = fmt.Sprintf("%v", mycluster.GetConf().Heartbeat)
-	s.Status = fmt.Sprintf("%v", runStatus)
-	s.ConfGroup = fmt.Sprintf("%s", mycluster.GetName())
-	s.MonitoringTicker = fmt.Sprintf("%d", mycluster.GetConf().MonitoringTicker)
-	s.FailResetTime = fmt.Sprintf("%d", mycluster.GetConf().FailResetTime)
-	s.ToSessionEnd = fmt.Sprintf("%d", mycluster.GetConf().SessionLifeTime)
-	s.HttpAuth = fmt.Sprintf("%v", mycluster.GetConf().HttpAuth)
-	s.HttpBootstrapButton = fmt.Sprintf("%v", mycluster.GetConf().HttpBootstrapButton)
-	s.Clusters = cfgGroupList
-	regtest := new(regtest.RegTest)
-	s.RegTests = regtest.GetTests()
-	if mycluster.GetLogLevel() > 0 {
-		s.Verbose = fmt.Sprintf("%v", true)
+	if mycluster != nil {
+		s := new(Settings)
+		s.Enterprise = fmt.Sprintf("%v", mycluster.GetConf().Enterprise)
+		s.Interactive = fmt.Sprintf("%v", mycluster.GetConf().Interactive)
+		s.RplChecks = fmt.Sprintf("%v", mycluster.GetConf().RplChecks)
+		s.FailSync = fmt.Sprintf("%v", mycluster.GetConf().FailSync)
+		s.SwitchSync = fmt.Sprintf("%v", mycluster.GetConf().SwitchSync)
+		s.Rejoin = fmt.Sprintf("%v", mycluster.GetConf().Autorejoin)
+		s.RejoinBackupBinlog = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinBackupBinlog)
+		s.RejoinSemiSync = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinSemisync)
+		s.RejoinFlashback = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinFlashback)
+		s.RejoinDump = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinMysqldump)
+		s.RejoinUnsafe = fmt.Sprintf("%v", mycluster.GetConf().FailRestartUnsafe)
+		s.MaxDelay = fmt.Sprintf("%v", mycluster.GetConf().FailMaxDelay)
+		s.FailoverCtr = fmt.Sprintf("%d", mycluster.GetFailoverCtr())
+		s.Faillimit = fmt.Sprintf("%d", mycluster.GetConf().FailLimit)
+		s.MonHearbeats = fmt.Sprintf("%d", mycluster.GetStateMachine().GetHeartbeats())
+		s.Uptime = mycluster.GetStateMachine().GetUptime()
+		s.UptimeFailable = mycluster.GetStateMachine().GetUptimeFailable()
+		s.UptimeSemiSync = mycluster.GetStateMachine().GetUptimeSemiSync()
+		s.Test = fmt.Sprintf("%v", mycluster.GetConf().Test)
+		s.Heartbeat = fmt.Sprintf("%v", mycluster.GetConf().Heartbeat)
+		s.Status = fmt.Sprintf("%v", runStatus)
+		s.ConfGroup = fmt.Sprintf("%s", mycluster.GetName())
+		s.MonitoringTicker = fmt.Sprintf("%d", mycluster.GetConf().MonitoringTicker)
+		s.FailResetTime = fmt.Sprintf("%d", mycluster.GetConf().FailResetTime)
+		s.ToSessionEnd = fmt.Sprintf("%d", mycluster.GetConf().SessionLifeTime)
+		s.HttpAuth = fmt.Sprintf("%v", mycluster.GetConf().HttpAuth)
+		s.HttpBootstrapButton = fmt.Sprintf("%v", mycluster.GetConf().HttpBootstrapButton)
+		s.Clusters = cfgGroupList
+		regtest := new(regtest.RegTest)
+		s.RegTests = regtest.GetTests()
+		if mycluster.GetLogLevel() > 0 {
+			s.Verbose = fmt.Sprintf("%v", true)
+		} else {
+			s.Verbose = fmt.Sprintf("%v", false)
+		}
+		if currentCluster.GetFailoverTs() != 0 {
+			t := time.Unix(mycluster.GetFailoverTs(), 0)
+			s.LastFailover = t.String()
+		} else {
+			s.LastFailover = "N/A"
+		}
+		s.Topology = mycluster.GetTopology()
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(s)
+		if err != nil {
+			log.Println("Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
 	} else {
-		s.Verbose = fmt.Sprintf("%v", false)
-	}
-	if currentCluster.GetFailoverTs() != 0 {
-		t := time.Unix(mycluster.GetFailoverTs(), 0)
-		s.LastFailover = t.String()
-	} else {
-		s.LastFailover = "N/A"
-	}
-	s.Topology = mycluster.GetTopology()
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(s)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
@@ -815,8 +1011,14 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	initConfig()
-	mycluster.ReloadConfig(confs[vars["clusterName"]])
+	if mycluster != nil {
+		initConfig()
+		mycluster.ReloadConfig(confs[vars["clusterName"]])
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 
 }
 
@@ -824,8 +1026,14 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	mycluster.LogPrintf("INFO", "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
-	mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+	if mycluster != nil {
+		mycluster.LogPrintf("INFO", "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
+		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 
 }
 
@@ -833,48 +1041,84 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.StopDatabaseService(node)
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		mycluster.StopDatabaseService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.StartDatabaseService(node)
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		mycluster.StartDatabaseService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.InitDatabaseService(node)
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		mycluster.InitDatabaseService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetServerFromName(vars["serverName"])
-	mycluster.UnprovisionDatabaseService(node)
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		mycluster.UnprovisionDatabaseService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetProxyFromName(vars["proxyName"])
-	mycluster.InitProxyService(node)
+	if mycluster != nil {
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		mycluster.InitProxyService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	node := mycluster.GetProxyFromName(vars["proxyName"])
-	mycluster.UnprovisionProxyService(node)
+	if mycluster != nil {
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		mycluster.UnprovisionProxyService(node)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
@@ -899,4 +1143,24 @@ func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
 	}
+}
+
+func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	if mycluster.GetStatus() {
+		io.WriteString(w, `{"alive": "running"}`)
+	} else {
+		io.WriteString(w, `{"alive": "errors"}`)
+	}
+}
+
+func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	time.Sleep(1200 * time.Second)
+	io.WriteString(w, `{"alive": "running"}`)
 }

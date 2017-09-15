@@ -1,9 +1,0 @@
-/var/log/go-carbon/*.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create
-}

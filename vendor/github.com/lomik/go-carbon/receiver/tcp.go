@@ -13,8 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/lomik/go-carbon/helper"
+	"github.com/lomik/go-carbon/helper/framing"
 	"github.com/lomik/go-carbon/points"
-	"github.com/lomik/graphite-pickle/framing"
 	"github.com/lomik/zapwriter"
 )
 
@@ -129,9 +129,7 @@ func (rcv *TCP) handlePickle(conn net.Conn) {
 	for {
 		conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
 		data, err := framedConn.ReadFrame()
-		if err == io.EOF {
-			return
-		} else if err == framing.ErrPrefixLength {
+		if err == framing.ErrPrefixLength {
 			atomic.AddUint32(&rcv.errors, 1)
 			rcv.logger.Warn("bad message size")
 			return

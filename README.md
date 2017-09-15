@@ -1,4 +1,6 @@
-## replication-manager [![Build Status](https://travis-ci.org/tanji/replication-manager.svg?branch=develop)](https://travis-ci.org/tanji/replication-manager) [![Stories in Ready](https://badge.waffle.io/tanji/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/tanji/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=develop)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
+
+![replication-manager](https://github.com/signal18/replication-manager/raw/develop/dashboard/static/logo.png)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
@@ -38,6 +40,7 @@ Product goals are topology detection and topology monitoring, enable on-demand s
         * [Command line bootstrap](#command-line-bootstrap)
         * [Monitor in daemon mode](#daemon-monitoring)
 * [Provisioning](doc/provision.md)
+* [Alerting](doc/alert.md)
 * [Metrics](#metrics)
 * [Security](#security)
     * [JWT Rest API](doc/api.md)
@@ -230,13 +233,13 @@ After checking the leader failure N times default failcount=5, replication-manag
 
 This default is know as the On-call mode and configured via
 ```
-interactive = true
+failover-mode = "manual"
 ```
 Failover can be resume via web server in default port http://replication-manger-host:1001/
 
 When failover is automatically triggered using
 ```
-interactive = false
+failover-mode = "automatic"
 ```
 Conditions for a possible failover are checked.
 - [x] A slave need to be available and up and running.
@@ -268,12 +271,12 @@ failover-max-slave-delay = 0
 failover-restart-unsafe = false
 ```
 
-A user can force switchover or failover by ignoring those checks via the
+A user can force switchover or failover by ignoring the replications checks via restarting monitoring with:
 ```
-rplchecks=false
+check-replication-state = false
 ```
 
-flag or via the console "Replication Checks Change" button.
+or via the HTTP interface "Replication Checks Change" button.
 
 
 Per default Semi-Sync replication status is not checked during failover, but this check can be enforced with semi-sync replication to enable to preserve OLD LEADER recovery at all costs, and do not failover if none of the slaves are in SYNC status.
@@ -351,7 +354,7 @@ autorejoin-mysqldump = true
 
 If none of above method is set or available replication-manager will call external scripts
 ```
-rejoin-script = ""
+autorejoin-script = ""
 ```
 
 Script is passing the server to rejoin as first argument and the new master in current topology.
@@ -401,7 +404,7 @@ Web browser IE is reported not working with http interface.
 
 As of today we build portable binary tarballs, Debian Jessie, Ubuntu, CentOS 6 & 7 packages.
 
-Check https://github.com/tanji/replication-manager/releases for official releases.
+Check https://github.com/signal18/replication-manager/releases for official releases.
 
 Nightly builds available on https://orient.dragonscale.eu/replication-manager/nightly
 
@@ -456,16 +459,16 @@ haproxy-binary-path = "/usr/sbin/haproxy"
 All the options above are settable in a configuration file that must be located in `/etc/replication-manager/config.toml`. Check `etc/config.toml.sample` in the repository for syntax examples.
 
 
-> It is strongly advice to create a dedicated user for the management user !  
+> It is strongly advised to create a dedicated user for the management user !  
 Management user (given by the --user option) and Replication user (given by the --repluser option) need to be given privileges to the host from which `replication-manager` runs. Users with wildcards are accepted as well.
 
 
-The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT`, `EVENT` and `RELOAD`
+The management user needs at least the following privileges: `SUPER`, `REPLICATION CLIENT`, `EVENT`, `RELOAD` and `PROCESS`
 
 The replication user needs the following privilege: `REPLICATION SLAVE`
 
 > Since replication-manager 1.1 a *[default]* section is required
-> It's best practice to split each managed cluster in his own section
+> It's a best practice to split each managed cluster in his own section
 
 Read and decide about changing route strategy via proxy usage or failover scripts.  
 
@@ -473,7 +476,7 @@ Declaring multiple cluster in the configuration file, they will all be monitored
 
 `--config-group=cluster1,cluster2`
 
-A specific configuration file name can be explicitly setup via
+A specific configuration file name can be explicitely setup via
 
 `--config=/etc/replication-manager.cnf`
 
@@ -493,12 +496,18 @@ Some init.d script for old os compatibility
 
 #### External failover scripts
 
-Replication-Manager calls external scripts and provides following parameters in this order: Old leader host and new elected leader.
+Replication-Manager calls external scripts and provides following parameters in this order:
+- [x] Old leader host
+- [x] New elected leader host
+- [x] Old leader port
+- [x] New elected leader port
+- [x] Old leader maxscale server name
+- [x] New elected maxscale server port
 
 ```
-pre-failover-script = ""
-post-failover-script = ""
-rejoin-script = ""
+failover-pre-script = ""
+failover-post-script = ""
+autorejoin-script = ""
 ```
 
 #### Maxscale
@@ -586,7 +595,7 @@ maxscale = true
 # maxinfo|maxadmin
 maxscale-get-info-method = "maxadmin"
 maxscale-maxinfo-port = 4002
-maxscale-host = "192.168.0.201"
+maxscale-servers = "192.168.0.201"
 maxscale-port = 4003
 ```
 
@@ -640,7 +649,7 @@ Since version 1.1 replication-manager can manage a new type of proxy for schema 
 For every cluster you wan't to proxy add the same extra MariaDBShardProxy
 ```
 mdbshardproxy = true
-mdbshardproxy-hosts = "127.0.0.1:3306"
+mdbshardproxy-servers = "127.0.0.1:3306"
 mdbshardproxy-user = "root:mariadb"
 ```
 
@@ -683,7 +692,7 @@ Flags help for the monitor command is given below.
 
 Start replication-manager in background to monitor the cluster, using the http server to control the daemon
 
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --http-server`
+`replication-manager monitor --http-server`
 
 The internal http server is accessible on http://localhost:10001 by default, and looks like this:
 
@@ -692,55 +701,7 @@ The internal http server is accessible on http://localhost:10001 by default, and
 > The http dashboard is an angularjs application, it has no protected access for now use creativity to restrict access to it.
 Some login protection using http-auth = true can be enable and use the database password giving in the replication-manager config file but it is reported to leak memory when a browser is still connected and constantly refresh the display. We advice not to used it but to protect via a web proxying authentication instead.   
 
-Start replication-manager in automatic daemon mode:
 
-`replication-manager monitor --hosts=db1:3306,db2:3306,db2:3306 --user=root:pass --rpluser=repl:pass --daemon --interactive=false`
-
-This mode is similar to the normal console mode with the exception of automated master failovers. With this mode, it is possible to run the replication-manager as a daemon process that manages a database cluster. Note that the `--interactive=false` option is required with the `--daemon` option to make the failovers automatic. Without it, the daemon only passively monitors the cluster.
-
-#### Monitor options
-
-```
-Flags:
-      --autorejoin                    Automatically rejoin a failed server to the current master (default true)
-      --check-type string             Type of server health check (tcp, agent) (default "tcp")
-      --connect-timeout int           Database connection timeout in seconds (default 5)
-      --daemon                        Daemon mode. Do not start the Termbox console
-      --failcount int                 Trigger failover after N failures (interval 1s) (default 5)
-      --failover-at-sync              Only failover when state semisync is sync for last status
-      --failover-limit int            Quit monitor after N failovers (0: unlimited)
-      --failover-time-limit int       In automatic mode, Wait N seconds before attempting next failover (0: do not wait)
-      --gtidcheck                     Do not initiate switchover unless one of the slaves is fully synced
-      --http-bind-address string      Bind HTTP monitor to this IP address (default "localhost")
-      --http-port string              HTTP monitor to listen on this port (default "10001")
-      --http-root string              Path to HTTP monitor files (default "/usr/share/replication-manager/dashboard")
-      --http-server                   Start the HTTP monitor
-      --ignore-servers string         List of servers to ignore in slave promotion operations
-      --logfile string                Write MRM messages to a log file
-      --mail-from string              Alert email sender (default "mrm@localhost")
-      --mail-smtp-addr string         Alert email SMTP server address, in host:[port] format (default "localhost:25")
-      --mail-to string                Alert email recipients, separated by commas
-      --master-connect-retry int      Specifies how many seconds to wait between slave connect retries to master (default 10)
-      --master-connection string      Connection name to use for multisource replication
-      --maxdelay int                  Maximum replication delay before initiating failover
-      --multimaster                   Turn on multi-master detection
-      --post-failover-script string   Path of post-failover script
-      --pre-failover-script string    Path of pre-failover script
-      --prefmaster string             Preferred candidate server for master failover, in host:[port] format
-      --readonly                      Set slaves as read-only after switchover (default true)
-      --rplchecks                     Failover to ignore replications checks (default true)
-      --spider                        Turn on spider detection
-      --wait-kill int                 Wait this many milliseconds before killing threads on demoted master (default 5000)
-
-Global Flags:
-      --hosts string     List of MariaDB hosts IP and port (optional), specified in the host:[port] format and separated by commas
-      --keypath string   Encryption key file path (default "/etc/replication-manager/.replication-manager.key")
-      --interactive      Ask for user interaction when failures are detected (default true)
-      --log-level int    Log verbosity level
-      --rpluser string   Replication user in the [user]:[password] format
-      --user string      User for MariaDB login, specified in the [user]:[password] format
-      --verbose          Print detailed execution info
-```
 
 #### Command line switchover
 
@@ -791,12 +752,16 @@ Ctrl-P Ctrl-N switch between clusters
 
 By default `replication-manager` assume flat topology but can auto promote multi-tier topology with some additional setting, this scenario is you stop a slave and his master die, when the master rejoin the topology it can keep his  slave behind it or the slave can be switched to the new master
 ```
-multi-tier-slave=true
+replication-multi-tier-slave=true
 ```
 
 ### Multi master
 
-`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration, you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
+`replication-manager` supports 2-node multi-master topology detection. It is required to specify it explicitely in `replication-manager` configuration,
+```
+replication-multi-master = true
+```
+you just need to set one preferred master and one very important parameter in MariaDB configuration file.  
 ```
 read_only = 1
 ```
@@ -804,7 +769,7 @@ read_only = 1
 This flag ensures that in case of split brain + leader crash, when old leader is reintroduced it will not show up as a possible leader for WRITES.
 
 
-MaxScale can follow multi=master setting by tracking the read-only flag and route queries to the writable node.
+MaxScale can follow multi master setting by tracking the read-only flag and route queries to the writable node.
 
 ```    
 [Multi-Master Monitor]
@@ -821,7 +786,7 @@ detect_stale_master=true
 Replication-Manager have support for replication tree or relay slaves architecture, in case of master death one of the slaves under the relay is promoted as a master.   
 Add following parameter to your cluster section
 ```
-multi-tier-slave=true
+replication-multi-tier-slave=true
 ```
 
 ### Active standby and external arbitrator
@@ -876,8 +841,8 @@ It's possible to run a private arbitrator via similar configuration
 
 ```
 [arbitrator]
-hosts = "192.168.0.201:3306"
-user = "user:password"
+db-servers-hosts = "192.168.0.201:3306"
+db-servers-credential = "user:password"
 title = "arbitrator"     
 [default]
 ```
@@ -936,9 +901,9 @@ All replications-manager clients use secure TLS protocol found specifications of
 Some extra variables can be set in the configuration file for all databases in a cluster or in default section for all clusters
 
 ```
-hosts-tls-ca-cert
-hosts-tls-client-key
-hosts-tls-client-cert
+db-servers-tls-ca-cert
+db-servers-tls-client-key
+db-servers-tls-client-cert
 ```
 
 ## Features
@@ -996,19 +961,21 @@ hosts-tls-client-cert
  * CORE: Etcd integration
  * CORE: Agent base server stop leader on switchover   
  * SERVER: MariaDB integration of no slave left behind https://jira.mariadb.org/browse/MDEV-8112
+
 ## Community
+
 ### Non-regression tests
 
 A testing framework is available via http or in command line.
 Setting the `test` variable in the predefined testing cluster in config file:
 ```  
 [Cluster_Test_2_Nodes]
-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-user = "root:"
-rpluser = "root:"
+db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
+db-servers-preferedd-master = "127.0.0.1:3310"
+db-servers-credential = "root:xxxx"
+db-servers-connect-timeout = 1
+replication-credential = "root:"
 title = "cluster1"
-connect-timeout = 1
-prefmaster = "127.0.0.1:3310"
 haproxy-write-port=3303
 haproxy-read-port=3304
 test=true
@@ -1036,12 +1003,12 @@ INFO[2017-02-22T21:40:02+01:00] [testSwitchOverLongTransactionNoRplCheckNoSemiSy
 Command-line running some tests via passing a list of tests in run-tests
 ALL is a special test to run all available tests.
 ```
-./replication-manager --config=/etc/replication-manager/mrm.cnf --config-group=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
+./replication-manager --config=/etc/replication-manager/mrm.cnf --cluster=cluster_test_2_nodes   --run-tests=testSwitchOver2TimesReplicationOkSemiSyncNoRplCheck test  
 ```
 
 ### Bugs
 
-Check https://github.com/tanji/replication-manager/issues for a list of issues.
+Check https://github.com/signal18/replication-manager/issues for a list of issues.
 
 ### Contributors
 
@@ -1052,7 +1019,7 @@ Check https://github.com/tanji/replication-manager/issues for a list of issues.
 
 Guillaume Lefranc <guillaume@signal18.io>
 
-Stephane Varoqui <stephane@mariadb.com>
+Stephane Varoqui  <svaroqui@gmail.com>
 
 #### Special Thanks
 

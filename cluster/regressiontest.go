@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -16,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tanji/replication-manager/config"
-	"github.com/tanji/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/dbhelper"
 )
 
 const recoverTime = 8
@@ -211,20 +212,68 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	}
 	return true
 }
+func (cluster *Cluster) FailoverAndWait() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.WaitFailover(wg)
+	cluster.StopDatabaseService(cluster.GetMaster())
+	wg.Wait()
+}
 
+func (cluster *Cluster) FailoverNow() {
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.WaitFailover(wg)
+	cluster.SetMasterStateFailed()
+	cluster.SetInteractive(false)
+	cluster.GetMaster().FailCount = cluster.GetMaxFail()
+	wg.Wait()
+}
+
+func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(1)
+	go cluster.WaitRejoin(wg2)
+	err := cluster.StartDatabaseService(server)
+	wg2.Wait()
+	return err
+}
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		dbhelper.StopSlave(s.Conn)
+		err := dbhelper.StopSlaveSQLThread(s.Conn)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Stopping slave on %s %s", s.URL, err)
+		}
 	}
+	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+	}
+	err = dbhelper.InjectLongTrx(cluster.master.Conn, 12)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "InjectLongTrx %s", err.Error())
+	}
+	result, err = dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+	}
+	for _, s := range cluster.slaves {
+		err := dbhelper.StartSlave(s.Conn)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Staring slave on %s %s", s.URL, err)
+		}
+	}
+	time.Sleep(5 * time.Second)
+	return nil
+}
+
+func (cluster *Cluster) InitBenchTable() error {
+
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("BENCH", "%s %s", err.Error(), result)
-	}
-	dbhelper.InjectLongTrx(cluster.master.Conn, 10)
-	time.Sleep(10 * time.Second)
-	for _, s := range cluster.slaves {
-		dbhelper.StartSlave(s.Conn)
+		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
+		return err
 	}
 	return nil
 }
@@ -235,33 +284,23 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	savedFailoverCtr = cluster.failoverCtr
 	savedFailoverTs = cluster.failoverTs
 	cluster.CleanAll = true
-
-	//	if cluster.testStartCluster {
-	//		cluster.InitClusterSemiSync()
-	//	}
-	err := cluster.Bootstrap()
-	if err != nil {
-		cluster.LogPrintf("TEST", "Abording test, bootstrap failed, %s", err)
-		cluster.Unprovision()
-		return false
+	if cluster.testStopCluster {
+		err := cluster.Bootstrap()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)
+			cluster.Unprovision()
+			return false
+		}
 	}
-	cluster.LogPrintf("TEST", "Starting Test %s", test.Name)
+	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
 	return true
-}
-
-func (cluster *Cluster) InitBenchTable() error {
-	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
-		return err
-	}
-	return nil
 }
 
 func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
 	test.ConfigTest = cluster.conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
+		cluster.WaitClusterStop()
 	}
 	cluster.RestoreConf()
 

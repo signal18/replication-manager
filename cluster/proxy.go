@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -8,16 +9,18 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/tanji/replication-manager/dbhelper"
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/misc"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 // Proxy defines a proxy
@@ -69,6 +72,12 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Port = cluster.conf.MxsPort
 			prx.User = cluster.conf.MxsUser
 			prx.Pass = cluster.conf.MxsPass
+			if cluster.key != nil {
+				p := crypto.Password{Key: cluster.key}
+				p.CipherText = prx.Pass
+				p.Decrypt()
+				prx.Pass = p.PlainText
+			}
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
 			prx.ReadWritePort = cluster.conf.MxsReadWritePort
@@ -84,22 +93,56 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.conf.HaproxyOn {
-		cluster.LogPrintf("INFO", "Loading HaProxy...")
 
-		prx := new(Proxy)
-		prx.Type = proxyHaproxy
-		prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
-		prx.Host = cluster.conf.HaproxyWriteBindIp
-		prx.ReadPort = cluster.conf.HaproxyReadPort
-		prx.WritePort = cluster.conf.HaproxyWritePort
-		prx.ReadWritePort = cluster.conf.HaproxyWritePort
-		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+		for _, proxyHost := range strings.Split(cluster.conf.HaproxyHosts, ",") {
+
+			cluster.LogPrintf("INFO", "Loading HaProxy...")
+
+			prx := new(Proxy)
+			prx.Type = proxyHaproxy
+			prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
+			prx.Host = proxyHost
+			prx.ReadPort = cluster.conf.HaproxyReadPort
+			prx.WritePort = cluster.conf.HaproxyWritePort
+			prx.ReadWritePort = cluster.conf.HaproxyWritePort
+
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+
+			ctproxy++
 		}
+	}
+	if cluster.conf.ProxysqlOn {
 
-		ctproxy++
+		for _, proxyHost := range strings.Split(cluster.conf.ProxysqlHosts, ",") {
+
+			cluster.LogPrintf("INFO", "Loading ProxySQL...")
+
+			prx := new(Proxy)
+			prx.Type = proxySqlproxy
+			prx.Port = strconv.Itoa(cluster.conf.ProxysqlStatPort)
+			prx.Host = proxyHost
+			prx.ReadPort = cluster.conf.ProxysqlReadPort
+			prx.WritePort = cluster.conf.ProxysqlWritePort
+			prx.ReadWritePort = cluster.conf.ProxysqlWritePort
+			prx.User, prx.Pass = misc.SplitPair(cluster.conf.ProxysqlUser)
+			if cluster.key != nil {
+				p := crypto.Password{Key: cluster.key}
+				p.CipherText = prx.Pass
+				p.Decrypt()
+				prx.Pass = p.PlainText
+			}
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+			}
+
+			ctproxy++
+		}
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
@@ -177,6 +220,36 @@ func (cluster *Cluster) InjectTraffic() {
 	}
 }
 
+func (cluster *Cluster) IsProxyEqualMaster() bool {
+	// Found server from ServerId
+	if cluster.master != nil {
+		for _, pr := range cluster.proxies {
+			db, err := cluster.GetClusterThisProxyConn(pr)
+			if err != nil {
+				return false
+			} else {
+				var sv map[string]string
+				sv, err = dbhelper.GetVariables(db)
+				if err != nil {
+					db.Close()
+					return false
+				}
+				var sid uint64
+				sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+				if err != nil {
+					return false
+				}
+
+				if cluster.master.ServerID == uint(sid) {
+					db.Close()
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) refreshProxies() {
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
@@ -210,33 +283,25 @@ func (cluster *Cluster) initProxies() {
 }
 
 func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	var proxyHost string
-	var proxyPort string
-	proxyHost = ""
-	if cluster.conf.MxsOn {
-		proxyHost = cluster.conf.MxsHost
-		proxyPort = strconv.Itoa(cluster.conf.MxsWritePort)
-
+	if len(cluster.proxies) == 0 {
+		return nil, errors.New("No proxies definition")
 	}
-	if cluster.conf.HaproxyOn {
-		proxyHost = "127.0.0.1"
-		proxyPort = strconv.Itoa(cluster.conf.HaproxyWritePort)
-	}
-
-	_, err := dbhelper.CheckHostAddr(proxyHost)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", proxyHost)
-		return nil, errmsg
-	}
+	prx := cluster.proxies[0]
 
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if proxyHost != "" {
-		dsn += "tcp(" + proxyHost + ":" + proxyPort + ")/" + params
+	if prx.Host != "" {
+		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+	} else {
+
+		return nil, errors.New("No proxies definition")
 	}
-	cluster.LogPrint(dsn)
-	return sqlx.Open("mysql", dsn)
+	conn, err := sqlx.Open("mysql", dsn)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Can't get a proxy %s connection: %s", dsn, err)
+	}
+	return conn, err
 
 }
 

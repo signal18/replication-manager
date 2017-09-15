@@ -1,6 +1,6 @@
 language: go
 go:
-- 1.7
+- 1.8
 - tip
 install: true
 script:
@@ -16,11 +16,6 @@ deploy:
     secure: ChyLl/faqOEJyrAULXGBQW6yQg8tg9x5qI9cgXgasujT1Zv/WwDiBXB/5Z3NcVK5MU8xyKVhS7Y03jh+Wt/npgytYBNJKGXijHPXuKpfF35tBdyJgqGEH7jaoOxdnZWukkh6GpKSrY23bGTQeaaRuOuRE1++l8C10pHHXoUQ4hbKuQv0V03G6f811JzCnoG+ARKT0/Nc0lUc15cxlUiK/Oo8xbRPmQC0u5H+c4WSN2MXRyKTYzL57roikqjTk4TvJBF5UosVGCkWZZGc9OZtGUH06+SmkfK52tfn11NDoapCtQ4Js0ftdWNYm7AMb6eoxrj/j7SfXfk/AXTm/qiNN4amWDE7+C8XHQOSIxpT4bF8u3GbOT/Q6xIhC/wPyW19mgNCMdI34wpqSRuCxP1u4ZpnD8BfEVcalj1+Vs3DfXQnA/B1UYAu6V6bkdF/1F0t63zSB1U9QZlWhYJAIAmImmBEiy2gSOhbnNJ33Pw/JW+/ilFM/cYjrzWSNnNlh3R7aDeMhLNo3w0ndX+xX0q0xM2Bwyf1X3QFwXE+YMyoxZ3Nf36L2XWtAw43WuRJpBadJTaPFIKT2IyoHTCA2ZXYAIjmu9LzuUiEkhKlAF8ILFascXPyLAB/BlIqk/V7exrqRgW83czVeIXk4ZmsmTyTbix6dZIMMpTdyPC4bZNxCo8=
   file: bin/replication-manager
   on:
-    repo: tanji/replication-manager
+    repo: signal18/replication-manager
     tags: true
   skip_cleanup: true
-notifications:
-  slack:
-    secure: e9/3xb/kgcdzLMQftIxbB8QHvzZoR65KZ8qNZ6Jv7HWcMfQ/H4+/DyU+0sFWtmSvKXmZ9v9VDxfQ3i016S5luoNPAL1//6DvQMGiWfqTYleDhem6w0+nB8FKGuffyU1aZ54wpR4/6TosugVFeF71cWVTyEYAN14x0gMPwzVXtriz6mcy/kDtwcL7+w3dBtRXo4DQt+CaV9hERj9J3oQ+6N7m5a5fz9VL8LAsyyiaI4rgqvbxDOmKxZgel2OCYkhp6a6cP7yORGJREqxgLkQUX4uTyBgEVmO6lylMwMcSFyMwNWxmaUqkFR/tcMFB1WNG0tTWQUuW/4sOI15mnt0oQ592nEmmTgDFlTXrKODp/iCcZVeMjoBErjxkOOR7hC1uUxONp1Qs9n7PEBycoRdA0cUde+KeqLniN/ddhQ2AG2EfSlsRmPOM1txt0oUQAEk7I+IbaVSRzXEm3SZ1RMkceQsBHbCUXwB4UBZ+zpB+p1KMr72rawcf8LbnMjGE5KLZX8R+kARpIN/jiRTcFHhRL5cJF4S5tymqGP8CTUraQay6UbKdxyd8gTO1zpQLabMn3icE9qPnQFnLqUDPknHBkL4TFw8MKto2WLxQt+J468JKq5kG74bAZH4+83Da80YMBjCBO4kJha9ZJ/plyZhkHx8k3uVR9GUFN1rceJGQY1M=
-    #on_success: change
-    on_failure: always

@@ -1,6 +1,7 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane.varoqui@mariadb.com>
+//          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -11,8 +12,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/tanji/replication-manager/maxscale"
-	"github.com/tanji/replication-manager/state"
+	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
@@ -41,7 +42,6 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 			if err != nil {
 				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
 			} else {
-				//		server.ClusterGroup.LogPrint("get MaxScale server list")
 				var connections string
 				server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
 				server.MxsServerConnections, _ = strconv.Atoi(connections)

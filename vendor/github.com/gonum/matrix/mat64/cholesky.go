@@ -1,6 +1,7 @@
 // Copyright ©2013 The gonum Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+// Based on the CholeskyDecomposition class from Jama 1.0.3.
 
 package mat64
 
@@ -171,29 +172,6 @@ func (m *Dense) SolveCholesky(chol *Cholesky, b Matrix) error {
 	blas64.Trsm(blas.Left, blas.NoTrans, 1, chol.chol.mat, m.mat)
 	if chol.cond > matrix.ConditionTolerance {
 		return matrix.Condition(chol.cond)
-	}
-	return nil
-}
-
-// TODO(kortschak): Export this as SolveTwoChol.
-// solveTwoChol finds the matrix m that solves A * m = B where A and B are represented
-// by their Cholesky decompositions a and b, placing the result in the receiver.
-func (m *Dense) solveTwoChol(a, b *Cholesky) error {
-	if !a.valid() || !b.valid() {
-		panic(badCholesky)
-	}
-	bn := b.chol.mat.N
-	if a.chol.mat.N != bn {
-		panic(matrix.ErrShape)
-	}
-
-	m.reuseAsZeroed(bn, bn)
-	m.Copy(b.chol.T())
-	blas64.Trsm(blas.Left, blas.Trans, 1, a.chol.mat, m.mat)
-	blas64.Trsm(blas.Left, blas.NoTrans, 1, a.chol.mat, m.mat)
-	blas64.Trmm(blas.Right, blas.NoTrans, 1, b.chol.mat, m.mat)
-	if a.cond > matrix.ConditionTolerance {
-		return matrix.Condition(a.cond)
 	}
 	return nil
 }
