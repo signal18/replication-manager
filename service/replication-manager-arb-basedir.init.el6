@@ -17,7 +17,7 @@ PROCNAME=replication-manager-arb
 case "$1" in
   start)
         echo -n "Starting replication-manager arbitrator: "
-        /usr/bin/replication-manager-arb arbitrator > /dev/null 2>&1 &
+        /usr/loca:/replication-manager/bin/replication-manager-arb arbitrator > /dev/null 2>&1 &
         sleep 1
         pkill -0 -f "/usr/bin/replication-manager-arb arbitrator"
         RETVAL=$?

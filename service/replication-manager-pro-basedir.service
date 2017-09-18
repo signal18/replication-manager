@@ -1,0 +1,9 @@
+[Unit]
+Description=MariaDB replication-manager pro including provisioning and testing
+
+[Service]
+Type=simple
+ExecStart=/usr/local/replication-manager/bin/replication-manager-pro monitor
+
+[Install]
+WantedBy=multi-user.target

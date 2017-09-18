@@ -1,0 +1,9 @@
+[Unit]
+Description=replication-manager arbitrator
+
+[Service]
+Type=simple
+ExecStart=/usr/local/replication-manager/bin/replication-manager-arb arbitrator
+
+[Install]
+WantedBy=multi-user.target
