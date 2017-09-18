@@ -914,7 +914,7 @@ db-servers-tls-client-cert
 
 ## Features
 
-### 1.0 Features GA
+### 1.0 Features
 
  * CORE: Master slave
  * CORE: Multi Master 2 nodes
@@ -930,10 +930,8 @@ db-servers-tls-client-cert
  * TESTS: Non regression tests via http
  * PROXY: HaProxy wrapper
  * Docker images
- * Docker deployment via OpenSVC in Google Cloud
- * Docker deployment via OpenSVC on premise for Ubuntu and OSX
 
-### 1.1 Features Beta
+### 1.1 Features 
 
  * CORE: Multi cluster
  * CORE: Multi proxies

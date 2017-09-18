@@ -101,7 +101,7 @@ func cliInit(needcluster bool) {
 		}
 	}
 	allCLusters, _ := cliGetAllClusters()
-	if len(cliClusters) != 1 && needcluster {
+	if len(cliClusters) != 1 && needcluster && cfgGroup == "" {
 		err = errors.New("No cluster specify")
 		log.WithError(err).Fatal(fmt.Sprintf("No cluster specify use --cluster in values %s", allCLusters))
 	}
@@ -271,7 +271,7 @@ var statusCmd = &cobra.Command{
 	Long:  `The status command is used to request monitor daemon or pecific cluster status`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
-		cliInit(true)
+		cliInit(false)
 		type Result struct {
 			Alive string `json:"alive"`
 		}
