@@ -496,24 +496,24 @@ func (server *ServerMonitor) Refresh() error {
 		server.MasterUseGtid = "No"
 	} else {
 		server.IsSlave = true
-		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
-		server.UsingGtid = slaveStatus.Using_Gtid
-		server.IOThread = slaveStatus.Slave_IO_Running
-		server.SQLThread = slaveStatus.Slave_SQL_Running
-		server.Delay = slaveStatus.Seconds_Behind_Master
-		if slaveStatus.Master_Server_Id != 0 {
-			server.MasterServerID = slaveStatus.Master_Server_Id
+		server.IOGtid = gtid.NewList(slaveStatus.GtidIOPos)
+		server.UsingGtid = slaveStatus.UsingGtid
+		server.IOThread = slaveStatus.SlaveIORunning
+		server.SQLThread = slaveStatus.SlaveSQLRunning
+		server.Delay = slaveStatus.SecondsBehindMaster
+		if slaveStatus.MasterServerID != 0 {
+			server.MasterServerID = slaveStatus.MasterServerID
 		}
-		server.MasterHost = slaveStatus.Master_Host
-		server.MasterPort = strconv.FormatUint(uint64(slaveStatus.Master_Port), 10)
-		server.IOErrno = slaveStatus.Last_IO_Errno
-		server.IOError = slaveStatus.Last_IO_Error
-		server.SQLError = slaveStatus.Last_SQL_Error
-		server.SQLErrno = slaveStatus.Last_SQL_Errno
-		server.MasterLogFile = slaveStatus.Master_Log_File
-		server.MasterUseGtid = slaveStatus.Using_Gtid
-		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
-		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
+		server.MasterHost = slaveStatus.MasterHost
+		server.MasterPort = strconv.FormatUint(uint64(slaveStatus.MasterPort), 10)
+		server.IOErrno = slaveStatus.LastIOErrno
+		server.IOError = slaveStatus.LastIOError
+		server.SQLError = slaveStatus.LastSQLError
+		server.SQLErrno = slaveStatus.LastSQLErrno
+		server.MasterLogFile = slaveStatus.MasterLogFile
+		server.MasterUseGtid = slaveStatus.UsingGtid
+		server.MasterHeartbeatPeriod = slaveStatus.SlaveHeartbeatPeriod
+		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.ReadMasterLogPos), 10)
 	}
 	server.ReplicationHealth = server.replicationCheck()
 	// if MaxScale exit at fetch variables and status part as not supported
@@ -576,7 +576,7 @@ func (server *ServerMonitor) Refresh() error {
 func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
 	if server.Replications != nil {
 		for _, ss := range server.Replications {
-			if ss.Connection_name == name {
+			if ss.ConnectionName == name {
 				return &ss, nil
 			}
 		}
@@ -721,28 +721,28 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
-		myGtid_IO_Pos := gtid.NewList(ss.Gtid_IO_Pos)
-		myGtid_Slave_Pos := gtid.NewList(ss.Gtid_Slave_Pos)
+		myGtid_IO_Pos := gtid.NewList(ss.GtidIOPos)
+		myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos)
 
 		//server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s equal: %s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint(), myGtid_Slave_Pos.Equal(myGtid_IO_Pos))
 
-		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.Using_Gtid != "" && ss.Gtid_Slave_Pos != "" {
+		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid != "" && ss.GtidSlavePos != "" {
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
-			myGtid_IO_Pos = gtid.NewList(ss.Gtid_IO_Pos)
-			myGtid_Slave_Pos = gtid.NewList(ss.Gtid_Slave_Pos)
+			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos)
+			myGtid_Slave_Pos = gtid.NewList(ss.GtidSlavePos)
 
-			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.Gtid_IO_Pos, ss.Gtid_Slave_Pos)
+			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.GtidIOPos, ss.GtidSlavePos)
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn)
 		if err != nil {
 			return err
 		}
-		for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
+		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 			ss, err = dbhelper.GetSlaveStatus(server.Conn)
 			if err != nil {
 				return err

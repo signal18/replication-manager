@@ -327,7 +327,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		if server.ClusterGroup.master != nil {
 
 			if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
-				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
+				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, mycurrentmaster.DSN)
 
 				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay == false && server.ClusterGroup.conf.MultiTierSlave == false {
 					realmaster := server.ClusterGroup.master
