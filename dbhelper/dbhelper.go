@@ -68,27 +68,26 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	ConnectionName       sql.NullString
-	MasterHost           sql.NullString
-	MasterUser           sql.NullString
-	MasterPort           sql.NullString
-	MasterLogFile        sql.NullString
-	ReadMasterLogPos     sql.NullString
-	RelayMasterLogFile   sql.NullString
-	SlaveIORunning       sql.NullString
-	SlaveSQLRunning      sql.NullString
-	ExecMasterLogPos     sql.NullString
-	RelayLogSpace        sql.NullString
-	SecondsBehindMaster  sql.NullInt64
-	LastIOErrno          sql.NullString
-	LastIOError          sql.NullString
-	LastSQLErrno         sql.NullString
-	LastSQLError         sql.NullString
-	MasterServerID       uint
-	UsingGtid            sql.NullString
-	GtidIOPos            sql.NullString
-	GtidSlavePos         sql.NullString
-	SlaveHeartbeatPeriod float64
+	ConnectionName       sql.NullString `db:"Connection_Name"`
+	MasterHost           sql.NullString `db:"Master_Host"`
+	MasterUser           sql.NullString `db:"Master_User"`
+	MasterPort           sql.NullString `db:"Master_Port"`
+	MasterLogFile        sql.NullString `db:"Master_Log_File"`
+	ReadMasterLogPos     sql.NullString `db:"Read_Master_Log_Pos"`
+	RelayMasterLogFile   sql.NullString `db:"Relay_Master_Log_File"`
+	SlaveIORunning       sql.NullString `db:"Slave_IO_Running"`
+	SlaveSQLRunning      sql.NullString `db:"Slave_SQL_Running"`
+	ExecMasterLogPos     sql.NullString `db:"Exec_Master_Log_Pos"`
+	SecondsBehindMaster  sql.NullInt64  `db:"Seconds_Behind_Master"`
+	LastIOErrno          sql.NullString `db:"Last_IO_Errno"`
+	LastIOError          sql.NullString `db:"Last_IO_Error"`
+	LastSQLErrno         sql.NullString `db:"Last_SQL_Errno"`
+	LastSQLError         sql.NullString `db:"Last_SQL_Error"`
+	MasterServerID       uint           `db:"Master_Server_Id"`
+	UsingGtid            sql.NullString `db:"Using_Gtid"`
+	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos"`
+	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos"`
+	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period"`
 }
 
 type Privileges struct {
