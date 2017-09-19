@@ -606,10 +606,10 @@ func (server *ServerMonitor) replicationCheck() string {
 			//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateSlaveErr
-				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+				return fmt.Sprintf("NOT OK, IO Stopped (%s)", server.IOErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 				server.State = stateSlaveErr
-				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+				return fmt.Sprintf("NOT OK, SQL Stopped (%s)", server.SQLErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "No" {
 				server.State = stateSlaveErr
 				return "NOT OK, ALL Stopped"
@@ -635,10 +635,10 @@ func (server *ServerMonitor) replicationCheck() string {
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateRelayErr
-				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+				return fmt.Sprintf("NOT OK, IO Stopped (%s)", server.IOErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 				server.State = stateRelayErr
-				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+				return fmt.Sprintf("NOT OK, SQL Stopped (%s)", server.SQLErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "No" {
 				server.State = stateRelayErr
 				return "NOT OK, ALL Stopped"
