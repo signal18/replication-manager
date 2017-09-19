@@ -83,9 +83,9 @@ do
     else
       cp -rp test/opensvc buildtar/share/tests
     fi
-    cp replication-manager-$flavor buildtar/bin/
-    cp service/replication-manager-$flavor.service buildtar/share/replication-manager.service
-    cp service/replication-manager-$flavor.init.el6 buildtar/share/replication-manager.init
+    cp replication-manager-$flavor-basedir buildtar/bin/replication-manager-$flavor
+    cp service/replication-manager-$flavor-basedir.service buildtar/share/replication-manager.service
+    cp service/replication-manager-$flavor-basedir.init.el6 buildtar/share/replication-manager.init
     fpm --package replication-manager-$flavor-$version.tar --prefix replication-manager-$flavor -C buildtar -s dir -t tar -n replication-manager-$flavor .
     gzip replication-manager-$flavor-$version.tar
     rm -rf buildtar/bin/replication-manager-$flavor

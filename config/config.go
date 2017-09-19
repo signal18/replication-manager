@@ -10,6 +10,7 @@
 package config
 
 type Config struct {
+	BaseDir                            string `mapstructure:"monitoring-basedir"`
 	WorkingDir                         string `mapstructure:"monitoring-datadir"`
 	ShareDir                           string `mapstructure:"monitoring-sharedir"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
@@ -66,7 +67,8 @@ type Config struct {
 	RejoinScript                       string `mapstructure:"autrejoin-script"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
-	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-semisync"`
+	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync"`
+	AutorejoinNoSemisync               bool   `mapstructure:"autorejoin-flashback-on-unsync"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`

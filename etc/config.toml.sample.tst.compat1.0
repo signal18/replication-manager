@@ -9,8 +9,16 @@ title = "ClusterTestMasterSlave"
 
 hosts = "127.0.0.1:3310,127.0.0.1:3311"
 db-servers-prefered-master = "127.0.0.1:3310"
-db-servers-credential = "root:test"
+user = "root:test"
 db-servers-connect-timeout = 1
+user = "rootmrm:xxxx"
+rpluser = "replic::xxxx"
+title = "MyTitle - env"
+connect-timeout = 8
+prefmaster = "10.129.20.59"
+
+daemon = 1
+logfile = "/var/lib/replication-manager/replication-manager.log"
 
 replication-credential = "root:test"
 

@@ -45,7 +45,7 @@ var (
 	WithDeprecate         string
 	WithOpenSVC           string
 	WithMultiTiers        string
-
+	WithTarball           string
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
@@ -133,8 +133,15 @@ func initConfig() {
 		viper.SetConfigName("config")
 		viper.AddConfigPath("/etc/replication-manager/")
 		viper.AddConfigPath(".")
-		if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-			log.Fatal("No config file etc/replication-manager/config.toml ")
+		if WithTarball == "ON" {
+			viper.AddConfigPath("/usr/local/replication-manager/etc")
+			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
+				log.Fatal("No config file /usr/local/replication-manager/etc/config.toml ")
+			}
+		} else {
+			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
+				log.Fatal("No config file /etc/replication-manager/config.toml ")
+			}
 		}
 	}
 	viper.SetEnvPrefix("MRM")
@@ -269,7 +276,7 @@ func initAlias(v *viper.Viper) {
 	v.RegisterAlias("maxscale-host", "maxscale-servers")
 	v.RegisterAlias("mdbshardproxy-hosts", "mdbshardproxy-servers")
 	v.RegisterAlias("multimaster", "replication-multi-master")
-	v.RegisterAlias("multi-tier-slaver", "replication-multi-tier-slave")
+	v.RegisterAlias("multi-tier-slave", "replication-multi-tier-slave")
 	v.RegisterAlias("pre-failover-script", "failover-pre-script")
 	v.RegisterAlias("post-failover-script", "failover-post-script")
 	v.RegisterAlias("rejoin-script", "autorejoin-script")
