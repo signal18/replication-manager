@@ -61,9 +61,9 @@ type ServerMonitor struct {
 	Delay                       sql.NullInt64
 	State                       string
 	PrevState                   string
-	IOErrno                     uint
+	IOErrno                     string
 	IOError                     string
-	SQLErrno                    uint
+	SQLErrno                    string
 	SQLError                    string
 	FailCount                   int
 	FailSuspectHeartbeat        int64
@@ -486,34 +486,34 @@ func (server *ServerMonitor) Refresh() error {
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
 		server.MasterHost = ""
 		server.MasterPort = "3306"
-		server.IOErrno = 0
+		server.IOErrno = "0"
 		server.IOError = ""
 		server.SQLError = ""
-		server.SQLErrno = 0
+		server.SQLErrno = "0"
 		server.MasterLogFile = ""
 		server.MasterLogPos = "0"
 		server.MasterHeartbeatPeriod = 0
 		server.MasterUseGtid = "No"
 	} else {
 		server.IsSlave = true
-		server.IOGtid = gtid.NewList(slaveStatus.GtidIOPos)
-		server.UsingGtid = slaveStatus.UsingGtid
-		server.IOThread = slaveStatus.SlaveIORunning
-		server.SQLThread = slaveStatus.SlaveSQLRunning
+		server.IOGtid = gtid.NewList(slaveStatus.GtidIOPos.String)
+		server.UsingGtid = slaveStatus.UsingGtid.String
+		server.IOThread = slaveStatus.SlaveIORunning.String
+		server.SQLThread = slaveStatus.SlaveSQLRunning.String
 		server.Delay = slaveStatus.SecondsBehindMaster
 		if slaveStatus.MasterServerID != 0 {
 			server.MasterServerID = slaveStatus.MasterServerID
 		}
-		server.MasterHost = slaveStatus.MasterHost
-		server.MasterPort = strconv.FormatUint(uint64(slaveStatus.MasterPort), 10)
-		server.IOErrno = slaveStatus.LastIOErrno
-		server.IOError = slaveStatus.LastIOError
-		server.SQLError = slaveStatus.LastSQLError
-		server.SQLErrno = slaveStatus.LastSQLErrno
-		server.MasterLogFile = slaveStatus.MasterLogFile
-		server.MasterUseGtid = slaveStatus.UsingGtid
+		server.MasterHost = slaveStatus.MasterHost.String
+		server.MasterPort = slaveStatus.MasterPort.String
+		server.IOErrno = slaveStatus.LastIOErrno.String
+		server.IOError = slaveStatus.LastIOError.String
+		server.SQLError = slaveStatus.LastSQLError.String
+		server.SQLErrno = slaveStatus.LastSQLErrno.String
+		server.MasterLogFile = slaveStatus.MasterLogFile.String
+		server.MasterUseGtid = slaveStatus.UsingGtid.String
 		server.MasterHeartbeatPeriod = slaveStatus.SlaveHeartbeatPeriod
-		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.ReadMasterLogPos), 10)
+		server.MasterLogPos = slaveStatus.ReadMasterLogPos.String
 	}
 	server.ReplicationHealth = server.replicationCheck()
 	// if MaxScale exit at fetch variables and status part as not supported
@@ -576,7 +576,7 @@ func (server *ServerMonitor) Refresh() error {
 func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
 	if server.Replications != nil {
 		for _, ss := range server.Replications {
-			if ss.ConnectionName == name {
+			if ss.ConnectionName.String == name {
 				return &ss, nil
 			}
 		}
@@ -721,19 +721,19 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
-		myGtid_IO_Pos := gtid.NewList(ss.GtidIOPos)
-		myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos)
+		myGtid_IO_Pos := gtid.NewList(ss.GtidIOPos.String)
+		myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
 
 		//server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s equal: %s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint(), myGtid_Slave_Pos.Equal(myGtid_IO_Pos))
 
-		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid != "" && ss.GtidSlavePos != "" {
+		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
-			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos)
-			myGtid_Slave_Pos = gtid.NewList(ss.GtidSlavePos)
+			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
+			myGtid_Slave_Pos = gtid.NewList(ss.GtidSlavePos.String)
 
 			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.GtidIOPos, ss.GtidSlavePos)
 		}

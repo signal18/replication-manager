@@ -68,26 +68,26 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	ConnectionName       string
-	MasterHost           string
-	MasterUser           string
-	MasterPort           uint
-	MasterLogFile        string
-	ReadMasterLogPos     uint
-	RelayMasterLogFile   string
-	SlaveIORunning       string
-	SlaveSQLRunning      string
-	ExecMasterLogPos     uint
-	RelayLogSpace        uint
+	ConnectionName       sql.NullString
+	MasterHost           sql.NullString
+	MasterUser           sql.NullString
+	MasterPort           sql.NullString
+	MasterLogFile        sql.NullString
+	ReadMasterLogPos     sql.NullString
+	RelayMasterLogFile   sql.NullString
+	SlaveIORunning       sql.NullString
+	SlaveSQLRunning      sql.NullString
+	ExecMasterLogPos     sql.NullString
+	RelayLogSpace        sql.NullString
 	SecondsBehindMaster  sql.NullInt64
-	LastIOErrno          uint
-	LastIOError          string
-	LastSQLErrno         uint
-	LastSQLError         string
+	LastIOErrno          sql.NullString
+	LastIOError          sql.NullString
+	LastSQLErrno         sql.NullString
+	LastSQLError         sql.NullString
 	MasterServerID       uint
-	UsingGtid            string
-	GtidIOPos            string
-	GtidSlavePos         string
+	UsingGtid            sql.NullString
+	GtidIOPos            sql.NullString
+	GtidSlavePos         sql.NullString
 	SlaveHeartbeatPeriod float64
 }
 
@@ -315,7 +315,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 	s := SlaveStatus{}
 	ss, err := GetAllSlavesStatus(db)
 	for _, s := range ss {
-		if s.ConnectionName == conn {
+		if s.ConnectionName.String == conn {
 			return s, err
 		}
 	}
@@ -461,7 +461,7 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		return err
 	}
 	for _, src := range ss {
-		err = SetDefaultMasterConn(db, src.ConnectionName)
+		err = SetDefaultMasterConn(db, src.ConnectionName.String)
 		if err != nil {
 			return err
 		}
@@ -781,14 +781,14 @@ func IsSlaveof(db *sqlx.DB, s string, m string, p string) (bool, error) {
 	if err != nil {
 		return false, errors.New("Cannot get SHOW SLAVE STATUS")
 	}
-	masterHost, err := CheckHostAddr(ss.MasterHost)
+	masterHost, err := CheckHostAddr(ss.MasterHost.String)
 	if err != nil {
 		// Could not resolve master hostname
 	}
 	if masterHost != m {
 		return false, fmt.Errorf("Hosts not identical (%s:%s)", masterHost, m)
 	}
-	if strconv.FormatUint(uint64(ss.MasterPort), 10) != p {
+	if ss.MasterPort.String != p {
 		return false, errors.New("Master port differs")
 	}
 	return true, nil

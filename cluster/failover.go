@@ -691,7 +691,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
-	if ss.SlaveSQLRunning == "No" && cluster.conf.RplChecks {
+	if ss.SlaveSQLRunning.String == "No" && cluster.conf.RplChecks {
 		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK"})
 		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
