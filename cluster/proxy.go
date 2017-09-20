@@ -123,12 +123,12 @@ func (cluster *Cluster) newProxyList() error {
 
 			prx := new(Proxy)
 			prx.Type = proxySqlproxy
-			prx.Port = strconv.Itoa(cluster.conf.ProxysqlStatPort)
+			prx.Port = cluster.conf.ProxysqlAdminPort
+			prx.ReadWritePort, _ = strconv.Atoi(cluster.conf.ProxysqlPort)
 			prx.Host = proxyHost
-			prx.ReadPort = cluster.conf.ProxysqlReadPort
-			prx.WritePort = cluster.conf.ProxysqlWritePort
-			prx.ReadWritePort = cluster.conf.ProxysqlWritePort
-			prx.User, prx.Pass = misc.SplitPair(cluster.conf.ProxysqlUser)
+			prx.User = cluster.conf.ProxysqlUser
+			prx.Pass = cluster.conf.ProxysqlPassword
+
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
 				p.CipherText = prx.Pass

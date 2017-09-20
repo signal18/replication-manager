@@ -131,13 +131,10 @@ type Config struct {
 	HaproxyBinaryPath                  string `mapstructure:"haproxy-binary-path"`
 	ProxysqlOn                         bool   `mapstructure:"proxysql"`
 	ProxysqlHosts                      string `mapstructure:"proxysql-servers"`
-	ProxysqlWritePort                  int    `mapstructure:"proxysql-write-port"`
-	ProxysqlReadPort                   int    `mapstructure:"proxysql-read-port"`
-	ProxysqlStatPort                   int    `mapstructure:"proxysql-stat-port"`
-	ProxysqlWriteBindIp                string `mapstructure:"proxysql-ip-write-bind"`
-	ProxysqlReadBindIp                 string `mapstructure:"proxysql-ip-read-bind"`
-	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path"`
-	ProxysqlUser                       string `mapstructure:"proxysql-credentail"`
+	ProxysqlPort                       string `mapstructure:"proxysql-port"`
+	ProxysqlAdminPort                  string `mapstructure:"proxysql-admin-port"`
+	ProxysqlUser                       string `mapstructure:"proxysql-user"`
+	ProxysqlPassword                   string `mapstructure:"proxysql-password"`
 	KeyPath                            string `mapstructure:"keypath"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`

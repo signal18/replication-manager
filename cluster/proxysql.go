@@ -1,16 +1,32 @@
-// ProxySQL related functions
-
 package cluster
 
-import "github.com/jmoiron/sqlx"
+import (
+	"database/sql"
+	"time"
 
-func ProxySQLGetHosts(db *sqlx.DB) (string, error) {
-	var h string
-	err := db.Get(&h, "select group_concat(host) AS hostlist from (select hostname || ':' || port as host from runtime_mysql_servers)")
-	return h, err
-}
+	"github.com/go-sql-driver/mysql"
+)
 
-func ProxySQLSetHost(db *sqlx.DB, host string, hg string, port string) error {
-	_, err := db.Exec("insert or replace into mysql_servers (hostgroup_id, hostname, port) values(?, ?, ?)", host, hg, port)
-	return err
+func (cluster *Cluster) initProxysql(proxy *Proxy) {
+	if cluster.conf.ProxysqlOn == false {
+		return
+	}
+
+	ProxysqlConfig := mysql.Config{
+		User:        proxy.User,
+		Passwd:      proxy.Pass,
+		Net:         "tcp",
+		Addr:        proxy.Host,
+		Timeout:     time.Second * 5,
+		ReadTimeout: time.Second * 15,
+	}
+
+	db, err := sql.Open("mysql", ProxysqlConfig.FormatDSN())
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not create ProxySQL connection (%s)", err)
+	}
+	err = db.Ping()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not connect to ProxySQL (%s)", err)
+	}
 }
