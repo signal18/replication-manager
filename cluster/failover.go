@@ -684,14 +684,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
-	if ss.Seconds_Behind_Master.Int64 > cluster.conf.FailMaxDelay && cluster.conf.FailMaxDelay != -1 && cluster.conf.RplChecks == true {
-		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.FailMaxDelay, ss.Seconds_Behind_Master.Int64), ErrFrom: "CHECK"})
+	if ss.SecondsBehindMaster.Int64 > cluster.conf.FailMaxDelay && cluster.conf.FailMaxDelay != -1 && cluster.conf.RplChecks == true {
+		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK"})
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.conf.FailMaxDelay, ss.Seconds_Behind_Master.Int64)
+			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		}
 		return false
 	}
-	if ss.Slave_SQL_Running == "No" && cluster.conf.RplChecks {
+	if ss.SlaveSQLRunning.String == "No" && cluster.conf.RplChecks {
 		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK"})
 		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("WARN", "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
@@ -746,7 +746,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		}
 		return false
 	}
-	if ss.Seconds_Behind_Master.Valid == false && cluster.conf.RplChecks == true {
+	if ss.SecondsBehindMaster.Valid == false && cluster.conf.RplChecks == true {
 		if cluster.conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf("WARN", "Slave %s is stopped. Skipping", sl.URL)
 		}

@@ -1,25 +1,33 @@
 #!/bin/sh
-#
-# replication-manager-arbitrator       Replication HA Management for MariaDB 10.x (Arbitrator)
+# replication-manager       Replication HA Management for MariaDB 10.x
 #
 # chkconfig: - 90 10
-# description: replication-manager-arbitrator
+# description: replication-manager
 # processname: replication-manager
 # config: /etc/replication-manager/config.toml
+### BEGIN INIT INFO
+# Provides:          replication-manager
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts replication-manager
+# Description:       starts the MariaDB/MySQL replication-manager service
+### END INIT INFO
 
 # Source function library.
 . /etc/rc.d/init.d/functions
 
 RETVAL=0
-PROCNAME=replication-manager-arb
+PROCNAME=replication-manager
 
 # See how we were called.
 case "$1" in
   start)
-        echo -n "Starting replication-manager arbitrator: "
-        /usr/bin/replication-manager-arb arbitrator > /dev/null 2>&1 &
+        echo -n "Starting replication-manager: "
+        /usr/local/replication-manager/bin/replication-manager monitor  > /dev/null 2>&1 &
         sleep 1
-        pkill -0 -f "/usr/bin/replication-manager-arb arbitrator"
+        pkill -0 -f "/usr/local/replication-manager/bin/replication-manager-osc monitor"
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
@@ -31,8 +39,8 @@ case "$1" in
         echo
         ;;
   stop)
-        echo -n "Stopping replication-manager arbitrator: "
-        kill $(pidof replication-manager-arb)
+        echo -n "Stopping replication-manager: "
+        kill $(pidof replication-manager-osc)
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then

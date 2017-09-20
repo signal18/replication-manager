@@ -191,7 +191,7 @@ log_slow_slave_statements = 1
 
 ### Forcing best practices
 
-Since version 1.1 replication can enforce the best practices about the replication usage. It dynamically configure the MariaDB it does monitor. Note that such enforcement will be lost if replication manager monitoring is shutdown and the MariaDB restarted. The command line usage do not enforce but default config file do, so disable what may not be possible in your custom production setup.   
+__replication-manager__ 1.1  can enforce best database practices about the replication usage. It dynamically configure the MariaDB it does monitor. Note that such enforcement will be lost if replication manager monitoring is shutdown and the MariaDB restarted. The command line usage do not enforce but default config file do, so disable what may not be possible in your custom production setup.   
 ```
 force-slave-heartbeat= true
 force-slave-heartbeat-retry = 5
@@ -243,7 +243,6 @@ failover-mode = "automatic"
 ```
 Conditions for a possible failover are checked.
 - [x] A slave need to be available and up and running.
-
 
 Most additional checks are disabled by default but can be defined in the configuration file
 - [x] Exceeding a given replication delay
@@ -396,9 +395,16 @@ This setup can possibly elect a very late slave as first leader and when no cras
 
 ### System requirements
 
-`replication-manager` is a self-contained binary, which means that no system libraries are needed at the operating system level.
-On the MariaDB side, slaves need to use GTID for replication.
+**replication-manager** is a self-contained binary
+
+No extra system libraries are needed at the operating system level.
+
+Database replication is advice to use GTID and version
+
+MariaDB Version >= 10
+
 Web browser IE is reported not working with http interface.
+
 
 ### Downloads
 
@@ -436,7 +442,7 @@ http-root = "/usr/share/replication-manager/dashboard"
 logfile = "/var/log/replication-manager.log"
 ```
 
-#### Extra packages
+####  Extra testing dependencies
 
 MariaDB-Server package minimum 10.2 server need to be install if you plan to use following features
 - [x] Automatic node rejoin
@@ -908,7 +914,7 @@ db-servers-tls-client-cert
 
 ## Features
 
-### 1.0 Features GA
+### 1.0 Features
 
  * CORE: Master slave
  * CORE: Multi Master 2 nodes
@@ -924,10 +930,8 @@ db-servers-tls-client-cert
  * TESTS: Non regression tests via http
  * PROXY: HaProxy wrapper
  * Docker images
- * Docker deployment via OpenSVC in Google Cloud
- * Docker deployment via OpenSVC on premise for Ubuntu and OSX
 
-### 1.1 Features Beta
+### 1.1 Features 
 
  * CORE: Multi cluster
  * CORE: Multi proxies

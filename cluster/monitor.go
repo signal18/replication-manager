@@ -61,9 +61,9 @@ type ServerMonitor struct {
 	Delay                       sql.NullInt64
 	State                       string
 	PrevState                   string
-	IOErrno                     uint
+	IOErrno                     string
 	IOError                     string
-	SQLErrno                    uint
+	SQLErrno                    string
 	SQLError                    string
 	FailCount                   int
 	FailSuspectHeartbeat        int64
@@ -486,34 +486,34 @@ func (server *ServerMonitor) Refresh() error {
 		server.Delay = sql.NullInt64{Int64: 0, Valid: false}
 		server.MasterHost = ""
 		server.MasterPort = "3306"
-		server.IOErrno = 0
+		server.IOErrno = "0"
 		server.IOError = ""
 		server.SQLError = ""
-		server.SQLErrno = 0
+		server.SQLErrno = "0"
 		server.MasterLogFile = ""
 		server.MasterLogPos = "0"
 		server.MasterHeartbeatPeriod = 0
 		server.MasterUseGtid = "No"
 	} else {
 		server.IsSlave = true
-		server.IOGtid = gtid.NewList(slaveStatus.Gtid_IO_Pos)
-		server.UsingGtid = slaveStatus.Using_Gtid
-		server.IOThread = slaveStatus.Slave_IO_Running
-		server.SQLThread = slaveStatus.Slave_SQL_Running
-		server.Delay = slaveStatus.Seconds_Behind_Master
-		if slaveStatus.Master_Server_Id != 0 {
-			server.MasterServerID = slaveStatus.Master_Server_Id
+		server.IOGtid = gtid.NewList(slaveStatus.GtidIOPos.String)
+		server.UsingGtid = slaveStatus.UsingGtid.String
+		server.IOThread = slaveStatus.SlaveIORunning.String
+		server.SQLThread = slaveStatus.SlaveSQLRunning.String
+		server.Delay = slaveStatus.SecondsBehindMaster
+		if slaveStatus.MasterServerID != 0 {
+			server.MasterServerID = slaveStatus.MasterServerID
 		}
-		server.MasterHost = slaveStatus.Master_Host
-		server.MasterPort = strconv.FormatUint(uint64(slaveStatus.Master_Port), 10)
-		server.IOErrno = slaveStatus.Last_IO_Errno
-		server.IOError = slaveStatus.Last_IO_Error
-		server.SQLError = slaveStatus.Last_SQL_Error
-		server.SQLErrno = slaveStatus.Last_SQL_Errno
-		server.MasterLogFile = slaveStatus.Master_Log_File
-		server.MasterUseGtid = slaveStatus.Using_Gtid
-		server.MasterHeartbeatPeriod = slaveStatus.Slave_heartbeat_period
-		server.MasterLogPos = strconv.FormatUint(uint64(slaveStatus.Read_Master_Log_Pos), 10)
+		server.MasterHost = slaveStatus.MasterHost.String
+		server.MasterPort = slaveStatus.MasterPort.String
+		server.IOErrno = slaveStatus.LastIOErrno.String
+		server.IOError = slaveStatus.LastIOError.String
+		server.SQLError = slaveStatus.LastSQLError.String
+		server.SQLErrno = slaveStatus.LastSQLErrno.String
+		server.MasterLogFile = slaveStatus.MasterLogFile.String
+		server.MasterUseGtid = slaveStatus.UsingGtid.String
+		server.MasterHeartbeatPeriod = slaveStatus.SlaveHeartbeatPeriod
+		server.MasterLogPos = slaveStatus.ReadMasterLogPos.String
 	}
 	server.ReplicationHealth = server.replicationCheck()
 	// if MaxScale exit at fetch variables and status part as not supported
@@ -576,7 +576,7 @@ func (server *ServerMonitor) Refresh() error {
 func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
 	if server.Replications != nil {
 		for _, ss := range server.Replications {
-			if ss.Connection_name == name {
+			if ss.ConnectionName.String == name {
 				return &ss, nil
 			}
 		}
@@ -606,10 +606,10 @@ func (server *ServerMonitor) replicationCheck() string {
 			//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateSlaveErr
-				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+				return fmt.Sprintf("NOT OK, IO Stopped (%s)", server.IOErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 				server.State = stateSlaveErr
-				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+				return fmt.Sprintf("NOT OK, SQL Stopped (%s)", server.SQLErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "No" {
 				server.State = stateSlaveErr
 				return "NOT OK, ALL Stopped"
@@ -635,10 +635,10 @@ func (server *ServerMonitor) replicationCheck() string {
 		if server.Delay.Valid == false && server.ClusterGroup.sme.CanMonitor() {
 			if server.SQLThread == "Yes" && server.IOThread == "No" {
 				server.State = stateRelayErr
-				return fmt.Sprintf("NOT OK, IO Stopped (%d)", server.IOErrno)
+				return fmt.Sprintf("NOT OK, IO Stopped (%s)", server.IOErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "Yes" {
 				server.State = stateRelayErr
-				return fmt.Sprintf("NOT OK, SQL Stopped (%d)", server.SQLErrno)
+				return fmt.Sprintf("NOT OK, SQL Stopped (%s)", server.SQLErrno)
 			} else if server.SQLThread == "No" && server.IOThread == "No" {
 				server.State = stateRelayErr
 				return "NOT OK, ALL Stopped"
@@ -721,28 +721,28 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
-		myGtid_IO_Pos := gtid.NewList(ss.Gtid_IO_Pos)
-		myGtid_Slave_Pos := gtid.NewList(ss.Gtid_Slave_Pos)
+		myGtid_IO_Pos := gtid.NewList(ss.GtidIOPos.String)
+		myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
 
 		//server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s equal: %s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint(), myGtid_Slave_Pos.Equal(myGtid_IO_Pos))
 
-		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.Using_Gtid != "" && ss.Gtid_Slave_Pos != "" {
+		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
-			myGtid_IO_Pos = gtid.NewList(ss.Gtid_IO_Pos)
-			myGtid_Slave_Pos = gtid.NewList(ss.Gtid_Slave_Pos)
+			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
+			myGtid_Slave_Pos = gtid.NewList(ss.GtidSlavePos.String)
 
-			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.Gtid_IO_Pos, ss.Gtid_Slave_Pos)
+			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.GtidIOPos, ss.GtidSlavePos)
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn)
 		if err != nil {
 			return err
 		}
-		for ss.Master_Log_File != ss.Relay_Master_Log_File && ss.Read_Master_Log_Pos == ss.Exec_Master_Log_Pos {
+		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 			ss, err = dbhelper.GetSlaveStatus(server.Conn)
 			if err != nil {
 				return err

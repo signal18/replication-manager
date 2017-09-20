@@ -327,7 +327,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		if server.ClusterGroup.master != nil {
 
 			if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
-				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.Slave_IO_Running, mycurrentmaster.DSN)
+				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, mycurrentmaster.DSN)
 
 				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay == false && server.ClusterGroup.conf.MultiTierSlave == false {
 					realmaster := server.ClusterGroup.master
@@ -456,16 +456,21 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	var cmdrun *exec.Cmd
 	server.ClusterGroup.LogPrintf("INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.conf.WorkingDir+"/", server.deletefiles)
+
 	cmdrun = exec.Command(server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
 	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog", cmdrun.Args)
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
+	var outrunerr bytes.Buffer
+	cmdrun.Stderr = &outrunerr
 
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
 		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqlbinlog ", cmdrun.Args)
+		server.ClusterGroup.LogPrint(cmdrun.Stderr)
+		server.ClusterGroup.LogPrint(cmdrun.Stdout)
 		server.ClusterGroup.canFlashBack = false
 		return cmdrunErr
 	}

@@ -68,58 +68,26 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	Connection_name               string
-	Slave_SQL_State               string
-	Slave_IO_State                string
-	Master_Host                   string
-	Master_User                   string
-	Master_Port                   uint
-	Connect_Retry                 uint
-	Master_Log_File               string
-	Read_Master_Log_Pos           uint
-	Relay_Log_File                string
-	Relay_Log_Pos                 uint
-	Relay_Master_Log_File         string
-	Slave_IO_Running              string
-	Slave_SQL_Running             string
-	Replicate_Do_DB               string
-	Replicate_Ignore_DB           string
-	Replicate_Do_Table            string
-	Replicate_Ignore_Table        string
-	Replicate_Wild_Do_Table       string
-	Replicate_Wild_Ignore_Table   string
-	Last_Errno                    uint
-	Last_Error                    string
-	Skip_Counter                  uint
-	Exec_Master_Log_Pos           uint
-	Relay_Log_Space               uint
-	Until_Condition               string
-	Until_Log_File                string
-	Until_Log_Pos                 uint
-	Master_SSL_Allowed            string
-	Master_SSL_CA_File            string
-	Master_SSL_CA_Path            string
-	Master_SSL_Cert               string
-	Master_SSL_Cipher             string
-	Master_SSL_Key                string
-	Seconds_Behind_Master         sql.NullInt64
-	Master_SSL_Verify_Server_Cert string
-	Last_IO_Errno                 uint
-	Last_IO_Error                 string
-	Last_SQL_Errno                uint
-	Last_SQL_Error                string
-	Replicate_Ignore_Server_Ids   string
-	Master_Server_Id              uint
-	Master_SSL_Crl                string
-	Master_SSL_Crlpath            string
-	Using_Gtid                    string
-	Gtid_IO_Pos                   string
-	Retried_transactions          uint
-	Max_relay_log_size            uint
-	Executed_log_entries          uint
-	Slave_received_heartbeats     uint
-	Slave_heartbeat_period        float64
-	Gtid_Slave_Pos                string
+	ConnectionName       sql.NullString `db:"Connection_Name"`
+	MasterHost           sql.NullString `db:"Master_Host"`
+	MasterUser           sql.NullString `db:"Master_User"`
+	MasterPort           sql.NullString `db:"Master_Port"`
+	MasterLogFile        sql.NullString `db:"Master_Log_File"`
+	ReadMasterLogPos     sql.NullString `db:"Read_Master_Log_Pos"`
+	RelayMasterLogFile   sql.NullString `db:"Relay_Master_Log_File"`
+	SlaveIORunning       sql.NullString `db:"Slave_IO_Running"`
+	SlaveSQLRunning      sql.NullString `db:"Slave_SQL_Running"`
+	ExecMasterLogPos     sql.NullString `db:"Exec_Master_Log_Pos"`
+	SecondsBehindMaster  sql.NullInt64  `db:"Seconds_Behind_Master"`
+	LastIOErrno          sql.NullString `db:"Last_IO_Errno"`
+	LastIOError          sql.NullString `db:"Last_IO_Error"`
+	LastSQLErrno         sql.NullString `db:"Last_SQL_Errno"`
+	LastSQLError         sql.NullString `db:"Last_SQL_Error"`
+	MasterServerID       uint           `db:"Master_Server_Id"`
+	UsingGtid            sql.NullString `db:"Using_Gtid"`
+	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos"`
+	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos"`
+	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period"`
 }
 
 type Privileges struct {
@@ -346,7 +314,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 	s := SlaveStatus{}
 	ss, err := GetAllSlavesStatus(db)
 	for _, s := range ss {
-		if s.Connection_name == conn {
+		if s.ConnectionName.String == conn {
 			return s, err
 		}
 	}
@@ -492,7 +460,7 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		return err
 	}
 	for _, src := range ss {
-		err = SetDefaultMasterConn(db, src.Connection_name)
+		err = SetDefaultMasterConn(db, src.ConnectionName.String)
 		if err != nil {
 			return err
 		}
@@ -812,14 +780,14 @@ func IsSlaveof(db *sqlx.DB, s string, m string, p string) (bool, error) {
 	if err != nil {
 		return false, errors.New("Cannot get SHOW SLAVE STATUS")
 	}
-	masterHost, err := CheckHostAddr(ss.Master_Host)
+	masterHost, err := CheckHostAddr(ss.MasterHost.String)
 	if err != nil {
 		// Could not resolve master hostname
 	}
 	if masterHost != m {
 		return false, fmt.Errorf("Hosts not identical (%s:%s)", masterHost, m)
 	}
-	if strconv.FormatUint(uint64(ss.Master_Port), 10) != p {
+	if ss.MasterPort.String != p {
 		return false, errors.New("Master port differs")
 	}
 	return true, nil

@@ -407,7 +407,7 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 			return nil
 		}
 		ct++
-		if ct > 200 {
+		if ct > 900 {
 			break
 		}
 
