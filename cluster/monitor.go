@@ -88,6 +88,7 @@ type ServerMonitor struct {
 	MxsServerName               string //Unique server Name in maxscale conf
 	MxsServerStatus             string
 	MxsServerConnections        int
+	ProxysqlHostgroup           string
 	HaveSemiSync                bool
 	HaveInnodbTrxCommit         bool
 	HaveSyncBinLog              bool

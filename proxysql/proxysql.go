@@ -65,13 +65,16 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 	return err
 }
 
-func (psql *ProxySQL) GetStatsForHost(host string, port string) (string, int, error) {
-	var status string
-	var connused int
-	sql := fmt.Sprintf("SELECT status, ConnUsed FROM stats.stats_mysql_connection_pool WHERE srv_host='%s' AND srv_port='%s'", host, port)
+func (psql *ProxySQL) GetStatsForHost(host string, port string) (string, string, int, error) {
+	var (
+		hostgroup string
+		status    string
+		connused  int
+	)
+	sql := fmt.Sprintf("SELECT hostgroup, status, ConnUsed FROM stats.stats_mysql_connection_pool WHERE srv_host='%s' AND srv_port='%s'", host, port)
 	row := psql.Connection.QueryRow(sql)
-	err := row.Scan(&status, &connused)
-	return status, connused, err
+	err := row.Scan(&hostgroup, &status, &connused)
+	return hostgroup, status, connused, err
 }
 
 func (psql *ProxySQL) GetHostsRuntime() (string, error) {

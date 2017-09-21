@@ -283,6 +283,7 @@
                               <th>Proxy Name</th>
                               <th>Proxy Status</th>
                               <th>Proxy Connections</th>
+                              <th ng-if="proxy.Type=='proxysql'">Proxy Hostgroup</th>
                            </tr>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                               <td>{{server.Host}}</td>
@@ -291,6 +292,7 @@
                               <td>{{server.MxsServerName}}</td>
                               <td>{{server.MxsServerStatus}}</td>
                               <td>{{server.MxsServerConnections}}</td>
+                              <td ng-if="proxy.Type=='proxysql'">{{server.ProxysqlHostgroup}}</td>
                            </tr>
                         </table>
 											</td>

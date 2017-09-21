@@ -105,7 +105,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			}
 		}
 		s.MxsServerName = s.URL
-		s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
+		s.ProxysqlHostgroup, s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "ProxySQL could not get stats for host (%s)", err)
 		}
