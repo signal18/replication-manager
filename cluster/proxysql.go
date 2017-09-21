@@ -25,6 +25,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		cluster.LogPrintf("ERROR", "%s", err)
 		return
 	}
+	defer psql.Connection.Close()
 
 	for _, s := range cluster.servers {
 		switch s.State {
@@ -37,5 +38,40 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		case stateUnconn:
 			psql.SetOfflineHard(s.Host)
 		}
+	}
+	psql.LoadServersToRuntime()
+}
+
+func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
+	if cluster.conf.ProxysqlOn == false {
+		return
+	}
+
+	psql := proxysql.ProxySQL{
+		User:     proxy.User,
+		Password: proxy.Pass,
+		Host:     proxy.Host,
+		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
+		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
+	}
+
+	var err error
+	err = psql.Connect()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "%s", err)
+		return
+	}
+	defer psql.Connection.Close()
+
+	var updated bool
+	for _, s := range cluster.servers {
+		switch s.State {
+		case stateUnconn:
+			psql.SetOfflineHard(s.Host)
+			updated = true
+		}
+	}
+	if updated {
+		psql.LoadServersToRuntime()
 	}
 }
