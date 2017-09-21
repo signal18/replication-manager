@@ -31,16 +31,31 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	for _, s := range cluster.servers {
 		switch s.State {
 		case stateMaster:
-			psql.SetWriter(s.Host)
+			err = psql.SetWriter(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set writer (%s)", err)
+			}
 		case stateSlave:
-			psql.SetReader(s.Host)
+			err = psql.SetReader(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+			}
 		case stateFailed:
-			psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineHard(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+			}
 		case stateUnconn:
-			psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineHard(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+			}
 		}
 	}
-	psql.LoadServersToRuntime()
+	err = psql.LoadServersToRuntime()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "ProxySQL could not load servers to runtime (%s)", err)
+	}
 }
 
 func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
@@ -69,11 +84,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	for _, s := range cluster.servers {
 		switch s.State {
 		case stateUnconn:
-			psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineHard(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+			}
 			updated = true
 		}
 	}
 	if updated {
-		psql.LoadServersToRuntime()
+		err = psql.LoadServersToRuntime()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "ProxySQL could not load servers to runtime (%s)", err)
+		}
 	}
 }
