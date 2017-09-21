@@ -278,11 +278,6 @@ func (cluster *Cluster) isFirstSlave() bool {
 		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return true
 	}
-	/* Wrong founding they could be no crash information when checking first failover
-	crash := cluster.getCrash(cluster.master.URL)
-	if cluster.master.State == stateFailed && crash == nil {
-		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
-		return true
-	}*/
+
 	return false
 }

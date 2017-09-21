@@ -504,11 +504,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 					}
 					is, err := dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port)
 					if !is {
+						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
+
 						if cluster.conf.ReplicationNoRelay {
 							cluster.RejoinFixRelay(sl, cluster.master)
-						} else {
-							cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
 						}
+
 					}
 					if sl.LogBin == "OFF" {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
@@ -541,8 +542,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 	}*/
 	if cluster.IsProvision() {
-		if cluster.crashes != nil && len(cluster.crashes) > 0 {
-			cluster.LogPrintf("DEBUG", "Puring crashes, all databses nodes up")
+		if len(cluster.crashes) > 0 {
+			cluster.LogPrintf("DEBUG", "Purging crashes, all databses nodes up")
 			cluster.crashes = nil
 			cluster.Save()
 
@@ -667,8 +668,14 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
 			}
-			if s.GetReplicationServerID() == server.ServerID {
-				return server, nil
+			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
+				if s.GetReplicationServerID() == server.ServerID {
+					return server, nil
+				}
+			} else {
+				if s.GetReplicationMasterHost() == server.Host && s.GetReplicationMasterPort() == server.Port {
+					return server, nil
+				}
 			}
 		}
 
