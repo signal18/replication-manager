@@ -695,6 +695,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
+	if sl.IsMaintenance {
+		cluster.sme.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK"})
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("DEBUG", "Slave %s is in maintenance. Skipping", sl.URL)
+		}
+		return false
+	}
+
 	if ss.SecondsBehindMaster.Int64 > cluster.conf.FailMaxDelay && cluster.conf.FailMaxDelay != -1 && cluster.conf.RplChecks == true {
 		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK"})
 		if cluster.conf.LogLevel > 1 || forcingLog {

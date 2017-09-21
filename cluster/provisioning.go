@@ -534,6 +534,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
 
 		for key, server := range cluster.servers {
+			if server.State == stateFailed {
+				continue
+			}
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
 				dbhelper.SetReadOnly(server.Conn, false)
@@ -541,6 +544,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 			} else {
 				var hasMyGTID bool
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
+
 				_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[masterKey].CurrentGtid.Sprint() + "\"")
 				if err != nil {
 					return err
@@ -605,6 +609,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
+
 		}
 
 	}
@@ -614,6 +619,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 		masterKey = 0
 		relaykey := 1
 		for key, server := range cluster.servers {
+			if server.State == stateFailed {
+				continue
+			}
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
 				dbhelper.SetReadOnly(server.Conn, false)
@@ -655,6 +663,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 	}
 	if cluster.conf.MultiMaster == true {
 		for key, server := range cluster.servers {
+			if server.State == stateFailed {
+				continue
+			}
 			if key == 0 {
 
 				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.conf.MasterConn, cluster.servers[1].Host, cluster.servers[1].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)

@@ -52,6 +52,7 @@ var clusterError = map[string]string{
 	"ERR00044": "Can't connect OpenSVC collector %s",
 	"ERR00045": "Found not allow relay topology trying fixing",
 	"ERR00046": "Found not allow relay topology can't fix high replication delay",
+	"ERR00047": "Skip slave in election %s Maintenance mode",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is working",

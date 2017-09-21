@@ -64,6 +64,10 @@ var (
 	cliExit                      bool
 	cliPrefMaster                string
 	cliStatusErrors              bool
+	cliServerID                  string
+	cliServerMaintenance         bool
+	cliServerStop                bool
+	cliServerStart               bool
 )
 
 type RequetParam struct {
@@ -149,6 +153,7 @@ func init() {
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(bootstrapCmd)
+	rootCmd.AddCommand(serverCmd)
 
 	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	clientCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
@@ -156,6 +161,17 @@ func init() {
 	clientCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	clientCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	clientCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+
+	serverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	serverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
+	serverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	serverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	serverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	serverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
+	serverCmd.Flags().BoolVar(&cliServerMaintenance, "maintenance", false, "Toggle maintenance")
+	serverCmd.Flags().BoolVar(&cliServerStop, "stop", false, "Start server")
+	serverCmd.Flags().BoolVar(&cliServerStart, "start", false, "Stop server")
 
 	apiCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	apiCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
@@ -218,6 +234,23 @@ func init() {
 	statusCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	statusCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
+}
+
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Run some actions on a server",
+	Long:  `The server command is used to stop , start or put a server in maintenace`,
+	Run: func(cmd *cobra.Command, args []string) {
+		log.SetFormatter(&log.TextFormatter{})
+		cliInit(true)
+		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers/" + cliServerID + "/actions/maintenance"
+		_, err := cliAPICmd(urlpost, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	},
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -662,7 +695,7 @@ func cliGetTopology() {
 		headstr += " |  Mode: Manual "
 	}
 
-	headstr += fmt.Sprintf("\n%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Id", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 
 	for _, server := range cliServers {
 		var gtidCurr string
@@ -678,10 +711,11 @@ func cliGetTopology() {
 			gtidSlave = ""
 		}
 
-		headstr += fmt.Sprintf("\n%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly)
+		headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Id, server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly)
 
 	}
-	log.Printf(headstr)
+	fmt.Printf(headstr)
+	fmt.Printf("\n")
 }
 
 func cliDisplay() {

@@ -259,6 +259,11 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerStop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerMaintenance)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
@@ -1046,6 +1051,19 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 		mycluster.StopDatabaseService(node)
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		node.IsMaintenance = !node.IsMaintenance
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}

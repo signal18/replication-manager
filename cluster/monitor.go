@@ -98,8 +98,8 @@ type ServerMonitor struct {
 	HaveLogSlaveUpdates         bool
 	HaveGtidStrictMode          bool
 	HaveWsrep                   bool
-	IsWsrepSync                 bool
 	Version                     int
+	IsWsrepSync                 bool
 	IsMaxscale                  bool
 	IsRelay                     bool
 	IsSlave                     bool
@@ -124,6 +124,7 @@ const (
 	stateSlave       string = "Slave"
 	stateSlaveErr    string = "SlaveErr"
 	stateSlaveLate   string = "SlaveLate"
+	stateMaintenance string = "Maintenance"
 	stateUnconn      string = "StandAlone"
 	stateSuspect     string = "Suspect"
 	stateShard       string = "Shard"
@@ -556,7 +557,10 @@ func (server *ServerMonitor) replicationCheck() string {
 			return "Master OK"
 		}
 	}
-
+	if server.IsMaintenance {
+		server.State = stateMaintenance
+		return "Maintenance"
+	}
 	// when replication stopped Valid is null
 	ss, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
