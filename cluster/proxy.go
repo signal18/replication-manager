@@ -39,7 +39,7 @@ type Proxy struct {
 const (
 	proxyMaxscale string = "maxscale"
 	proxyHaproxy  string = "haproxy"
-	proxySqlproxy string = "sqlproxy"
+	proxySqlproxy string = "proxysql"
 	proxySpider   string = "mdbsproxy"
 )
 
@@ -264,6 +264,9 @@ func (cluster *Cluster) refreshProxies() {
 			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {
 				cluster.refreshMdbsproxy(nil, pr)
 			}
+		}
+		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+			cluster.refreshProxysql(pr)
 		}
 	}
 
