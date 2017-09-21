@@ -82,13 +82,27 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 
 	var updated bool
 	for _, s := range cluster.servers {
-		switch s.State {
-		case stateUnconn:
+		if s.State == stateUnconn {
 			err = psql.SetOfflineHard(s.Host)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
 			}
 			updated = true
+		}
+		if s.PrevState == stateUnconn || s.PrevState == stateFailed {
+			if s.State == stateMaster {
+				err = psql.SetWriter(s.Host)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "ProxySQL could not set writer (%s)", err)
+				}
+				updated = true
+			} else if s.IsSlave {
+				err = psql.SetReader(s.Host)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+				}
+				updated = true
+			}
 		}
 	}
 	if updated {
