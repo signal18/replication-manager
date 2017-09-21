@@ -93,6 +93,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
 			}
+			updated = true
 		}
 		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn {
