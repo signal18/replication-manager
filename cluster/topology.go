@@ -290,16 +290,16 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetReadOnly(sl.Conn, true)
 					cluster.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
 				}
-				if cluster.conf.ForceSlaveHeartbeat && sl.MasterHeartbeatPeriod > 1 {
+				if cluster.conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
 					dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
 					cluster.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.MasterHeartbeatPeriod > 1 {
+				} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
 					cluster.sme.AddState("WARN0050", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO"})
 				}
-				if cluster.conf.ForceSlaveGtid && sl.MasterUseGtid == "No" {
+				if cluster.conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
 					dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
 					cluster.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.MasterUseGtid == "No" {
+				} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
 					cluster.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO"})
 				}
 				if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
@@ -393,8 +393,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
-
-			sid := cluster.slaves[0].MasterServerID
+			sid := cluster.slaves[0].GetReplicationServerID()
 			for k, s := range cluster.servers {
 				if cluster.conf.MultiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {
@@ -421,10 +420,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 			// If master is not initialized, find it in the failed hosts list
 			if cluster.master == nil {
 				// Slave master_host variable must point to failed master
-				smh := cluster.slaves[0].MasterHost
+
+				smh := cluster.slaves[0].GetReplicationMasterHost()
 				for k, s := range cluster.servers {
 					if s.State == stateFailed {
-						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].MasterPort {
+						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
 							if cluster.conf.FailRestartUnsafe {
 								cluster.master = cluster.servers[k]
 								cluster.master.PrevState = stateMaster
@@ -497,19 +497,24 @@ func (cluster *Cluster) TopologyDiscover() error {
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
 			for _, sl := range cluster.slaves {
+
 				if sl.IsRelay == false {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG", "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					is, err := dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port)
 					if !is {
-						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, reason: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
+						if cluster.conf.ReplicationNoRelay {
+							cluster.RejoinFixRelay(sl, cluster.master)
+						} else {
+							cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
+						}
 					}
 					if sl.LogBin == "OFF" {
 						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
-				if sl.Delay.Int64 <= cluster.conf.FailMaxDelay && sl.SQLThread == "Yes" {
+				if sl.GetReplicationDelay() <= cluster.conf.FailMaxDelay && sl.IsSQLThreadRunning() {
 					cluster.master.RplMasterStatus = true
 				}
 
@@ -535,6 +540,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
 		}
 	}*/
+	if cluster.IsProvision() {
+		if cluster.crashes != nil && len(cluster.crashes) > 0 {
+			cluster.LogPrintf("DEBUG", "Puring crashes, all databses nodes up")
+			cluster.crashes = nil
+			cluster.Save()
+
+		}
+	}
 	if cluster.sme.IsFailable() {
 		return nil
 	}
@@ -543,7 +556,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 func (cluster *Cluster) IsProvision() bool {
 	for _, s := range cluster.servers {
-		if s.State == stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+		if s.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 			return false
 		}
 	}
@@ -650,10 +663,11 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 	for _, server := range cluster.servers {
 
 		if len(s.Replications) > 0 {
+
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.MasterServerID, server.DSN, server.ServerID)
+				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
 			}
-			if s.MasterServerID == server.ServerID {
+			if s.GetReplicationServerID() == server.ServerID {
 				return server, nil
 			}
 		}

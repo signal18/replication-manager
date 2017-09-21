@@ -678,7 +678,7 @@ func cliGetTopology() {
 			gtidSlave = ""
 		}
 
-		headstr += fmt.Sprintf("\n%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.UsingGtid, gtidCurr, gtidSlave, "", server.Delay.Int64, server.ReadOnly)
+		headstr += fmt.Sprintf("\n%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly)
 
 	}
 	log.Printf(headstr)
@@ -731,7 +731,7 @@ func cliDisplay() {
 		default:
 			fgCol = termbox.ColorWhite
 		}
-		cliPrintfTb(0, cliTlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.UsingGtid, gtidCurr, gtidSlave, server.ReplicationHealth, server.Delay.Int64, server.ReadOnly)
+		cliPrintfTb(0, cliTlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, server.ReplicationHealth, server.GetReplicationDelay(), server.ReadOnly)
 		cliTlog.Line++
 	}
 	cliTlog.Line++

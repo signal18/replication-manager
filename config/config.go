@@ -15,6 +15,8 @@ type Config struct {
 	ShareDir                           string `mapstructure:"monitoring-sharedir"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	Socket                             string `mapstructure:"monitoring-socket"`
+	TunnelHost                         string `mapstructure:"monitoring-tunnel-host"`
+	TunnelCredential                   string `mapstructure:"monitoring-tunnel-credential"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"log-file"`
@@ -37,6 +39,7 @@ type Config struct {
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	MultiMaster                        bool   `mapstructure:"replication-multi-master"`
 	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave"`
+	ReplicationNoRelay                 bool   `mapstructure:"replication-master-slave-never-relay"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx"`
 	SwitchWaitWrite                    int    `mapstructure:"switchover-wait-write-query"`

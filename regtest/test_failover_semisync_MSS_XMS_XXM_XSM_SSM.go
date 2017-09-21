@@ -47,8 +47,8 @@ func testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cluster *cluster.Cluster, con
 	cluster.StartDatabaseWaitRejoin(SaveMaster)
 
 	for _, s := range cluster.GetSlaves() {
-		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+		if s.IsReplicationBroken() {
+			cluster.LogPrintf("ERROR", "Slave  %s issue on replication", s.URL)
 			return false
 		}
 	}

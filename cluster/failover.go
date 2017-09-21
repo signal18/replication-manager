@@ -107,7 +107,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO", "Pre-failover script complete:", string(out))
 	}
 
-	// Phase 2: Reject updates and sync slaves
+	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
 		if cluster.conf.FailEventStatus {
 			for _, v := range cluster.master.EventStatus {
@@ -143,7 +143,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.URL = oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
 
-	if fail == false && cluster.conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
+	// if switchover on MariaDB Wait GTID
+	/*	if fail == false && cluster.conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
 		cluster.LogPrintf("INFO", "Waiting for candidate Master to synchronize")
 		oldMaster.Refresh()
 		if cluster.conf.LogLevel > 2 {
@@ -151,33 +152,37 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			oldMaster.log()
 		}
 		dbhelper.MasterWaitGTID(cluster.master.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
-	} else {
-
-		cluster.LogPrintf("INFO", "Waiting for candidate master to apply relay log")
-		err = cluster.master.ReadAllRelayLogs()
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Error while reading relay logs on candidate: %s", err)
-		}
-		cluster.LogPrintf("INFO ", "Save replication status before electing")
-		cluster.LogPrintf("INFO", "master_log_file=%s", cluster.master.MasterLogFile)
-		cluster.LogPrintf("INFO", "master_log_pos=%s", cluster.master.MasterLogPos)
-		cluster.LogPrintf("INFO", "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
-		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
-		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
-		crash.FailoverMasterLogFile = cluster.master.MasterLogFile
-		crash.FailoverMasterLogPos = cluster.master.MasterLogPos
-		if cluster.master.DBVersion.IsMariaDB() {
-			if cluster.conf.MxsBinlogOn {
-				cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
-				crash.FailoverIOGtid = cluster.master.CurrentGtid
-			} else {
-				cluster.master.FailoverIOGtid = cluster.master.IOGtid
-				crash.FailoverIOGtid = cluster.master.IOGtid
-			}
-		}
-		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
-		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+	} else {*/
+	// Failover
+	cluster.LogPrintf("INFO", "Waiting for candidate master to apply relay log")
+	err = cluster.master.ReadAllRelayLogs()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Error while reading relay logs on candidate: %s", err)
 	}
+	cluster.LogPrintf("INFO ", "Save replication status before electing")
+	ms, err := cluster.master.getNamedSlaveStatus(cluster.master.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Faiover can not fetch replication info on new master: %s", err)
+	}
+	cluster.LogPrintf("INFO", "master_log_file=%s", ms.MasterLogFile)
+	cluster.LogPrintf("INFO", "master_log_pos=%s", ms.ReadMasterLogPos.String)
+	cluster.LogPrintf("INFO", "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+	//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
+	//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+	crash.FailoverMasterLogFile = ms.MasterLogFile.String
+	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+	if cluster.master.DBVersion.IsMariaDB() {
+		if cluster.conf.MxsBinlogOn {
+			//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
+			crash.FailoverIOGtid = cluster.master.CurrentGtid
+		} else {
+			//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
+			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
+		}
+	}
+	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+	//}
 
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
@@ -185,9 +190,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO", "Candidate master has to catch up with relay server log position")
 		relaymaster = cluster.GetRelayServer()
 		if relaymaster != nil {
+			rs, err := relaymaster.getNamedSlaveStatus(relaymaster.ReplicationSourceName)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Can't found slave status on relay server %s", relaymaster.DSN)
+			}
 			relaymaster.Refresh()
 
-			binlogfiletoreach, _ := strconv.Atoi(strings.Split(relaymaster.MasterLogFile, ".")[1])
+			binlogfiletoreach, _ := strconv.Atoi(strings.Split(rs.MasterLogFile.String, ".")[1])
 			cluster.LogPrintf("INFO", "Relay server log pos reached %d", binlogfiletoreach)
 			dbhelper.ResetMaster(cluster.master.Conn)
 			cluster.LogPrintf("INFO", "Reset Master on candidate Master")
@@ -203,9 +212,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.master.FailoverMasterLogPos = "4"
 			crash.FailoverMasterLogFile = ms.File
 			crash.FailoverMasterLogPos = "4"
-
 			//strconv.FormatUint(uint64(ms.Position), 10)
-			cluster.LogPrintf("INFO", "Backing up master pos %s %s", cluster.master.FailoverMasterLogFile, cluster.master.FailoverMasterLogPos)
+			cluster.LogPrintf("INFO", "Backing up master pos %s %s", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 		} else {
 			cluster.LogPrintf("ERROR", "No relay server found")
 		}
@@ -304,6 +312,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf("ERROR", "Could not get MySQL GTID status: ", err)
 		}
 		var changeMasterErr error
+		/*	ms, err := cluster.master.getNamedSlaveStatus(cluster.master.ReplicationSourceName)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Could not get slave status: ", err)
+			}*/
 		// Do positional switch if we are an old MySQL version
 		if oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 			cluster.LogPrintf("INFO", "Doing positional switch of old Master")
@@ -384,8 +396,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
-					Logfile:   cluster.master.FailoverMasterLogFile,
-					Logpos:    cluster.master.FailoverMasterLogPos,
+					Logfile:   crash.FailoverMasterLogFile,
+					Logpos:    crash.FailoverMasterLogPos,
 				})
 			}
 		}
@@ -445,18 +457,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.master.Conn)
 		var changeMasterErr error
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
-			cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
-			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.Host,
-				Port:      cluster.master.Port,
-				User:      cluster.rplUser,
-				Password:  cluster.rplPass,
-				Logfile:   cluster.master.BinaryLogFile,
-				Logpos:    cluster.master.MasterLogPos,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-				Mode:      "POSITIONAL",
-			})
+			// do nothing stay connected to dead master procedd with relay fix later
+			/*	cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
+				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Logfile:   crash.FailoverMasterLogFile,
+					Logpos:    crash.FailoverMasterLogPos,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "POSITIONAL",
+				})*/
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
@@ -468,6 +481,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:      "",
 			})
 		} else if cluster.conf.MxsBinlogOn == false {
+			//MariaDB any case
+
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -478,6 +493,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:      "SLAVE_POS",
 			})
 		} else {
+
 			cluster.LogPrintf("INFO", "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -557,6 +573,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 	var maxpos uint64
 
 	for i, sl := range l {
+
 		/* If server is in the ignore list, do not elect it */
 		if misc.Contains(cluster.ignoreList, sl.URL) {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
@@ -565,6 +582,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			}
 			continue
 		}
+		ss, errss := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
@@ -606,7 +624,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			return i
 		}
 		//old style replication
-		if sl.MasterLogFile == "" && cluster.conf.FailRestartUnsafe == false {
+		if errss != nil && cluster.conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf("DEBUG", "Election %s have no master log file, may be failed slave", sl.URL)
@@ -616,9 +634,9 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"
-		if sl.MasterLogFile != "" {
-			filepos = sl.MasterLogPos
-			logfile = sl.MasterLogFile
+		if errss == nil {
+			filepos = ss.ReadMasterLogPos.String
+			logfile = ss.MasterLogFile.String
 
 		}
 		for len(filepos) > 10 {
@@ -631,11 +649,11 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 
 		seqnos := gtid.NewList("1-1-1").GetSeqNos()
 
-		if sl.MasterLogFile != "" {
+		if errss == nil {
 			if cluster.master.State != stateFailed {
 				seqnos = sl.SlaveGtid.GetSeqNos()
 			} else {
-				seqnos = sl.IOGtid.GetSeqNos()
+				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqNos()
 			}
 		}
 

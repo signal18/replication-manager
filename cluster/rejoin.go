@@ -11,6 +11,7 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/state"
 )
 
 // RejoinMaster a server that just show up without slave status
@@ -47,8 +49,8 @@ func (server *ServerMonitor) RejoinMaster() error {
 					server.ClusterGroup.LogPrintf("ERROR", "State transfer rejoin failed")
 				}
 			}
-			crash.delete(&server.ClusterGroup.crashes)
-			server.ClusterGroup.Save()
+			//crash.delete(&server.ClusterGroup.crashes)
+			//server.ClusterGroup.Save()
 			server.ClusterGroup.rejoinCond.Send <- true
 		}
 	} else {
@@ -327,40 +329,68 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		if server.ClusterGroup.master != nil {
 
 			if server.ClusterGroup.master.DSN != mycurrentmaster.DSN {
+				crash := server.ClusterGroup.getCrash(mycurrentmaster.URL)
 				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, mycurrentmaster.DSN)
+				server.Refresh()
+				if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
+					if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 
-				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay == false && server.ClusterGroup.conf.MultiTierSlave == false {
-					realmaster := server.ClusterGroup.master
-					slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
-					master_gtid := realmaster.FailoverIOGtid.GetSeqServerIdNos(uint64(server.MasterServerID))
-					if slave_gtid < master_gtid {
-						server.ClusterGroup.LogPrintf("INFO", "Rejoining slave server %s to master %s", server.URL, realmaster.URL)
-						err := dbhelper.StopSlave(server.Conn)
-						if err == nil {
-							err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-								Host:      realmaster.Host,
-								Port:      realmaster.Port,
-								User:      server.ClusterGroup.rplUser,
-								Password:  server.ClusterGroup.rplPass,
-								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-								Mode:      "SLAVE_POS",
-							})
+						realmaster := server.ClusterGroup.master
+						slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
+						master_gtid := crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
+						if slave_gtid < master_gtid {
+							server.ClusterGroup.LogPrintf("INFO", "Rejoining slave server %s to master %s", server.URL, realmaster.URL)
+							err := dbhelper.StopSlave(server.Conn)
 							if err == nil {
-								dbhelper.StartSlave(server.Conn)
+								err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+									Host:      realmaster.Host,
+									Port:      realmaster.Port,
+									User:      server.ClusterGroup.rplUser,
+									Password:  server.ClusterGroup.rplPass,
+									Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+									Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+									Mode:      "SLAVE_POS",
+								})
+								if err == nil {
+									dbhelper.StartSlave(server.Conn)
+								} else {
+									server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
+								}
 							} else {
-								server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
+								server.ClusterGroup.LogPrintf("ERROR", "Can't stop slave in rejoin slave %s", err)
 							}
-						} else {
-							server.ClusterGroup.LogPrintf("ERROR", "Can't stop slave in rejoin slave %s", err)
-						}
 
-					} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {
-						server.ClusterGroup.LogPrintf("DEBUG", "Slave server %s (%d) is ahead of master %s (%d)", server.URL, slave_gtid, realmaster.URL, master_gtid)
+						} else if server.ClusterGroup.conf.LogLevel > 2 && slave_gtid < master_gtid {
+							server.ClusterGroup.LogPrintf("DEBUG", "Slave server %s (%d) is ahead of master %s (%d)", server.URL, slave_gtid, realmaster.URL, master_gtid)
+						}
+					} else {
+						if mycurrentmaster.State != stateFailed {
+							// No GTID compatible solution stop relay master wait apply relay and move to real master
+							err := dbhelper.StopSlave(mycurrentmaster.Conn)
+							if err == nil {
+
+								dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 30)
+								server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
+								changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+									Host:      server.ClusterGroup.master.Host,
+									Port:      server.ClusterGroup.master.Port,
+									User:      server.ClusterGroup.rplUser,
+									Password:  server.ClusterGroup.rplPass,
+									Logfile:   mycurrentmaster.BinaryLogFile,
+									Logpos:    mycurrentmaster.BinaryLogPos,
+									Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+									Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+									Mode:      "POSITIONAL",
+								})
+								if changeMasterErr != nil {
+									server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.DSN)
+								}
+							}
+							dbhelper.StartSlave(mycurrentmaster.Conn)
+						}
 					}
 				}
 			}
-
 		} else {
 			server.ClusterGroup.LogPrintf("ERROR", "Slave wants to rejoin non discovered master")
 		}
@@ -386,8 +416,13 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 
 // UseGtid  check is replication use gtid
 func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
+	ss, errss := server.getNamedSlaveStatus(server.ReplicationSourceName)
+	if errss != nil {
+		return false
+	}
+
 	if server.ClusterGroup.conf.LogLevel > 1 {
-		server.ClusterGroup.LogPrintf("DEBUG", "Rejoin Server use GTID %s", server.UsingGtid)
+		server.ClusterGroup.LogPrintf("DEBUG", "Rejoin Server use GTID %s", ss.UsingGtid.String)
 	}
 	// An old master  master do no have replication
 	if crash.FailoverIOGtid == nil {
@@ -418,7 +453,12 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		}
 		return false
 	} else {
-		if crash.FailoverMasterLogFile == server.MasterLogFile && server.MasterLogPos == crash.FailoverMasterLogPos {
+		ss, errss := server.getNamedSlaveStatus(server.ReplicationSourceName)
+		if errss != nil {
+			return false
+		}
+
+		if crash.FailoverMasterLogFile == ss.MasterLogFile.String && ss.ReadMasterLogPos.String == crash.FailoverMasterLogPos {
 			return false
 		}
 		return true
@@ -500,5 +540,21 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 	cluster.LogPrintf("INFO", "Start slave after dump")
 
 	dbhelper.StartSlave(dest.Conn)
+	return nil
+}
+
+func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonitor) error {
+	cluster.sme.AddState("ERR00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00045"]), ErrFrom: "TOPO"})
+
+	if slave.GetReplicationDelay() > cluster.conf.FailMaxDelay {
+		cluster.sme.AddState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00046"]), ErrFrom: "TOPO"})
+		return nil
+	} else {
+		ss, err := slave.getNamedSlaveStatus(slave.ReplicationSourceName)
+		if err == nil {
+			slave.rejoinSlave(*ss)
+		}
+	}
+
 	return nil
 }

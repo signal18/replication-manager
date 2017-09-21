@@ -40,11 +40,11 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	}
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.GetSlaves() {
-		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("ERROR", "Slave  %s issue on replication  SQL Thread % IO %s ", s.URL, s.SQLThread, s.IOThread)
+		if s.IsReplicationBroken() {
+			cluster.LogPrintf("ERROR", "Slave  %s issue on replication", s.URL)
 			return false
 		}
-		if s.MasterServerID != cluster.GetMaster().ServerID {
+		if s.GetReplicationServerID()!= cluster.GetMaster().ServerID {
 			cluster.LogPrintf("ERROR", "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
 			return false
 		}

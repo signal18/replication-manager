@@ -134,12 +134,16 @@ func (cluster *Cluster) RunSysbench() error {
 func (cluster *Cluster) CheckSlavesRunning() bool {
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.slaves {
-		if s.IOThread != "Yes" || s.SQLThread != "Yes" {
-			cluster.LogPrintf("TEST", "Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, s.SQLThread, s.IOThread)
+		ss, errss := s.getNamedSlaveStatus(s.ReplicationSourceName)
+		if errss != nil {
+			return false
+		}
+		if ss.SlaveIORunning.String != "Yes" || ss.SlaveSQLRunning.String != "Yes" {
+			cluster.LogPrintf("TEST", "Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, ss.SlaveSQLRunning.String, ss.SlaveIORunning.String)
 
 			return false
 		}
-		if s.MasterServerID != cluster.master.ServerID {
+		if ss.MasterServerID != cluster.master.ServerID {
 			cluster.LogPrintf("TEST", "Replication is  pointing to wrong master %s ", cluster.master.ServerID)
 			return false
 		}
