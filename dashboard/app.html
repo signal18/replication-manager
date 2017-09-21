@@ -248,17 +248,19 @@
 											 <table ng-if="proxies" class="table">
 												 <tbody ng-repeat="proxy in proxies">
 
-													<tr  bgcolor="#fcf9ed">
+													<tr bgcolor="#fcf9ed">
                              <th>Proxy</th>
                              <th>Id</th>
 													   <th>Host</th>
 														 <th>Port</th>
-														 <th>WritePort</th>
-														 <th>ReadPort</th>
+														 <th ng-if="proxy.Type!='proxysql'">WritePort</th>
+                             <th ng-if="proxy.Type=='proxysql'">WriterHG</th>
+														 <th ng-if="proxy.Type!='proxysql'">ReadPort</th>
+                             <th ng-if="proxy.Type=='proxysql'">ReaderHG</th>
 														 <th>ReadWritePort</th>
 													</tr>
 
-														<tr >
+														<tr>
 
 															<td><p class="sectionheader">{{proxy.Type}}</p></td>
                               <td>{{proxy.Id}}</td>
@@ -280,7 +282,7 @@
                               <th>Status</th>
                               <th>Proxy Name</th>
                               <th>Proxy Status</th>
-                              <th>Proxy Connection</th>
+                              <th>Proxy Connections</th>
                            </tr>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                               <td>{{server.Host}}</td>
