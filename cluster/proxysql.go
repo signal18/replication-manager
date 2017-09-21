@@ -82,6 +82,19 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 
 	var updated bool
 	for _, s := range cluster.servers {
+		s.ProxysqlHostgroup, s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
+		s.MxsServerName = s.URL
+		if err != nil {
+			cluster.LogPrintf("ERROR", "ProxySQL could not get stats for host (%s)", err)
+		}
+		// if ProxySQL and replication-manager states differ, resolve the conflict
+		if s.MxsServerStatus == "OFFLINE_HARD" && s.State == stateSlave {
+			err = psql.SetReader(s.Host)
+			if err != nil {
+				cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+			}
+		}
+		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn {
 			err = psql.SetOfflineHard(s.Host)
 			if err != nil {
@@ -89,6 +102,8 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			}
 			updated = true
 		}
+		// if the server comes back from a previously failed or standalone state, reintroduce it in
+		// the appropriate HostGroup
 		if s.PrevState == stateUnconn || s.PrevState == stateFailed {
 			if s.State == stateMaster {
 				err = psql.SetWriter(s.Host)
@@ -103,11 +118,6 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 				}
 				updated = true
 			}
-		}
-		s.MxsServerName = s.URL
-		s.ProxysqlHostgroup, s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "ProxySQL could not get stats for host (%s)", err)
 		}
 	}
 	if updated {
