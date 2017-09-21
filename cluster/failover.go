@@ -565,10 +565,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			}
 			continue
 		}
-		// TODO: refresh state outside evaluation
-		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Checking eligibility of slave server %s [%d]", sl.URL, i)
-		}
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
@@ -641,9 +637,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			} else {
 				seqnos = sl.IOGtid.GetSeqNos()
 			}
-		}
-		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("DEBUG", "Got sequence(s) %v for server [%d]", seqnos, i)
 		}
 
 		for _, v := range seqnos {
