@@ -22,7 +22,7 @@ mysql_variables=
         connect_timeout_server=3
         monitor_history=600
         monitor_connect_interval=600
-        monitor_ping_interval=1000
+        monitor_ping_interval=2000
         monitor_read_only_interval=1500
         monitor_read_only_timeout=500
         ping_interval_server=10
@@ -35,9 +35,9 @@ mysql_variables=
 # defines all the MySQL servers
 mysql_servers =
 (
-        { address="mysql1" , port=3306 , hostgroup=0, max_connections=100 },
-        { address="mysql1" , port=3306 , hostgroup=1, max_connections=100 },
-        { address="mysql2" , port=3306 , hostgroup=1, max_connections=100 }
+        { address="172.16.1.1" , port=3306 , hostgroup=0, max_connections=100 },
+        { address="172.16.1.2" , port=3306 , hostgroup=1, max_connections=100 },
+        { address="172.16.1.3" , port=3306 , hostgroup=1, max_connections=100 }
 )
 # defines all the MySQL users
 mysql_users:

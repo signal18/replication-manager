@@ -498,6 +498,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 		s.LastFailover = "N/A"
 	}
 	s.Topology = currentCluster.GetTopology()
+	s.Version = fmt.Sprintf("%s %s %s %s", FullVersion, Build, GoOS, GoArch)
 	e := json.NewEncoder(w)
 	err := e.Encode(s)
 	if err != nil {

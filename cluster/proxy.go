@@ -39,7 +39,7 @@ type Proxy struct {
 const (
 	proxyMaxscale string = "maxscale"
 	proxyHaproxy  string = "haproxy"
-	proxySqlproxy string = "sqlproxy"
+	proxySqlproxy string = "proxysql"
 	proxySpider   string = "mdbsproxy"
 )
 
@@ -55,6 +55,9 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		nbproxies += len(strings.Split(cluster.conf.MdbsProxyHosts, ","))
+	}
+	if cluster.conf.ProxysqlOn {
+		nbproxies++
 	}
 
 	cluster.proxies = make([]*Proxy, nbproxies)
@@ -123,12 +126,14 @@ func (cluster *Cluster) newProxyList() error {
 
 			prx := new(Proxy)
 			prx.Type = proxySqlproxy
-			prx.Port = strconv.Itoa(cluster.conf.ProxysqlStatPort)
+			prx.Port = cluster.conf.ProxysqlAdminPort
+			prx.ReadWritePort, _ = strconv.Atoi(cluster.conf.ProxysqlPort)
 			prx.Host = proxyHost
-			prx.ReadPort = cluster.conf.ProxysqlReadPort
-			prx.WritePort = cluster.conf.ProxysqlWritePort
-			prx.ReadWritePort = cluster.conf.ProxysqlWritePort
-			prx.User, prx.Pass = misc.SplitPair(cluster.conf.ProxysqlUser)
+			prx.User = cluster.conf.ProxysqlUser
+			prx.Pass = cluster.conf.ProxysqlPassword
+			prx.ReadPort, _ = strconv.Atoi(cluster.conf.ProxysqlReaderHostgroup)
+			prx.WritePort, _ = strconv.Atoi(cluster.conf.ProxysqlWriterHostgroup)
+
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
 				p.CipherText = prx.Pass
@@ -191,7 +196,7 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 						}
 						err = m.SetServer(server.MxsServerName, "maintenance")
 						if err != nil {
-							cluster.LogPrintf("ERROR", "Could not set  server %s in maintenance", err)
+							cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
 							m.Close()
 						}
 						m.Close()
@@ -260,6 +265,9 @@ func (cluster *Cluster) refreshProxies() {
 				cluster.refreshMdbsproxy(nil, pr)
 			}
 		}
+		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+			cluster.refreshProxysql(pr)
+		}
 	}
 
 }
@@ -278,6 +286,9 @@ func (cluster *Cluster) initProxies() {
 		}
 		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			cluster.initMdbsproxy(nil, pr)
+		}
+		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+			cluster.initProxysql(pr)
 		}
 	}
 }

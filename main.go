@@ -89,6 +89,7 @@ type Settings struct {
 	Clusters            []string `json:"clusters"`
 	RegTests            []string `json:"regtests"`
 	Topology            string   `json:"topology"`
+	Version             string   `json:"version"`
 }
 type heartbeat struct {
 	UUID    string `json:"uuid"`
