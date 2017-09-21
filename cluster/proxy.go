@@ -56,6 +56,9 @@ func (cluster *Cluster) newProxyList() error {
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		nbproxies += len(strings.Split(cluster.conf.MdbsProxyHosts, ","))
 	}
+	if cluster.conf.ProxysqlOn {
+		nbproxies++
+	}
 
 	cluster.proxies = make([]*Proxy, nbproxies)
 
