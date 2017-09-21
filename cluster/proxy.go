@@ -128,6 +128,8 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Host = proxyHost
 			prx.User = cluster.conf.ProxysqlUser
 			prx.Pass = cluster.conf.ProxysqlPassword
+			prx.ReadPort, _ = strconv.Atoi(cluster.conf.ProxysqlReaderHostgroup)
+			prx.WritePort, _ = strconv.Atoi(cluster.conf.ProxysqlWriterHostgroup)
 
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
@@ -191,7 +193,7 @@ func (cluster *Cluster) SetMaintenance(serverid string) {
 						}
 						err = m.SetServer(server.MxsServerName, "maintenance")
 						if err != nil {
-							cluster.LogPrintf("ERROR", "Could not set  server %s in maintenance", err)
+							cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
 							m.Close()
 						}
 						m.Close()
@@ -278,6 +280,9 @@ func (cluster *Cluster) initProxies() {
 		}
 		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
 			cluster.initMdbsproxy(nil, pr)
+		}
+		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+			cluster.initProxysql(pr)
 		}
 	}
 }

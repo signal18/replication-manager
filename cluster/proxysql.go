@@ -1,10 +1,9 @@
 package cluster
 
 import (
-	"database/sql"
-	"time"
+	"fmt"
 
-	"github.com/go-sql-driver/mysql"
+	"github.com/signal18/replication-manager/proxysql"
 )
 
 func (cluster *Cluster) initProxysql(proxy *Proxy) {
@@ -12,21 +11,31 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		return
 	}
 
-	ProxysqlConfig := mysql.Config{
-		User:        proxy.User,
-		Passwd:      proxy.Pass,
-		Net:         "tcp",
-		Addr:        proxy.Host,
-		Timeout:     time.Second * 5,
-		ReadTimeout: time.Second * 15,
+	psql := proxysql.ProxySQL{
+		User:     proxy.User,
+		Password: proxy.Pass,
+		Host:     proxy.Host,
+		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
+		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
 	}
 
-	db, err := sql.Open("mysql", ProxysqlConfig.FormatDSN())
+	var err error
+	err = psql.Connect()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not create ProxySQL connection (%s)", err)
+		cluster.LogPrintf("ERROR", "%s", err)
+		return
 	}
-	err = db.Ping()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not connect to ProxySQL (%s)", err)
+
+	for _, s := range cluster.servers {
+		switch s.State {
+		case stateMaster:
+			psql.SetWriter(s.Host)
+		case stateSlave:
+			psql.SetReader(s.Host)
+		case stateFailed:
+			psql.SetOfflineHard(s.Host)
+		case stateUnconn:
+			psql.SetOfflineHard(s.Host)
+		}
 	}
 }
