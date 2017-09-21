@@ -237,13 +237,12 @@ func init() {
 	if WithProxysql == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "127.0.0.1", "ProxySQL hosts")
-		monitorCmd.Flags().IntVar(&conf.ProxysqlWritePort, "proxysql-write-port", 3306, "ProxySQL read-write port to leader")
-		monitorCmd.Flags().IntVar(&conf.ProxysqlReadPort, "proxysql-read-port", 3307, "ProxySQL load balance read port to all nodes")
-		monitorCmd.Flags().IntVar(&conf.ProxysqlStatPort, "proxysql-stat-port", 1988, "ProxySQL statistics port")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "ProxySQL binary location")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlReadBindIp, "proxysql-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlWriteBindIp, "proxysql-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-credential", "admin", "MaxScale admin user")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "6033", "ProxySQL read/write proxy port")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6033", "ProxySQL admin interface port")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL reader hostgroup")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlPassword, "proxysql-user", "admin", "ProxySQL admin password")
 	}
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
