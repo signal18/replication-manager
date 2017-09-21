@@ -12,6 +12,7 @@ type ProxySQL struct {
 	Connection *sqlx.DB
 	User       string
 	Password   string
+	Port       string
 	Host       string
 	WriterHG   string
 	ReaderHG   string
@@ -22,7 +23,7 @@ func (psql *ProxySQL) Connect() error {
 		User:        psql.User,
 		Passwd:      psql.Password,
 		Net:         "tcp",
-		Addr:        psql.Host,
+		Addr:        fmt.Sprintf("%s:%s", psql.Host, psql.Port),
 		Timeout:     time.Second * 5,
 		ReadTimeout: time.Second * 15,
 	}

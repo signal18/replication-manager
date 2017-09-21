@@ -15,6 +15,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		User:     proxy.User,
 		Password: proxy.Pass,
 		Host:     proxy.Host,
+		Port:     proxy.Port,
 		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
 		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
 	}
@@ -51,6 +52,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		User:     proxy.User,
 		Password: proxy.Pass,
 		Host:     proxy.Host,
+		Port:     proxy.Port,
 		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
 		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
 	}
