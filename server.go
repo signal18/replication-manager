@@ -238,7 +238,7 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "127.0.0.1", "ProxySQL hosts")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "6033", "ProxySQL read/write proxy port")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6033", "ProxySQL admin interface port")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL reader hostgroup")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
