@@ -37,22 +37,26 @@ func (psql *ProxySQL) Connect() error {
 }
 
 func (psql *ProxySQL) SetOfflineHard(host string) error {
-	_, err := psql.Connection.Exec("UPDATE mysql_servers SET status='OFFLINE_HARD' WHERE hostname=?", host)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_HARD' WHERE hostname='%s'", host)
+	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetOnline(host string) error {
-	_, err := psql.Connection.Exec("UPDATE mysql_servers SET status='ONLINE' WHERE hostname=?", host)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' WHERE hostname='%s'", host)
+	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetWriter(host string) error {
-	_, err := psql.Connection.Exec("UPDATE mysql_servers SET status='ONLINE', hostgroup_id=? WHERE hostname=?", psql.WriterHG, host)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s'", psql.WriterHG, host)
+	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetReader(host string) error {
-	_, err := psql.Connection.Exec("UPDATE mysql_servers SET status='ONLINE' WHERE hostname=?", psql.ReaderHG, host)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s'", psql.ReaderHG, host)
+	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
