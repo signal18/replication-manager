@@ -734,34 +734,30 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
 		return false
 	}
-	if !cluster.master.IsDown() {
-		hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
-		if err != nil {
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf("WARN", "%s", err)
-			}
-			return false
+	hasBinLogs, err := dbhelper.CheckBinlogFilters(cluster.master.Conn, sl.Conn)
+	if err != nil {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Could not check binlog filters")
 		}
-		if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf("WARN", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
-			}
-			return false
+		return false
+	}
+	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
-
-		if dbhelper.CheckReplicationFilters(cluster.master.Conn, sl.Conn) == false && cluster.conf.CheckReplFilter == true {
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf("WARN", "Replication filters differ on master and slave %s. Skipping", sl.URL)
-			}
-			return false
+		return false
+	}
+	if dbhelper.CheckReplicationFilters(cluster.master.Conn, sl.Conn) == false && cluster.conf.CheckReplFilter == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
-
-		if cluster.conf.SwitchGtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf("WARN", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
-			}
-			return false
+		return false
+	}
+	if cluster.conf.SwitchGtidCheck && dbhelper.CheckSlaveSync(sl.Conn, cluster.master.Conn) == false && cluster.conf.RplChecks == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		}
+		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
 		if cluster.conf.LogLevel > 1 || forcingLog {
