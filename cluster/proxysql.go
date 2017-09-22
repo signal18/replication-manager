@@ -31,22 +31,22 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	for _, s := range cluster.servers {
 		switch s.State {
 		case stateMaster:
-			err = psql.SetWriter(s.Host)
+			err = psql.SetWriter(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
 			}
 		case stateSlave:
-			err = psql.SetReader(s.Host)
+			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 		case stateFailed:
-			err = psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineSoft(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 		case stateUnconn:
-			err = psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineSoft(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
@@ -90,7 +90,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if s.MxsServerStatus == "OFFLINE_HARD" && s.State == stateSlave {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting online rejoining server %s", s.URL)
-			err = psql.SetReader(s.Host)
+			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
@@ -99,7 +99,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn && s.MxsServerStatus == "ONLINE" {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting offline standalone server %s", s.URL)
-			err = psql.SetOfflineHard(s.Host)
+			err = psql.SetOfflineSoft(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
@@ -109,13 +109,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		// the appropriate HostGroup
 		if s.PrevState == stateUnconn || s.PrevState == stateFailed {
 			if s.State == stateMaster {
-				err = psql.SetWriter(s.Host)
+				err = psql.SetWriter(s.Host, s.Port)
 				if err != nil {
 					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
 				}
 				updated = true
 			} else if s.IsSlave {
-				err = psql.SetReader(s.Host)
+				err = psql.SetReader(s.Host, s.Port)
 				if err != nil {
 					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 				}
