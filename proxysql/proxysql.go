@@ -37,7 +37,7 @@ func (psql *ProxySQL) Connect() error {
 }
 
 func (psql *ProxySQL) SetOfflineHard(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_HARD' WHERE hostname='%s' AND port='%s'", host, port)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_HARD', hostgroup_id='666' WHERE hostname='%s' AND port='%s'", host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
