@@ -798,6 +798,7 @@ func (server *ServerMonitor) HasCycling(ServerID uint) bool {
 	return false
 }
 
+// IsDown() returns true is the server is Failed or Suspect
 func (server *ServerMonitor) IsDown() bool {
 	if server.State == stateFailed || server.State == stateSuspect {
 		return true
