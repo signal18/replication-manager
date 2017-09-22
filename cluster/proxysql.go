@@ -33,22 +33,22 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		case stateMaster:
 			err = psql.SetWriter(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set writer (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
 			}
 		case stateSlave:
 			err = psql.SetReader(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 		case stateFailed:
 			err = psql.SetOfflineHard(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 		case stateUnconn:
 			err = psql.SetOfflineHard(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 		}
 	}
@@ -85,21 +85,23 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		s.ProxysqlHostgroup, s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
 		s.MxsServerName = s.URL
 		if err != nil {
-			cluster.LogPrintf("ERROR", "ProxySQL could not get stats for host (%s)", err)
+			cluster.LogPrintf("ERROR", "ProxySQL could not get stats for host %s (%s)", s.URL, err)
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if s.MxsServerStatus == "OFFLINE_HARD" && s.State == stateSlave {
+			cluster.LogPrintf("DEBUG", "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 			updated = true
 		}
 		// if server is Standalone, set offline in ProxySQL
-		if s.State == stateUnconn {
+		if s.State == stateUnconn && s.MxsServerStatus == "ONLINE" {
+			cluster.LogPrintf("DEBUG", "ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOfflineHard(s.Host)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set offline (%s)", err)
+				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 			updated = true
 		}
@@ -109,13 +111,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if s.State == stateMaster {
 				err = psql.SetWriter(s.Host)
 				if err != nil {
-					cluster.LogPrintf("ERROR", "ProxySQL could not set writer (%s)", err)
+					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
 				}
 				updated = true
 			} else if s.IsSlave {
 				err = psql.SetReader(s.Host)
 				if err != nil {
-					cluster.LogPrintf("ERROR", "ProxySQL could not set reader (%s)", err)
+					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 				}
 				updated = true
 			}
