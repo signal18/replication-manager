@@ -41,10 +41,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 		case stateFailed:
-			err = psql.SetOfflineHard(s.Host, s.Port)
-			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
-			}
+			// Let ProxySQL handle that case
 		case stateUnconn:
 			err = psql.SetOfflineHard(s.Host, s.Port)
 			if err != nil {
