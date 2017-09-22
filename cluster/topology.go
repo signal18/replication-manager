@@ -206,10 +206,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				}
 			} else {
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG", "Server %s was set mastrer as last non slave", sv.URL)
+					cluster.LogPrintf("DEBUG", "Server %s was set master as last non slave", sv.URL)
 				}
 				cluster.master = cluster.servers[k]
 				cluster.master.State = stateMaster
+				cluster.master.SetReadWrite()
 			}
 		}
 		// Check replication manager user privileges on live servers
@@ -399,6 +400,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if s.ServerID == sid {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
+						cluster.master.SetReadWrite()
 						if cluster.conf.LogLevel > 2 {
 							cluster.LogPrintf("DEBUG", "Server %s was autodetected as a master", s.URL)
 						}
