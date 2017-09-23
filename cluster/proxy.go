@@ -180,33 +180,6 @@ func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 	return proxy, nil
 }
 
-func (cluster *Cluster) SetMaintenance(serverid string) {
-	// Found server from ServerId
-	for _, pr := range cluster.proxies {
-		if cluster.conf.MxsOn && pr.Type == "maxscale" {
-			intsrvid, _ := strconv.Atoi(serverid)
-			server := cluster.GetServerFromId(uint(intsrvid))
-			for _, p := range cluster.proxies {
-				if cluster.master != nil {
-					if p.Type == proxyMaxscale {
-						m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
-						err := m.Connect()
-						if err != nil {
-							cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
-						}
-						err = m.SetServer(server.MxsServerName, "maintenance")
-						if err != nil {
-							cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
-							m.Close()
-						}
-						m.Close()
-					}
-				}
-			}
-		}
-	}
-}
-
 func (cluster *Cluster) InjectTraffic() {
 	// Found server from ServerId
 	if cluster.master != nil {
@@ -253,6 +226,38 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 		}
 	}
 	return false
+}
+
+func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
+	// Found server from ServerId
+	for _, pr := range cluster.proxies {
+		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+			cluster.initHaproxy(nil, pr)
+		}
+		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+			//intsrvid, _ := strconv.Atoi(serverid)
+			server := cluster.GetServerFromId(serverid)
+			if cluster.master != nil {
+				m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
+				err := m.Connect()
+				if err != nil {
+					cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
+				}
+				if server.IsMaintenance {
+					err = m.SetServer(server.MxsServerName, "maintenance")
+				} else {
+					err = m.ClearServer(server.MxsServerName, "maintenance")
+				}
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
+					m.Close()
+				}
+				m.Close()
+
+			}
+
+		}
+	}
 }
 
 func (cluster *Cluster) refreshProxies() {

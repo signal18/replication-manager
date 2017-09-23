@@ -12,6 +12,7 @@ package cluster
 import (
 	"database/sql"
 	"os/exec"
+
 	//"encoding/hex"
 	"errors"
 	"fmt"
@@ -35,29 +36,17 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id       string //Unique name given by cluster & crc64(URL) used by test to provision
-	Conn     *sqlx.DB
-	User     string
-	Pass     string
-	URL      string
-	DSN      string `json:"-"`
-	Host     string
-	Port     string
-	IP       string
-	Strict   string
-	ServerID uint
-	//UsingGtid     string
-	//MasterServerID       uint
-	//MasterHost  string
-	//MasterPort  string
-	//IOThread             string
-	//SQLThread            string
-	//MasterLogFile               string
-	//MasterLogPos                string
-	//MasterHeartbeatPeriod       float64
-	//MasterUseGtid               string
-	//Delay     sql.NullInt64
-
+	Id                          string //Unique name given by cluster & crc64(URL) used by test to provision
+	Conn                        *sqlx.DB
+	User                        string
+	Pass                        string
+	URL                         string
+	DSN                         string `json:"-"`
+	Host                        string
+	Port                        string
+	IP                          string
+	Strict                      string
+	ServerID                    uint
 	LogBin                      string
 	GTIDBinlogPos               *gtid.List
 	CurrentGtid                 *gtid.List
@@ -136,11 +125,14 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, urltunnel string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
+
 	server.User = user
 	server.Pass = pass
+	server.URL = url
+	server.Host, server.Port = misc.SplitHostPort(url)
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveSyncBinLog = true
@@ -150,36 +142,46 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (
 	server.HaveBinlogCompress = true
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
-	// consider all nodes are maxscale to avoid sending command until discoverd
 	server.IsRelay = false
+
+	// consider all nodes are maxscale to avoid sending command until discoverd
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
-	server.URL = url
-	server.Host, server.Port = misc.SplitHostPort(url)
-	//servertohash := sha1.Sum([]byte(server.URL))
-	//server.Id = cluster.cfgGroup + "_" + hex.EncodeToString(servertohash[:])
-	// LVM does not suppot long name
-	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
-	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 
+	// LVM does not suppot long name
+	crcTable := crc64.MakeTable(crc64.ECMA)
+	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 	var err error
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
-		return server, errmsg
+	// process with tunnel
+
+	if server.ClusterGroup.conf.TunnelHost == "" {
+
+		server.IP, err = dbhelper.CheckHostAddr(server.Host)
+		if err != nil {
+			errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
+			return server, errmsg
+		}
+
 	}
+
 	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
-			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			if urltunnel == "" {
+				dsn += "tcp(" + url + ")/" + params
+			} else {
+				dsn += "tcp(" + urltunnel + ")/" + params
+			}
 		} else {
 			dsn += "unix(" + cluster.conf.Socket + ")/" + params
 		}
 		return dsn
 	}
+
 	server.DSN = mydsn()
+
 	if cluster.haveDBTLSCert {
 		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
 		server.DSN = server.DSN + "&tls=tlsconfig"

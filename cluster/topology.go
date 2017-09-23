@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -39,7 +40,18 @@ func (cluster *Cluster) newServerList() error {
 	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
-		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
+		rhost, rport := misc.SplitHostPort(url)
+		var urltunnel string
+		if cluster.conf.TunnelHost != "" {
+			buser, bpass := misc.SplitPair(cluster.conf.TunnelCredential)
+			//rportnum=strvong
+			rportInt, _ := strconv.Atoi(rport)
+			lportInt := cluster.sshTunnelGetLocalPort()
+			tunnel := cluster.sshTunnelMonitor(rhost, rportInt, lportInt, cluster.conf.TunnelHost, buser, bpass)
+			go tunnel.Start()
+			urltunnel = "localhost:" + strconv.Itoa(lportInt)
+		}
+		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, urltunnel)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
 			//return err
@@ -71,7 +83,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 					if extraUrl != "" {
 						for j, url := range strings.Split(extraUrl, ",") {
 							var err error
-							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
+							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "")
 							srv.State = stateShard
 							cluster.servers = append(cluster.servers, srv)
 							if err != nil {
@@ -642,6 +654,18 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 		}
 	}
 	return nil
+}
+
+func (cluster *Cluster) GetIndiceServerFromId(Id string) int {
+	i := 0
+	for _, server := range cluster.servers {
+
+		if server.Id == Id {
+			return i
+		}
+		i = i + 1
+	}
+	return 0
 }
 
 func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {

@@ -95,14 +95,14 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	//var checksum64 string
 	crcHost := crc64.MakeTable(crc64.ECMA)
 	for _, server := range cluster.servers {
-
-		p, _ := strconv.Atoi(server.Port)
-		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-		s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err := haConfig.AddServer("service_read", &s); err != nil {
-			cluster.LogPrintf("ERROR", "Failed to add server in Haproxy for service_read")
+		if server.IsMaintenance == false {
+			p, _ := strconv.Atoi(server.Port)
+			checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
+			s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+			if err := haConfig.AddServer("service_read", &s); err != nil {
+				cluster.LogPrintf("ERROR", "Failed to add server in Haproxy for service_read")
+			}
 		}
-
 	}
 
 	err = haConfig.Render()
