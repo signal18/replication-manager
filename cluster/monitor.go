@@ -11,14 +11,12 @@ package cluster
 
 import (
 	"database/sql"
-	"os/exec"
-
-	//"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc64"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"time"
@@ -28,7 +26,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/alert"
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/gtid"
 
 	"github.com/signal18/replication-manager/misc"
@@ -36,17 +33,18 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id                          string //Unique name given by cluster & crc64(URL) used by test to provision
-	Conn                        *sqlx.DB
-	User                        string
-	Pass                        string
-	URL                         string
-	DSN                         string `json:"-"`
-	Host                        string
-	Port                        string
-	IP                          string
-	Strict                      string
-	ServerID                    uint
+	Id       string //Unique name given by cluster & crc64(URL) used by test to provision
+	Conn     *sqlx.DB
+	User     string
+	Pass     string
+	URL      string
+	DSN      string `json:"-"`
+	Host     string
+	Port     string
+	IP       string
+	Strict   string
+	ServerID uint
+
 	LogBin                      string
 	GTIDBinlogPos               *gtid.List
 	CurrentGtid                 *gtid.List
@@ -125,14 +123,11 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, urltunnel string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
-
 	server.User = user
 	server.Pass = pass
-	server.URL = url
-	server.Host, server.Port = misc.SplitHostPort(url)
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveSyncBinLog = true
@@ -142,46 +137,33 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, u
 	server.HaveBinlogCompress = true
 	server.HaveBinlogSlowqueries = true
 	server.MxsHaveGtid = false
-	server.IsRelay = false
-
 	// consider all nodes are maxscale to avoid sending command until discoverd
+	server.IsRelay = false
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
-
-	// LVM does not suppot long name
+	server.URL = url
+	server.Host, server.Port = misc.SplitHostPort(url)
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
+
 	var err error
-	// process with tunnel
-
-	if server.ClusterGroup.conf.TunnelHost == "" {
-
-		server.IP, err = dbhelper.CheckHostAddr(server.Host)
-		if err != nil {
-			errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
-			return server, errmsg
-		}
-
+	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	if err != nil {
+		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
+		return server, errmsg
 	}
-
 	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
-			if urltunnel == "" {
-				dsn += "tcp(" + url + ")/" + params
-			} else {
-				dsn += "tcp(" + urltunnel + ")/" + params
-			}
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 		} else {
 			dsn += "unix(" + cluster.conf.Socket + ")/" + params
 		}
 		return dsn
 	}
-
 	server.DSN = mydsn()
-
 	if cluster.haveDBTLSCert {
 		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
 		server.DSN = server.DSN + "&tls=tlsconfig"
@@ -506,32 +488,9 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsWsrepSync = false
 	}
 
-	//monitor haproxy
-	if server.ClusterGroup.conf.HaproxyOn {
-		// status, err := haproxy.parse(page)
-	}
-
 	// Initialize graphite monitoring
 	if server.ClusterGroup.conf.GraphiteMetrics {
-		graph, err := graphite.NewGraphite(server.ClusterGroup.conf.GraphiteCarbonHost, server.ClusterGroup.conf.GraphiteCarbonPort)
-
-		if err == nil {
-			var metrics = make([]graphite.Metric, 5)
-			if server.IsSlave {
-				metrics[0] = graphite.NewMetric(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
-			}
-			metrics[2] = graphite.NewMetric(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), server.Status["THREADS_RUNNING"], time.Now().Unix())
-			metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), server.Status["QUERIES"], time.Now().Unix())
-			metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), server.Status["BYTES_SENT"], time.Now().Unix())
-			metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), server.Status["BYTES_RECEIVED"], time.Now().Unix())
-			//	metrics[5] = graphite.NewMetric(, time.Now().Unix())
-			//	metrics[6] = graphite.NewMetric(, time.Now().Unix())
-			//	metrics[7] = graphite.NewMetric(, time.Now().Unix())
-			//	metrics[8] = graphite.NewMetric(, time.Now().Unix())
-			graph.SendMetrics(metrics)
-
-			graph.Disconnect()
-		}
+		go server.SendDatabaseStats(slaveStatus)
 	}
 	return nil
 }

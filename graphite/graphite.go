@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -21,9 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/signal18/replication-manager/graphite/carbon"
 	"github.com/signal18/replication-manager/graphite/logging"
+	"github.com/sirupsen/logrus"
 )
 
 import _ "net/http/pprof"

@@ -170,7 +170,19 @@ $scope.switch = function(fail) {
     }
   }
 };
+$scope.inttoggle = function() {
+var r = confirm("Confirm Mode Change");
+if (r == true) {
+  var response = $http.get('/interactive');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
 
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
 $scope.maintenance = function(server) {
   var r = confirm("Confirm maintenance for server-id: "+server);
   if (r == true) {

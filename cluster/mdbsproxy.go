@@ -129,7 +129,7 @@ func (cluster *Cluster) mdbsCreateTables(proxy *Proxy) {
 
 func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) {
 	cluster.LogPrintf("INFO", "Bootstrap MariaDB Sharding Cluster")
-	srv, err := cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "")
+	srv, err := cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass)
 	srv.ClusterGroup = cluster
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Bootstrap MariaDB Sharding Cluster Failed")

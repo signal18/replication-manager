@@ -22,7 +22,7 @@ func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, t
 		return false
 	}
 
-	cluster.GetStateMachine().ResetUpTime()
+	cluster.GetStateMachine().ResetUptime()
 	time.Sleep(3 * time.Second)
 	sla1 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.StopSlaves()

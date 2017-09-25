@@ -133,6 +133,10 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	} else {
 		cluster.LogPrintf("INFO", "Failover in automatic mode")
 	}
+	err = cluster.newProxyList()
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
+	}
 	cluster.ReloadFromSave()
 	return nil
 }
@@ -143,14 +147,27 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
-	ticker := time.NewTicker(interval * time.Duration(cluster.conf.MonitoringTicker))
+	//ticker := time.NewTicker(interval * time.Duration(cluster.conf.MonitoringTicker))
 	for cluster.exit == false {
 
+		//select {
+		//case <-ticker.C:
+
+		//cluster.display()
+
 		select {
-		case <-ticker.C:
+		case sig := <-cluster.switchoverChan:
+			if sig {
+				if cluster.runStatus == "A" {
+					cluster.LogPrintf("INFO", "Signaling Switchover...")
+					cluster.MasterFailover(false)
+					cluster.switchoverCond.Send <- true
+				} else {
+					cluster.LogPrintf("INFO", "Not in active mode, cancel switchover %s", cluster.runStatus)
+				}
+			}
 
-			//cluster.display()
-
+		default:
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Monitoring server loop")
 				for k, v := range cluster.servers {
@@ -162,6 +179,7 @@ func (cluster *Cluster) Run() {
 						cluster.LogPrintf("DEBUG", "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
+
 			}
 
 			cluster.TopologyDiscover()
@@ -185,24 +203,14 @@ func (cluster *Cluster) Run() {
 					cluster.LogPrintf("STATE", states[i])
 				}
 				cluster.sme.ClearState()
-			}
-
-			select {
-			case sig := <-cluster.switchoverChan:
-				if sig {
-					if cluster.runStatus == "A" {
-						cluster.LogPrintf("INFO", "Signaling Switchover...")
-						cluster.MasterFailover(false)
-						cluster.switchoverCond.Send <- true
-					} else {
-						cluster.LogPrintf("INFO", "Not in active mode, cancel switchover %s", cluster.runStatus)
-					}
+				if cluster.sme.GetHeartbeats()%60 == 0 {
+					cluster.Save()
 				}
-
-			default:
-				//do nothing
 			}
+			time.Sleep(interval * time.Duration(cluster.conf.MonitoringTicker))
+
 		}
+		//	}
 	}
 }
 

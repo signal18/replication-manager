@@ -63,10 +63,10 @@ type StateMachine struct {
 	OldState            *Map
 	discovered          bool
 	lasttime            int64
-	firsttime           int64
-	uptime              int64
-	uptimeFailable      int64
-	uptimeSemisync      int64
+	Firsttime           int64
+	Uptime              int64
+	UptimeFailable      int64
+	UptimeSemisync      int64
 	lastState           int64
 	heartbeats          int64
 	avgReplicationDelay float32
@@ -75,26 +75,26 @@ type StateMachine struct {
 }
 
 type Sla struct {
-	firsttime      int64
-	uptime         int64
-	uptimeFailable int64
-	uptimeSemisync int64
+	Firsttime      int64 `json:"firsttime"`
+	Uptime         int64 `json:"uptime"`
+	UptimeFailable int64 `json:"uptimeFailable"`
+	UptimeSemisync int64 `json:"uptimeSemisync"`
 }
 
 func (SM *StateMachine) GetSla() Sla {
 	var mySla Sla
-	mySla.firsttime = SM.firsttime
-	mySla.uptime = SM.uptime
-	mySla.uptimeFailable = SM.uptimeFailable
-	mySla.uptimeSemisync = SM.uptimeSemisync
+	mySla.Firsttime = SM.Firsttime
+	mySla.Uptime = SM.Uptime
+	mySla.UptimeFailable = SM.UptimeFailable
+	mySla.UptimeSemisync = SM.UptimeSemisync
 	return mySla
 }
 
 func (SM *StateMachine) SetSla(mySla Sla) {
-	SM.firsttime = mySla.firsttime
-	SM.uptime = mySla.uptime
-	SM.uptimeFailable = mySla.uptimeFailable
-	SM.uptimeSemisync = mySla.uptimeSemisync
+	SM.Firsttime = mySla.Firsttime
+	SM.Uptime = mySla.Uptime
+	SM.UptimeFailable = mySla.UptimeFailable
+	SM.UptimeSemisync = mySla.UptimeSemisync
 }
 
 func (SM *StateMachine) Init() {
@@ -103,10 +103,10 @@ func (SM *StateMachine) Init() {
 	SM.OldState = NewMap()
 	SM.discovered = false
 	SM.lasttime = time.Now().Unix()
-	SM.firsttime = SM.lasttime
-	SM.uptime = 0
-	SM.uptimeFailable = 0
-	SM.uptimeSemisync = 0
+	SM.Firsttime = SM.lasttime
+	SM.Uptime = 0
+	SM.UptimeFailable = 0
+	SM.UptimeSemisync = 0
 	SM.lastState = 0
 	SM.heartbeats = 0
 }
@@ -158,8 +158,8 @@ func (SM *StateMachine) GetHeartbeats() int64 {
 }
 
 func (SM *StateMachine) GetUptime() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptime)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
-	//fmt.Printf("INFO : Uptime %f", float64(SM.uptime)/float64(time.Now().Unix()- SM.firsttime))
+	var up = strconv.FormatFloat(float64(100*float64(SM.Uptime)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
+	//fmt.Printf("INFO : Uptime %f", float64(SM.Uptime)/float64(time.Now().Unix()- SM.Firsttime))
 	if up == "100.00000" {
 		up = "99.99999"
 	}
@@ -167,23 +167,23 @@ func (SM *StateMachine) GetUptime() string {
 }
 func (SM *StateMachine) GetUptimeSemiSync() string {
 
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeSemisync)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.UptimeSemisync)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
 	return up
 }
 
-func (SM *StateMachine) ResetUpTime() {
+func (SM *StateMachine) ResetUptime() {
 	SM.lasttime = time.Now().Unix()
-	SM.firsttime = SM.lasttime
-	SM.uptime = 0
-	SM.uptimeFailable = 0
-	SM.uptimeSemisync = 0
+	SM.Firsttime = SM.lasttime
+	SM.Uptime = 0
+	SM.UptimeFailable = 0
+	SM.UptimeSemisync = 0
 }
 
 func (SM *StateMachine) GetUptimeFailable() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.uptimeFailable)/float64(SM.lasttime-SM.firsttime)), 'f', 5, 64)
+	var up = strconv.FormatFloat(float64(100*float64(SM.UptimeFailable)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
 	if up == "100.00000" {
 		up = "99.99999"
 	}
@@ -209,17 +209,17 @@ func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
 	var timenow int64
 	timenow = time.Now().Unix()
 	if IsSemiSynced == true && SM.IsFailable() == true {
-		SM.uptimeSemisync = SM.uptimeSemisync + (timenow - SM.lasttime)
+		SM.UptimeSemisync = SM.UptimeSemisync + (timenow - SM.lasttime)
 	}
 	if IsNotDelay == true && SM.IsFailable() == true {
-		SM.uptimeFailable = SM.uptimeFailable + (timenow - SM.lasttime)
+		SM.UptimeFailable = SM.UptimeFailable + (timenow - SM.lasttime)
 	}
 	if SM.IsFailable() == true {
-		SM.uptime = SM.uptime + (timenow - SM.lasttime)
+		SM.Uptime = SM.Uptime + (timenow - SM.lasttime)
 	}
 	SM.lasttime = timenow
 	SM.heartbeats = SM.heartbeats + 1
-	//fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b uptime %d uptimeFailable %d uptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.uptime, SM.uptimeFailable ,SM.uptimeSemisync)
+	//fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b Uptime %d UptimeFailable %d UptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.Uptime, SM.UptimeFailable ,SM.UptimeSemisync)
 }
 
 // Clear copies the current map to argument map and clears it

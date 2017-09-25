@@ -502,12 +502,14 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 func (cluster *Cluster) BootstrapReplication() error {
 
 	// default to master slave
+	var err error
 	if cluster.CleanAll {
 		cluster.BootstrapReplicationCleanup()
-	}
-	err := cluster.TopologyDiscover()
-	if err == nil {
-		return errors.New("Environment already has an existing master/slave setup")
+	} else {
+		err = cluster.TopologyDiscover()
+		if err == nil {
+			return errors.New("Environment already has an existing master/slave setup")
+		}
 	}
 	cluster.sme.SetFailoverState()
 	masterKey := 0

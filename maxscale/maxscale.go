@@ -65,7 +65,7 @@ const (
 	maxDefaultPort    = "6603"
 	maxDefaultUser    = "admin"
 	maxDefaultPass    = "mariadb"
-	maxDefaultTimeout = (1 * time.Second)
+	maxDefaultTimeout = (2 * time.Second)
 	// Error types
 	ErrorNegotiation = "Incorrect maxscale protocol negotiation"
 	ErrorReader      = "Error reading from buffer"

@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/cluster/gosshtool"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/maxscale"
@@ -25,15 +26,18 @@ import (
 
 // Proxy defines a proxy
 type Proxy struct {
-	Id            string
-	Type          string
-	Host          string
-	Port          string
-	User          string
-	Pass          string
-	WritePort     int
-	ReadPort      int
-	ReadWritePort int
+	Id              string
+	Type            string
+	Host            string
+	Port            string
+	TunnelPort      int
+	TunnelWritePort int
+	Tunnel          bool
+	User            string
+	Pass            string
+	WritePort       int
+	ReadPort        int
+	ReadWritePort   int
 }
 
 const (
@@ -84,6 +88,33 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
 			prx.ReadWritePort = cluster.conf.MxsReadWritePort
+
+			if cluster.conf.TunnelHost != "" {
+				prx.TunnelPort = cluster.sshTunnelGetLocalPort()
+				prx.TunnelWritePort = cluster.sshTunnelGetLocalPort()
+				prx.Tunnel = true
+				buser, bpass := misc.SplitPair(cluster.conf.TunnelCredential)
+				//rportnum=strvong
+				tunnelProxyAdmin := new(gosshtool.LocalForwardServer)
+
+				tunnelProxyAdmin.RemoteAddress = prx.Host + ":" + prx.Port
+				tunnelProxyAdmin.LocalBindAddress = ":" + strconv.Itoa(prx.TunnelPort)
+				tunnelProxyAdmin.SshServerAddress = cluster.conf.TunnelHost
+				tunnelProxyAdmin.SshUserPassword = bpass
+				tunnelProxyAdmin.SshUserName = buser
+				go tunnelProxyAdmin.Start(nil)
+				//defer tunnelProxyAdmin.Stop()
+
+				tunnelProxyWrite := new(gosshtool.LocalForwardServer)
+				tunnelProxyWrite.RemoteAddress = prx.Host + ":" + strconv.Itoa(prx.WritePort)
+				tunnelProxyWrite.LocalBindAddress = ":" + strconv.Itoa(prx.TunnelWritePort)
+				tunnelProxyWrite.SshServerAddress = cluster.conf.TunnelHost
+				tunnelProxyWrite.SshUserPassword = bpass
+				tunnelProxyWrite.SshUserName = buser
+				go tunnelProxyWrite.Start(nil)
+				//	defer tunnelProxyWrite.Stop()
+
+			}
 
 			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
@@ -205,23 +236,21 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
 				return false
-			} else {
-				var sv map[string]string
-				sv, err = dbhelper.GetVariables(db)
-				if err != nil {
-					db.Close()
-					return false
-				}
-				var sid uint64
-				sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
-				if err != nil {
-					return false
-				}
+			}
+			defer db.Close()
+			var sv map[string]string
+			sv, err = dbhelper.GetVariables(db)
+			if err != nil {
+				return false
+			}
+			var sid uint64
+			sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+			if err != nil {
+				return false
+			}
 
-				if cluster.master.ServerID == uint(sid) {
-					db.Close()
-					return true
-				}
+			if cluster.master.ServerID == uint(sid) {
+				return true
 			}
 		}
 	}
@@ -261,6 +290,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 }
 
 func (cluster *Cluster) refreshProxies() {
+
 	for _, pr := range cluster.proxies {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
 			cluster.refreshMaxscale(pr)
@@ -326,7 +356,11 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
 	if prx.Host != "" {
-		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+		if prx.Tunnel {
+			dsn += "tcp(localhost:" + strconv.Itoa(prx.TunnelWritePort) + ")/" + params
+		} else {
+			dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+		}
 	}
 
 	return sqlx.Open("mysql", dsn)

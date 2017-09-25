@@ -20,7 +20,7 @@ func testSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, 
 		cluster.LogPrintf("ERROR", "%s", err)
 		return false
 	}
-	cluster.GetStateMachine().ResetUpTime()
+	cluster.GetStateMachine().ResetUptime()
 	time.Sleep(3 * time.Second)
 	sla1 := cluster.GetStateMachine().GetUptimeFailable()
 	cluster.DelayAllSlaves()

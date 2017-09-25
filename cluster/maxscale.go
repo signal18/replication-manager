@@ -20,8 +20,13 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 	if cluster.conf.MxsOn == false {
 		return
 	}
+	var m maxscale.MaxScale
+	if proxy.Tunnel {
+		m = maxscale.MaxScale{Host: "localhost", Port: strconv.Itoa(proxy.TunnelPort), User: proxy.User, Pass: proxy.Pass}
+	} else {
+		m = maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
+	}
 
-	m := maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
 	if cluster.conf.MxsOn {
 		err := m.Connect()
 		if err != nil {
@@ -43,8 +48,13 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
 			} else {
 				var connections string
-				server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
-				server.MxsServerConnections, _ = strconv.Atoi(connections)
+				if proxy.Tunnel {
+					server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.Host, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					server.MxsServerConnections, _ = strconv.Atoi(connections)
+				} else {
+					server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					server.MxsServerConnections, _ = strconv.Atoi(connections)
+				}
 				//server.ClusterGroup.LogPrintf("INFO", "Affect for server %s, %s %s  ", server.IP, server.MxsServerName, server.MxsServerStatus)
 			}
 		}
@@ -57,7 +67,12 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		return
 	}
 
-	m := maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
+	var m maxscale.MaxScale
+	if proxy.Tunnel {
+		m = maxscale.MaxScale{Host: "localhost", Port: strconv.Itoa(proxy.TunnelPort), User: proxy.User, Pass: proxy.Pass}
+	} else {
+		m = maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
+	}
 	err := m.Connect()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not connect to MaxScale:%s", err)
@@ -65,7 +80,6 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 	}
 	defer m.Close()
 	if cluster.master.MxsServerName == "" {
-		cluster.LogPrintf("ERROR", "MaxScale server name undiscovered")
 		return
 	}
 

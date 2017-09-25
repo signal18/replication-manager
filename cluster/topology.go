@@ -12,13 +12,12 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"log"
-	"strconv"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
@@ -31,6 +30,7 @@ type topologyError struct {
 
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
+
 	var err error
 	err = cluster.repmgrFlagCheck()
 	if err != nil {
@@ -39,19 +39,11 @@ func (cluster *Cluster) newServerList() error {
 	}
 	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
+
+	time.Sleep(10 * time.Second)
 	for k, url := range cluster.hostList {
-		rhost, rport := misc.SplitHostPort(url)
-		var urltunnel string
-		if cluster.conf.TunnelHost != "" {
-			buser, bpass := misc.SplitPair(cluster.conf.TunnelCredential)
-			//rportnum=strvong
-			rportInt, _ := strconv.Atoi(rport)
-			lportInt := cluster.sshTunnelGetLocalPort()
-			tunnel := cluster.sshTunnelMonitor(rhost, rportInt, lportInt, cluster.conf.TunnelHost, buser, bpass)
-			go tunnel.Start()
-			urltunnel = "localhost:" + strconv.Itoa(lportInt)
-		}
-		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, urltunnel)
+
+		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
 			//return err
@@ -59,69 +51,10 @@ func (cluster *Cluster) newServerList() error {
 		if cluster.conf.Verbose {
 			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
 		}
+		//		go cluster.servers[k].Run()
 	}
-	// Spider shard discover
-	if cluster.conf.Spider == true {
-		cluster.SpiderShardsDiscovery()
-	}
-	err = cluster.newProxyList()
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
-	}
+	//	time.Sleep(10 * time.Second)
 	return nil
-}
-
-func (cluster *Cluster) SpiderShardsDiscovery() {
-	for _, s := range cluster.servers {
-		cluster.tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
-		mon, err := dbhelper.GetSpiderMonitor(s.Conn)
-		if err == nil {
-			if mon != "" {
-				cluster.tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-				extraUrl, err := dbhelper.GetSpiderShardUrl(s.Conn)
-				if err == nil {
-					if extraUrl != "" {
-						for j, url := range strings.Split(extraUrl, ",") {
-							var err error
-							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "")
-							srv.State = stateShard
-							cluster.servers = append(cluster.servers, srv)
-							if err != nil {
-								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.servers[j].URL, err)
-							}
-							if cluster.conf.Verbose {
-								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[j].URL))
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-func (cluster *Cluster) SpiderSetShardsRepl() {
-	for k, s := range cluster.servers {
-		url := s.URL
-
-		if cluster.conf.Heartbeat {
-			for _, s2 := range cluster.servers {
-				url2 := s2.URL
-				if url2 != url {
-					host, port := misc.SplitHostPort(url2)
-					err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
-					if err != nil {
-						cluster.LogPrintf("WARN", "Can not set heartbeat table to %s", url)
-						return
-					}
-					err = dbhelper.SetMultiSourceRepl(cluster.servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
-					if err != nil {
-						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
-					}
-				}
-			}
-		}
-	}
 }
 
 func (cluster *Cluster) pingServerList() {
@@ -173,6 +106,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		go server.check(wg)
 	}
 	wg.Wait()
+
 	cluster.pingServerList()
 	if cluster.sme.IsInFailover() {
 		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
@@ -183,7 +117,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
-
+	// Spider shard discover
+	if cluster.conf.Spider == true {
+		cluster.SpiderShardsDiscovery()
+	}
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
 		err := sv.Refresh()
@@ -516,9 +453,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.LogLevel > 2 {
 						cluster.LogPrintf("DEBUG", "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
-					is, err := dbhelper.IsSlaveof(sl.Conn, sl.Host, cluster.master.IP, cluster.master.Port)
-					if !is {
-						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: %s", sl.URL, cluster.master.URL, err), ErrFrom: "TOPO"})
+					replMaster, _ := cluster.GetMasterFromReplication(sl)
+
+					if replMaster != nil && replMaster.Id != cluster.master.Id {
+						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: Pointing to %s", sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
 
 						if cluster.conf.ReplicationNoRelay {
 							cluster.RejoinFixRelay(sl, cluster.master)
@@ -705,6 +643,17 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 			}
 		}
 
+	}
+	// Possible that we can't found the master because the replication host and configurartion host missmatch:  hostname vs IP
+	// Lookup for reverse DNS IP match
+	if cluster.master != nil {
+		is, err := dbhelper.IsSlaveof(s.Conn, s.Host, cluster.master.IP, cluster.master.Port)
+		if err != nil {
+			return nil, nil
+		}
+		if is {
+			return cluster.master, nil
+		}
 	}
 	return nil, nil
 }
