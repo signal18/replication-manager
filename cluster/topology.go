@@ -501,7 +501,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 		}
 	}
-	if cluster.sme.IsFailable() {
+	if cluster.sme.CanMonitor() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
