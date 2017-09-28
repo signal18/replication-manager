@@ -4,16 +4,16 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[Cluster_Haproxy_MultiMaster]
+[Cluster_Haproxy_MultiMasterRing]
 
-title = "ClusterTestMultiMaster"
-db-servers-hosts = "127.0.0.1:3315,127.0.0.1:3316"
+title = "ClusterTestMultiMasterRing"
+db-servers-hosts = "127.0.0.1:3315,127.0.0.1:3316,127.0.0.1:3317"
 db-servers-prefered-master = "127.0.0.1:3315"
 db-servers-credential = "root:test"
 db-servers-connect-timeout = 1
 
 replication-credential = "root:test"
-replication-multi-master = true
+#replication-multi-master-ring = true
 
 haproxy = true
 haproxy-write-port=3300

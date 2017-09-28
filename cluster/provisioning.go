@@ -542,8 +542,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 	if err != nil {
 		cluster.LogPrintf("INFO", "RESET MASTER failed on master")
 	}
-	// master-slave mariadb >10
-	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
+	// Assume master-slave if nothing else is declared && mariadb >10
+	if cluster.conf.MultiMasterRing == false && cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
 
 		for key, server := range cluster.servers {
 			if server.State == stateFailed {
@@ -617,7 +617,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				}
 
 				if err != nil {
-					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
+					cluster.LogPrintf("ERROR", "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
@@ -699,6 +699,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
+
 					return errors.New(fmt.Sprintln("ERROR:", stmt, err))
 				}
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
@@ -709,8 +710,33 @@ func (cluster *Cluster) BootstrapReplication() error {
 			}
 			dbhelper.SetReadOnly(server.Conn, true)
 		}
-	}
 
+	}
+	// RING
+	if cluster.conf.MultiMasterRing == true {
+		for key, server := range cluster.servers {
+			if server.State == stateFailed {
+				continue
+			}
+			i := (len(cluster.servers) + key - 1) % len(cluster.servers)
+
+			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.servers[i].ReplicationSourceName, cluster.servers[i].Host, cluster.servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+			_, err := server.Conn.Exec(stmt)
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				cluster.LogPrintf("ERROR", "Bootstrap Relication error %s %s", stmt, err)
+
+				return errors.New(fmt.Sprintln(stmt, err))
+			}
+			_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				return errors.New(fmt.Sprintln("Can't start slave: ", err))
+			}
+			dbhelper.SetReadOnly(server.Conn, true)
+		}
+
+	}
 	cluster.sme.RemoveFailoverState()
 	// speed up topology discovery
 	cluster.TopologyDiscover()

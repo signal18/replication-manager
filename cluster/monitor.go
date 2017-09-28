@@ -745,15 +745,21 @@ func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
 	return false
 }
 
-func (server *ServerMonitor) HasCycling(ServerID uint) bool {
+func (server *ServerMonitor) HasCycling() bool {
+	currentSlave := server
+	searchServerID := server.ServerID
 
-	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
-	if mycurrentmaster != nil {
-		//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%s me id:%s", mycurrentmaster.ServerID, ServerID)
-		if mycurrentmaster.ServerID == ServerID {
-			return true
+	for range server.ClusterGroup.servers {
+		currentMaster, _ := server.ClusterGroup.GetMasterFromReplication(currentSlave)
+		if currentMaster != nil {
+			//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%d me id:%d", currentMaster.ServerID, currentSlave.ServerID)
+			if currentMaster.ServerID == searchServerID {
+				return true
+			} else {
+				currentSlave = currentMaster
+			}
 		} else {
-			mycurrentmaster.HasCycling(server.ServerID)
+			return false
 		}
 	}
 	return false

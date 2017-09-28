@@ -230,7 +230,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
 
-			if sl.IsRelay == false && !sl.IsDown() {
+			if sl.IsMaxscale == false && !sl.IsDown() {
 				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
 					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.URL)
 					dbhelper.InstallSemiSync(sl.Conn)
@@ -304,9 +304,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.URL)
 				}*/
-				if sl.HasCycling(sl.ServerID) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
-					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
-					cluster.conf.MultiMaster = true
+				if sl.HasCycling() && cluster.conf.MultiTierSlave == false {
+					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
+						cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
+						cluster.conf.MultiMaster = true
+					}
+					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
+						cluster.conf.MultiMasterRing = true
+					}
 				}
 			}
 			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
@@ -557,6 +562,8 @@ func (cluster *Cluster) GetTopology() string {
 	cluster.conf.Topology = topoUnknown
 	if cluster.conf.MultiMaster {
 		cluster.conf.Topology = topoMultiMaster
+	} else if cluster.conf.MultiMasterRing {
+		cluster.conf.Topology = topoMultiMasterRing
 	} else if cluster.conf.MxsBinlogOn {
 		cluster.conf.Topology = topoBinlogServer
 	} else {

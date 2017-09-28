@@ -294,7 +294,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// Get latest GTID pos
 		oldMaster.Refresh()
 
+		// ********
 		// Phase 4: Demote old master to slave
+		// ********
 		cluster.LogPrintf("INFO", "Switching old master as a slave")
 		err = dbhelper.UnlockTables(oldMaster.Conn)
 		if err != nil {
@@ -312,11 +314,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf("ERROR", "Could not get MySQL GTID status: ", err)
 		}
 		var changeMasterErr error
-		/*	ms, err := cluster.master.getNamedSlaveStatus(cluster.master.ReplicationSourceName)
-			if err != nil {
-				cluster.LogPrintf("ERROR", "Could not get slave status: ", err)
-			}*/
-		// Do positional switch if we are an old MySQL version
+
+		// Do positional switch if we are not MariaDB and no using GTID
 		if oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 			cluster.LogPrintf("INFO", "Doing positional switch of old Master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -420,7 +419,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.slaves = append(cluster.slaves, oldMaster)
 		}
 	}
+
+	// ********
 	// Phase 5: Switch slaves to new master
+	// ********
+
 	cluster.LogPrintf("INFO", "Switching other slaves to the new master")
 	for _, sl := range cluster.slaves {
 		// Don't switch if slave was the old master or is in a multiple master setup or with relay server.
@@ -429,7 +432,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		// maxscale is in the list of slave
 
-		if fail == false && cluster.conf.MxsBinlogOn == false {
+		if fail == false && cluster.conf.MxsBinlogOn == false && cluster.conf.SwitchSlaveWaitCatch {
 			cluster.LogPrintf("INFO", "Waiting for slave %s to sync", sl.URL)
 			if sl.DBVersion.Flavor == "MariaDB" {
 				dbhelper.MasterWaitGTID(sl.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
@@ -445,8 +448,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not stop slave on server %s, %s", sl.URL, err)
 		}
-		//possible dead code
-		if fail == false && cluster.conf.MxsBinlogOn == false {
+
+		if fail == false && cluster.conf.MxsBinlogOn == false && cluster.conf.SwitchSlaveWaitCatch {
 			if cluster.conf.FailForceGtid && sl.DBVersion.IsMariaDB() {
 				_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.GTIDBinlogPos.Sprint() + "'")
 				if err != nil {
@@ -456,6 +459,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.master.Conn)
 		var changeMasterErr error
+
+		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 			// do nothing stay connected to dead master procedd with relay fix later
 			/*	cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
@@ -481,7 +486,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:      "",
 			})
 		} else if cluster.conf.MxsBinlogOn == false {
-			//MariaDB any case
+			//MariaDB all cases use GTID
 
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
@@ -492,7 +497,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
 			})
-		} else {
+		} else { // We deduct we are in maxscale binlog server , but can heve support for GTID or not
 
 			cluster.LogPrintf("INFO", "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
