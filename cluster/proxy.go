@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/cluster/gosshtool"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/maxscale"
@@ -88,33 +87,6 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort = cluster.conf.MxsReadPort
 			prx.WritePort = cluster.conf.MxsWritePort
 			prx.ReadWritePort = cluster.conf.MxsReadWritePort
-
-			if cluster.conf.TunnelHost != "" {
-				prx.TunnelPort = cluster.sshTunnelGetLocalPort()
-				prx.TunnelWritePort = cluster.sshTunnelGetLocalPort()
-				prx.Tunnel = true
-				buser, bpass := misc.SplitPair(cluster.conf.TunnelCredential)
-				//rportnum=strvong
-				tunnelProxyAdmin := new(gosshtool.LocalForwardServer)
-
-				tunnelProxyAdmin.RemoteAddress = prx.Host + ":" + prx.Port
-				tunnelProxyAdmin.LocalBindAddress = ":" + strconv.Itoa(prx.TunnelPort)
-				tunnelProxyAdmin.SshServerAddress = cluster.conf.TunnelHost
-				tunnelProxyAdmin.SshUserPassword = bpass
-				tunnelProxyAdmin.SshUserName = buser
-				go tunnelProxyAdmin.Start(nil)
-				//defer tunnelProxyAdmin.Stop()
-
-				tunnelProxyWrite := new(gosshtool.LocalForwardServer)
-				tunnelProxyWrite.RemoteAddress = prx.Host + ":" + strconv.Itoa(prx.WritePort)
-				tunnelProxyWrite.LocalBindAddress = ":" + strconv.Itoa(prx.TunnelWritePort)
-				tunnelProxyWrite.SshServerAddress = cluster.conf.TunnelHost
-				tunnelProxyWrite.SshUserPassword = bpass
-				tunnelProxyWrite.SshUserName = buser
-				go tunnelProxyWrite.Start(nil)
-				//	defer tunnelProxyWrite.Stop()
-
-			}
 
 			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
