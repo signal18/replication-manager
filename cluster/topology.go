@@ -28,6 +28,15 @@ type topologyError struct {
 	Msg  string
 }
 
+const (
+	topoMasterSlave     string = "master-slave"
+	topoUnknown         string = "unknown"
+	topoBinlogServer    string = "binlog-server"
+	topoMultiTierSlave  string = "multi-tier-slave"
+	topoMultiMaster     string = "multi-master"
+	topoMultiMasterRing string = "multi-master-ring"
+)
+
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
@@ -545,17 +554,17 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 }
 
 func (cluster *Cluster) GetTopology() string {
-	cluster.conf.Topology = "unknown"
+	cluster.conf.Topology = topoUnknown
 	if cluster.conf.MultiMaster {
-		cluster.conf.Topology = "multi-master"
+		cluster.conf.Topology = topoMultiMaster
 	} else if cluster.conf.MxsBinlogOn {
-		cluster.conf.Topology = "binlog-server"
+		cluster.conf.Topology = topoBinlogServer
 	} else {
 		relay := cluster.GetRelayServer()
 		if relay != nil {
-			cluster.conf.Topology = "multi-tier-slave"
+			cluster.conf.Topology = topoMultiTierSlave
 		} else if cluster.master != nil {
-			cluster.conf.Topology = "master-slave"
+			cluster.conf.Topology = topoMasterSlave
 		}
 	}
 	return cluster.conf.Topology

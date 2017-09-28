@@ -49,8 +49,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 					server.ClusterGroup.LogPrintf("ERROR", "State transfer rejoin failed")
 				}
 			}
-			//crash.delete(&server.ClusterGroup.crashes)
-			//server.ClusterGroup.Save()
+			if server.ClusterGroup.conf.AutorejoinBackupBinlog == true {
+				server.saveBinlog(crash)
+			}
 			server.ClusterGroup.rejoinCond.Send <- true
 		}
 	} else {
@@ -198,11 +199,10 @@ func (server *ServerMonitor) rejoinMasterFashBack(crash *Crash) error {
 		return err2
 	}
 	dbhelper.StartSlave(server.Conn)
-	if crash.FailoverSemiSyncSlaveStatus == true {
-		server.ClusterGroup.LogPrintf("INFO", "New Master %s was in sync before failover safe flashback, no lost committed events", crash.URL)
-	} else {
-		server.saveBinlog(crash)
-	}
+	//if crash.FailoverSemiSyncSlaveStatus == true {
+	//	server.ClusterGroup.LogPrintf("INFO", "New Master %s was in sync before failover safe flashback, no lost committed events", crash.URL)
+	//} else {
+	//	}
 	return nil
 }
 
