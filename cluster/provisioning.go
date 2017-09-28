@@ -733,7 +733,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 				cluster.sme.RemoveFailoverState()
 				return errors.New(fmt.Sprintln("Can't start slave: ", err))
 			}
-			dbhelper.SetReadOnly(server.Conn, true)
+			cluster.vmaster = cluster.servers[0]
+			//dbhelper.SetReadOnly(server.Conn, true)
 		}
 
 	}

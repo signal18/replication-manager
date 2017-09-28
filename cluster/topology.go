@@ -35,6 +35,7 @@ const (
 	topoMultiTierSlave  string = "multi-tier-slave"
 	topoMultiMaster     string = "multi-master"
 	topoMultiMasterRing string = "multi-master-ring"
+	topoMultiMasteWsrep string = "multi-master-wsrep"
 )
 
 func (cluster *Cluster) newServerList() error {
@@ -304,7 +305,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
 					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.URL)
 				}*/
-				if sl.HasCycling() && cluster.conf.MultiTierSlave == false {
+				if sl.HasCycling() {
 					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
 						cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
 						cluster.conf.MultiMaster = true
@@ -312,7 +313,16 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
 						cluster.conf.MultiMasterRing = true
 					}
+					//broken replication ring
+				} else if cluster.conf.MultiMasterRing == true {
+					//setting a virtual master if node
+					if cluster.GetMaster() == nil {
+						cluster.vmaster = sl
+					}
+					cluster.sme.AddState("ERR00048", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
+
 				}
+
 			}
 			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {

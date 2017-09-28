@@ -233,6 +233,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						server.State = stateFailed
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
+						server.Replications = nil
 					}
 				} else {
 					server.State = stateSuspect

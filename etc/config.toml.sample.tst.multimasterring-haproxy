@@ -13,7 +13,7 @@ db-servers-credential = "root:test"
 db-servers-connect-timeout = 1
 
 replication-credential = "root:test"
-#replication-multi-master-ring = true
+replication-multi-master-ring = true
 
 haproxy = true
 haproxy-write-port=3300

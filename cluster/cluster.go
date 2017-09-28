@@ -37,6 +37,7 @@ type Cluster struct {
 	proxies              proxyList
 	crashes              crashList
 	master               *ServerMonitor
+	vmaster              *ServerMonitor
 	mxs                  *maxscale.MaxScale
 	dbUser               string
 	dbPass               string
@@ -529,7 +530,11 @@ func (cluster *Cluster) GetProxies() proxyList {
 	return cluster.proxies
 }
 func (cluster *Cluster) GetMaster() *ServerMonitor {
-	return cluster.master
+	if cluster.master == nil {
+		return cluster.vmaster
+	} else {
+		return cluster.master
+	}
 }
 
 func (cluster *Cluster) GetConf() config.Config {

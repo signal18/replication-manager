@@ -53,6 +53,7 @@ var clusterError = map[string]string{
 	"ERR00045": "Found forbidden relay topology, trying to fix",
 	"ERR00046": "Found forbidden relay topology, can't fix high replication delay",
 	"ERR00047": "Skip slave in election %s - Maintenance mode",
+	"ERR00048": "Broken muti master ring",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is working",

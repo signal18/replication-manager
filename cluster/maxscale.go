@@ -79,7 +79,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		return
 	}
 	defer m.Close()
-	if cluster.master.MxsServerName == "" {
+	if cluster.GetMaster().MxsServerName == "" {
 		return
 	}
 
@@ -116,22 +116,22 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		cluster.sme.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO"})
 	}
 
-	err = m.SetServer(cluster.master.MxsServerName, "master")
+	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")
 	if err != nil {
 		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
 	}
-	err = m.SetServer(cluster.master.MxsServerName, "running")
+	err = m.SetServer(cluster.GetMaster().MxsServerName, "running")
 	if err != nil {
 		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
 	}
-	err = m.ClearServer(cluster.master.MxsServerName, "slave")
+	err = m.ClearServer(cluster.GetMaster().MxsServerName, "slave")
 	if err != nil {
 		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
 	}
 
 	if cluster.conf.MxsBinlogOn == false {
 		for _, s := range cluster.servers {
-			if s != cluster.master {
+			if s != cluster.GetMaster() {
 
 				err = m.ClearServer(s.MxsServerName, "master")
 				if err != nil {
