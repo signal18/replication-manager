@@ -60,6 +60,7 @@ func (cluster *Cluster) Unprovision() {
 	cluster.servers = nil
 	cluster.slaves = nil
 	cluster.master = nil
+	cluster.vmaster = nil
 	cluster.sme.UnDiscovered()
 	cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
@@ -352,7 +353,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting Master Found")
 			exitloop++
-			if cluster.master != nil {
+			if cluster.GetMaster() != nil {
 				exitloop = 100
 			}
 		default:
@@ -419,6 +420,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.conf.Test {
+		cluster.initProxies()
 		err = cluster.WaitProxyEqualMaster()
 		if err != nil {
 			return err
@@ -427,8 +429,8 @@ func (cluster *Cluster) Bootstrap() error {
 		if err != nil {
 			return err
 		}
-		cluster.initProxies()
-		if cluster.master == nil {
+
+		if cluster.GetMaster() == nil {
 			return errors.New("Abording test, no master found")
 		}
 		err = cluster.InitBenchTable()
@@ -498,6 +500,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		}
 	}
 	cluster.master = nil
+	cluster.vmaster = nil
 	cluster.slaves = nil
 	cluster.sme.RemoveFailoverState()
 	return nil
@@ -542,10 +545,10 @@ func (cluster *Cluster) BootstrapReplication() error {
 	if masterKey == -1 {
 		return errors.New("Preferred master could not be found in existing servers")
 	}
-	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
-	if err != nil {
-		cluster.LogPrintf("INFO", "RESET MASTER failed on master")
-	}
+	//	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
+	//	if err != nil {
+	//		cluster.LogPrintf("INFO", "RESET MASTER failed on master"
+	//	}
 	// Assume master-slave if nothing else is declared && mariadb >10
 	if cluster.conf.MultiMasterRing == false && cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
 
@@ -721,8 +724,12 @@ func (cluster *Cluster) BootstrapReplication() error {
 				continue
 			}
 			i := (len(cluster.servers) + key - 1) % len(cluster.servers)
-
-			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.servers[i].ReplicationSourceName, cluster.servers[i].Host, cluster.servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[i].CurrentGtid.Sprint() + "\"")
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Replication bootstrap failed for setting gtid %s", cluster.servers[i].CurrentGtid.Sprint())
+				return err
+			}
+			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=slave_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.servers[i].ReplicationSourceName, cluster.servers[i].Host, cluster.servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 			_, err := server.Conn.Exec(stmt)
 			if err != nil {
 				cluster.sme.RemoveFailoverState()

@@ -74,7 +74,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	if err != nil {
 		return err
 	}
-	time.Sleep(time.Millisecond * 2000)
+	time.Sleep(time.Millisecond * 4000)
 	if err == nil {
 		_, err := server.Conn.Exec("grant all on *.* to root@'%' identified by ''")
 		if err != nil {

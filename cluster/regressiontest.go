@@ -274,7 +274,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 
 func (cluster *Cluster) InitBenchTable() error {
 
-	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 10)
+	result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
 		return err
@@ -380,6 +380,7 @@ func (cluster *Cluster) StartSlaves() error {
 
 func (cluster *Cluster) ForgetTopology() error {
 	cluster.master = nil
+	cluster.vmaster = nil
 	cluster.slaves = nil
 
 	return nil
