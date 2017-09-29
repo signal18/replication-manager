@@ -417,6 +417,11 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveBinlogSlowqueries = true
 		}
+		if sv["WSREP_ON"] != "ON" {
+			server.HaveWsrep = false
+		} else {
+			server.HaveWsrep = true
+		}
 
 		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 		server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])

@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -50,20 +49,16 @@ func (cluster *Cluster) newServerList() error {
 	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 
-	time.Sleep(10 * time.Second)
 	for k, url := range cluster.hostList {
-
 		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
-			//return err
 		}
 		if cluster.conf.Verbose {
 			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
 		}
-		//		go cluster.servers[k].Run()
 	}
-	//	time.Sleep(10 * time.Second)
+
 	return nil
 }
 
