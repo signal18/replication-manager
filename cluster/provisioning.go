@@ -623,10 +623,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 			}
 
 		}
-
 	}
-
-	// Slave realy
+	// Slave Relay
 	if cluster.conf.MultiTierSlave == true {
 		masterKey = 0
 		relaykey := 1
@@ -673,6 +671,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 		}
 		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
+	// Multi Master
 	if cluster.conf.MultiMaster == true {
 		for key, server := range cluster.servers {
 			if server.State == stateFailed {
@@ -710,9 +709,8 @@ func (cluster *Cluster) BootstrapReplication() error {
 			}
 			dbhelper.SetReadOnly(server.Conn, true)
 		}
-
 	}
-	// RING
+	// Ring
 	if cluster.conf.MultiMasterRing == true {
 		for key, server := range cluster.servers {
 			if server.State == stateFailed {
