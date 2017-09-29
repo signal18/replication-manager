@@ -33,6 +33,7 @@
       <script src="/static/angular-route.js"></script>
       <script src="dashboard.js"></script>
       <link rel="stylesheet" href="/static/angular-material.min.css">
+      <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
       <style>
          td {
          white-space: nowrap;
@@ -122,7 +123,7 @@
                                     <th>Last Failover Time</th>
                                  </tr>
                                  <tr>
-                                    <td><span ng-if="settings.runstatus=='A'" class="label label-primary">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span></td>
+                                    <td><span ng-if="settings.runstatus=='A'" class="label label-success">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span></td>
                                     <td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
                                     <td>{{settings.lastfailover}}</td>
                                  </tr>
@@ -154,9 +155,9 @@
                               <td>{{server.Port}}</td>
                               <td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
                               <td ng-switch="server.State">
-                                <span ng-switch-when="Master" class="label label-primary">Master</span>  
-                                <span ng-switch-when="Failed" class="label label-danger">Failed</span>  
-                                <span ng-switch-when="Suspect" class="label label-warning">Suspect</span>  
+                                <span ng-switch-when="Master" class="label label-primary">Master</span>
+                                <span ng-switch-when="Failed" class="label label-danger">Failed</span>
+                                <span ng-switch-when="Suspect" class="label label-warning">Suspect</span>
                                 <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error</span>
                                 <span ng-switch-when="StandAlone" class="label label-info">Standalone</span>
                                 <span ng-switch-default class="label label-default">{{server.State}}</span>
@@ -170,10 +171,12 @@
                               <td>{{server.Replications[0].SecondsBehindMaster.Int64}}</td>
                               <td>{{server.ReadOnly}}</td>
                               <td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
-                              <td>{{server.EventScheduler}}</td>
-                              <td>{{server.SemiSyncMasterStatus}}</td>
-                              <td>{{server.SemiSyncSlaveStatus}}</td>
-                              <td>
+                              <td ng-if="server.EventScheduler==true"><i class="fa fa-2x fa-check-circle text-success"></i></td>
+                              <td ng-if="server.EventScheduler==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>
+                              <td ng-if="server.SemiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i></td>
+                              <td ng-if="server.SemiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>
+                              <td ng-if="server.SemiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i></td>
+                              <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>                              <td>
                                  <button width=15 height=15	type="button"  ng-click="maintenance(server.Id)">
                                  <img width=15 height=15 src="/static/maintenance.png">
                                  </button>
