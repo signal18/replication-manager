@@ -734,7 +734,6 @@ func (cluster *Cluster) BootstrapReplication() error {
 			cluster.vmaster = cluster.servers[0]
 			//dbhelper.SetReadOnly(server.Conn, true)
 		}
-
 	}
 	cluster.sme.RemoveFailoverState()
 	// speed up topology discovery

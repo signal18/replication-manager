@@ -26,6 +26,9 @@ import (
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	// Check if master exists in topology before rejoining.
+	if server.ClusterGroup.sme.IsInFailover() {
+		return nil
+	}
 	server.ClusterGroup.LogPrintf("INFO", "Trying to rejoin restarted server %s", server.URL)
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
