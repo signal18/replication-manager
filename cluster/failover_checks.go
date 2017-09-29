@@ -24,7 +24,7 @@ import (
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("INFO", "In Failover, skip checking failed master")
+		cluster.sme.AddState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
 		return
 	}
 	if cluster.master != nil {

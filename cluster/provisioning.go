@@ -19,21 +19,25 @@ import (
 
 func (cluster *Cluster) InitCluster() error {
 	var err error
+	cluster.sme.SetFailoverState()
 	if cluster.conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
 
 	} else {
 		err = cluster.LocalhostProvisionDatabases()
 	}
+	cluster.sme.RemoveFailoverState()
 	return err
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
+	cluster.sme.SetFailoverState()
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCProvisionDatabaseService(server)
 	} else {
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
+	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
