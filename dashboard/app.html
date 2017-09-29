@@ -203,7 +203,7 @@
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button>
 
-                                 <label for="test" action="/runonetest" >
+                                 <label ng-if="settings.test=='true'" for="test" action="/runonetest" >
                                     <p class="sectionheader">Tests: </p>
                                  </label>
                                  <select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
