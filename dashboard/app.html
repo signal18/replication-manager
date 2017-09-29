@@ -7,16 +7,14 @@
       <meta name="description" content="">
       <meta name="viewport" content="width=device-width">
       <link href="favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
+      <script src="/static/vendor/jquery-2.1.1.min.js"></script>
+      <script src="/static/vendor/jquery-ui.min.js"></script>
+      <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
       <link rel="stylesheet" href="/static/css/bootstrap.min.css">
       <link rel="stylesheet" href="/static/css/graph.css">
       <link rel="stylesheet" href="/static/css/detail.css">
       <link rel="stylesheet" href="/static/css/legend.css">
       <link rel="stylesheet" href="/static/css/main.css">
-      <script src="/static/vendor/jquery-2.1.1.min.js"></script>
-      <!-- <script src="/static/vendor/jquery-1.8.3.min.js"></script>
-         <script src="/static/vendor/bootstrap.min.js"></script> -->
-      <script src="/static/vendor/jquery-ui.min.js"></script>
-      <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
       <script src="/static/vendor/underscore-min.js"></script>
       <script src="/static/vendor/mustache.js"></script>
       <script src="/static/vendor/jquery.ba-bbq.min.js"></script>
@@ -109,8 +107,8 @@
                                     <th>Topology</th>
                                  </tr>
                                  <tr>
-                                    <td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-warning">{{settings.confgroup}}</span></td>
-                                    <td><span  class="label label-warning">{{settings.topology}}</span></td>
+                                    <td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-info">{{settings.confgroup}}</span></td>
+                                    <td><span  class="label label-info">{{settings.topology}}</span></td>
                                  </tr>
                               </table>
                            </div>
@@ -155,7 +153,14 @@
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>
                               <td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
-                              <td>{{server.State}}</td>
+                              <td ng-switch="server.State">
+                                <span ng-switch-when="Master" class="label label-primary">Master</span>  
+                                <span ng-switch-when="Failed" class="label label-danger">Failed</span>  
+                                <span ng-switch-when="Suspect" class="label label-warning">Suspect</span>  
+                                <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error</span>
+                                <span ng-switch-when="StandAlone" class="label label-info">Standalone</span>
+                                <span ng-switch-default class="label label-default">{{server.State}}</span>
+                              </td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB'">{{server.Replications[0].UsingGtid.String}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB'">{{gtidstring(server.CurrentGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB'">{{gtidstring(server.SlaveGtid)}}</td>
