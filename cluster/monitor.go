@@ -286,7 +286,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
 			}
-			server.SetReadOnly()
+			if server.HaveWsrep == false {
+				server.SetReadOnly()
+			}
 			server.State = stateUnconn
 			server.FailCount = 0
 			if server.ClusterGroup.conf.Autorejoin {
@@ -299,7 +301,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			server.SetReadOnly()
+			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false {
+				server.SetReadOnly()
+			}
 			server.State = stateUnconn
 		}
 

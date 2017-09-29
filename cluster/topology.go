@@ -29,13 +29,13 @@ type topologyError struct {
 }
 
 const (
-	topoMasterSlave     string = "master-slave"
-	topoUnknown         string = "unknown"
-	topoBinlogServer    string = "binlog-server"
-	topoMultiTierSlave  string = "multi-tier-slave"
-	topoMultiMaster     string = "multi-master"
-	topoMultiMasterRing string = "multi-master-ring"
-	topoMultiMasteWsrep string = "multi-master-wsrep"
+	topoMasterSlave      string = "master-slave"
+	topoUnknown          string = "unknown"
+	topoBinlogServer     string = "binlog-server"
+	topoMultiTierSlave   string = "multi-tier-slave"
+	topoMultiMaster      string = "multi-master"
+	topoMultiMasterRing  string = "multi-master-ring"
+	topoMultiMasterWsrep string = "multi-master-wsrep"
 )
 
 func (cluster *Cluster) newServerList() error {
@@ -313,12 +313,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
 						cluster.conf.MultiMasterRing = true
 					}
-					//broken replication ring
-				} else if cluster.conf.MultiMasterRing == true {
-					//setting a virtual master if node
-					if cluster.GetMaster() == nil {
+					if cluster.conf.MultiMasterRing == true && cluster.GetMaster() == nil {
 						cluster.vmaster = sl
 					}
+
+					//broken replication ring
+				} else if cluster.conf.MultiMasterRing == true {
+					//setting a virtual master if none
+
 					cluster.sme.AddState("ERR00048", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
 
 				}
@@ -415,7 +417,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Final check if master has been found
 	if cluster.master == nil {
 		// could not detect master
-		cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+		if cluster.GetMaster() == nil {
+			cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+		}
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
