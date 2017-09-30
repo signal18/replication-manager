@@ -325,7 +325,9 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 
 func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	// Test if slave not connected to current master
-
+	if server.ClusterGroup.GetTopology() == topoMultiMasterRing || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
+		return nil
+	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 
 	if server.ClusterGroup.master != nil {

@@ -316,8 +316,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 				} else if cluster.conf.MultiMasterRing == true {
 					//setting a virtual master if none
 
-					cluster.sme.AddState("ERR00048", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
-
+					cluster.sme.AddState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
+					cluster.master = cluster.GetFailedServer()
 				}
 
 			}
@@ -648,6 +648,15 @@ func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
+	for _, server := range cluster.servers {
+		if server.URL == url {
+			return server
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.servers {
@@ -692,6 +701,15 @@ func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 		}
 	}
 	return failed
+}
+
+func (cluster *Cluster) GetFailedServer() *ServerMonitor {
+	for _, server := range cluster.servers {
+		if server.State == stateFailed {
+			return server
+		}
+	}
+	return nil
 }
 
 // LostMajority should be call in case of splitbrain to set maintenance mode

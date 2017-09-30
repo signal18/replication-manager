@@ -96,6 +96,7 @@ type ServerMonitor struct {
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
+	LastSeenReplications        []dbhelper.SlaveStatus
 	ReplicationSourceName       string
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
@@ -234,6 +235,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						server.State = stateFailed
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
+						if server.Replications != nil {
+							server.LastSeenReplications = server.Replications
+						}
 						server.Replications = nil
 					}
 				} else {
@@ -516,6 +520,17 @@ func (server *ServerMonitor) Refresh() error {
 func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
 	if server.Replications != nil {
 		for _, ss := range server.Replications {
+			if ss.ConnectionName.String == name {
+				return &ss, nil
+			}
+		}
+	}
+	return nil, errors.New("Empty replications channels")
+}
+
+func (server *ServerMonitor) getNamedLastSeenSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
+	if server.LastSeenReplications != nil {
+		for _, ss := range server.LastSeenReplications {
 			if ss.ConnectionName.String == name {
 				return &ss, nil
 			}
