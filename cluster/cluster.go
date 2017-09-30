@@ -186,7 +186,7 @@ func (cluster *Cluster) Run() {
 			cluster.TopologyDiscover()
 
 			if cluster.runOnceAfterTopology {
-				if cluster.master != nil {
+				if cluster.GetMaster() != nil {
 					cluster.initProxies()
 					cluster.runOnceAfterTopology = false
 				}
@@ -566,7 +566,7 @@ func (cluster *Cluster) GetRunStatus() string {
 }
 
 func (cluster *Cluster) IsMasterFailed() bool {
-	if cluster.master.State == stateFailed {
+	if cluster.GetMaster().State == stateFailed {
 		return true
 	} else {
 		return false
@@ -732,7 +732,7 @@ func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
 
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
-		err := dbhelper.SetReadOnly(cluster.master.Conn, true)
+		err := dbhelper.SetReadOnly(cluster.GetMaster().Conn, true)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not set  master as read-only, %s", err)
 		}
