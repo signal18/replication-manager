@@ -90,6 +90,7 @@ type ServerMonitor struct {
 	IsMaxscale                  bool
 	IsRelay                     bool
 	IsSlave                     bool
+	IsVirtualMaster             bool
 	IsMaintenance               bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
@@ -421,6 +422,13 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveWsrep = false
 		} else {
 			server.HaveWsrep = true
+		}
+		if server.ClusterGroup.vmaster != nil {
+			if server.ClusterGroup.vmaster.ServerID == server.ServerID {
+				server.IsVirtualMaster = true
+			} else {
+				server.IsVirtualMaster = false
+			}
 		}
 
 		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)

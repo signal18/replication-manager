@@ -28,37 +28,51 @@ func (cluster *Cluster) CheckFailed() {
 		return
 	}
 	if cluster.master != nil {
-		if cluster.isFoundCandidateMaster() == true {
-			if cluster.isBeetwenFailoverTimeTooShort() == false {
-				if cluster.conf.Interactive == false && cluster.isMaxMasterFailedCountReach() == true {
-					if cluster.master.State == stateFailed {
-						if cluster.isExternalOk() == false {
-							if cluster.isActiveArbitration() == true {
-								if cluster.isMaxClusterFailoverCountReach() == false {
-									if cluster.isOneSlaveHeartbeatIncreasing() == false {
-										if cluster.isMaxscaleSupectRunning() == false {
-											if cluster.isFirstSlave() == false {
-												cluster.MasterFailover(true)
-												cluster.failoverCond.Send <- true
+		if cluster.isFoundCandidateMaster() {
+			if cluster.isBeetwenFailoverTimeValid() {
+				if cluster.isMaxMasterFailedCountReach() {
+					if cluster.isActiveArbitration() {
+						if cluster.isMaxClusterFailoverCountNotReach() {
+							if cluster.isAutomaticFailover() {
+								if cluster.isMasterFailed() {
+									if cluster.isNotFirstSlave() {
+										// False Positive
+										if cluster.isExternalOk() == false {
+											if cluster.isOneSlaveHeartbeatIncreasing() == false {
+												if cluster.isMaxscaleSupectRunning() == false {
+													cluster.MasterFailover(true)
+													cluster.failoverCond.Send <- true
+												}
 											}
 										}
 									}
 								}
 							}
 						}
-					} else {
-						cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 					}
 				}
 			}
-
 		}
-
 	} else {
 		if cluster.conf.LogLevel > 1 {
 			cluster.LogPrintf("WARN", "Undiscovered master, skipping failover check")
 		}
 	}
+}
+
+func (cluster *Cluster) isAutomaticFailover() bool {
+	if cluster.conf.Interactive == false {
+		return true
+	}
+	cluster.sme.AddState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
+	return false
+}
+
+func (cluster *Cluster) isMasterFailed() bool {
+	if cluster.master.State == stateFailed {
+		return true
+	}
+	return false
 }
 
 // isMaxMasterFailedCountReach test tentative to connect
@@ -68,35 +82,37 @@ func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
 		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
+	} else {
+		cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
 	}
 	return false
 }
 
-func (cluster *Cluster) isMaxClusterFailoverCountReach() bool {
+func (cluster *Cluster) isMaxClusterFailoverCountNotReach() bool {
 	// illimited failed count
 	//cluster.LogPrintf("CHECK: Failover Counter Reach")
 	if cluster.conf.FailLimit == 0 {
-		return false
+		return true
 	}
 	if cluster.failoverCtr == cluster.conf.FailLimit {
 		cluster.sme.AddState("ERR00027", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
-func (cluster *Cluster) isBeetwenFailoverTimeTooShort() bool {
+func (cluster *Cluster) isBeetwenFailoverTimeValid() bool {
 	// illimited failed count
 	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
 	if cluster.conf.FailTime == 0 {
-		return false
+		return true
 	}
 	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
 		cluster.sme.AddState("ERR00029", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
@@ -266,18 +282,18 @@ func (cluster *Cluster) isExternalOk() bool {
 	return false
 }
 
-func (cluster *Cluster) isFirstSlave() bool {
+func (cluster *Cluster) isNotFirstSlave() bool {
 	// let the failover doable if interactive or failover on first slave
 	if cluster.conf.Interactive == true || cluster.conf.FailRestartUnsafe == true {
-		return false
+		return true
 	}
 	// do not failover if master info is unknowned:
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.master == nil {
 		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
-		return true
+		return false
 	}
 
-	return false
+	return true
 }
