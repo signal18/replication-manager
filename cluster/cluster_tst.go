@@ -27,6 +27,14 @@ var savedConf config.Config
 var savedFailoverCtr int
 var savedFailoverTs int64
 
+type Test struct {
+	Name       string        `json:"name"`
+	Result     string        `json:"result"`
+	ConfigFile string        `json:"config-file"`
+	ConfigInit config.Config `json:"config-init"`
+	ConfigTest config.Config `json:"config-test"`
+}
+
 func (cluster *Cluster) PrepareBench() error {
 	if cluster.benchmarkType == "sysbench" {
 		var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
@@ -134,7 +142,7 @@ func (cluster *Cluster) RunSysbench() error {
 func (cluster *Cluster) CheckSlavesRunning() bool {
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.slaves {
-		ss, errss := s.getNamedSlaveStatus(s.ReplicationSourceName)
+		ss, errss := s.GetSlaveStatus(s.ReplicationSourceName)
 		if errss != nil {
 			return false
 		}
@@ -382,6 +390,5 @@ func (cluster *Cluster) ForgetTopology() error {
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.slaves = nil
-
 	return nil
 }

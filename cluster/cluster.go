@@ -21,7 +21,6 @@ import (
 
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/misc"
@@ -77,14 +76,6 @@ type Cluster struct {
 	openSVCServiceStatus int
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
-}
-
-type Test struct {
-	Name       string        `json:"name"`
-	Result     string        `json:"result"`
-	ConfigFile string        `json:"config-file"`
-	ConfigInit config.Config `json:"config-init"`
-	ConfigTest config.Config `json:"config-test"`
 }
 
 const (
@@ -282,10 +273,6 @@ func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
 	return db, nil
 }
 
-func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
-	cluster.cfgGroupDisplay = cfgGroup
-}
-
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.conf = conf
 	cluster.sme.SetFailoverState()
@@ -393,387 +380,6 @@ func (cluster *Cluster) loadDBCertificate() error {
 	return nil
 }
 
-// Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
-// must lead to Fatal errors if initialized with wrong values.
-
-func (cluster *Cluster) repmgrFlagCheck() error {
-	if cluster.conf.LogFile != "" {
-		var err error
-		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Failed opening logfile, disabling for the rest of the session")
-			cluster.conf.LogFile = ""
-		}
-	}
-	// if slaves option has been supplied, split into a slice.
-	if cluster.conf.Hosts != "" {
-		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
-	} else {
-		cluster.LogPrintf("ERROR", "No hosts list specified")
-		return errors.New("No hosts list specified")
-	}
-
-	// validate users
-	if cluster.conf.User == "" {
-		cluster.LogPrintf("ERROR", "No master user/pair specified")
-		return errors.New("No master user/pair specified")
-	}
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
-
-	if cluster.conf.RplUser == "" {
-		cluster.LogPrintf("ERROR", "No replication user/pair specified")
-		return errors.New("No replication user/pair specified")
-	}
-	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
-
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.dbPass
-		p.Decrypt()
-		cluster.dbPass = p.PlainText
-		p.CipherText = cluster.rplPass
-		p.Decrypt()
-		cluster.rplPass = p.PlainText
-	}
-
-	if cluster.conf.IgnoreSrv != "" {
-		cluster.ignoreList = strings.Split(cluster.conf.IgnoreSrv, ",")
-	}
-
-	// Check if preferred master is included in Host List
-	pfa := strings.Split(cluster.conf.PrefMaster, ",")
-	if len(pfa) > 1 {
-		cluster.LogPrintf("ERROR", "Prefmaster option takes exactly one argument")
-		return errors.New("Prefmaster option takes exactly one argument")
-	}
-	ret := func() bool {
-		for _, v := range cluster.hostList {
-			if v == cluster.conf.PrefMaster {
-				return true
-			}
-		}
-		return false
-	}
-	if ret() == false && cluster.conf.PrefMaster != "" {
-		cluster.LogPrintf("ERROR", "Preferred master is not included in the hosts option")
-		return errors.New("Prefmaster option takes exactly one argument")
-	}
-	return nil
-}
-
-func (cluster *Cluster) IsInHostList(host string) bool {
-	for _, v := range cluster.hostList {
-		if v == host {
-			return true
-		}
-	}
-	return false
-}
-
-func (cluster *Cluster) ToggleInteractive() {
-	if cluster.conf.Interactive == true {
-		cluster.conf.Interactive = false
-		cluster.LogPrintf("INFO", "Failover monitor switched to automatic mode")
-	} else {
-		cluster.conf.Interactive = true
-		cluster.LogPrintf("INFO", "Failover monitor switched to manual mode")
-	}
-}
-
-func (cluster *Cluster) SetInteractive(check bool) {
-	cluster.conf.Interactive = check
-}
-
-func (cluster *Cluster) SetTraffic(traffic bool) {
-	cluster.SetBenchMethod("table")
-	cluster.PrepareBench()
-	cluster.conf.TestInjectTraffic = traffic
-}
-
-func (cluster *Cluster) GetTraffic() bool {
-	return cluster.conf.TestInjectTraffic
-}
-
-func (cluster *Cluster) SetBenchMethod(m string) {
-	cluster.benchmarkType = m
-}
-
-func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
-	cluster.conf.PrefMaster = PrefMaster
-}
-
-func (cluster *Cluster) ResetFailoverCtr() {
-	cluster.failoverCtr = 0
-	cluster.failoverTs = 0
-}
-
-func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
-	cluster.failoverCtr = failoverCtr
-}
-
-func (cluster *Cluster) SetFailoverTs(failoverTs int64) {
-	cluster.failoverTs = failoverTs
-}
-
-func (cluster *Cluster) SetCheckFalsePositiveHeartbeat(CheckFalsePositiveHeartbeat bool) {
-	cluster.conf.CheckFalsePositiveHeartbeat = CheckFalsePositiveHeartbeat
-}
-
-func (cluster *Cluster) GetServers() serverList {
-	return cluster.servers
-}
-
-func (cluster *Cluster) GetSlaves() serverList {
-	return cluster.slaves
-}
-func (cluster *Cluster) GetProxies() proxyList {
-	return cluster.proxies
-}
-func (cluster *Cluster) GetMaster() *ServerMonitor {
-	if cluster.master == nil {
-		return cluster.vmaster
-	} else {
-		return cluster.master
-	}
-}
-
-func (cluster *Cluster) GetConf() config.Config {
-	return cluster.conf
-}
-
-func (cluster *Cluster) GetWaitTrx() int64 {
-	return cluster.conf.SwitchWaitTrx
-}
-
-func (cluster *Cluster) GetStateMachine() *state.StateMachine {
-	return cluster.sme
-}
-
-func (cluster *Cluster) GetMasterFailCount() int {
-	return cluster.master.FailCount
-}
-
-func (cluster *Cluster) GetFailoverCtr() int {
-	return cluster.failoverCtr
-}
-
-func (cluster *Cluster) GetFailoverTs() int64 {
-	return cluster.failoverTs
-}
-
-func (cluster *Cluster) GetRunStatus() string {
-	return cluster.runStatus
-}
-
-func (cluster *Cluster) IsMasterFailed() bool {
-	if cluster.GetMaster().State == stateFailed {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (cluster *Cluster) SetFailRestartUnsafe(check bool) {
-	cluster.conf.FailRestartUnsafe = check
-}
-
-func (cluster *Cluster) SetSlavesReadOnly(check bool) {
-	for _, sl := range cluster.slaves {
-		dbhelper.SetReadOnly(sl.Conn, check)
-	}
-}
-func (cluster *Cluster) SetReadOnly(check bool) {
-	cluster.conf.ReadOnly = check
-}
-
-func (cluster *Cluster) SwitchReadOnly() {
-	cluster.conf.ReadOnly = !cluster.conf.ReadOnly
-}
-
-func (cluster *Cluster) SetRplChecks(check bool) {
-	cluster.conf.RplChecks = check
-}
-func (cluster *Cluster) SwitchRplChecks() {
-	cluster.conf.RplChecks = !cluster.conf.RplChecks
-}
-
-func (cluster *Cluster) SetRplMaxDelay(delay int64) {
-	cluster.conf.FailMaxDelay = delay
-}
-
-func (cluster *Cluster) SetCleanAll(check bool) {
-	cluster.CleanAll = check
-}
-func (cluster *Cluster) SwitchCleanAll() {
-	cluster.CleanAll = !cluster.CleanAll
-}
-
-func (cluster *Cluster) GetRplChecks() bool {
-	return cluster.conf.RplChecks
-}
-
-func (cluster *Cluster) GetMaxFail() int {
-	return cluster.conf.MaxFail
-}
-
-func (cluster *Cluster) SetFailLimit(limit int) {
-	cluster.conf.FailLimit = limit
-}
-
-func (cluster *Cluster) SetFailTime(time int64) {
-	cluster.conf.FailTime = time
-}
-
-func (cluster *Cluster) SetMasterStateFailed() {
-	cluster.master.State = stateFailed
-}
-
-func (cluster *Cluster) SetFailSync(check bool) {
-	cluster.conf.FailSync = check
-}
-
-func (cluster *Cluster) SwitchFailSync() {
-	cluster.conf.FailSync = !cluster.conf.FailSync
-}
-
-func (cluster *Cluster) GetFailSync() bool {
-	return cluster.conf.FailSync
-}
-
-func (cluster *Cluster) SetSwitchSync(check bool) {
-	cluster.conf.SwitchSync = check
-}
-
-func (cluster *Cluster) SwitchSwitchoverSync() {
-	cluster.conf.SwitchSync = !cluster.conf.SwitchSync
-}
-
-func (cluster *Cluster) GetSwitchSync() bool {
-	return cluster.conf.SwitchSync
-}
-
-func (cluster *Cluster) SetLogLevel(level int) {
-	cluster.conf.LogLevel = level
-}
-func (cluster *Cluster) GetLogLevel() int {
-	return cluster.conf.LogLevel
-}
-func (cluster *Cluster) SwitchVerbosity() {
-	if cluster.GetLogLevel() > 0 {
-		cluster.SetLogLevel(0)
-	} else {
-		cluster.SetLogLevel(4)
-	}
-}
-
-func (cluster *Cluster) SetRejoin(check bool) {
-	cluster.conf.Autorejoin = check
-}
-func (cluster *Cluster) SwitchRejoin() {
-	cluster.conf.Autorejoin = !cluster.conf.Autorejoin
-}
-
-func (cluster *Cluster) GetRejoin() bool {
-	return cluster.conf.Autorejoin
-}
-
-func (cluster *Cluster) SetRejoinDump(check bool) {
-	cluster.conf.AutorejoinMysqldump = check
-}
-func (cluster *Cluster) SwitchRejoinDump() {
-	cluster.conf.AutorejoinMysqldump = !cluster.conf.AutorejoinMysqldump
-}
-func (cluster *Cluster) GetRejoinDump() bool {
-	return cluster.conf.AutorejoinMysqldump
-}
-
-func (cluster *Cluster) SetRejoinBackupBinlog(check bool) {
-	cluster.conf.AutorejoinBackupBinlog = check
-}
-func (cluster *Cluster) SwitchRejoinBackupBinlog() {
-	cluster.conf.AutorejoinBackupBinlog = !cluster.conf.AutorejoinBackupBinlog
-}
-func (cluster *Cluster) GetRejoinBackupBinlog() bool {
-	return cluster.conf.AutorejoinBackupBinlog
-}
-
-func (cluster *Cluster) SetRejoinSemisync(check bool) {
-	cluster.conf.AutorejoinSemisync = check
-}
-func (cluster *Cluster) SwitchRejoinSemisync() {
-	cluster.conf.AutorejoinSemisync = !cluster.conf.AutorejoinSemisync
-}
-func (cluster *Cluster) GetRejoinSemisync() bool {
-	return cluster.conf.AutorejoinSemisync
-}
-
-func (cluster *Cluster) SetRejoinFlashback(check bool) {
-	cluster.conf.AutorejoinFlashback = check
-}
-func (cluster *Cluster) SwitchRejoinFlashback() {
-	cluster.conf.AutorejoinFlashback = !cluster.conf.AutorejoinFlashback
-}
-
-// topology setter
-func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
-	cluster.conf.MultiTierSlave = multitierslave
-}
-
-func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
-	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
-}
-
-func (cluster *Cluster) SetMultiMaster(multimaster bool) {
-	cluster.conf.MultiMaster = multimaster
-}
-func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
-	cluster.conf.MxsBinlogOn = binlogserver
-}
-
-func (cluster *Cluster) SetMasterReadOnly() {
-	if cluster.GetMaster() != nil {
-		err := dbhelper.SetReadOnly(cluster.GetMaster().Conn, true)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not set  master as read-only, %s", err)
-		}
-	}
-}
-
-func (cluster *Cluster) GetRejoinFlashback() bool {
-	return cluster.conf.AutorejoinFlashback
-}
-
-func (cluster *Cluster) GetName() string {
-	return cluster.cfgGroup
-}
-
-func (cluster *Cluster) SetTestMode(check bool) {
-	cluster.conf.Test = check
-}
-
-func (cluster *Cluster) GetTestMode() bool {
-	return cluster.conf.Test
-}
-
-func (cluster *Cluster) SetTestStopCluster(check bool) {
-	cluster.testStopCluster = check
-}
-
-func (cluster *Cluster) SetActiveStatus(status string) {
-	cluster.runStatus = status
-}
-func (cluster *Cluster) SetTestStartCluster(check bool) {
-	cluster.testStartCluster = check
-}
-
-func (cluster *Cluster) GetDbUser() string {
-	return cluster.dbUser
-}
-
-func (cluster *Cluster) GetDbPass() string {
-	return cluster.dbPass
-}
-
 func (cluster *Cluster) Close() {
 
 	for _, server := range cluster.servers {
@@ -781,12 +387,9 @@ func (cluster *Cluster) Close() {
 	}
 }
 
-func (cluster *Cluster) SetLogStdout() {
-	cluster.conf.Daemon = true
-}
-
-func (cluster *Cluster) GetStatus() bool {
-	return cluster.sme.IsFailable()
+func (cluster *Cluster) ResetFailoverCtr() {
+	cluster.failoverCtr = 0
+	cluster.failoverTs = 0
 }
 
 func (cluster *Cluster) agentFlagCheck() {
@@ -805,4 +408,58 @@ func (cluster *Cluster) agentFlagCheck() {
 		log.Fatal("No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
+}
+
+func (cluster *Cluster) ToggleInteractive() {
+	if cluster.conf.Interactive == true {
+		cluster.conf.Interactive = false
+		cluster.LogPrintf("INFO", "Failover monitor switched to automatic mode")
+	} else {
+		cluster.conf.Interactive = true
+		cluster.LogPrintf("INFO", "Failover monitor switched to manual mode")
+	}
+}
+
+func (cluster *Cluster) SwitchReadOnly() {
+	cluster.conf.ReadOnly = !cluster.conf.ReadOnly
+}
+func (cluster *Cluster) SwitchRplChecks() {
+	cluster.conf.RplChecks = !cluster.conf.RplChecks
+}
+func (cluster *Cluster) SwitchCleanAll() {
+	cluster.CleanAll = !cluster.CleanAll
+}
+func (cluster *Cluster) SwitchFailSync() {
+	cluster.conf.FailSync = !cluster.conf.FailSync
+}
+
+func (cluster *Cluster) SwitchSwitchoverSync() {
+	cluster.conf.SwitchSync = !cluster.conf.SwitchSync
+}
+
+func (cluster *Cluster) SwitchVerbosity() {
+	if cluster.GetLogLevel() > 0 {
+		cluster.SetLogLevel(0)
+	} else {
+		cluster.SetLogLevel(4)
+	}
+}
+
+func (cluster *Cluster) SwitchRejoin() {
+	cluster.conf.Autorejoin = !cluster.conf.Autorejoin
+}
+
+func (cluster *Cluster) SwitchRejoinDump() {
+	cluster.conf.AutorejoinMysqldump = !cluster.conf.AutorejoinMysqldump
+}
+
+func (cluster *Cluster) SwitchRejoinBackupBinlog() {
+	cluster.conf.AutorejoinBackupBinlog = !cluster.conf.AutorejoinBackupBinlog
+}
+
+func (cluster *Cluster) SwitchRejoinSemisync() {
+	cluster.conf.AutorejoinSemisync = !cluster.conf.AutorejoinSemisync
+}
+func (cluster *Cluster) SwitchRejoinFlashback() {
+	cluster.conf.AutorejoinFlashback = !cluster.conf.AutorejoinFlashback
 }

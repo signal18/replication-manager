@@ -594,7 +594,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf("INFO", "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
 
 				} else {
-					ss, errss := cluster.servers[masterKey].getNamedSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
+					ss, errss := cluster.servers[masterKey].GetSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
 					if errss != nil {
 						cluster.LogPrintf("ERROR", "%s as master", cluster.servers[masterKey].URL)
 					} else {

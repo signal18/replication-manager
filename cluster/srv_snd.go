@@ -11,8 +11,10 @@ package cluster
 
 import (
 	"fmt"
+	"os/exec"
 	"time"
 
+	"github.com/signal18/replication-manager/alert"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/graphite"
 )
@@ -39,5 +41,31 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	graph.SendMetrics(metrics)
 	graph.Disconnect()
 
+	return nil
+}
+
+func (server *ServerMonitor) SendAlert() error {
+	if server.ClusterGroup.conf.MailTo != "" {
+		a := alert.Alert{
+			From:        server.ClusterGroup.conf.MailFrom,
+			To:          server.ClusterGroup.conf.MailTo,
+			Type:        server.State,
+			Origin:      server.URL,
+			Destination: server.ClusterGroup.conf.MailSMTPAddr,
+		}
+		err := a.Email()
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
+		}
+	}
+	if server.ClusterGroup.conf.AlertScript != "" {
+		server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
+		var out []byte
+		out, err := exec.Command(server.ClusterGroup.conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+		}
+		server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
+	}
 	return nil
 }

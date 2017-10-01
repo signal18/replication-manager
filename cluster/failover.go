@@ -165,7 +165,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("ERROR", "Error while reading relay logs on candidate: %s", err)
 	}
 	cluster.LogPrintf("INFO ", "Save replication status before electing")
-	ms, err := cluster.master.getNamedSlaveStatus(cluster.master.ReplicationSourceName)
+	ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Faiover can not fetch replication info on new master: %s", err)
 	}
@@ -195,7 +195,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO", "Candidate master has to catch up with relay server log position")
 		relaymaster = cluster.GetRelayServer()
 		if relaymaster != nil {
-			rs, err := relaymaster.getNamedSlaveStatus(relaymaster.ReplicationSourceName)
+			rs, err := relaymaster.GetSlaveStatus(relaymaster.ReplicationSourceName)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Can't found slave status on relay server %s", relaymaster.DSN)
 			}
@@ -227,12 +227,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.conf.MultiMaster == false {
 		cluster.LogPrintf("INFO", "Stopping slave thread on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
-			err = dbhelper.StopSlave(cluster.master.Conn)
+			err = cluster.master.StopSlave()
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Stopping slave failed on new master")
 			} else {
 				// if server is mysql 5.7 we just need to stop the IO thread
-				err = dbhelper.StopSlaveIOThread(cluster.master.Conn)
+				err = cluster.master.StopSlaveIOThread()
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Stopping IO thread failed on new master")
 				}
@@ -256,16 +256,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO", "Resetting slave on new master and set read/write mode on")
 		if cluster.master.DBVersion.IsMySQL() {
 			// Need to stop all threads to reset on MySQL
-			dbhelper.StopSlave(cluster.master.Conn)
+			cluster.master.StopSlave()
 		}
 
-		err = dbhelper.ResetSlave(cluster.master.Conn, true)
-
+		err = cluster.master.ResetSlave()
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Reset slave failed on new master, reason:%s ", err)
 		}
 	}
-	err = dbhelper.SetReadOnly(cluster.master.Conn, false)
+	err = cluster.master.SetReadWrite()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not set new master as read-write")
 	}
@@ -592,7 +591,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			}
 			continue
 		}
-		ss, errss := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
@@ -694,7 +693,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 }
 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
-	ss, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
 		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
@@ -741,7 +740,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
-	ss, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
+	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
 		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
 		return false
@@ -932,7 +931,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogPrintf("ERROR", "Error while reading relay logs on candidate: %s", err)
 		}
 		cluster.LogPrintf("INFO ", "Save replication status before electing")
-		ms, err := cluster.master.getNamedSlaveStatus(cluster.master.ReplicationSourceName)
+		ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Faiover can not fetch replication info on new master: %s", err)
 		}
@@ -1074,7 +1073,7 @@ func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMoni
 }
 
 func (cluster *Cluster) GetRingParentServer(oldMaster *ServerMonitor) *ServerMonitor {
-	ss, err := oldMaster.getNamedLastSeenSlaveStatus(oldMaster.ReplicationSourceName)
+	ss, err := oldMaster.GetSlaveStatusLastSeen(oldMaster.ReplicationSourceName)
 	if err != nil {
 		return nil
 	}
@@ -1093,7 +1092,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		return errors.New("Can't find parent in ring")
 	}
 	cluster.LogPrintf("INFO", "Parent is %s", parent.URL)
-	err := dbhelper.StopSlave(child.Conn)
+	err := child.StopSlave()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not stop slave on server %s, %s", child.URL, err)
 	}
