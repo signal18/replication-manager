@@ -145,6 +145,7 @@ func httpserver() {
 		router.HandleFunc("/servers", handlerServers)
 		router.HandleFunc("/stop", handlerStopServer)
 		router.HandleFunc("/start", handlerStartServer)
+		router.HandleFunc("/maintenance", handlerMaintenanceServer)
 		router.HandleFunc("/setcluster", handlerSetCluster)
 		router.HandleFunc("/runonetest", handlerSetOneTest)
 		router.HandleFunc("/master", handlerMaster)
@@ -189,6 +190,7 @@ func httpserver() {
 		http.HandleFunc("/servers", handlerServers)
 		http.HandleFunc("/stop", handlerStopServer)
 		http.HandleFunc("/start", handlerStartServer)
+		http.HandleFunc("/maintenance", handlerMaintenanceServer)
 		http.HandleFunc("/setcluster", handlerSetCluster)
 		http.HandleFunc("/runonetest", handlerSetOneTest)
 		http.HandleFunc("/toggletraffic", handlerTraffic)
@@ -326,6 +328,16 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 	node := currentCluster.GetServerFromName(srv)
 	node.Conf = "semisync.cnf"
 	currentCluster.StartDatabaseService(node)
+}
+
+func handlerMaintenanceServer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
+	srv := r.URL.Query().Get("server")
+	node := currentCluster.GetServerFromName(srv)
+	if node != nil {
+		currentCluster.SwitchServerMaintenance(node.ServerID)
+	}
 }
 
 func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
