@@ -16,18 +16,14 @@ import (
 	"hash/crc64"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/alert"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
-
 	"github.com/signal18/replication-manager/misc"
 )
 
@@ -87,14 +83,17 @@ type ServerMonitor struct {
 	HaveWsrep                   bool
 	Version                     int
 	IsWsrepSync                 bool
+	IsWsrepDonor                bool
 	IsMaxscale                  bool
 	IsRelay                     bool
 	IsSlave                     bool
+	IsVirtualMaster             bool
 	IsMaintenance               bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
+	LastSeenReplications        []dbhelper.SlaveStatus
 	ReplicationSourceName       string
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
@@ -120,6 +119,9 @@ const (
 	stateRelay       string = "Relay"
 	stateRelayErr    string = "RelayErr"
 	stateRelayLate   string = "RelayLate"
+	stateWsrep       string = "Wsrep"
+	stateWsrepDonor  string = "WsrepDonor"
+	stateWsrepLate   string = "WsrepLate"
 )
 
 /* Initializes a server object */
@@ -186,7 +188,13 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 	if server.ClusterGroup.conf.LogLevel > 2 {
 		// server.ClusterGroup.LogPrintf("INFO", "Checking server %s", server.Host)
 	}
-
+	if server.ClusterGroup.vmaster != nil {
+		if server.ClusterGroup.vmaster.ServerID == server.ServerID {
+			server.IsVirtualMaster = true
+		} else {
+			server.IsVirtualMaster = false
+		}
+	}
 	var conn *sqlx.DB
 	var err error
 	switch server.ClusterGroup.conf.CheckType {
@@ -204,6 +212,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
+
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG", "Failure detection handling for server %s", server.URL)
 		}
@@ -233,6 +242,10 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 						server.State = stateFailed
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
+						if server.Replications != nil {
+							server.LastSeenReplications = server.Replications
+						}
+						server.Replications = nil
 					}
 				} else {
 					server.State = stateSuspect
@@ -244,29 +257,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			//if cluster.conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			//}
-			if server.ClusterGroup.conf.MailTo != "" {
-				a := alert.Alert{
-					From:        server.ClusterGroup.conf.MailFrom,
-					To:          server.ClusterGroup.conf.MailTo,
-					Type:        server.State,
-					Origin:      server.URL,
-					Destination: server.ClusterGroup.conf.MailSMTPAddr,
-				}
-				err = a.Email()
-				if err != nil {
-					server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-				}
-			}
+			server.SendAlert()
 		}
-		if server.ClusterGroup.conf.AlertScript != "" {
-			server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
-			var out []byte
-			out, err = exec.Command(server.ClusterGroup.conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
-			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-			}
-			server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
-		}
+
 	}
 
 	// Reset FailCount
@@ -285,7 +278,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
 			}
-			server.SetReadOnly()
+			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false {
+				server.SetReadOnly()
+			}
 			server.State = stateUnconn
 			server.FailCount = 0
 			if server.ClusterGroup.conf.Autorejoin {
@@ -298,7 +293,9 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			server.SetReadOnly()
+			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false {
+				server.SetReadOnly()
+			}
 			server.State = stateUnconn
 		}
 
@@ -412,6 +409,11 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveBinlogSlowqueries = true
 		}
+		if sv["WSREP_ON"] != "ON" {
+			server.HaveWsrep = false
+		} else {
+			server.HaveWsrep = true
+		}
 
 		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 		server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
@@ -452,7 +454,7 @@ func (server *ServerMonitor) Refresh() error {
 		return err
 	}
 	// select a replication status get an err if repliciations array is empty
-	slaveStatus, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
+	slaveStatus, err := server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		server.IsSlave = false
@@ -487,6 +489,11 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.IsWsrepSync = false
 	}
+	if server.Status["WSREP_LOCAL_STATE"] == "2" {
+		server.IsWsrepDonor = true
+	} else {
+		server.IsWsrepDonor = false
+	}
 
 	// Initialize graphite monitoring
 	if server.ClusterGroup.conf.GraphiteMetrics {
@@ -495,21 +502,22 @@ func (server *ServerMonitor) Refresh() error {
 	return nil
 }
 
-func (server *ServerMonitor) getNamedSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
-	if server.Replications != nil {
-		for _, ss := range server.Replications {
-			if ss.ConnectionName.String == name {
-				return &ss, nil
-			}
-		}
-	}
-	return nil, errors.New("Empty replications channels")
-}
-
 /* Check replication health and return status string */
 func (server *ServerMonitor) replicationCheck() string {
 	if server.ClusterGroup.sme.IsInFailover() {
 		return "In Failover"
+	}
+	if server.HaveWsrep {
+		if server.IsWsrepSync {
+			server.State = stateWsrep
+			return "Galera OK"
+		} else if server.IsWsrepDonor {
+			server.State = stateWsrepDonor
+			return "Galera OK"
+		} else {
+			server.State = stateWsrepLate
+			return "Galera Late"
+		}
 	}
 	if (server.State == stateSuspect || server.State == stateFailed) && server.IsSlave == false {
 		return "Master OK"
@@ -525,7 +533,7 @@ func (server *ServerMonitor) replicationCheck() string {
 		return "Maintenance"
 	}
 	// when replication stopped Valid is null
-	ss, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
+	ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
 		return "Not a slave"
 	}
@@ -595,32 +603,6 @@ func (server *ServerMonitor) replicationCheck() string {
 	return "Running OK"
 }
 
-func (sl serverList) checkAllSlavesRunning() bool {
-	if len(sl) == 0 {
-		return false
-	}
-	for _, s := range sl {
-		ss, sserr := s.getNamedSlaveStatus(s.ReplicationSourceName)
-		if sserr != nil {
-			return false
-		}
-		if ss.SlaveSQLRunning.String != "Yes" || ss.SlaveSQLRunning.String != "Yes" {
-			return false
-		}
-	}
-	return true
-}
-
-/* Check Consistency parameters on server */
-func (server *ServerMonitor) acidTest() bool {
-	syncBin, _ := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
-	logFlush, _ := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
-	if syncBin == "1" && logFlush == "1" {
-		return true
-	}
-	return false
-}
-
 /* Handles write freeze and existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
@@ -687,7 +669,6 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
-
 	return nil
 }
 
@@ -715,58 +696,6 @@ func (server *ServerMonitor) writeState() error {
 	return nil
 }
 
-// check if node see same master as the passed list
-func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
-	for _, sl := range sib {
-		sssib, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
-		if err != nil {
-			return false
-		}
-		ssserver, err := server.getNamedSlaveStatus(server.ReplicationSourceName)
-		if err != nil {
-			return false
-		}
-		if sssib.MasterServerID != ssserver.MasterServerID {
-			return false
-		}
-	}
-	return true
-}
-
-func (server *ServerMonitor) HasSlaves(sib []*ServerMonitor) bool {
-	for _, sl := range sib {
-		sssib, err := sl.getNamedSlaveStatus(sl.ReplicationSourceName)
-		if err == nil {
-			if server.ServerID == sssib.MasterServerID && sl.ServerID != server.ServerID {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (server *ServerMonitor) HasCycling(ServerID uint) bool {
-
-	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
-	if mycurrentmaster != nil {
-		//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%s me id:%s", mycurrentmaster.ServerID, ServerID)
-		if mycurrentmaster.ServerID == ServerID {
-			return true
-		} else {
-			mycurrentmaster.HasCycling(server.ServerID)
-		}
-	}
-	return false
-}
-
-// IsDown() returns true is the server is Failed or Suspect
-func (server *ServerMonitor) IsDown() bool {
-	if server.State == stateFailed || server.State == stateSuspect {
-		return true
-	}
-	return false
-}
-
 func (server *ServerMonitor) delete(sl *serverList) {
 	lsm := *sl
 	for k, s := range lsm {
@@ -780,100 +709,26 @@ func (server *ServerMonitor) delete(sl *serverList) {
 	*sl = lsm
 }
 
-func (server *ServerMonitor) IsIgnored() bool {
-
-	if misc.Contains(server.ClusterGroup.ignoreList, server.URL) {
-		return true
-	}
-	return false
+func (server *ServerMonitor) StopSlave() error {
+	return dbhelper.StopSlave(server.Conn)
 }
 
-func (server *ServerMonitor) IsIOThreadRunning() bool {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return false
-	}
-	if ss.SlaveIORunning.String == "Yes" {
-		return true
-	}
-	return false
+func (server *ServerMonitor) StartSlave() error {
+	return dbhelper.StartSlave(server.Conn)
 }
 
-func (server *ServerMonitor) IsSQLThreadRunning() bool {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return false
-	}
-	if ss.SlaveSQLRunning.String == "Yes" {
-		return true
-	}
-	return false
+func (server *ServerMonitor) StopSlaveIOThread() error {
+	return dbhelper.StopSlaveIOThread(server.Conn)
 }
 
-func (server *ServerMonitor) GetReplicationServerID() uint {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return 0
-	}
-	return ss.MasterServerID
+func (server *ServerMonitor) StopSlaveSQLThread() error {
+	return dbhelper.StopSlaveSQLThread(server.Conn)
 }
 
-func (server *ServerMonitor) GetReplicationDelay() int64 {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return 0
-	}
-	if ss.SecondsBehindMaster.Valid == false {
-		return 0
-	}
-	return ss.SecondsBehindMaster.Int64
+func (server *ServerMonitor) ResetSlave() error {
+	return dbhelper.ResetSlave(server.Conn, true)
 }
 
-func (server *ServerMonitor) GetReplicationHearbeatPeriod() float64 {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return 0
-	}
-	return ss.SlaveHeartbeatPeriod
-}
-
-func (server *ServerMonitor) GetReplicationUsingGtid() string {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return "No"
-	}
-	return ss.UsingGtid.String
-}
-
-func (server *ServerMonitor) GetReplicationMasterHost() string {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return ""
-	}
-	return ss.MasterHost.String
-}
-
-func (server *ServerMonitor) GetReplicationMasterPort() string {
-	ss, sserr := server.getNamedSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return "3306"
-	}
-	return ss.MasterPort.String
-}
-
-func (server *ServerMonitor) IsReplicationBroken() bool {
-	if server.IsSQLThreadRunning() == false || server.IsIOThreadRunning() == false {
-		return true
-	}
-	return false
-}
-
-func (server *ServerMonitor) SetReadOnly() error {
-	err := dbhelper.SetReadOnly(server.Conn, true)
-	return err
-}
-
-func (server *ServerMonitor) SetReadWrite() error {
-	err := dbhelper.SetReadOnly(server.Conn, false)
-	return err
+func (server *ServerMonitor) FlushTables() error {
+	return dbhelper.FlushTables(server.Conn)
 }

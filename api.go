@@ -1063,8 +1063,8 @@ func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			node.IsMaintenance = !node.IsMaintenance
-			mycluster.SetProxyServerMaintenance(node.ServerID)
+			mycluster.SwitchServerMaintenance(node.ServerID)
+
 		} else {
 			http.Error(w, "No cluster", 500)
 			return

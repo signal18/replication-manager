@@ -185,7 +185,7 @@ func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 
 func (cluster *Cluster) InjectTraffic() {
 	// Found server from ServerId
-	if cluster.master != nil {
+	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.proxies {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
@@ -203,7 +203,7 @@ func (cluster *Cluster) InjectTraffic() {
 
 func (cluster *Cluster) IsProxyEqualMaster() bool {
 	// Found server from ServerId
-	if cluster.master != nil {
+	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.proxies {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
@@ -221,7 +221,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 				return false
 			}
 
-			if cluster.master.ServerID == uint(sid) {
+			if cluster.GetMaster().ServerID == uint(sid) {
 				return true
 			}
 		}
@@ -238,7 +238,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
 			//intsrvid, _ := strconv.Atoi(serverid)
 			server := cluster.GetServerFromId(serverid)
-			if cluster.master != nil {
+			if cluster.GetMaster() != nil {
 				m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 				err := m.Connect()
 				if err != nil {

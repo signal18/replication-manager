@@ -19,21 +19,25 @@ import (
 
 func (cluster *Cluster) InitCluster() error {
 	var err error
+	cluster.sme.SetFailoverState()
 	if cluster.conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
 
 	} else {
 		err = cluster.LocalhostProvisionDatabases()
 	}
+	cluster.sme.RemoveFailoverState()
 	return err
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
+	cluster.sme.SetFailoverState()
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCProvisionDatabaseService(server)
 	} else {
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
+	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
@@ -56,6 +60,7 @@ func (cluster *Cluster) Unprovision() {
 	cluster.servers = nil
 	cluster.slaves = nil
 	cluster.master = nil
+	cluster.vmaster = nil
 	cluster.sme.UnDiscovered()
 	cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
@@ -348,7 +353,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 		case <-ticker.C:
 			cluster.LogPrintf("INFO", "Waiting Master Found")
 			exitloop++
-			if cluster.master != nil {
+			if cluster.GetMaster() != nil {
 				exitloop = 100
 			}
 		default:
@@ -415,6 +420,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.conf.Test {
+		cluster.initProxies()
 		err = cluster.WaitProxyEqualMaster()
 		if err != nil {
 			return err
@@ -423,8 +429,8 @@ func (cluster *Cluster) Bootstrap() error {
 		if err != nil {
 			return err
 		}
-		cluster.initProxies()
-		if cluster.master == nil {
+
+		if cluster.GetMaster() == nil {
 			return errors.New("Abording test, no master found")
 		}
 		err = cluster.InitBenchTable()
@@ -494,6 +500,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		}
 	}
 	cluster.master = nil
+	cluster.vmaster = nil
 	cluster.slaves = nil
 	cluster.sme.RemoveFailoverState()
 	return nil
@@ -538,12 +545,12 @@ func (cluster *Cluster) BootstrapReplication() error {
 	if masterKey == -1 {
 		return errors.New("Preferred master could not be found in existing servers")
 	}
-	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
-	if err != nil {
-		cluster.LogPrintf("INFO", "RESET MASTER failed on master")
-	}
-	// master-slave mariadb >10
-	if cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
+	//	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
+	//	if err != nil {
+	//		cluster.LogPrintf("INFO", "RESET MASTER failed on master"
+	//	}
+	// Assume master-slave if nothing else is declared && mariadb >10
+	if cluster.conf.MultiMasterRing == false && cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
 
 		for key, server := range cluster.servers {
 			if server.State == stateFailed {
@@ -587,7 +594,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf("INFO", "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
 
 				} else {
-					ss, errss := cluster.servers[masterKey].getNamedSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
+					ss, errss := cluster.servers[masterKey].GetSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
 					if errss != nil {
 						cluster.LogPrintf("ERROR", "%s as master", cluster.servers[masterKey].URL)
 					} else {
@@ -617,16 +624,14 @@ func (cluster *Cluster) BootstrapReplication() error {
 				}
 
 				if err != nil {
-					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
+					cluster.LogPrintf("ERROR", "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				dbhelper.SetReadOnly(server.Conn, true)
 			}
 
 		}
-
 	}
-
-	// Slave realy
+	// Slave Relay
 	if cluster.conf.MultiTierSlave == true {
 		masterKey = 0
 		relaykey := 1
@@ -673,6 +678,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 		}
 		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
+	// Multi Master
 	if cluster.conf.MultiMaster == true {
 		for key, server := range cluster.servers {
 			if server.State == stateFailed {
@@ -699,6 +705,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				_, err := server.Conn.Exec(stmt)
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
+
 					return errors.New(fmt.Sprintln("ERROR:", stmt, err))
 				}
 				_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
@@ -710,7 +717,35 @@ func (cluster *Cluster) BootstrapReplication() error {
 			dbhelper.SetReadOnly(server.Conn, true)
 		}
 	}
+	// Ring
+	if cluster.conf.MultiMasterRing == true {
+		for key, server := range cluster.servers {
+			if server.State == stateFailed {
+				continue
+			}
+			i := (len(cluster.servers) + key - 1) % len(cluster.servers)
+			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[i].CurrentGtid.Sprint() + "\"")
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Replication bootstrap failed for setting gtid %s", cluster.servers[i].CurrentGtid.Sprint())
+				return err
+			}
+			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=slave_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.servers[i].ReplicationSourceName, cluster.servers[i].Host, cluster.servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
+			_, err := server.Conn.Exec(stmt)
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				cluster.LogPrintf("ERROR", "Bootstrap Relication error %s %s", stmt, err)
 
+				return errors.New(fmt.Sprintln(stmt, err))
+			}
+			_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				return errors.New(fmt.Sprintln("Can't start slave: ", err))
+			}
+			cluster.vmaster = cluster.servers[0]
+			//dbhelper.SetReadOnly(server.Conn, true)
+		}
+	}
 	cluster.sme.RemoveFailoverState()
 	// speed up topology discovery
 	cluster.TopologyDiscover()
