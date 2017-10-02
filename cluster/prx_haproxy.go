@@ -68,8 +68,8 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		// log.Printf("Found exiting leader removing")
 	}
 
-	p, _ := strconv.Atoi(cluster.master.Port)
-	s := haproxy.ServerDetail{Name: "leader", Host: cluster.master.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+	p, _ := strconv.Atoi(cluster.GetMaster().Port)
+	s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 	if err = haConfig.AddServer("service_write", &s); err != nil {
 		//	log.Printf("Failed to add server to service_write ")
 	}

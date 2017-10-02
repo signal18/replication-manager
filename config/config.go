@@ -37,6 +37,8 @@ type Config struct {
 	RplUser                            string `mapstructure:"replication-credential"`
 	MasterConn                         string `mapstructure:"replication-source-name"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
+	MultiMasterRing                    bool   `mapstructure:"replication-multi-master-ring"`
+	MultiMasterWsrep                   bool   `mapstructure:"replication-multi-master-wsrep"`
 	MultiMaster                        bool   `mapstructure:"replication-multi-master"`
 	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave"`
 	ReplicationNoRelay                 bool   `mapstructure:"replication-master-slave-never-relay"`
@@ -46,6 +48,7 @@ type Config struct {
 	SwitchGtidCheck                    bool   `mapstructure:"switchover-at-equal-gtid"`
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
+	SwitchSlaveWaitCatch               bool   `mapstructure:"switchover-slave-wait-catch"`
 	FailLimit                          int    `mapstructure:"failover-limit"`
 	PreScript                          string `mapstructure:"failover-pre-script"`
 	PostScript                         string `mapstructure:"failover-post-script"`

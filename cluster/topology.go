@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -28,6 +27,16 @@ type topologyError struct {
 	Msg  string
 }
 
+const (
+	topoMasterSlave      string = "master-slave"
+	topoUnknown          string = "unknown"
+	topoBinlogServer     string = "binlog-server"
+	topoMultiTierSlave   string = "multi-tier-slave"
+	topoMultiMaster      string = "multi-master"
+	topoMultiMasterRing  string = "multi-master-ring"
+	topoMultiMasterWsrep string = "multi-master-wsrep"
+)
+
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
@@ -40,20 +49,16 @@ func (cluster *Cluster) newServerList() error {
 	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 
-	time.Sleep(10 * time.Second)
 	for k, url := range cluster.hostList {
-
 		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
-			//return err
 		}
 		if cluster.conf.Verbose {
 			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
 		}
-		//		go cluster.servers[k].Run()
 	}
-	//	time.Sleep(10 * time.Second)
+
 	return nil
 }
 
@@ -221,84 +226,28 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
 
-			if sl.IsRelay == false && !sl.IsDown() {
-				if cluster.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
-					cluster.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.URL)
-					dbhelper.InstallSemiSync(sl.Conn)
-				} else if sl.IsIgnored() == false && sl.HaveSemiSync == false {
-					cluster.sme.AddState("WARN0048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceBinlogRow && sl.HaveBinlogRow == false {
-					// In non-multimaster mode, enforce read-only flag if the option is set
-					dbhelper.SetBinlogFormat(sl.Conn, "ROW")
-					cluster.LogPrintf("INFO", "Enforce binlog format ROW on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && cluster.conf.AutorejoinFlashback == true {
-					cluster.sme.AddState("WARN0049", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" {
-					// In non-multimaster mode, enforce read-only flag if the option is set
-					dbhelper.SetReadOnly(sl.Conn, true)
-					cluster.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
-				}
-				if cluster.conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
-					dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
-					cluster.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
-					cluster.sme.AddState("WARN0050", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
-					dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
-					cluster.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
-					cluster.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
-					dbhelper.SetSyncInnodb(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce InnoDB durability on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveInnodbTrxCommit == false {
-					cluster.sme.AddState("WARN0052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0052"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceBinlogChecksum && sl.HaveChecksum == false {
-					dbhelper.SetBinlogChecksum(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce checksum on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveChecksum == false {
-					cluster.sme.AddState("WARN0053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0053"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
-					dbhelper.SetBinlogSlowqueries(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce log slow queries of replication on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveBinlogSlowqueries == false {
-					cluster.sme.AddState("WARN0054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0054"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if cluster.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
-					dbhelper.SetBinlogAnnotate(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce annotate on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveBinlogAnnotate == false {
-					cluster.sme.AddState("WARN0055", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0055"], sl.URL), ErrFrom: "TOPO"})
+			if sl.IsMaxscale == false && !sl.IsDown() {
+				sl.SlaveCheck()
+				if sl.HasCycling() {
+					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
+						cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
+						cluster.conf.MultiMaster = true
+					}
+					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
+						cluster.conf.MultiMasterRing = true
+					}
+					if cluster.conf.MultiMasterRing == true && cluster.GetMaster() == nil {
+						cluster.vmaster = sl
+					}
+
+					//broken replication ring
+				} else if cluster.conf.MultiMasterRing == true {
+					//setting a virtual master if none
+
+					cluster.sme.AddState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
+					cluster.master = cluster.GetFailedServer()
 				}
 
-				if cluster.conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
-					dbhelper.SetBinlogCompress(sl.Conn)
-					cluster.LogPrintf("INFO", "Enforce binlog compression on slave %s", sl.URL)
-				} else if sl.IsIgnored() == false && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
-					cluster.sme.AddState("WARN0056", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if sl.IsIgnored() == false && sl.HaveLogSlaveUpdates == false {
-					cluster.sme.AddState("WARN0057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO"})
-				}
-				if sl.IsIgnored() == false && sl.HaveGtidStrictMode == false {
-					cluster.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO"})
-				}
-
-				/* Disable because read-only variable
-				if cluster.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != cluster.conf.ForceDiskRelayLogSizeLimitSize {
-					dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(cluster.conf.ForceDiskRelayLogSizeLimitSize, 10))
-					cluster.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.URL)
-				}*/
-				if sl.HasCycling(sl.ServerID) && cluster.conf.MultiTierSlave == false && cluster.conf.MultiMaster == false {
-					cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
-					cluster.conf.MultiMaster = true
-				}
 			}
 			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
@@ -391,59 +340,15 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Final check if master has been found
 	if cluster.master == nil {
 		// could not detect master
-		cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+		if cluster.GetMaster() == nil {
+			cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+		}
 	} else {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
 		if !cluster.master.IsDown() {
-			if cluster.conf.ForceSlaveSemisync && cluster.master.HaveSemiSync == false {
-				cluster.LogPrintf("INFO", "Enforce semisync on Master %s", cluster.master.DSN)
-				dbhelper.InstallSemiSync(cluster.master.Conn)
-			} else if cluster.master.HaveSemiSync == false {
-				cluster.sme.AddState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceBinlogRow && cluster.master.HaveBinlogRow == false {
-				dbhelper.SetBinlogFormat(cluster.master.Conn, "ROW")
-				cluster.LogPrintf("INFO", "Enforce binlog format ROW on Master %s", cluster.master.DSN)
-			} else if cluster.master.HaveBinlogRow == false && cluster.conf.AutorejoinFlashback == true {
-				cluster.sme.AddState("WARN0061", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0061"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceSyncBinlog && cluster.master.HaveSyncBinLog == false {
-				dbhelper.SetSyncBinlog(cluster.master.Conn)
-				cluster.LogPrintf("INFO", "Enforce sync binlog on Master %s", cluster.master.DSN)
-			} else if cluster.master.HaveSyncBinLog == false {
-				cluster.sme.AddState("WARN0062", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0062"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceSyncInnoDB && cluster.master.HaveSyncBinLog == false {
-				dbhelper.SetSyncInnodb(cluster.master.Conn)
-				cluster.LogPrintf("INFO", "Enforce innodb durability on Master %s", cluster.master.DSN)
-			} else if cluster.master.HaveSyncBinLog == false {
-				cluster.sme.AddState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceBinlogAnnotate && cluster.master.HaveBinlogAnnotate == false {
-				dbhelper.SetBinlogAnnotate(cluster.master.Conn)
-				cluster.LogPrintf("INFO", "Enforce binlog annotate on master %s", cluster.master.DSN)
-			} else if cluster.master.HaveBinlogAnnotate == false {
-				cluster.sme.AddState("WARN0067", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0067"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceBinlogChecksum && cluster.master.HaveChecksum == false {
-				dbhelper.SetBinlogChecksum(cluster.master.Conn)
-				cluster.LogPrintf("INFO", "Enforce ckecksum annotate on master %s", cluster.master.DSN)
-			} else if cluster.master.HaveChecksum == false {
-				cluster.sme.AddState("WARN0065", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0065"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.conf.ForceBinlogCompress && cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
-				dbhelper.SetBinlogCompress(cluster.master.Conn)
-				cluster.LogPrintf("INFO", "Enforce binlog compression on master %s", cluster.master.DSN)
-			} else if cluster.master.HaveBinlogCompress == false && cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 2 {
-				cluster.sme.AddState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.master.HaveLogSlaveUpdates == false {
-				cluster.sme.AddState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
-			if cluster.master.HaveGtidStrictMode == false {
-				cluster.sme.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], cluster.master.URL), ErrFrom: "TOPO"})
-			}
+			cluster.master.MasterCheck()
+
 		}
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
@@ -545,17 +450,21 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 }
 
 func (cluster *Cluster) GetTopology() string {
-	cluster.conf.Topology = "unknown"
+	cluster.conf.Topology = topoUnknown
 	if cluster.conf.MultiMaster {
-		cluster.conf.Topology = "multi-master"
+		cluster.conf.Topology = topoMultiMaster
+	} else if cluster.conf.MultiMasterRing {
+		cluster.conf.Topology = topoMultiMasterRing
+	} else if cluster.conf.MultiMasterWsrep {
+		cluster.conf.Topology = topoMultiMasterWsrep
 	} else if cluster.conf.MxsBinlogOn {
-		cluster.conf.Topology = "binlog-server"
+		cluster.conf.Topology = topoBinlogServer
 	} else {
 		relay := cluster.GetRelayServer()
 		if relay != nil {
-			cluster.conf.Topology = "multi-tier-slave"
+			cluster.conf.Topology = topoMultiTierSlave
 		} else if cluster.master != nil {
-			cluster.conf.Topology = "master-slave"
+			cluster.conf.Topology = topoMasterSlave
 		}
 	}
 	return cluster.conf.Topology
@@ -623,6 +532,15 @@ func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
+	for _, server := range cluster.servers {
+		if server.URL == url {
+			return server
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.servers {
@@ -667,6 +585,15 @@ func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 		}
 	}
 	return failed
+}
+
+func (cluster *Cluster) GetFailedServer() *ServerMonitor {
+	for _, server := range cluster.servers {
+		if server.State == stateFailed {
+			return server
+		}
+	}
+	return nil
 }
 
 // LostMajority should be call in case of splitbrain to set maintenance mode
