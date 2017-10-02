@@ -83,7 +83,7 @@ type ServerMonitor struct {
 	HaveWsrep                   bool
 	Version                     int
 	IsWsrepSync                 bool
-	IsWsrepDoner                bool
+	IsWsrepDonor                bool
 	IsMaxscale                  bool
 	IsRelay                     bool
 	IsSlave                     bool
@@ -120,7 +120,7 @@ const (
 	stateRelayErr    string = "RelayErr"
 	stateRelayLate   string = "RelayLate"
 	stateWsrep       string = "Wsrep"
-	stateWsrepDoner  string = "WsrepDoner"
+	stateWsrepDonor  string = "WsrepDonor"
 	stateWsrepLate   string = "WsrepLate"
 )
 
@@ -490,9 +490,9 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsWsrepSync = false
 	}
 	if server.Status["WSREP_LOCAL_STATE"] == "2" {
-		server.IsWsrepDoner = true
+		server.IsWsrepDonor = true
 	} else {
-		server.IsWsrepDoner = false
+		server.IsWsrepDonor = false
 	}
 
 	// Initialize graphite monitoring
@@ -511,8 +511,8 @@ func (server *ServerMonitor) replicationCheck() string {
 		if server.IsWsrepSync {
 			server.State = stateWsrep
 			return "Galera OK"
-		} else if server.IsWsrepDoner {
-			server.State = stateWsrepDoner
+		} else if server.IsWsrepDonor {
+			server.State = stateWsrepDonor
 			return "Galera OK"
 		} else {
 			server.State = stateWsrepLate

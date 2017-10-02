@@ -33,10 +33,10 @@ func (cluster *Cluster) CheckFailed() {
 	}
 	if cluster.master != nil {
 		if cluster.isFoundCandidateMaster() {
-			if cluster.isBeetwenFailoverTimeValid() {
-				if cluster.isMaxMasterFailedCountReach() {
+			if cluster.isBetweenFailoverTimeValid() {
+				if cluster.isMaxMasterFailedCountReached() {
 					if cluster.isActiveArbitration() {
-						if cluster.isMaxClusterFailoverCountNotReach() {
+						if cluster.isMaxClusterFailoverCountNotReached() {
 							if cluster.isAutomaticFailover() {
 								if cluster.isMasterFailed() {
 									if cluster.isNotFirstSlave() {
@@ -80,19 +80,19 @@ func (cluster *Cluster) isMasterFailed() bool {
 }
 
 // isMaxMasterFailedCountReach test tentative to connect
-func (cluster *Cluster) isMaxMasterFailedCountReach() bool {
+func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
 
 	if cluster.master.FailCount >= cluster.conf.MaxFail {
 		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
 	} else {
-		cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReach()), ErrFrom: "CONF"})
+		cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%t", cluster.master.State, cluster.conf.Interactive, cluster.isMaxMasterFailedCountReached()), ErrFrom: "CONF"})
 	}
 	return false
 }
 
-func (cluster *Cluster) isMaxClusterFailoverCountNotReach() bool {
+func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 	// illimited failed count
 	//cluster.LogPrintf("CHECK: Failover Counter Reach")
 	if cluster.conf.FailLimit == 0 {
@@ -105,7 +105,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReach() bool {
 	return true
 }
 
-func (cluster *Cluster) isBeetwenFailoverTimeValid() bool {
+func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	// illimited failed count
 	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
 	if cluster.conf.FailTime == 0 {
