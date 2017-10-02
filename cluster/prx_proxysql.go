@@ -6,11 +6,7 @@ import (
 	"github.com/signal18/replication-manager/proxysql"
 )
 
-func (cluster *Cluster) initProxysql(proxy *Proxy) {
-	if cluster.conf.ProxysqlOn == false {
-		return
-	}
-
+func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
 		User:     proxy.User,
 		Password: proxy.Pass,
@@ -23,7 +19,19 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	var err error
 	err = psql.Connect()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		return psql, err
+	}
+	return psql, nil
+}
+
+func (cluster *Cluster) initProxysql(proxy *Proxy) {
+	if cluster.conf.ProxysqlOn == false {
+		return
+	}
+
+	psql, err := connectProxysql(proxy)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
 		return
 	}
 	defer psql.Connection.Close()
@@ -60,19 +68,9 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		return
 	}
 
-	psql := proxysql.ProxySQL{
-		User:     proxy.User,
-		Password: proxy.Pass,
-		Host:     proxy.Host,
-		Port:     proxy.Port,
-		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
-		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
-	}
-
-	var err error
-	err = psql.Connect()
+	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
 		return
 	}
 	defer psql.Connection.Close()
@@ -127,5 +125,23 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "ProxySQL could not load servers to runtime (%s)", err)
 		}
+	}
+}
+
+func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, host string, port string) {
+	if cluster.conf.ProxysqlOn == false {
+		return
+	}
+
+	psql, err := connectProxysql(proxy)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
+		return
+	}
+	defer psql.Connection.Close()
+
+	err = psql.SetOfflineSoft(host, port)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "ProxySQL could not set %s:%s as offline_soft (%s)", host, port, err)
 	}
 }
