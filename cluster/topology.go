@@ -455,6 +455,8 @@ func (cluster *Cluster) GetTopology() string {
 		cluster.conf.Topology = topoMultiMaster
 	} else if cluster.conf.MultiMasterRing {
 		cluster.conf.Topology = topoMultiMasterRing
+	} else if cluster.conf.MultiMasterWsrep {
+		cluster.conf.Topology = topoMultiMasterWsrep
 	} else if cluster.conf.MxsBinlogOn {
 		cluster.conf.Topology = topoBinlogServer
 	} else {

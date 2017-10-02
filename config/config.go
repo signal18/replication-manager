@@ -38,6 +38,7 @@ type Config struct {
 	MasterConn                         string `mapstructure:"replication-source-name"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl"`
 	MultiMasterRing                    bool   `mapstructure:"replication-multi-master-ring"`
+	MultiMasterWsrep                   bool   `mapstructure:"replication-multi-master-wsrep"`
 	MultiMaster                        bool   `mapstructure:"replication-multi-master"`
 	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave"`
 	ReplicationNoRelay                 bool   `mapstructure:"replication-master-slave-never-relay"`

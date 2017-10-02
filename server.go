@@ -116,8 +116,8 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
 	monitorCmd.Flags().StringVar(&conf.RplUser, "replication-credential", "", "Replication user in the [user]:[password] format")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
-
 	monitorCmd.Flags().BoolVar(&conf.MultiMaster, "replication-multi-master", false, "Multi-master topology")
+	monitorCmd.Flags().BoolVar(&conf.MultiMasterWsrep, "replication-multi-master-wsrep", false, "Enable Galera multi-master")
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterRing, "replication-multi-master-ring", false, "Multi-master ring topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
