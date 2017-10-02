@@ -101,6 +101,8 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 				return &ss, nil
 			}
 		}
+	} else {
+		return server.GetSlaveStatus(name)
 	}
 	return nil, errors.New("Empty replications channels")
 }

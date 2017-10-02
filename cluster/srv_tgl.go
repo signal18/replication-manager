@@ -10,7 +10,7 @@
 package cluster
 
 func (server *ServerMonitor) SwitchMaintenance() error {
-	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.GetTopology() == topoMultiMasterRing {
+	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep || server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 		if server.IsVirtualMaster {
 			server.ClusterGroup.SwitchOver()
 		}
