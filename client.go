@@ -68,6 +68,7 @@ var (
 	cliServerMaintenance         bool
 	cliServerStop                bool
 	cliServerStart               bool
+	cliConsoleServerIndex        int
 )
 
 type RequetParam struct {
@@ -596,6 +597,23 @@ var clientCmd = &cobra.Command{
 							cliClusterCmd("actions/failover", nil)
 						}
 					}
+					if event.Key == termbox.KeyCtrlM {
+						cliClusterCmd("servers/"+cliServers[cliConsoleServerIndex].Id+"/actions/maintenance", nil)
+					}
+
+					if event.Key == termbox.KeyArrowUp {
+						cliConsoleServerIndex--
+						if cliConsoleServerIndex < 0 {
+							cliConsoleServerIndex = len(cliServers) - 1
+						}
+					}
+					if event.Key == termbox.KeyArrowDown {
+						cliConsoleServerIndex++
+						if cliConsoleServerIndex >= len(cliServers) {
+							cliConsoleServerIndex = 0
+						}
+
+					}
 					if event.Key == termbox.KeyCtrlD {
 
 						//call topology
@@ -732,9 +750,9 @@ func cliDisplay() {
 		headstr += " |  Mode: Manual "
 	}
 	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	cliPrintfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	cliPrintfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%1s%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", " ", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
 	cliTlog.Line = 3
-	for _, server := range cliServers {
+	for i, server := range cliServers {
 		var gtidCurr string
 		var gtidSlave string
 		if server.CurrentGtid != nil {
@@ -769,7 +787,11 @@ func cliDisplay() {
 		if server.IsVirtualMaster {
 			mystatus = mystatus + "*VM"
 		}
-		cliPrintfTb(0, cliTlog.Line, fgCol, termbox.ColorBlack, "%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Host, server.Port, mystatus, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, server.ReplicationHealth, server.GetReplicationDelay(), server.ReadOnly)
+		myServerPointer := " "
+		if i == cliConsoleServerIndex {
+			myServerPointer = ">"
+		}
+		cliPrintfTb(0, cliTlog.Line, fgCol, termbox.ColorBlack, "%1s%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", myServerPointer, server.Host, server.Port, mystatus, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, server.ReplicationHealth, server.GetReplicationDelay(), server.ReadOnly)
 		cliTlog.Line++
 	}
 	cliTlog.Line++
@@ -807,6 +829,7 @@ func cliDisplayHelp() {
 	cliLogPrint("HELP : Ctrl-D  Print debug information")
 	cliLogPrint("HELP : Ctrl-F  Failover")
 	cliLogPrint("HELP : Ctrl-S  Switchover")
+	cliLogPrint("HELP : Ctrl-M  Maintenance")
 	cliLogPrint("HELP : Ctrl-N  Next Cluster")
 	cliLogPrint("HELP : Ctrl-P  Previous Cluster")
 	cliLogPrint("HELP : Ctrl-Q  Quit")
