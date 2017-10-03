@@ -593,6 +593,11 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(true)
 		case "multi-master-ring":
+			mycluster.SetMultiTierSlave(false)
+			mycluster.SetForceSlaveNoGtid(false)
+			mycluster.SetMultiMaster(false)
+			mycluster.SetBinlogServer(false)
+			mycluster.SetMultiMasterRing(true)
 		}
 		err := mycluster.BootstrapReplication()
 		if err != nil {
