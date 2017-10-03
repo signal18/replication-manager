@@ -144,7 +144,7 @@ type Config struct {
 	ProxysqlWriterHostgroup            string `mapstructure:"proxysql-writer-hostgroup"`
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup"`
 	Registry                           string `mapstructure:"registry"`
-	RegistryHosts                      bool   `mapstructure:"registry-servers"`
+	RegistryHosts                      string `mapstructure:"registry-servers"`
 	KeyPath                            string `mapstructure:"keypath"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
 	GraphiteMetrics                    bool   `mapstructure:"graphite-metrics"`

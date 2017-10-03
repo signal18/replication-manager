@@ -302,6 +302,7 @@ func (cluster *Cluster) initProxies() {
 			cluster.initProxysql(pr)
 		}
 	}
+	cluster.initConsul()
 }
 
 func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
