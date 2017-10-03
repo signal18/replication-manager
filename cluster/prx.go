@@ -18,9 +18,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/misc"
-	"github.com/signal18/replication-manager/state"
 )
 
 // Proxy defines a proxy
@@ -239,21 +237,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 			//intsrvid, _ := strconv.Atoi(serverid)
 			server := cluster.GetServerFromId(serverid)
 			if cluster.GetMaster() != nil {
-				m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
-				err := m.Connect()
-				if err != nil {
-					cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
-				}
-				if server.IsMaintenance {
-					err = m.SetServer(server.MxsServerName, "maintenance")
-				} else {
-					err = m.ClearServer(server.MxsServerName, "maintenance")
-				}
-				if err != nil {
-					cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
-					m.Close()
-				}
-				m.Close()
+				cluster.setMaintenanceMaxscale(pr, server)
 			}
 		}
 		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
