@@ -97,6 +97,9 @@ func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
 func (cluster *Cluster) SetRejoinSemisync(check bool) {
 	cluster.conf.AutorejoinSemisync = check
 }
+func (cluster *Cluster) SetMultiMasterRing(multimasterring bool) {
+	cluster.conf.MultiMasterRing = multimasterring
+}
 
 func (cluster *Cluster) SetRejoinFlashback(check bool) {
 	cluster.conf.AutorejoinFlashback = check
