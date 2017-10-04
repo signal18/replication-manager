@@ -154,7 +154,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
 	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
 
-	monitorCmd.Flags().StringVar(&conf.Registry, "registry", "consul", "Registy consul, mdns, etcd, kubernetes, zookeeper")
+	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
 
 	// monitorCmd.Flags().StringVar(&conf.CheckType, "check-type", "tcp", "Type of server health check (tcp, agent)")

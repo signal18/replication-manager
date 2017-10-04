@@ -143,7 +143,7 @@ type Config struct {
 	ProxysqlPassword                   string `mapstructure:"proxysql-password"`
 	ProxysqlWriterHostgroup            string `mapstructure:"proxysql-writer-hostgroup"`
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup"`
-	Registry                           string `mapstructure:"registry"`
+	RegistryConsul                     bool   `mapstructure:"registry-consul"`
 	RegistryHosts                      string `mapstructure:"registry-servers"`
 	KeyPath                            string `mapstructure:"keypath"`
 	Topology                           string `mapstructure:"topology"` // use by bootstrap
