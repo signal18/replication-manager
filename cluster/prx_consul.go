@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/registry"
+	"github.com/micro/go-micro/registry"
 )
 
 func (cluster *Cluster) initConsul() error {

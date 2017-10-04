@@ -1,5 +1,5 @@
-hash: 6a2481b92120eb4148c734b39f4822fb516a90e2b58f90b555f9ddf8978c5bad
-updated: 2017-09-14T23:02:45.691381932+02:00
+hash: 2fb592a4630b0f80a3064d82ce95e443253175253901b5db35fbb556efbe11df
+updated: 2017-10-04T19:27:49.047247882+02:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
@@ -100,6 +100,15 @@ imports:
   version: e59506cc896acb7f7bf732d4fdf5e25f7ccd8983
 - name: github.com/gorilla/sessions
   version: ba78acc856fe7c79891d516131b3d903cc8d9367
+- name: github.com/hashicorp/consul
+  version: 69a02f22a16d8b9f0a8b5c0942184c8660399db2
+  subpackages:
+  - api
+  - watch
+- name: github.com/hashicorp/go-cleanhttp
+  version: 3573b8b52aa7b37b9358d966a898feb387f62437
+- name: github.com/hashicorp/go-rootcerts
+  version: 6bb64b370b90e7ef1fa532be9e591a81c3493e00
 - name: github.com/hashicorp/hcl
   version: 630949a3c5fa3c613328e1b8256052cbc2327c9b
   subpackages:
@@ -111,6 +120,10 @@ imports:
   - json/parser
   - json/scanner
   - json/token
+- name: github.com/hashicorp/serf
+  version: 555c6fa2a11d1f8e08ac9964015e864a3f61e7c3
+  subpackages:
+  - coordinate
 - name: github.com/howeyc/fsnotify
   version: f0c08ee9c60704c1879025f2ae0ff3e000082c13
 - name: github.com/hydrogen18/stalecucumber
@@ -139,6 +152,14 @@ imports:
   version: 51463bfca2576e06c62a8504b5c0f06d61312647
 - name: github.com/mattn/go-runewidth
   version: 14207d285c6c197daabb5c9793d63e7af9ab2d50
+- name: github.com/micro/go-micro
+  version: d29b5e2fab07d53e5067562809cc7fe0b43b67c2
+  subpackages:
+  - registry
+- name: github.com/mitchellh/go-homedir
+  version: b8bc1bf767474819792c23f32d8286a45736f1c6
+- name: github.com/mitchellh/hashstructure
+  version: 2bca23e0e452137f789efbc8610126fd8b94f73b
 - name: github.com/mitchellh/mapstructure
   version: 53818660ed4955e899c0bcafa97299a388bd7c8e
 - name: github.com/mjibson/go-dsp
@@ -181,9 +202,17 @@ imports:
 - name: github.com/wangjohn/quickselect
   version: ed8402a42d5f52ff8d3369f179e12243906f298a
 - name: golang.org/x/crypto
-  version: faadfbdc035307d901e69eea569f5dda451a3ee3
+  version: 9419663f5a44be8b34ca85f08abc5fe1be11f8a3
   subpackages:
+  - curve25519
+  - ed25519
+  - ed25519/internal/edwards25519
+  - ssh
   - ssh/terminal
+- name: golang.org/x/net
+  version: 6c23252515492caf9b228a9d5cabcdbde29f7f82
+  subpackages:
+  - context
 - name: golang.org/x/sys
   version: afadfcc7779c1f4db0f6f6438afcb108d9c9c7cd
   subpackages:

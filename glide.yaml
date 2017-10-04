@@ -17,3 +17,7 @@ import:
   version: ^1.0.0
 - package: github.com/codegangsta/negroni
   version: ^0.2.0
+- package: github.com/micro/go-micro
+  version: ~0.1.4
+  subpackages:
+  - registry
