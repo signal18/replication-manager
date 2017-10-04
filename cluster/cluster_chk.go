@@ -87,7 +87,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
 	} else {
-		cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.conf.Interactive, cluster.conf.MaxFail), ErrFrom: "CONF"})
+		//	cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.conf.Interactive, cluster.conf.MaxFail), ErrFrom: "CONF"})
 	}
 	return false
 }
