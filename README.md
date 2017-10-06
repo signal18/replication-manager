@@ -4,8 +4,26 @@
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
-Product goals are topology detection and topology monitoring, enable on-demand slave to master promotion _(also known as switchover)_, or electing a new master on failure detection _(also known as failover)_. It enforces best practices to get at a minimum up to zero loss in most failure cases. Multiple clusters management is the foundation to define shard groups and replication-manager can be used to deploy some MariaDB sharding solutions.
+The main features are:
+ * Replication monitoring
+ * Topology detection
+ * Slave to master promotion (switchover)
+ * Master election on failure detection (failover)
+ * Replication best practice enforcement
+ * Target to up to zero loss in most failure scenarios
+ * Multiple cluster management
+ * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
 
 ### [Documentation](https://docs.signal18.io)
 
-Replication Manager for MySQL and MariaDB is developed and supported by [SIGNAL 18 SARL](https://signal18.io/products). 
+### License
+
+__replication-manager__ is released under the GPLv3 license. ([complete licence text](https://github.com/github/orchestrator/blob/master/LICENSE))
+
+It includes third-party libraries released under their own licences. Please refer to the `vendor` directory for more information.
+
+It also includes derivative work from the `go-carbon` library by Roman Lomonosov, released under the MIT licence and found under the `graphite` directory. The original library can be found here: https://github.com/lomik/go-carbon
+
+## Copyright and Support
+
+Replication Manager for MySQL and MariaDB is developed and supported by [SIGNAL 18 SARL](https://signal18.io/products).
