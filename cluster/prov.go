@@ -71,8 +71,9 @@ func (cluster *Cluster) BootstrapServices() error {
 func (cluster *Cluster) InitCluster() error {
 	var err error
 	cluster.sme.SetFailoverState()
-	// code delete the cluster state here
-
+	// delete the cluster state here
+	path := cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".json"
+	os.Remove(path)
 	if cluster.conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
 	} else {
