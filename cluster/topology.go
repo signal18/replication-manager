@@ -108,7 +108,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	wg := new(sync.WaitGroup)
 	for _, server := range cluster.servers {
 		wg.Add(1)
-		go server.check(wg)
+		go server.Ping(wg)
 	}
 	wg.Wait()
 

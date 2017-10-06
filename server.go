@@ -232,7 +232,7 @@ func init() {
 	if WithMariadbshardproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "mdbshardproxy", false, "Wrapper to use Spider MdbProxy ")
 		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "mdbshardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "mdbshardproxy-user", "admin", "MaxScale admin user")
+		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "mdbshardproxy-user", "root:mariadb", "MaxScale admin user")
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")

@@ -6,30 +6,28 @@
 
 [Cluster_Mdbshardproxy_Shard1]
 title = "Shard1"
-db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-db-servers-prefered-master = "127.0.0.1:3310"
+db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
+db-servers-prefered-master = "127.0.0.1:3331"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
-mdbshardproxy = true
-mdbshardproxy-hosts = "127.0.0.1:3306"
-mdbshardproxy-user = "root:mariadb"
 
 
 [Cluster_Mdbshardproxy_Shard2]
 title = "Shard2"
-db-servers-hosts = "127.0.0.1:3330,127.0.0.1:3331"
-db-servers-prefered-master = "127.0.0.1:3330"
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
-mdbshardproxy = true
-mdbshardproxy-hosts = "127.0.0.1:3306"
-mdbshardproxy-user = "root:mariadb"
-
 
 
 [Default]
+mdbshardproxy = true
+mdbshardproxy-hosts = "127.0.0.1:3336"
+mdbshardproxy-user = "root:mariadb"
+
+
 # monitoring-datadir = "/var/lib/replication-manager"
 # monitoring-sharedir = "/usr/share/replication-manager"
 

@@ -17,14 +17,66 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
+// Bootstrap provisions && setup topology
+func (cluster *Cluster) Bootstrap() error {
+	var err error
+	// create service template and post
+	err = cluster.BootstrapServices()
+	if err != nil {
+		return err
+	}
+	err = cluster.waitDatabaseCanConn()
+	if err != nil {
+		return err
+	}
+
+	err = cluster.BootstrapReplication()
+	if err != nil {
+		return err
+	}
+	if cluster.conf.Test {
+		cluster.initProxies()
+		err = cluster.WaitProxyEqualMaster()
+		if err != nil {
+			return err
+		}
+		err = cluster.WaitBootstrapDiscovery()
+		if err != nil {
+			return err
+		}
+
+		if cluster.GetMaster() == nil {
+			return errors.New("Abording test, no master found")
+		}
+		err = cluster.InitBenchTable()
+		if err != nil {
+			return errors.New("Abording test, can't create bench table")
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) BootstrapServices() error {
+
+	// create service template and post
+	if cluster.conf.Test || cluster.conf.Enterprise {
+		err := cluster.InitCluster()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) InitCluster() error {
 	var err error
 	cluster.sme.SetFailoverState()
+	// code delete the cluster state here
+
 	if cluster.conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
-
 	} else {
-		err = cluster.LocalhostProvisionDatabases()
+		err = cluster.LocalhostProvisionCluster()
 	}
 	cluster.sme.RemoveFailoverState()
 	return err
@@ -45,7 +97,7 @@ func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCProvisionProxyService(prx)
 	} else {
-		//cluster.LocalhostProvisionProxyService(server)
+		cluster.LocalhostProvisionProxyService(prx)
 	}
 	return nil
 }
@@ -377,7 +429,7 @@ func (cluster *Cluster) AllDatabaseCanConn() bool {
 	return true
 }
 
-func (cluster *Cluster) waitClusterCanConn() error {
+func (cluster *Cluster) waitDatabaseCanConn() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 
@@ -398,57 +450,6 @@ func (cluster *Cluster) waitClusterCanConn() error {
 	} else {
 		cluster.LogPrintf("ERROR", "Timeout waiting for database to be connected")
 		return errors.New("Connections to databases failure")
-	}
-	return nil
-}
-
-// Bootstrap provisions && setup topology
-func (cluster *Cluster) Bootstrap() error {
-	var err error
-	// create service template and post
-	err = cluster.BootstrapServices()
-	if err != nil {
-		return err
-	}
-	err = cluster.waitClusterCanConn()
-	if err != nil {
-		return err
-	}
-
-	err = cluster.BootstrapReplication()
-	if err != nil {
-		return err
-	}
-	if cluster.conf.Test {
-		cluster.initProxies()
-		err = cluster.WaitProxyEqualMaster()
-		if err != nil {
-			return err
-		}
-		err = cluster.WaitBootstrapDiscovery()
-		if err != nil {
-			return err
-		}
-
-		if cluster.GetMaster() == nil {
-			return errors.New("Abording test, no master found")
-		}
-		err = cluster.InitBenchTable()
-		if err != nil {
-			return errors.New("Abording test, can't create bench table")
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) BootstrapServices() error {
-
-	// create service template and post
-	if cluster.conf.Test || cluster.conf.Enterprise {
-		err := cluster.InitCluster()
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }

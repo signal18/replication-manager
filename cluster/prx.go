@@ -219,7 +219,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 				return false
 			}
 
-			if cluster.GetMaster().ServerID == uint(sid) {
+			if cluster.GetMaster().ServerID == uint(sid) || pr.Type == proxySpider {
 				return true
 			}
 		}
