@@ -65,7 +65,6 @@ type ServerMonitor struct {
 	FailoverMasterLogPos        string
 	FailoverSemiSyncSlaveStatus bool
 	Process                     *os.Process
-	Conf                        string //Unique Conf given by reg test initMariaDB
 	MxsServerName               string //Unique server Name in maxscale conf
 	MxsServerStatus             string
 	MxsServerConnections        int
@@ -98,6 +97,7 @@ type ServerMonitor struct {
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
 	ReplicationHealth           string
+	TestConfig                  string
 }
 
 type serverList []*ServerMonitor
@@ -125,9 +125,10 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
+	server.TestConfig = conf
 	server.User = user
 	server.Pass = pass
 	server.HaveSemiSync = true

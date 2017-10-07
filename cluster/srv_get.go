@@ -15,6 +15,10 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
+func (server *ServerMonitor) GetSchemas() ([]string, error) {
+	return dbhelper.GetSchemas(server.Conn)
+}
+
 func (server *ServerMonitor) GetReplicationServerID() uint {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {

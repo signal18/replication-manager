@@ -616,7 +616,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		err := mycluster.BootstrapServices()
+		err := mycluster.ProvisionServices()
 		if err != nil {
 			mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services: ", err)
 			http.Error(w, err.Error(), 500)

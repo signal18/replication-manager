@@ -88,7 +88,7 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 	if prx.Type == proxySpider {
 		cluster.LogPrintf("INFO", "Bootstrap MariaDB Sharding Cluster")
-		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass)
+		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 		err := srv.Refresh()
 		if err == nil {
 			cluster.LogPrintf("WARNING", "Can connect to requested signal18 sharding proxy")
@@ -109,7 +109,6 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 
 func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor) error {
 
-	server.Conf = "semisync.cnf"
 	path := cluster.conf.WorkingDir + "/" + server.Id
 	//os.RemoveAll(path)
 
@@ -165,7 +164,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		cluster.LogPrintf("ERROR", "%s", err)
 		return err
 	}
-	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.Conf, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
+	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.TestConfig, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 	cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process

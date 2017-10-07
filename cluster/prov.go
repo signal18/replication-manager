@@ -21,7 +21,7 @@ import (
 func (cluster *Cluster) Bootstrap() error {
 	var err error
 	// create service template and post
-	err = cluster.BootstrapServices()
+	err = cluster.ProvisionServices()
 	if err != nil {
 		return err
 	}
@@ -56,19 +56,13 @@ func (cluster *Cluster) Bootstrap() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapServices() error {
+func (cluster *Cluster) ProvisionServices() error {
 
 	// create service template and post
-	if cluster.conf.Test || cluster.conf.Enterprise {
-		err := cluster.InitCluster()
-		if err != nil {
-			return err
-		}
+	if !(cluster.conf.Test || cluster.conf.Enterprise) {
+		return errors.New("Version does not support provisioning.")
 	}
-	return nil
-}
 
-func (cluster *Cluster) InitCluster() error {
 	var err error
 	cluster.sme.SetFailoverState()
 	// delete the cluster state here
@@ -80,7 +74,12 @@ func (cluster *Cluster) InitCluster() error {
 		err = cluster.LocalhostProvisionCluster()
 	}
 	cluster.sme.RemoveFailoverState()
-	return err
+	if err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
