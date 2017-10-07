@@ -289,7 +289,7 @@ func init() {
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
-			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "127.0.0.1:443", "OpenSVC collector API")
+			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "ci.signal18.io:9443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
 			monitorCmd.Flags().StringVar(&conf.ProvUser, "opensvc-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
 

@@ -991,11 +991,17 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
+		log.Println("ERROR ", err)
 		return err
 	}
-
+	defer resp.Body.Close()
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return err
+	}
 	return nil
 }
 
@@ -1225,6 +1231,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 		log.Println("ERROR ", err)
 
 	}
+
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
@@ -1302,6 +1309,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 		return "", err
 	}
 	defer resp.Body.Close()
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
