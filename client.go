@@ -225,7 +225,7 @@ func init() {
 	bootstrapCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring")
+	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
 	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
 

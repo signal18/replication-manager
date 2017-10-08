@@ -511,6 +511,11 @@ func (cluster *Cluster) BootstrapReplication() error {
 
 	// default to master slave
 	var err error
+
+	if cluster.conf.MultiMasterWsrep {
+		cluster.LogPrintf("INFO", "Galera cluster ignoring replication setup")
+		return nil
+	}
 	if cluster.CleanAll {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {

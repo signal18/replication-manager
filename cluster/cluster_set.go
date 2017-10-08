@@ -90,15 +90,8 @@ func (cluster *Cluster) SetRejoinBackupBinlog(check bool) {
 	cluster.conf.AutorejoinBackupBinlog = check
 }
 
-// topology setter
-func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
-	cluster.conf.MultiTierSlave = multitierslave
-}
 func (cluster *Cluster) SetRejoinSemisync(check bool) {
 	cluster.conf.AutorejoinSemisync = check
-}
-func (cluster *Cluster) SetMultiMasterRing(multimasterring bool) {
-	cluster.conf.MultiMasterRing = multimasterring
 }
 
 func (cluster *Cluster) SetRejoinFlashback(check bool) {
@@ -109,11 +102,21 @@ func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
 	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
 }
 
+// topology setter
+func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
+	cluster.conf.MultiTierSlave = multitierslave
+}
+func (cluster *Cluster) SetMultiMasterRing(multimasterring bool) {
+	cluster.conf.MultiMasterRing = multimasterring
+}
 func (cluster *Cluster) SetMultiMaster(multimaster bool) {
 	cluster.conf.MultiMaster = multimaster
 }
 func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
 	cluster.conf.MxsBinlogOn = binlogserver
+}
+func (cluster *Cluster) SetMultiMasterWsrep(wsrep bool) {
+	cluster.conf.MultiMasterWsrep = wsrep
 }
 
 func (cluster *Cluster) SetMasterReadOnly() {
