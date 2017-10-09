@@ -103,6 +103,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 			}
+
 			//	opensvc.DeleteService(svc.Svc_id)
 		}
 	}
@@ -394,10 +395,16 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
-	for _, s := range cluster.servers {
+	for i, s := range cluster.servers {
 		err := cluster.OpenSVCProvisionDatabaseService(s)
 		if err != nil {
 			return err
+		}
+		if cluster.GetTopology() == topoMultiMasterWsrep && i == 0 && cluster.TopologyClusterDown() {
+			s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -945,11 +952,6 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
-		if cluster.GetTopology() == topoMultiMasterWsrep && i == 0 && cluster.TopologyClusterDown() {
-			vm = vm + ` --wsrep-new-cluster
-`
-		}
-
 		if dockerMinusRm {
 			vm = vm + ` --rm
 `
