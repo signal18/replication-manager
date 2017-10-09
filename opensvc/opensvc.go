@@ -982,7 +982,8 @@ func (collector *Collector) getMetaCount(body []byte) (int, error) {
 func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
-	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/tags/" + tag.Tag_id + "/services/" + idSrv
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags/" + tag.Tag_id + "/services/" + idSrv
+	//url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags/" + tag.Tag_id
 	log.Println("INFO ", url)
 
 	req, err := http.NewRequest("DELETE", url, nil)
