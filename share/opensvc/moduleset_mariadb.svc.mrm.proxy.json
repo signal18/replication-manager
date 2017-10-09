@@ -106,6 +106,63 @@
                 }
             ],
             "fset_name": "mariadb.svc.prov.pkg"
+        },
+        {
+            "fset_stats": false,
+            "id": 272,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "wsrep",
+                        "f_table": "v_tags",
+                        "id": 225
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.wsrep"
+        },
+        {
+            "fset_stats": false,
+            "id": 273,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "masterslave",
+                        "f_table": "v_tags",
+                        "id": 226
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.masterslave"
+        },
+        {
+            "fset_stats": false,
+            "id": 274,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "multimaster",
+                        "f_table": "v_tags",
+                        "id": 227
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.multimaster"
         }
     ],
     "rulesets": [
@@ -135,7 +192,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "/svc/%%ENV:SERVICES_SVCNAME%%",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "base_dir",
                     "id": 5873
                 }
@@ -159,7 +216,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "/Users/%%ENV:SVC_USERNAME%%/%%ENV:SERVICES_SVCNAME%%",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "base_dir",
                     "id": 5874
                 }
@@ -183,7 +240,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "999",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_gid",
                     "id": 5875
                 },
@@ -191,7 +248,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "999",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_uid",
                     "id": 5876
                 },
@@ -199,7 +256,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "660",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "cnf_perms",
                     "id": 5877
                 }
@@ -227,7 +284,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "777",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "binded_dir_perms",
                     "id": 5878
                 }
@@ -253,7 +310,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "775",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "binded_dir_perms",
                     "id": 5879
                 }
@@ -279,7 +336,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_gid",
                     "id": 5880
                 },
@@ -287,7 +344,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_uid",
                     "id": 5881
                 }
@@ -311,7 +368,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_gid",
                     "id": 5882
                 },
@@ -319,7 +376,7 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "raw",
                     "var_value": "mysql",
-                    "var_updated": "2017-06-21 17:04:14",
+                    "var_updated": "2017-08-28 13:38:28",
                     "var_name": "mysql_uid",
                     "id": 5883
                 }
@@ -343,81 +400,73 @@
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_dir_conf",
-                    "id": 5917
+                    "id": 5944
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_dir_data",
-                    "id": 5918
+                    "id": 5945
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/log/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_dir_log",
-                    "id": 5919
+                    "id": 5946
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/keepalived.conf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global_defs { \\n notification_email { svaroqui@gmail.com } \\n notification_email_from keepalived@lb-3d9d6604 \\n smtp_server localhost \\n smtp_connect_timeout 30 \\n# This should be unique. \\n router_id 100 \\n} \\nvrrp_instance mysql_pool { \\n# The interface we listen on. interface eth1 \\n# The default state, one should be master, the others should be set to SLAVE.\\nstate %%ENV:STATE%% \\n \\n# This should be the same on all participating load balancers. \\nvirtual_router_id 100 \\npriority %%ENV:VRRP_PRIO%% \\n# Set the interface whose status to track to trigger a failover. \\n\\ntrack_interface { \\n eth1 \\n} \\n\\n# Password for the loadbalancers to share. \\nauthentication { \\n  auth_type PASS \\n  auth_pass 1111 \\n} \\n\\n# This is the IP address that floats between the loadbalancers. \\nvirtual_ipaddress { \\n  %%ENV:SVC_CONF_ENV_VIP_ADDR%%/%%ENV:SVC_CONF_ENV_VIP_NETMASK%% \\n}\\n \\n}\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/keepalived.conf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global_defs { \\n notification_email { stephane@mariadb.com } \\n notification_email_from keepalived@lb-3d9d6604 \\n smtp_server localhost \\n smtp_connect_timeout 30 \\n# This should be unique. \\n router_id 100 \\n} \\nvrrp_instance mysql_pool { \\n# The interface we listen on. interface eth1 \\n# The default state, one should be master, the others should be set to SLAVE.\\nstate %%ENV:STATE%% \\n \\n# This should be the same on all participating load balancers. \\nvirtual_router_id 100 \\npriority %%ENV:VRRP_PRIO%% \\n# Set the interface whose status to track to trigger a failover. \\n\\ntrack_interface { \\n eth1 \\n} \\n\\n# Password for the loadbalancers to share. \\nauthentication { \\n  auth_type PASS \\n  auth_pass 1111 \\n} \\n\\n# This is the IP address that floats between the loadbalancers. \\nvirtual_ipaddress { \\n  %%ENV:SVC_CONF_ENV_VIP_ADDR%%/%%ENV:SVC_CONF_ENV_VIP_NETMASK%% \\n}\\n \\n}\"}",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_keepalived",
-                    "id": 5920
-                },
-                {
-                    "var_author": " Manager",
-                    "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mysqlmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\ndetect_stale_slave=true\\ndetect_standalone_master=true\\n\\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\naddress=%%ENV:SERVER_IP%%\\n\\n#[Debug Listener]\\n#type=listener\\n#service=Debug Interface\\n#protocol=telnetd\\n#port=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\naddress=%%ENV:SERVER_IP%%\\n\\n%%ENV:SERVERS%%\\n\"}",
-                    "var_updated": "2017-07-23 15:10:23",
-                    "var_name": "proxy_cnf_maxscale",
-                    "id": 5921
+                    "id": 5947
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/config-haproxy.toml\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# TOPOLOGY\\n# --------\\nhosts = \\\"%%ENV:SVC_CONF_ENV_BACKEND_IPS%%\\\"\\nuser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\nrpluser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\ntitle = \\\"%%ENV:SERVICES_SVCNAME%%/%%ENV:POD%%\\\"\\n\\nconnect-timeout = 1\\n \\n\\n# config.toml\\n# Example replication-manager configuration file\\n\\n# LOG\\n# ---\\n\\n#logfile = \\\"./dashboard/replication-manager.log\\\"\\n#verbose = true\\n\\n#spider = true\\n# HTTP\\n# ----\\n\\nhttp-server = true  \\nhttp-bind-address = \\\"0.0.0.0\\\"\\nhttp-port = \\\"%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\\"\\n# http-root = \\\"./dashboard\\\"\\n\\n# ALERTS\\n# ------\\n\\n#mail-from = \\\"mrm@localhost\\\"\\n#mail-smtp-addr = \\\"localhost:25\\\"\\n#mail-to = \\\"mrm@mariadb.com\\\"\\n\\n# FAILOVER\\n# --------\\n\\n# Automatically rejoin a failed server to the current master\\n# Slaves will re enter with read-only\\n# Wait 5 seconds before killing long running transactions\\n\\nautorejoin = true\\nreadonly = true\\nwait-kill = 5000\\npost-failover-script = \\\"\\\"\\npre-failover-script =\\\"\\\"\\n\\n# CHECK\\n# -----\\n\\ncheck-type = \\\"tcp\\\"\\n\\n# Failover after N failures detection\\n# Failover is stopped after N failovers\\n# Wait N seconds for next failover\\n# Don't initiate failover unless slaves are fully in sync\\n# Don't failover when replication pass delay\\n\\nfailcount = 5\\nfailover-limit = 3\\nfailover-time-limit = 10\\ngtidcheck = true\\nmaxdelay = 30\\n\\n# HA PROXY WRAPPER MODE\\n# ---------------------\\nhaproxy = true \\nhaproxy-binary-path = \\\"/usr/sbin/haproxy\\\"\\n# Read write traffic\\nhaproxy-write-port= %%ENV:SVC_CONF_ENV_PORT_RW%%\\n# Read only load balance least connection traffic\\nhaproxy-read-port=%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_mrm",
-                    "id": 5922
+                    "id": 5949
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/config.toml\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# TOPOLOGY\\n# --------\\nhosts = \\\"%%ENV:SVC_CONF_ENV_BACKEND_IPS%%\\\"\\nuser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\nrpluser = \\\"root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\ntitle = \\\"%%ENV:SERVICES_SVCNAME%%/%%ENV:POD%%\\\"\\n\\nconnect-timeout = 1\\n \\n\\n# config.toml\\n# Example replication-manager configuration file\\n\\n# LOG\\n# ---\\n\\n#logfile = \\\"./dashboard/replication-manager.log\\\"\\n#verbose = true\\n\\n#spider = true\\n# HTTP\\n# ----\\n\\nhttp-server = true  \\nhttp-bind-address = \\\"0.0.0.0\\\"\\nhttp-port = \\\"%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\\"\\n# http-root = \\\"./dashboard\\\"\\n\\n# ALERTS\\n# ------\\n\\n#mail-from = \\\"mrm@localhost\\\"\\n#mail-smtp-addr = \\\"localhost:25\\\"\\n#mail-to = \\\"mrm@mariadb.com\\\"\\n\\n# FAILOVER\\n# --------\\n\\n# Automatically rejoin a failed server to the current master\\n# Slaves will re enter with read-only\\n# Wait 5 seconds before killing long running transactions\\n\\nautorejoin = true\\nreadonly = true\\nwait-kill = 5000\\npost-failover-script = \\\"\\\"\\npre-failover-script =\\\"\\\"\\n\\n# CHECK\\n# -----\\n\\ncheck-type = \\\"tcp\\\"\\n\\n# Failover after N failures detection\\n# Failover is stopped after N failovers\\n# Wait N seconds for next failover\\n# Don't initiate failover unless slaves are fully in sync\\n# Don't failover when replication pass delay\\n\\nfailcount = 5\\nfailover-limit = 3\\nfailover-time-limit = 10\\n#gtidcheck = true\\nmaxdelay = 30\\n\\n# HA PROXY WRAPPER MODE\\n# ---------------------\\n#haproxy = true \\n#haproxy-binary-path = \\\"/usr/sbin/haproxy\\\"\\n# Read write traffic\\n#haproxy-write-port= %%ENV:SVC_CONF_ENV_PORT_RW%%\\n# Read only load balance least connection traffic\\n#haproxy-read-port=%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n\"}",
-                    "var_updated": "2017-06-21 17:04:15",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_mrm_mx",
-                    "id": 5923
+                    "id": 5950
                 },
                 {
-                    "var_author": " Manager",
+                    "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/launcher\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nBASE_DIR=%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%\\nSERVER_IP=%%ENV:SERVER_IP%%\\nSERVER_PORT=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\nUSER=admin\\nMAXSCALE_ROOT_PASSWORD=mariadb\\nfunction _status {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD help\\n}\\n\\nfunction _stop {\\n        maxadmin -u $USER -h $SERVER_IP -P $SERVER_PORT -p$MAXSCALE_ROOT_PASSWORD shutdown maxscale\\n}\\n\\nfunction _start {\\n\\tmaxscale -d --config=$BASE_DIR/conf/maxscale.cnf --datadir=$BASE_DIR/data --logdir=$BASE_DIR/data --piddir=$BASE_DIR/data &\\n}\\n\\ncase $1 in\\nstart)\\n        _status && {\\n                echo \\\"already started\\\"\\n                exit 0\\n        }\\n        _start\\n        ;;\\nstop)\\n        _status || {\\n                echo \\\"already stopped\\\"\\n                exit 0\\n        }\\n        _stop\\n        ;;\\nstatus)\\n        _status\\n        exit $?\\n        ;;\\ninfo)\\n        ;;\\nesac\\n\\n\"}",
-                    "var_updated": "2017-07-17 12:13:07",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_launcher",
-                    "id": 5926
+                    "id": 5951
                 },
                 {
                     "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
-                    "var_updated": "2017-06-28 23:24:33",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_dir_init",
-                    "id": 5927
+                    "id": 5952
                 },
                 {
-                    "var_author": " Manager",
+                    "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/proxysql.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"admin_variables=\\n{\\n\\tadmin_credentials=\\\"admin:admin\\\"\\n\\tmysql_ifaces=\\\"%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%;/tmp/proxysql_admin.sock\\\"\\n#\\trefresh_interval=2000\\n#\\tdebug=true\\n}\\n\\nmysql_variables=\\n{\\n\\tthreads=4\\n\\tmax_connections=2048\\n\\tdefault_query_delay=0\\n\\tdefault_query_timeout=36000000\\n\\thave_compress=true\\n\\tpoll_timeout=2000\\n\\tinterfaces=\\\"%%ENV:SERVER_IP%%:%ENV:SVC_CONF_ENV_PORT_RW%%;/tmp/proxysql.sock\\\"\\n\\tdefault_schema=\\\"information_schema\\\"\\n\\tstacksize=1048576\\n\\tserver_version=\\\"5.5.30\\\"\\n\\tconnect_timeout_server=3000\\n\\tmonitor_history=600000\\n\\tmonitor_connect_interval=60000\\n\\tmonitor_ping_interval=10000\\n\\tmonitor_read_only_interval=1500\\n\\tmonitor_read_only_timeout=500\\n\\tping_interval_server=120000\\n\\tping_timeout_server=500\\n\\tcommands_stats=true\\n\\tsessions_sort=true\\n\\tconnect_retries_on_failure=10\\n}\\n\\n\\n# defines all the MySQL servers\\nmysql_servers =\\n(\\n#\\t{\\n#\\t\\taddress = \\\"127.0.0.1\\\" \\n#\\t\\tport = 3306           \\n#\\t\\thostgroup = 0\\t     \\n#\\t\\tstatus = \\\"ONLINE\\\"    \\n#\\t\\tweight = 1           \\n#\\t\\tcompression = 0       \\n#   max_replication_lag = 10 \\n#\\t},\\n#\\t{\\n#\\t\\taddress = \\\"/var/lib/mysql/mysql.sock\\\"\\n#\\t\\tport = 0\\n#\\t\\thostgroup = 0\\n#\\t},\\n#\\t{\\n#\\t\\taddress=\\\"127.0.0.1\\\"\\n#\\t\\tport=21891\\n#\\t\\thostgroup=0\\n#\\t\\tmax_connections=200\\n#\\t},\\n#\\t{ address=\\\"127.0.0.2\\\" , port=3306 , hostgroup=0, max_connections=5 },\\n#\\t{ address=\\\"127.0.0.1\\\" , port=21892 , hostgroup=1 },\\n#\\t{ address=\\\"127.0.0.1\\\" , port=21893 , hostgroup=1 }\\n#\\t{ address=\\\"127.0.0.2\\\" , port=3306 , hostgroup=1 },\\n#\\t{ address=\\\"127.0.0.3\\\" , port=3306 , hostgroup=1 },\\n#\\t{ address=\\\"127.0.0.4\\\" , port=3306 , hostgroup=1 },\\n#\\t{ address=\\\"/var/lib/mysql/mysql.sock\\\" , port=0 , hostgroup=1 }\\n)\\n\\n\\n# defines all the MySQL users\\nmysql_users:\\n(\\n{ username = \\\"root\\\" , password = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\" , default_hostgroup = 0 , active = 1 }\\n)\\n\"}",
-                    "var_updated": "2017-08-17 23:29:43",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_proxysql",
-                    "id": 5960
+                    "id": 5953
                 }
             ],
             "ruleset_public": false,
@@ -425,27 +474,30 @@
             "rulesets": [
                 "mariadb.svc.basedir",
                 "mariadb.svc.env",
-                "mariadb.svc.mrm.proxt.cnf.haproxy"
+                "mariadb.svc.mrm.proxy.cnf.haproxy",
+                "mariadb.svc.mrm.proxy.cnf.masterslave",
+                "mariadb.svc.mrm.proxy.cnf.wsrep",
+                "mariadb.svc.mrm.proxy.cnf.multimaster"
             ],
             "publications": [
                 "replication-manager"
             ],
-            "id": 1000,
+            "id": 1016,
             "responsibles": [
                 "replication-manager"
             ]
         },
         {
             "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.proxt.cnf.haproxy",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.haproxy",
             "variables": [
                 {
-                    "var_author": " Manager",
+                    "var_author": "replication-manager replication-manager@localhost.localdomain",
                     "var_class": "file",
                     "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n pidfile /var/lib/replication-manager/ux_dck_zpool_loop-haproxy-private.pid\\n\\n daemon\\n maxconn 4096\\n stats socket /var/lib/replication-manager/ux_dck_zpool_loop-haproxy.stats.sock level admin\\n\\n\\n ###\\n #\\n # Experimental: Logging Setup\\n #\\n # We log to a unix socket and read that socket from the Go program\\n #\\n #\\n log /var/run/vamp.log.sock local0\\n\\n defaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n\\n   retries 3\\n   maxconn 500000\\n\\n   # slowloris protection: clients should send their full http request in the configured time\\n   timeout http-request 5s\\n\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind :1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n   \\n### BEGIN GENERATED SECTION ###\\n\\nfrontend my_write_frontend\\n    \\n    bind 0.0.0.0:3303\\n    \\n\\n    \\n     option tcplog \\n\\n\\n    ###\\n    #\\n    # Set logging and set the headers to capture\\n\\n    # capture request header X-Vamp-Server-CurrentTime len 50\\n    # capture response header X-Vamp-Server-ResponseTime len 50\\n    # capture response header X-Vamp-Server-Name len 50\\n\\n\\n    #log-format {\\\\ \\\"timestamp\\\"\\\\ :\\\\ %t,\\\\ \\\"frontend\\\"\\\\ :\\\\ \\\"%f\\\",\\\\ \\\"method\\\"\\\\ :\\\\ \\\"%r\\\",\\\\ \\\"captured_request_headers\\\"\\\\ :\\\\ \\\"%hrl\\\",\\\\ \\\"captures_response_headers\\\"\\\\ :\\\\ \\\"%hsl\\\"\\\\ }\\n\\n    #\\n    ###\\n\\n    \\n\\n    mode tcp\\n    \\n\\n    ###\\n    #\\n    # Spike/Rate Limiting & Quota Management\\n    #\\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\\n    # On these metrics we set rules to designate upper limits. When limits are hit\\n    # we reroute the traffic to a specific abusers backend\\n\\n     # end HTTP spike limit generation\\n\\n     # end spike limit generation\\n\\n    ###\\n    # Filter Management\\n    #\\n    # set filters with optional negation\\n    #\\n\\n    \\n\\n    default_backend service_write\\n\\n\\nfrontend my_read_frontend\\n    \\n    bind 0.0.0.0:3302\\n    \\n\\n    \\n     option tcplog \\n\\n\\n    ###\\n    #\\n    # Set logging and set the headers to capture\\n\\n    # capture request header X-Vamp-Server-CurrentTime len 50\\n    # capture response header X-Vamp-Server-ResponseTime len 50\\n    # capture response header X-Vamp-Server-Name len 50\\n\\n\\n    #log-format {\\\\ \\\"timestamp\\\"\\\\ :\\\\ %t,\\\\ \\\"frontend\\\"\\\\ :\\\\ \\\"%f\\\",\\\\ \\\"method\\\"\\\\ :\\\\ \\\"%r\\\",\\\\ \\\"captured_request_headers\\\"\\\\ :\\\\ \\\"%hrl\\\",\\\\ \\\"captures_response_headers\\\"\\\\ :\\\\ \\\"%hsl\\\"\\\\ }\\n\\n    #\\n    ###\\n\\n    \\n\\n    mode tcp\\n    \\n\\n    ###\\n    #\\n    # Spike/Rate Limiting & Quota Management\\n    #\\n    # We use a stick table to keep track of TCP connections rates and bytes send out.\\n    # On these metrics we set rules to designate upper limits. When limits are hit\\n    # we reroute the traffic to a specific abusers backend\\n\\n     # end HTTP spike limit generation\\n\\n     # end spike limit generation\\n\\n    ###\\n    # Filter Management\\n    #\\n    # set filters with optional negation\\n    #\\n\\n    \\n\\n    default_backend service_read\\n\\n\\n\\n\\n\\n\\nbackend service_write\\n    mode tcp\\n#\\n# Regular HTTP/TCP backends\\n#\\n\\n   \\n    balance leastconn \\n\\n\\n\\n   \\n\\n   \\n    \\n        server leader 192.168.100.70:3306  weight 100 maxconn 2000 check inter 1000 \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n\\n\\n\\n\\n\\nbackend service_read\\n    mode tcp\\n#\\n# Regular HTTP/TCP backends\\n#\\n\\n   \\n    balance leastconn \\n\\n\\n\\n   \\n\\n   \\n    \\n        server 8194047115532167437 192.168.100.70:3306  weight 100 maxconn 2000 check inter 1000 \\n        server 1167504531203395275 192.168.100.71:3306  weight 100 maxconn 2000 check inter 1000 \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n    \\n\\n\\n\\n\\n\\n\\n### END GENERATED SECTION ###\"}",
-                    "var_updated": "2017-08-16 22:26:32",
+                    "var_updated": "2017-08-28 13:38:29",
                     "var_name": "proxy_cnf_haproxy",
-                    "id": 5959
+                    "id": 5954
                 }
             ],
             "ruleset_public": false,
@@ -454,9 +506,81 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 1019,
+            "id": 1017,
             "responsibles": [
                 "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.masterslave",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.masterslave",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mysqlmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\ndetect_stale_slave=true\\ndetect_standalone_master=true\\n\\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\naddress=%%ENV:SERVER_IP%%\\n\\n#[Debug Listener]\\n#type=listener\\n#service=Debug Interface\\n#protocol=telnetd\\n#port=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\naddress=%%ENV:SERVER_IP%%\\n\\n%%ENV:SERVERS%%\\n\"}",
+                    "var_updated": "2017-10-09 11:28:58",
+                    "var_name": "proxy_cnf_maxscale",
+                    "id": 5956
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1019,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.wsrep",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.wsrep",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=galeramon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\ndetect_stale_slave=true\\ndetect_standalone_master=true\\n\\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\naddress=%%ENV:SERVER_IP%%\\n\\n#[Debug Listener]\\n#type=listener\\n#service=Debug Interface\\n#protocol=telnetd\\n#port=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\naddress=%%ENV:SERVER_IP%%\\n\\n%%ENV:SERVERS%%\\n\"}",
+                    "var_updated": "2017-10-09 11:41:21",
+                    "var_name": "proxy_cnf_maxscale",
+                    "id": 5957
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1020,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.multimaster",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.multimaster",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/maxscale.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[MaxScale]\\n#threads=auto\\n\\n[MaxInfo]\\ntype=service\\nrouter=maxinfo\\nuser=monitor\\npasswd=EBD2F49C3B375812A8CDEBA632ED8BBC\\n\\n[MaxInfo JSON Listener]\\ntype=listener\\nservice=MaxInfo\\nprotocol=HTTPD\\nport=%%ENV:SVC_CONF_ENV_PORT_HTTP%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[MySQL Monitor]\\ntype=monitor\\nmodule=mmmon\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmonitor_interval=500\\ndetect_stale_master=true\\ndetect_stale_slave=true\\ndetect_standalone_master=true\\n\\n[Debug Interface]\\ntype=service\\nrouter=debugcli\\n\\n[Read Write Connection Listener]\\ntype=listener\\nservice=Read Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Write Connection Listener]\\ntype=listener\\nservice=Write Connection Router\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_RW%%\\naddress=%%ENV:SERVER_IP%%\\n\\n[Read Write Connection Router]\\ntype=service\\nrouter=readwritesplit\\nlocalhost_match_wildcard_host=1\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nmax_slave_connections=100%\\nrouter_options=master_accept_reads=1,slave_selection_criteria=LEAST_GLOBAL_CONNECTIONS\\nenable_root_user=true\\nservers=%%ENV:SERVERS_LIST%%\\n\\n[Write Connection Router]\\ntype=service\\nrouter=readconnroute\\nrouter_options=master\\nservers=%%ENV:SERVERS_LIST%%\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nenable_root_user=true\\n\\n[Replication]\\ntype=service\\nrouter=binlogrouter\\nversion_string=5.6.17-log\\nuser=root\\npasswd=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nrouter_options=server-id=999,user=root,password=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%,binlogdir=/var/cache/maxscale/\\n\\n[Replication Listener]\\ntype=listener\\nservice=Replication\\nprotocol=MySQLClient\\nport=%%ENV:SVC_CONF_ENV_PORT_BINLOG%%\\naddress=%%ENV:SERVER_IP%%\\n\\n#[Debug Listener]\\n#type=listener\\n#service=Debug Interface\\n#protocol=telnetd\\n#port=%%ENV:SVC_CONF_ENV_PORT_TELNET%%\\n\\n[CLI]\\ntype=service\\nrouter=cli\\n\\n[CLI Listener]\\ntype=listener\\nservice=CLI \\nprotocol=maxscaled\\nport=%%ENV:SVC_CONF_ENV_PORT_ADMIN%%\\naddress=%%ENV:SERVER_IP%%\\n\\n%%ENV:SERVERS%%\\n\"}",
+                    "var_updated": "2017-10-09 11:44:31",
+                    "var_name": "proxy_cnf_maxscale",
+                    "id": 5958
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1021,
+            "responsibles": [
+                "replication-maanger"
             ]
         }
     ]

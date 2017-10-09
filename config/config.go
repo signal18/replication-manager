@@ -203,6 +203,7 @@ type Config struct {
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
+	ProvProxTags                       string `mapstructure:"prov-proxy-tags"`
 	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`

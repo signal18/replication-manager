@@ -49,6 +49,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxDockerMaxscaleImg = cluster.conf.ProvProxMaxscaleImg
 	svc.ProvProxDockerHaproxyImg = cluster.conf.ProvProxHaproxyImg
 	svc.ProvProxDockerProxysqlImg = cluster.conf.ProvProxProxysqlImg
+	svc.ProvProxTags = cluster.conf.ProvProxTags
 	svc.Verbose = 1
 
 	return svc
@@ -226,11 +227,20 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	}
 	cluster.LogPrintf("INFO", "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
 
-	//err = svc.DeteteServiceTags(idsrv)
-	//if err != nil {
-	//	cluster.LogPrintf("ERROR", "Can't delete service tags")
-	//	return err
-	//}
+	err = svc.DeteteServiceTags(idsrv)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Can't delete service tags")
+		return err
+	}
+	taglist := strings.Split(svc.ProvProxTags, ",")
+	svctags, _ := svc.GetTags()
+	for _, tag := range taglist {
+		idtag, err := svc.GetTagIdFromTags(svctags, tag)
+		if err != nil {
+			idtag, _ = svc.CreateTag(tag)
+		}
+		svc.SetServiceTag(idtag, idsrv)
+	}
 	srvlist := make([]string, len(cluster.servers))
 	for i, s := range cluster.servers {
 		srvlist[i] = s.Host
@@ -740,6 +750,7 @@ base_dir = /srv/{svcname}
 max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
 micro_srv = ` + collector.ProvMicroSrv + `
+gcomm	 = ` + cluster.conf.Hosts + `
 `
 	log.Println(conf)
 

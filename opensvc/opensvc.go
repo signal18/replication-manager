@@ -109,6 +109,7 @@ type Collector struct {
 	ProvProxDockerMaxscaleImg string
 	ProvProxDockerHaproxyImg  string
 	ProvProxDockerProxysqlImg string
+	ProvProxTags              string
 	Verbose                   int
 }
 
