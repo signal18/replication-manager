@@ -110,6 +110,7 @@ type Collector struct {
 	ProvProxDockerHaproxyImg  string
 	ProvProxDockerProxysqlImg string
 	ProvProxTags              string
+	ProvCores                 string
 	Verbose                   int
 }
 

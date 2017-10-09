@@ -425,7 +425,7 @@ func (cluster *Cluster) IsProvision() bool {
 // TopologyClusterDown track state all ckuster down
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
-	if cluster.master == nil || cluster.master.State == stateFailed {
+	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
 		//	if cluster.conf.Interactive == false {
 		allslavefailed := true
 		for _, s := range cluster.slaves {

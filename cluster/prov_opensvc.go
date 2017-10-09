@@ -25,6 +25,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvMem = cluster.conf.ProvMem
 	svc.ProvPwd = cluster.GetDbPass()
 	svc.ProvIops = cluster.conf.ProvIops
+	svc.ProvCores = cluster.conf.ProvCores
 	svc.ProvTags = cluster.conf.ProvTags
 	svc.ProvDisk = cluster.conf.ProvDisk
 	svc.ProvNetMask = cluster.conf.ProvNetmask
@@ -720,7 +721,7 @@ show_disabled = false
 		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 	`
 		conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
-		conf = conf + cluster.GetPodDockerDBTemplate(collector, pod)
+		conf = conf + cluster.GetPodDockerDBTemplate(collector, pod, i)
 		conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + host + `
 	`
@@ -749,6 +750,7 @@ netmask =  ` + collector.ProvNetMask + `
 base_dir = /srv/{svcname}
 max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
+max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + cluster.conf.Hosts + `
 `
@@ -920,7 +922,7 @@ size = 2g
 	return conf + disk + fs
 }
 
-func (cluster *Cluster) GetPodDockerDBTemplate(collector opensvc.Collector, pod string) string {
+func (cluster *Cluster) GetPodDockerDBTemplate(collector opensvc.Collector, pod string, i int) string {
 	var vm string
 	if collector.ProvMicroSrv == "docker" {
 		vm = vm + `
@@ -943,6 +945,11 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
+		if cluster.GetTopology() == topoMultiMasterWsrep && i == 0 && cluster.TopologyClusterDown() {
+			vm = vm + ` --wsrep-new-cluster
+`
+		}
+
 		if dockerMinusRm {
 			vm = vm + ` --rm
 `

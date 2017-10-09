@@ -127,8 +127,9 @@ func cliClusterInServerList() bool {
 	}
 	var isValueInList func(value string, list []string) bool
 	isValueInList = func(value string, list []string) bool {
-		for _, v := range list {
+		for i, v := range list {
 			if v == value {
+				cliClusterIndex = i
 				return true
 			}
 		}

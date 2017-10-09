@@ -572,38 +572,45 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(false)
+			mycluster.SetMultiMasterWsrep(false)
 		case "master-slave-no-gtid":
 			mycluster.SetMultiTierSlave(false)
 			mycluster.SetForceSlaveNoGtid(true)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(false)
+			mycluster.SetMultiMasterWsrep(false)
 		case "multi-master":
 			mycluster.SetMultiTierSlave(false)
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(true)
 			mycluster.SetBinlogServer(false)
+			mycluster.SetMultiMasterWsrep(false)
 		case "multi-tier-slave":
 			mycluster.SetMultiTierSlave(true)
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(false)
+			mycluster.SetMultiMasterWsrep(false)
 		case "maxscale-binlog":
 			mycluster.SetMultiTierSlave(false)
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(true)
+			mycluster.SetMultiMasterWsrep(false)
 		case "multi-master-ring":
 			mycluster.SetMultiTierSlave(false)
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(false)
 			mycluster.SetMultiMasterRing(true)
+			mycluster.SetMultiMasterWsrep(false)
 		case "multi-master-wsrep":
 			mycluster.SetMultiTierSlave(false)
 			mycluster.SetForceSlaveNoGtid(false)
 			mycluster.SetMultiMaster(false)
 			mycluster.SetBinlogServer(false)
 			mycluster.SetMultiMasterRing(false)
+			mycluster.SetMultiMasterWsrep(true)
 
 		}
 		err := mycluster.BootstrapReplication()

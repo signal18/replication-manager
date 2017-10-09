@@ -176,6 +176,7 @@ type Config struct {
 	ProvAgents                         string `mapstructure:"prov-db-agents"`
 	ProvMem                            string `mapstructure:"prov-db-memory"`
 	ProvIops                           string `mapstructure:"prov-db-disk-iops"`
+	ProvCores                          string `mapstructure:"prov-db-cpu-cores"`
 	ProvTags                           string `mapstructure:"prov-db-tags"`
 	ProvDisk                           string `mapstructure:"prov-db-disk-size"`
 	ProvDiskFS                         string `mapstructure:"prov-db-disk-fs"`
