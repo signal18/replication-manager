@@ -319,7 +319,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 
-	if server.Conn.Unsafe() == nil {
+	if server.Conn == nil {
 		server.State = stateFailed
 		return errors.New("Connection is closed, server unreachable")
 	}
