@@ -75,6 +75,7 @@ type Config struct {
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync"`
 	AutorejoinNoSemisync               bool   `mapstructure:"autorejoin-flashback-on-unsync"`
+	AutorejoinZFSFlashback             bool   `mapstructure:"autorejoin-zfs-flashback"`
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`

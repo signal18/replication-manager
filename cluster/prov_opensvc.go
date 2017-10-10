@@ -271,7 +271,15 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	}
 	if prx.Type == proxySpider {
 		if strings.Contains(svc.ProvAgents, agent.Node_name) {
-			res, err := cluster.GenerateDBTemplate(svc, []string{prx.Host}, []string{prx.Port}, []opensvc.Host{agent}, prx.Id, agent.Node_name)
+			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
+			err := srv.Refresh()
+			if err == nil {
+				cluster.LogPrintf("WARNING", "Can connect to requested signal18 sharding proxy")
+				//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
+				return nil
+			}
+			srv.ClusterGroup = cluster
+			res, err := srv.GenerateDBTemplate(svc, []string{prx.Host}, []string{prx.Port}, []opensvc.Host{agent}, prx.Id, agent.Node_name)
 			if err != nil {
 				return err
 			}
@@ -375,7 +383,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	}
 
 	// create template && bootstrap
-	res, err := cluster.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
+	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 	if err != nil {
 		return err
 	}
@@ -395,17 +403,12 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
-	for i, s := range cluster.servers {
+	for _, s := range cluster.servers {
 		err := cluster.OpenSVCProvisionDatabaseService(s)
 		if err != nil {
 			return err
 		}
-		if cluster.GetTopology() == topoMultiMasterWsrep && i == 0 && cluster.TopologyClusterDown() {
-			s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
-			if err != nil {
-				return err
-			}
-		}
+
 	}
 	return nil
 }
@@ -707,12 +710,21 @@ for _, addr := range agent.Ips {
 	}
 }*/
 
-func (cluster *Cluster) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {
+func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {
 
 	ipPods := ""
 	portPods := ""
-
-	conf := `
+	conf := ""
+	//if zfs snap
+	if collector.ProvFSPool == "zpool" {
+		conf = `
+[DEFAULT]
+nodes = {env.nodes}
+cluster_type = failover
+rollback = true
+`
+	} else {
+		conf = `
 [DEFAULT]
 nodes = {env.nodes}
 flex_primary = {env.nodes[0]}
@@ -720,16 +732,17 @@ cluster_type = flex
 rollback = false
 show_disabled = false
 `
-	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	}
+	conf = conf + server.ClusterGroup.GetDockerDiskTemplate(collector)
 	//main loop over db instances
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
-		conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod)
 		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 	`
-		conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
-		conf = conf + cluster.GetPodDockerDBTemplate(collector, pod, i)
-		conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)
+		conf = conf + server.GetPodDockerDBTemplate(collector, pod, i)
+		conf = conf + server.ClusterGroup.GetPodPackageTemplate(collector, pod)
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + host + `
 	`
 		portPods = portPods + `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + ports[i] + `
@@ -759,7 +772,7 @@ max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
-gcomm	 = ` + cluster.conf.Hosts + `
+gcomm	 = ` + server.ClusterGroup.conf.Hosts + `
 `
 	log.Println(conf)
 
@@ -929,7 +942,7 @@ size = 2g
 	return conf + disk + fs
 }
 
-func (cluster *Cluster) GetPodDockerDBTemplate(collector opensvc.Collector, pod string, i int) string {
+func (server *ServerMonitor) GetPodDockerDBTemplate(collector opensvc.Collector, pod string, i int) string {
 	var vm string
 	if collector.ProvMicroSrv == "docker" {
 		vm = vm + `
@@ -952,6 +965,21 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
+		//Proceed with galera specific
+		if server.ClusterGroup.GetMaster() == nil {
+			server.ClusterGroup.vmaster = server
+		}
+		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() && server.ClusterGroup.GetMaster().Id == server.Id {
+			//s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
+			//if err != nil {
+			//	return err
+			//}
+
+			vm = vm + `-v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+run_command = mysqld --wsrep_new_cluster
+`
+		}
+
 		if dockerMinusRm {
 			vm = vm + ` --rm
 `
