@@ -716,7 +716,7 @@ func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, ser
 	portPods := ""
 	conf := ""
 	//if zfs snap
-	if collector.ProvFSPool == "zpool" {
+	if collector.ProvFSPool == "zpool" && server.ClusterGroup.GetConf().AutorejoinZFSFlashback && server.IsPrefered() {
 		conf = `
 [DEFAULT]
 nodes = {env.nodes}
@@ -974,9 +974,9 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
 			//if err != nil {
 			//	return err
 			//}
-
-			vm = vm + `-v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
-run_command = mysqld --wsrep_new_cluster
+			//			vm = vm + `run_command = galera_new_cluster
+			//`
+			vm = vm + `run_command = mysqld --wsrep_new_cluster
 `
 		}
 

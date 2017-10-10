@@ -133,3 +133,12 @@ func (server *ServerMonitor) IsSQLThreadRunning() bool {
 	}
 	return false
 }
+
+func (server *ServerMonitor) IsPrefered() bool {
+	for _, v := range server.ClusterGroup.hostList {
+		if v == server.URL {
+			return true
+		}
+	}
+	return false
+}
