@@ -6,6 +6,16 @@
 
 package cluster
 
+func (cluster *Cluster) IsProvision() bool {
+	for _, s := range cluster.servers {
+		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+			return false
+		}
+	}
+	return true
+
+}
+
 func (cluster *Cluster) IsInHostList(host string) bool {
 	for _, v := range cluster.hostList {
 		if v == host {

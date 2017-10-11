@@ -773,7 +773,7 @@ max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
-gcomm	 = ` + server.ClusterGroup.conf.Hosts + `
+gcomm	 = ` + server.ClusterGroup.GetGComm() + `
 `
 	log.Println(conf)
 

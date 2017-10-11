@@ -411,16 +411,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 	return errors.New("Error found in State Machine Engine")
 }
 
-func (cluster *Cluster) IsProvision() bool {
-	for _, s := range cluster.servers {
-		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
-			return false
-		}
-	}
-	return true
-
-}
-
 // TopologyClusterDown track state all ckuster down
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
@@ -448,131 +438,10 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 	return false
 }
 
-func (cluster *Cluster) GetTopology() string {
-	cluster.conf.Topology = topoUnknown
-	if cluster.conf.MultiMaster {
-		cluster.conf.Topology = topoMultiMaster
-	} else if cluster.conf.MultiMasterRing {
-		cluster.conf.Topology = topoMultiMasterRing
-	} else if cluster.conf.MultiMasterWsrep {
-		cluster.conf.Topology = topoMultiMasterWsrep
-	} else if cluster.conf.MxsBinlogOn {
-		cluster.conf.Topology = topoBinlogServer
-	} else {
-		relay := cluster.GetRelayServer()
-		if relay != nil {
-			cluster.conf.Topology = topoMultiTierSlave
-		} else if cluster.master != nil {
-			cluster.conf.Topology = topoMasterSlave
-		}
-	}
-	return cluster.conf.Topology
-}
-
 func (cluster *Cluster) PrintTopology() {
 	for k, v := range cluster.servers {
 		cluster.LogPrintf("INFO", "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
-}
-
-func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
-	if cluster.conf.PrefMaster == "" {
-		return nil
-	}
-	for _, server := range cluster.servers {
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG", "Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
-		}
-		if server.URL == cluster.conf.PrefMaster {
-			return server
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) GetRelayServer() *ServerMonitor {
-	for _, server := range cluster.servers {
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG", "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
-		}
-		if server.IsRelay {
-			return server
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) GetIndiceServerFromId(Id string) int {
-	i := 0
-	for _, server := range cluster.servers {
-
-		if server.Id == Id {
-			return i
-		}
-		i = i + 1
-	}
-	return 0
-}
-
-func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
-	for _, server := range cluster.servers {
-		if server.ServerID == serverid {
-			return server
-		}
-	}
-	return nil
-}
-func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
-	for _, server := range cluster.servers {
-		if server.Id == name {
-			return server
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
-	for _, server := range cluster.servers {
-		if server.URL == url {
-			return server
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
-
-	for _, server := range cluster.servers {
-
-		if len(s.Replications) > 0 {
-
-			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
-			}
-			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
-				if s.GetReplicationServerID() == server.ServerID {
-					return server, nil
-				}
-			} else {
-				if s.GetReplicationMasterHost() == server.Host && s.GetReplicationMasterPort() == server.Port {
-					return server, nil
-				}
-			}
-		}
-
-	}
-	// Possible that we can't found the master because the replication host and configurartion host missmatch:  hostname vs IP
-	// Lookup for reverse DNS IP match
-	if cluster.master != nil {
-		is, err := dbhelper.IsSlaveof(s.Conn, s.Host, cluster.master.IP, cluster.master.Port)
-		if err != nil {
-			return nil, nil
-		}
-		if is {
-			return cluster.master, nil
-		}
-	}
-	return nil, nil
 }
 
 // CountFailed Count number of failed node
@@ -584,15 +453,6 @@ func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 		}
 	}
 	return failed
-}
-
-func (cluster *Cluster) GetFailedServer() *ServerMonitor {
-	for _, server := range cluster.servers {
-		if server.State == stateFailed {
-			return server
-		}
-	}
-	return nil
 }
 
 // LostMajority should be call in case of splitbrain to set maintenance mode
