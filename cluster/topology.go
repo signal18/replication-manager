@@ -257,7 +257,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 					sl.IsRelay = false
 				}
 			}
-
 		}
 	}
 	if cluster.conf.MultiMaster == true {
@@ -414,7 +413,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 func (cluster *Cluster) IsProvision() bool {
 	for _, s := range cluster.servers {
-		if s.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 			return false
 		}
 	}

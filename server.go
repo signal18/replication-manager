@@ -11,6 +11,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"hash/crc64"
 	"io/ioutil"
 	mysqllog "log"
 	"log/syslog"
@@ -293,8 +294,25 @@ func init() {
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "ci.signal18.io:9443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
-			monitorCmd.Flags().StringVar(&conf.ProvUser, "opensvc-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
+			monitorCmd.Flags().BoolVar(&conf.ProvRegister, "opensvc-register", false, "Register user codeapp to collector, load compliance")
 
+			dbConfig := viper.New()
+			dbConfig.SetConfigType("yaml")
+			file, err := ioutil.ReadFile(conf.ShareDir + "/opensvc/account.yaml")
+			if err != nil {
+				log.Errorf("%s", err)
+			}
+			dbConfig.ReadConfig(bytes.NewBuffer(file))
+			log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))
+			conf.ProvUser = dbConfig.Get("email").(string) + ":" + dbConfig.Get("hashed_password").(string)
+			crcTable := crc64.MakeTable(crc64.ECMA)
+			conf.ProvCodeApp = "Signal" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
+			log.Printf("OpenSVC code application: %s", conf.ProvCodeApp)
+
+			//	} else {
+			//		monitorCmd.Flags().StringVar(&conf.ProvUser, "opensvc-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
+			//		monitorCmd.Flags().StringVar(&conf.ProvCodeApp, "opensvc-codeapp", "MariaDB", "OpenSVC collector applicative code")
+			//	}
 			monitorCmd.Flags().StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker]")
 			monitorCmd.Flags().StringVar(&conf.ProvAgents, "prov-db-agents", "", "Comma seperated list of agents for micro services provisionning")
 			monitorCmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
@@ -474,7 +492,7 @@ For interacting with this daemon use,
 			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
 			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
 			//don't Bootstrap opensvc to speedup test
-			if !conf.Test {
+			if conf.ProvRegister {
 				err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
 				if err != nil {
 					log.Printf("%s", err)

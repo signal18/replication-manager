@@ -21,6 +21,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.conf.ProvHost)
 	svc.User, svc.Pass = misc.SplitPair(cluster.conf.ProvAdminUser)
 	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.conf.ProvUser)
+	svc.RplMgrCodeApp = cluster.conf.ProvCodeApp
 	svc.ProvAgents = cluster.conf.ProvAgents
 	svc.ProvMem = cluster.conf.ProvMem
 	svc.ProvPwd = cluster.GetDbPass()

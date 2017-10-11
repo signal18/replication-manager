@@ -1,0 +1,6 @@
+email: replication-manager@localhost.localdomain
+state: enabled
+access:
+  site:
+    login: 'true'
+hashed_password: mariadb

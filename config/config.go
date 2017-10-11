@@ -170,8 +170,10 @@ type Config struct {
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
 	Enterprise                         bool   //used to talk to opensvc collector
 	ProvHost                           string `mapstructure:"opensvc-host"`
+	ProvRegister                       bool   `mapstructure:"opensvc-register"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user"`
 	ProvUser                           string `mapstructure:"opensvc-user"`
+	ProvCodeApp                        string `mapstructure:"opensvc-codeapp"`
 	ProvDBServerPath                   string `mapstructure:"prov-db-localhost-binary-path"`
 	ProvType                           string `mapstructure:"prov-db-service-type"`
 	ProvAgents                         string `mapstructure:"prov-db-agents"`

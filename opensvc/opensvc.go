@@ -12,10 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Addr struct {
@@ -81,6 +82,7 @@ type Collector struct {
 	Pass                      string
 	RplMgrUser                string
 	RplMgrPassword            string
+	RplMgrCodeApp             string
 	ProvAgents                string
 	ProvMem                   string
 	ProvIops                  string
@@ -133,7 +135,8 @@ func (collector *Collector) Bootstrap(path string) error {
 	for _, grp := range groups {
 		collector.SetGroupUser(grp.Id, userid)
 	}
-	appid, err := collector.CreateAppCode("MariaDB")
+
+	appid, err := collector.CreateAppCode(collector.RplMgrCodeApp)
 	if err != nil {
 		return err
 	}
