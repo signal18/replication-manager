@@ -739,7 +739,7 @@ func (collector *Collector) GetNodes() []Host {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		//	log.Println("ERROR ", err)
 		return nil
 	}
 	for i, agent := range r.Data {
@@ -1140,6 +1140,12 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		log.Println("ERROR ", err)
+		return "W"
+	}
+	if r.Data == nil {
+		return "W"
+	}
+	if len(r.Data) == 0 {
 		return "W"
 	}
 	return r.Data[0].Status

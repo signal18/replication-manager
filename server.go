@@ -495,10 +495,14 @@ For interacting with this daemon use,
 			if conf.ProvRegister {
 				err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
 				if err != nil {
-					log.Printf("%s", err)
+					log.Fatalf("%s", err)
 				}
+				log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
 			}
 			agents = svc.GetNodes()
+			if agents == nil {
+				log.Fatalf("Can't connect or agents not registered")
+			}
 		}
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
