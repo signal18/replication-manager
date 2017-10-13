@@ -311,8 +311,19 @@ func GetChannelSlaveStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 }
 
 func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
+	myver, _ := GetDBVersion(db)
 	s := SlaveStatus{}
-	ss, err := GetAllSlavesStatus(db)
+	ss := []SlaveStatus{}
+	var err error
+
+	if myver.IsMariaDB() {
+		ss, err = GetAllSlavesStatus(db)
+	} else {
+		var s SlaveStatus
+		s, err = GetSlaveStatus(db)
+		ss = append(ss, s)
+	}
+
 	for _, s := range ss {
 		if s.ConnectionName.String == conn {
 			return s, err
