@@ -324,16 +324,11 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 func GetAllSlavesStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
-	myver, _ := GetDBVersion(db)
 	ss := []SlaveStatus{}
 	var err error
-	if myver.IsMariaDB() {
-		err = udb.Select(&ss, "SHOW ALL SLAVES STATUS")
-	} else {
-		var s SlaveStatus
-		s, err = GetSlaveStatus(db)
-		ss = append(ss, s)
-	}
+
+	err = udb.Select(&ss, "SHOW ALL SLAVES STATUS")
+
 	return ss, err
 }
 
@@ -463,7 +458,17 @@ func SetBinlogCompress(db *sqlx.DB) error {
 
 func ResetAllSlaves(db *sqlx.DB) error {
 	myver, _ := GetDBVersion(db)
-	ss, err := GetAllSlavesStatus(db)
+
+	ss := []SlaveStatus{}
+	var err error
+
+	if myver.IsMariaDB() {
+		ss, err = GetAllSlavesStatus(db)
+	} else {
+		var s SlaveStatus
+		s, err = GetSlaveStatus(db)
+		ss = append(ss, s)
+	}
 	if err != nil {
 		return err
 	}
