@@ -324,8 +324,16 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 func GetAllSlavesStatus(db *sqlx.DB) ([]SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
+	myver, _ := GetDBVersion(db)
 	ss := []SlaveStatus{}
-	err := udb.Select(&ss, "SHOW ALL SLAVES STATUS")
+	var err error
+	if myver.IsMariaDB() {
+		err = udb.Select(&ss, "SHOW ALL SLAVES STATUS")
+	} else {
+		var s SlaveStatus
+		s, err = GetSlaveStatus(db)
+		ss = append(ss, s)
+	}
 	return ss, err
 }
 

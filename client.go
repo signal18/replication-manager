@@ -31,6 +31,7 @@ import (
 	"github.com/signal18/replication-manager/termlog"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -69,6 +70,7 @@ var (
 	cliServerStop                bool
 	cliServerStart               bool
 	cliConsoleServerIndex        int
+	cliShowObjects               string
 )
 
 type RequetParam struct {
@@ -145,72 +147,49 @@ func cliClusterInServerList() bool {
 
 	return true
 }
+func initCliCommonFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
+	cmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
+	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
+	viper.BindPFlags(cmd.Flags())
+
+}
 
 func init() {
+
 	rootCmd.AddCommand(clientCmd)
+	initCliCommonFlags(clientCmd)
 	rootCmd.AddCommand(switchoverCmd)
+	initCliCommonFlags(switchoverCmd)
 	rootCmd.AddCommand(failoverCmd)
+	initCliCommonFlags(failoverCmd)
 	rootCmd.AddCommand(topologyCmd)
+	initCliCommonFlags(topologyCmd)
 	rootCmd.AddCommand(apiCmd)
+	initCliCommonFlags(apiCmd)
 	rootCmd.AddCommand(testCmd)
+	initCliCommonFlags(testCmd)
 	rootCmd.AddCommand(statusCmd)
+	initCliCommonFlags(statusCmd)
 	rootCmd.AddCommand(bootstrapCmd)
+	initCliCommonFlags(bootstrapCmd)
 	rootCmd.AddCommand(serverCmd)
+	initCliCommonFlags(serverCmd)
+	rootCmd.AddCommand(showCmd)
+	initCliCommonFlags(showCmd)
 
-	clientCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	clientCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	clientCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	clientCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	clientCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	clientCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
-
-	serverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	serverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	serverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	serverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	serverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	serverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
 	serverCmd.Flags().BoolVar(&cliServerMaintenance, "maintenance", false, "Toggle maintenance")
 	serverCmd.Flags().BoolVar(&cliServerStop, "stop", false, "Start server")
 	serverCmd.Flags().BoolVar(&cliServerStart, "start", false, "Stop server")
 
-	apiCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	apiCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	apiCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	apiCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	apiCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:3000/api/clusters", "Url to rest API")
 
-	apiCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
-
-	switchoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	switchoverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	switchoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	switchoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	switchoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	switchoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 
-	failoverCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	failoverCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	failoverCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	failoverCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	failoverCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	failoverCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
-
-	topologyCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	topologyCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	topologyCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	topologyCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	topologyCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
-	topologyCmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
-
-	testCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	testCmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	testCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	testCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	testCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	testCmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
 	testCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
 	testCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
@@ -221,21 +200,14 @@ func init() {
 
 	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 
-	bootstrapCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	bootstrapCmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
-	bootstrapCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	bootstrapCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	bootstrapCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
 	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
 	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
 
-	statusCmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	statusCmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
-	statusCmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
-	statusCmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
-	statusCmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
+
+	showCmd.Flags().StringVar(&cliShowObjects, "get", "settings,clusters,servers,master,slaves,crashes,alerts", "get the following objects")
+
 }
 
 var serverCmd = &cobra.Command{
@@ -552,6 +524,82 @@ var testCmd = &cobra.Command{
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
+	},
+}
+
+var showCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Print json informations",
+	Long:  `To use for support issues`,
+	Run: func(cmd *cobra.Command, args []string) {
+		//cliClusters, err = cliGetClusters()
+		cliInit(false)
+		urlpost := ""
+		type Objects struct {
+			settings interface{}
+			servers  interface{}
+			master   interface{}
+			slaves   interface{}
+			crashes  interface{}
+			alerts   interface{}
+		}
+		type Report struct {
+			clusters []Objects
+		}
+		var myReport Report
+		var myObjects Objects
+
+		for _, cluster := range cliClusters {
+			fmt.Println(cluster)
+			if strings.Contains(cliShowObjects, "settings") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/settings"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.settings)
+				}
+			}
+			if strings.Contains(cliShowObjects, "servers") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/servers"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.servers)
+				}
+			}
+			if strings.Contains(cliShowObjects, "master") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/master"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.master)
+				}
+			}
+			if strings.Contains(cliShowObjects, "slaves") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/master"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.slaves)
+				}
+			}
+			if strings.Contains(cliShowObjects, "crashes") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/crashes"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.crashes)
+				}
+			}
+			if strings.Contains(cliShowObjects, "alerts") {
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/alerts"
+				res, err := cliAPICmd(urlpost, nil)
+				if err == nil {
+					json.Unmarshal([]byte(res), &myObjects.alerts)
+				}
+			}
+			myReport.clusters = append(myReport.clusters, myObjects)
+		}
+		data, _ := json.MarshalIndent(myReport, "", "\t")
+		log.Println(data)
+	},
+	PostRun: func(cmd *cobra.Command, args []string) {
+
 	},
 }
 
