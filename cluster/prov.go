@@ -604,22 +604,20 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf("INFO", "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
 
 				} else {
-					ss, errss := cluster.servers[masterKey].GetSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
-					if errss != nil {
-						cluster.LogPrintf("ERROR", "%s as master", cluster.servers[masterKey].URL)
-					} else {
-						err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-							Host:      cluster.servers[masterKey].Host,
-							Port:      cluster.servers[masterKey].Port,
-							User:      cluster.rplUser,
-							Password:  cluster.rplPass,
-							Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-							Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-							Mode:      "POSITIONAL",
-							Logfile:   ss.MasterLogFile.String,
-							Logpos:    ss.ReadMasterLogPos.String,
-						})
-					}
+					//*ss, errss := cluster.servers[masterKey].GetSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
+
+					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:      cluster.servers[masterKey].Host,
+						Port:      cluster.servers[masterKey].Port,
+						User:      cluster.rplUser,
+						Password:  cluster.rplPass,
+						Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+						Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+						Mode:      "POSITIONAL",
+						Logfile:   cluster.servers[masterKey].BinaryLogFile,
+						Logpos:    cluster.servers[masterKey].BinaryLogPos,
+					})
+
 					//  Missing  multi source cluster.conf.MasterConn
 					cluster.LogPrintf("INFO", "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
 
