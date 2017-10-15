@@ -1192,11 +1192,11 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node.IsMaster() {
+		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false {
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Master!"))
+			w.Write([]byte("503 -Not a Valid Master!"))
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -1210,11 +1210,11 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node.IsSlave {
+		if node.IsSlave && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Slave!"))
+			w.Write([]byte("503 -Not a Valid Slave!"))
 		}
 
 	} else {

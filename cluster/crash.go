@@ -8,7 +8,12 @@
 // See LICENSE in this directory for the integral text.
 package cluster
 
-import "github.com/signal18/replication-manager/gtid"
+import (
+	"encoding/json"
+	"io/ioutil"
+
+	"github.com/signal18/replication-manager/gtid"
+)
 
 // Crash will store informations on a crash based on the replication stream
 type Crash struct {
@@ -61,4 +66,13 @@ func (crash *Crash) delete(cl *crashList) {
 		}
 	}
 	*cl = lsm
+}
+
+func (crash *Crash) Save(path string) error {
+	saveJson, _ := json.MarshalIndent(crash, "", "\t")
+	err := ioutil.WriteFile(path, saveJson, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }

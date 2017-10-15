@@ -240,6 +240,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 	cluster.crashes = append(cluster.crashes, crash)
+	t := time.Now()
+	crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".crash." + t.Format("20060102150405") + ".json")
 	cluster.Save()
 	// Call post-failover script before unlocking the old master.
 	if cluster.conf.PostScript != "" {
@@ -955,6 +957,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		cluster.crashes = append(cluster.crashes, crash)
 		cluster.Save()
+		t := time.Now()
+		crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".crash." + t.Format("20060102150405") + ".json")
 	}
 
 	// Phase 3: Prepare new master

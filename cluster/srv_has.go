@@ -105,6 +105,14 @@ func (server *ServerMonitor) IsReplicationBroken() bool {
 	return false
 }
 
+func (server *ServerMonitor) HasReplicationIssue() bool {
+	ret := server.replicationCheck()
+	if ret == "Running OK" {
+		return true
+	}
+	return false
+}
+
 func (server *ServerMonitor) IsIgnored() bool {
 	if misc.Contains(server.ClusterGroup.ignoreList, server.URL) {
 		return true
