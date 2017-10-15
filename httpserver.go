@@ -27,18 +27,12 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
-	"github.com/signal18/replication-manager/state"
 	log "github.com/sirupsen/logrus"
 )
 
 type HandlerManager struct {
 	Gelada    *gelada.Gelada
 	AuthGuard *authguard.AuthGuard
-}
-
-type alerts struct {
-	Errors   []state.StateHttp `json:"errors"`
-	Warnings []state.StateHttp `json:"warnings"`
 }
 
 func httpserver() {
@@ -452,7 +446,7 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerAlerts(w http.ResponseWriter, r *http.Request) {
-	a := new(alerts)
+	a := new(cluster.Alerts)
 	a.Errors = currentCluster.GetStateMachine().GetOpenErrors()
 	a.Warnings = currentCluster.GetStateMachine().GetOpenWarnings()
 	e := json.NewEncoder(w)

@@ -78,6 +78,11 @@ type Cluster struct {
 	tlsconf              *tls.Config
 }
 
+type Alerts struct {
+	Errors   []state.StateHttp `json:"errors"`
+	Warnings []state.StateHttp `json:"warnings"`
+}
+
 const (
 	stateClusterStart string = "Running starting"
 	stateClusterDown  string = "Running cluster down"

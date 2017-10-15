@@ -479,7 +479,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
-	a := new(alerts)
+	a := new(cluster.Alerts)
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
