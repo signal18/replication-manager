@@ -142,3 +142,14 @@ func (server *ServerMonitor) IsPrefered() bool {
 	}
 	return false
 }
+
+func (server *ServerMonitor) IsMaster() bool {
+	master := server.ClusterGroup.GetMaster()
+	if master == nil {
+		return false
+	}
+	if master.Id == server.Id {
+		return true
+	}
+	return false
+}

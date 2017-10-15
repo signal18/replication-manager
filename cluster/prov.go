@@ -482,7 +482,11 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
-		err = dbhelper.StopAllSlaves(server.Conn)
+		if server.DBVersion.IsMariaDB() {
+			err = dbhelper.StopAllSlaves(server.Conn)
+		} else {
+			err = dbhelper.StopSlave(server.Conn)
+		}
 		if err != nil {
 			cluster.sme.RemoveFailoverState()
 			return err
@@ -570,11 +574,11 @@ func (cluster *Cluster) BootstrapReplication() error {
 				var hasMyGTID bool
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
 
-				_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[masterKey].CurrentGtid.Sprint() + "\"")
-				if err != nil {
-					return err
-				}
 				if server.State != stateFailed && cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+					_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[masterKey].CurrentGtid.Sprint() + "\"")
+					if err != nil {
+						return err
+					}
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.servers[masterKey].Host,
 						Port:      cluster.servers[masterKey].Port,

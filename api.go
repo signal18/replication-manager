@@ -120,6 +120,14 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
@@ -1174,6 +1182,44 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	err := e.Encode(s)
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
+func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node.IsMaster() {
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Master!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node.IsSlave {
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Slave!"))
+		}
+
+	} else {
+
+		http.Error(w, "No cluster", 500)
 		return
 	}
 }
