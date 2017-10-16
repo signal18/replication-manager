@@ -121,7 +121,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	if server.IsReplicationCanGTID() {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
 	} else {
-		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence", server.BinaryLogFile, crash.FailoverIOGtid.Sprint())
+		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence %s , %d", server.BinaryLogFile, server.BinaryLogPos)
 	}
 	var err error
 	realmaster := server.ClusterGroup.master
