@@ -252,9 +252,11 @@ func (cluster *Cluster) GetTopology() string {
 		cluster.conf.Topology = topoMultiMasterWsrep
 	} else if cluster.conf.MxsBinlogOn {
 		cluster.conf.Topology = topoBinlogServer
+	} else if cluster.conf.MultiTierSlave {
+		cluster.conf.Topology = topoMultiTierSlave
 	} else {
 		relay := cluster.GetRelayServer()
-		if relay != nil {
+		if relay != nil && cluster.conf.ReplicationNoRelay == false {
 			cluster.conf.Topology = topoMultiTierSlave
 		} else if cluster.master != nil {
 			cluster.conf.Topology = topoMasterSlave
