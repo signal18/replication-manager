@@ -154,6 +154,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinNoSemisync, "autorejoin-flashback-on-unsync", false, "Automatically rejoin a failed server to the current master when elected semisync status is NOT SYNC ")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinZFSFlashback, "autorejoin-zfs-flashback", false, "Automatically failover service via ZFS send receive")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinSlavePositionalHearbeat, "autorejoin-slave-positional-hearbeat", false, "Automatically rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 
 	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
 

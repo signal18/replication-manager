@@ -53,7 +53,7 @@ var clusterError = map[string]string{
 	"ERR00043": "Skip slave in election %s Semisync report unsynced",
 	"ERR00044": "Can't connect to OpenSVC collector %s",
 	"ERR00045": "Found forbidden relay topology, trying to fix",
-	"ERR00046": "Found forbidden relay topology, can't fix high replication delay",
+	"ERR00046": "Can't fix relay topology: high replication delay",
 	"ERR00047": "Skip slave in election %s - Maintenance mode",
 	"ERR00048": "Broken muti master ring",
 	"ERR00049": "Waiting old master to rejoin in positional mode to rejoin slave",

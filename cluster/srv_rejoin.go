@@ -349,9 +349,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				if mycurrentmaster.State != stateFailed {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
 					err := mycurrentmaster.StopSlave()
-					if err != nil {
+					if err == nil {
 						err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
-						if err2 != nil {
+						if err2 == nil {
 
 							server.StopSlave()
 							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
