@@ -45,7 +45,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining failed server %s to master %s", server.URL, server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining server %s to master %s", server.URL, server.ClusterGroup.master.URL)
 			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
 			if crash == nil {
 				server.ClusterGroup.LogPrintf("INFO", "Rejoin found no crash infos, promoting full state transfer %s", server.URL)
@@ -120,13 +120,15 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	if server.IsReplicationCanGTID() {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
+	} else {
+		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence", server.BinaryLogFile, crash.FailoverIOGtid.Sprint())
 	}
 	var err error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-	if server.IsReplicationCanGTID() && realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
+	if server.IsReplicationCanGTID() || (realmaster.MxsHaveGtid || realmaster.IsMaxscale == false) {
 		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -241,6 +243,11 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
 		return nil
+	} else {
+		// don't try flashback on old style replication that are ahead jump to SST
+		if server.IsReplicationCanGTID() == false {
+			return errors.New("Incremental failed")
+		}
 	}
 	if crash.FailoverIOGtid != nil {
 		// server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0
@@ -397,9 +404,12 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		if errss != nil {
 		 return	false
 		}*/
-
-		if crash.FailoverMasterLogFile == server.BinaryLogFile && server.BinaryLogPos == crash.FailoverMasterLogPos {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining node file %s, pos %d is equal ", server.BinaryLogFile, server.BinaryLogPos)
+		valid, err := dbhelper.HaveExtraEvents(server.Conn, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
+		if err != nil {
+			return false
+		}
+		if valid {
+			server.ClusterGroup.LogPrintf("INFO", "No extra events after  file %s, pos %d is equal ", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 			return true
 		}
 		return false

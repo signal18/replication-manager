@@ -107,6 +107,15 @@ type SpiderTableNoSync struct {
 	Srv_sync     string
 }
 
+type BinlogEvents struct {
+	Log_name    string `db:"Log_name"`
+	Pos         uint   `db:"Pos"`
+	Event_type  string `db:"Event_type"`
+	Server_id   uint   `db:"Server_id"`
+	End_log_pos uint   `db:"End_log_pos"`
+	Info        string `db:"Info"`
+}
+
 func MySQLConnect(user string, password string, address string, parameters ...string) (*sqlx.DB, error) {
 	dsn := user + ":" + password + "@" + address + "/"
 	if len(parameters) > 0 {
@@ -292,6 +301,23 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 		}
 	}
 	return true, nil
+}
+
+func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, error) {
+	db.MapperFunc(strings.Title)
+	evts := []BinlogEvents{}
+	udb := db.Unsafe()
+	err := udb.Get(&evts, "SHOW BINLOG EVENTS IN '"+file+"' FROM "+pos)
+	if err != nil {
+		return true, err
+	}
+	if len(evts) == 1 {
+		return false, nil
+	}
+	if len(evts) > 1 {
+		return true, nil
+	}
+	return false, nil
 }
 
 func GetSlaveStatus(db *sqlx.DB) (SlaveStatus, error) {
