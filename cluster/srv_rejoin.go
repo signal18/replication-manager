@@ -121,15 +121,19 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	if server.IsReplicationCanGTID() {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
 	} else {
-		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence %s , %d", server.BinaryLogFile, server.BinaryLogPos)
+		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence %s , %s", server.BinaryLogFile, server.BinaryLogPos)
 	}
 	var err error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-	if server.IsReplicationCanGTID() || (realmaster.MxsHaveGtid || realmaster.IsMaxscale == false) {
+	if server.IsReplicationCanGTID() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
 		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "Failed in GTID rejoin old Master in sync %s", err)
+			return err
+		}
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
@@ -142,6 +146,10 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logfile:   crash.FailoverMasterLogFile,
 			Logpos:    crash.FailoverMasterLogPos,
 		})
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
+			return err
+		}
 	}
 	dbhelper.StartSlave(server.Conn)
 	return err
