@@ -318,18 +318,21 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.DSN)
 			return errors.New("No Crash info on current master")
 		}
-		server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
-		server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
-
+		if server.ClusterGroup.conf.Verbose {
+			server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
+			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
+		}
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
+
 			if server.IsReplicationCanGTID() {
+				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
 
 				realmaster := server.ClusterGroup.master
 				// A SLAVE IS ALWAY BEHIND MASTER
 				//		slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//		master_gtid := crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//	if slave_gtid < master_gtid {
-				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave server %s to master %s", server.URL, realmaster.URL)
+				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave via GTID")
 				err := dbhelper.StopSlave(server.Conn)
 				if err == nil {
 					err = server.SetReplicationGTIDSlavePosFromServer(realmaster)
@@ -371,6 +374,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 						server.StartSlave()
 					}
 					mycurrentmaster.StartSlave()
+				} else {
+					//Adding state waiting for old master to rejoin in positional mode
+					// this state prevent crash info to be removed
+					server.ClusterGroup.sme.AddState("ERR00049", state.State{ErrType: "ERRRO", ErrDesc: fmt.Sprintf(clusterError["ERR00049"]), ErrFrom: "TOPO"})
 				}
 			}
 		}
