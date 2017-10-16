@@ -118,13 +118,15 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 }
 
 func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
-	server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
+	if server.IsReplicationCanGTID() {
+		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
+	}
 	var err error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-	if realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
+	if server.IsReplicationCanGTID() && realmaster.MxsHaveGtid || realmaster.IsMaxscale == false {
 		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -305,7 +307,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in %s replication io thread is %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
 
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
-			if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+			if server.IsReplicationCanGTID() {
 
 				realmaster := server.ClusterGroup.master
 				// A SLAVE IS ALWAY BEHIND MASTER
@@ -391,15 +393,16 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		}
 		return false
 	} else {
-		ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
+		/*ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
 		if errss != nil {
-			return false
-		}
+		 return	false
+		}*/
 
-		if crash.FailoverMasterLogFile == ss.MasterLogFile.String && ss.ReadMasterLogPos.String == crash.FailoverMasterLogPos {
-			return false
+		if crash.FailoverMasterLogFile == server.BinaryLogFile && server.BinaryLogPos == crash.FailoverMasterLogPos {
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining node file %s, pos %d is equal ", server.BinaryLogFile, server.BinaryLogPos)
+			return true
 		}
-		return true
+		return false
 	}
 }
 

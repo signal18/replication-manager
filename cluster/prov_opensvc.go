@@ -966,11 +966,12 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
-		//Proceed with galera specific
-		if server.ClusterGroup.GetMaster() == nil {
-			server.ClusterGroup.vmaster = server
-		}
+
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() && server.ClusterGroup.GetMaster().Id == server.Id {
+			//Proceed with galera specific
+			if server.ClusterGroup.GetMaster() == nil {
+				server.ClusterGroup.vmaster = server
+			}
 			//s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
 			//if err != nil {
 			//	return err

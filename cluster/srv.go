@@ -79,6 +79,7 @@ type ServerMonitor struct {
 	HaveBinlogCompress          bool
 	HaveLogSlaveUpdates         bool
 	HaveGtidStrictMode          bool
+	HaveMySQLGTID               bool
 	HaveWsrep                   bool
 	Version                     int
 	IsWsrepSync                 bool
@@ -414,6 +415,9 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveWsrep = false
 		} else {
 			server.HaveWsrep = true
+		}
+		if sv["ENFORCE_GTID_CONSISTENCY"] == "ON" && sv["GTID_MODE"] == "ON" {
+			server.HaveMySQLGTID = true
 		}
 
 		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)

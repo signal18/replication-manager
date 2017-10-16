@@ -105,6 +105,13 @@ func (server *ServerMonitor) IsReplicationBroken() bool {
 	return false
 }
 
+func (server *ServerMonitor) IsReplicationCanGTID() bool {
+	if ((server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) && server.HaveMySQLGTID == false) || (server.DBVersion.IsMariaDB() || server.DBVersion.Major == 5) {
+		return false
+	}
+	return true
+}
+
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.replicationCheck()
 	if ret == "Running OK" {
