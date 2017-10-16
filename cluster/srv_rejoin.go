@@ -345,24 +345,30 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				if mycurrentmaster.State != stateFailed {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
 					err := mycurrentmaster.StopSlave()
-					if err == nil {
+					if err != nil {
+						err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
+						if err2 != nil {
 
-						dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 30)
-						server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
-						changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-							Host:      server.ClusterGroup.master.Host,
-							Port:      server.ClusterGroup.master.Port,
-							User:      server.ClusterGroup.rplUser,
-							Password:  server.ClusterGroup.rplPass,
-							Logfile:   mycurrentmaster.BinaryLogFile,
-							Logpos:    mycurrentmaster.BinaryLogPos,
-							Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-							Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-							Mode:      "POSITIONAL",
-						})
-						if changeMasterErr != nil {
-							server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.DSN)
+							server.StopSlave()
+							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
+							changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+								Host:      server.ClusterGroup.master.Host,
+								Port:      server.ClusterGroup.master.Port,
+								User:      server.ClusterGroup.rplUser,
+								Password:  server.ClusterGroup.rplPass,
+								Logfile:   mycurrentmaster.BinaryLogFile,
+								Logpos:    mycurrentmaster.BinaryLogPos,
+								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+								Mode:      "POSITIONAL",
+							})
+							if changeMasterErr != nil {
+								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.DSN)
+							}
+						} else {
+							server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", err2)
 						}
+						server.StartSlave()
 					}
 					mycurrentmaster.StartSlave()
 				}
