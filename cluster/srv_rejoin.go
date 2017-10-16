@@ -313,18 +313,19 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 
 	if server.ClusterGroup.master != nil {
-		crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
-		if crash == nil {
-			server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.DSN)
-			return errors.New("No Crash info on current master")
-		}
+
 		if server.ClusterGroup.conf.Verbose {
-			server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
 			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
 		}
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
 
 			if server.IsReplicationCanGTID() {
+				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
+				if crash == nil {
+					server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.DSN)
+					return errors.New("No Crash info on current master")
+				}
+				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
 				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
 
 				realmaster := server.ClusterGroup.master

@@ -416,6 +416,9 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
 	ct := 0
+	if idaction == 0 {
+		return errors.New("Error Timout idaction 0")
+	}
 	for {
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
