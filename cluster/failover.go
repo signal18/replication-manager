@@ -493,23 +493,24 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 				cluster.LogPrintf("INFO", "Found Coordonate on master %s,%s", mFile, mPos)
 
-					mFile, mPos, err = cluster.master.GetBinlogPosAfterSkipNumberOfEvents(mFile, mPos, slSkip)
+				mFile, mPos, err = cluster.master.GetBinlogPosAfterSkipNumberOfEvents(mFile, mPos, slSkip)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not skip event after pseudoGTID in master %s, %s", cluster.master.URL, err)
+				}
+				cluster.LogPrintf("INFO", "Found skip coordonate on master %s,%s", mFile, mPos)
 
-					cluster.LogPrintf("INFO", "Found skip coordonate on master %s,%s", mFile, mPos)
-
-
-						cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
-					changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-						Host:      cluster.master.Host,
-						Port:      cluster.master.Port,
-						User:      cluster.rplUser,
-						Password:  cluster.rplPass,
-						Logfile:   crash.FailoverMasterLogFile,
-						Logpos:    crash.FailoverMasterLogPos,
-						Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-						Mode:      "POSITIONAL",
-					})*/
+				cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
+				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Logfile:   mFile,
+					Logpos:    mPos,
+					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Mode:      "POSITIONAL",
+				})
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 
