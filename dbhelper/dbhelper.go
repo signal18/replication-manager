@@ -157,6 +157,73 @@ func GetLastPseudoGTID(db *sqlx.DB) (string, error) {
 	return value, err
 }
 
+func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string, string, error) {
+
+	lastpos := "4"
+	exitloop := true
+	for exitloop {
+		events := []BinlogEvents{}
+		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 60"
+		err := db.Select(&events, sql)
+		if err != nil {
+			return "", "", err
+		}
+
+		for _, row := range events {
+			pos := strconv.FormatUint(uint64(row.Pos), 10)
+			endpos := strconv.FormatUint(uint64(row.End_log_pos), 10)
+			if strings.Contains(row.Info, uuid) {
+				return row.Log_name, pos, err
+			}
+			lastpos = endpos
+		}
+		if len(events) == 0 {
+			binlogindex, _ := strconv.Atoi(strings.Split(lastfile, ".")[1])
+			binlogindex = binlogindex - 1
+			lastfile = strings.Split(lastfile, ".")[0] + "." + fmt.Sprintf("%06d", binlogindex)
+			lastpos = "4"
+		}
+	}
+	return "", "", errors.New("Not found Psudo GTID")
+}
+
+func GetBinlogPosAfterSkipNumberOfEvents(db *sqlx.DB, file string, pos string, skip int) (string, string, error) {
+
+	events := []BinlogEvents{}
+	sql := "show binlog events IN '" + file + "'  from " + pos + " LIMIT " + strconv.Itoa(skip)
+	err := db.Select(&events, sql)
+	if err != nil {
+		return "", "", err
+	}
+	if len(events) == 0 {
+		return "", "", err
+	}
+	return events[(len(events) - 1)].Log_name, strconv.FormatUint(uint64(events[(len(events)-1)].Pos), 10), err
+}
+
+func GetNumberOfEventsAfterPos(db *sqlx.DB, lastfile string, lastpos string) (int, error) {
+
+	exitloop := true
+	ct := 0
+	for exitloop {
+		events := []BinlogEvents{}
+		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 1"
+		err := db.Select(&events, sql)
+		if err != nil {
+			return 0, err
+		}
+
+		for _, row := range events {
+			lastfile = strconv.FormatUint(uint64(row.End_log_pos), 10)
+		}
+		if len(events) == 0 {
+			return ct, nil
+		}
+		ct = ct + 1
+	}
+	return 0, errors.New("Not found Psudo GTID")
+}
+
 func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	var value string
 	value = ""

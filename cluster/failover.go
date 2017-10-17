@@ -468,19 +468,46 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
-			// do nothing stay connected to dead master procedd with relay fix later
-			/*	cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
-				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-					Host:      cluster.master.Host,
-					Port:      cluster.master.Port,
-					User:      cluster.rplUser,
-					Password:  cluster.rplPass,
-					Logfile:   crash.FailoverMasterLogFile,
-					Logpos:    crash.FailoverMasterLogPos,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-					Mode:      "POSITIONAL",
-				})*/
+
+			if cluster.conf.AutorejoinSlavePositionalHearbeat == true {
+
+				pseudoGTID, err := sl.GetLastPseudoGTID()
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not get pseudoGTID on slave %s, %s", sl.URL, err)
+				}
+				cluster.LogPrintf("INFO", "Found pseudoGTID %s", pseudoGTID)
+				slFile, slPos, err := sl.GetBinlogPosFromPseudoGTID(pseudoGTID)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not Found pseudoGTID in slave %s, %s", sl.URL, err)
+				}
+				cluster.LogPrintf("INFO", "Found Coordonate on slave %s,%s", slFile, slPos)
+				slSkip, err := sl.GetNumberOfEventsAfterPos(slFile, slPos)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not found number of events after pseudoGTID in slave %s, %s", sl.URL, err)
+				}
+				cluster.LogPrintf("INFO", "Found %d envents to skip aftre Coordonate on slave %s,%s", slSkip, slFile, slPos)
+
+				mFile, mPos, err := cluster.master.GetBinlogPosFromPseudoGTID(pseudoGTID)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not Found pseudoGTID in master %s, %s", cluster.master.URL, err)
+				}
+				cluster.LogPrintf("INFO", "Found Coordonate on master %s,%s", mFile, mPos)
+				//GetEventsAfterPos
+
+				// do nothing stay connected to dead master proced with relay fix later
+				/*	cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
+					changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
+						Host:      cluster.master.Host,
+						Port:      cluster.master.Port,
+						User:      cluster.rplUser,
+						Password:  cluster.rplPass,
+						Logfile:   crash.FailoverMasterLogFile,
+						Logpos:    crash.FailoverMasterLogPos,
+						Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
+						Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+						Mode:      "POSITIONAL",
+					})*/
+			}
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,

@@ -114,3 +114,15 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 func (server *ServerMonitor) GetLastPseudoGTID() (string, error) {
 	return dbhelper.GetLastPseudoGTID(server.Conn)
 }
+
+func (server *ServerMonitor) GetBinlogPosFromPseudoGTID(GTID string) (string, string, error) {
+	return dbhelper.GetBinlogEventPseudoGTID(server.Conn, GTID, server.BinaryLogFile)
+}
+
+func (server *ServerMonitor) GetBinlogPosAfterSkipNumberOfEvents(file string, pos string, skip int) (string, string, error) {
+	return dbhelper.GetBinlogPosAfterSkipNumberOfEvents(server.Conn, file, pos, skip)
+}
+
+func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) (int, error) {
+	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
+}
