@@ -169,7 +169,9 @@
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.CurrentGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true ">{{server.GTIDExecuted}}</td>
-                              <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}:{{server.Replications[0].ExecMasterLogPos.String}}</th>
+                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}:{{server.Replications[0].ExecMasterLogPos.String}}</th>
+                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile.String}}:{{server.server.BinaryLogPos.String}}</th>
+
                               <td>{{server.Replications[0].SlaveIORunning.String}}</td>
                               <td>{{server.Replications[0].SlaveSQLRunning.String}}</td>
                               <td>{{server.Replications[0].SecondsBehindMaster.Int64}}</td>

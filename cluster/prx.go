@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 // Proxy defines a proxy
@@ -188,11 +189,11 @@ func (cluster *Cluster) InjectTraffic() {
 		for _, pr := range cluster.proxies {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "%s", err)
+				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
 				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + uuid.NewV4().String() + "' from dual")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "%s", err.Error())
+					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 				}
 				db.Close()
 			}
