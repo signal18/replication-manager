@@ -118,7 +118,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 }
 
 func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
-	if server.IsReplicationCanGTID() {
+	if server.HasGTIDReplication() {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence %s , %s", server.BinaryLogFile, server.BinaryLogPos)
@@ -128,7 +128,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	if server.ClusterGroup.conf.MxsBinlogOn || server.ClusterGroup.conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-	if server.IsReplicationCanGTID() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
+	if server.HasGTIDReplication() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
 		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Failed in GTID rejoin old Master in sync %s", err)
@@ -253,7 +253,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 		return nil
 	} else {
 		// don't try flashback on old style replication that are ahead jump to SST
-		if server.IsReplicationCanGTID() == false {
+		if server.HasGTIDReplication() == false {
 			return errors.New("Incremental failed")
 		}
 	}
@@ -319,7 +319,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		}
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
 
-			if server.IsReplicationCanGTID() {
+			if server.HasGTIDReplication() {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
 					server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.DSN)
