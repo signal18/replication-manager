@@ -17,8 +17,8 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
-	cluster.SetBenchMethod("table")
-	cluster.PrepareBench()
+	//cluster.SetBenchMethod("table")
+	//cluster.PrepareBench()
 	cluster.conf.TestInjectTraffic = traffic
 }
 

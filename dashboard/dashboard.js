@@ -12,6 +12,10 @@ app.factory('Servers', function($resource) {
   return $resource('/servers');
 });
 
+app.factory('Slaves', function($resource) {
+  return $resource('/slaves');
+});
+
 app.factory('Agents', function($resource) {
   return $resource('/agents');
 });
@@ -64,6 +68,14 @@ app.factory('Sysbench', function($resource) {
   );
 });
 
+app.factory('Toggletraffic', function($resource) {
+  return $resource(
+    '/toggletraffic',
+    '',
+    { 'query':  {method:'GET', isArray:false} }
+  );
+});
+
 app.factory('SetCluster', function($resource) {
   return $resource(
     '/setcluster',
@@ -97,7 +109,7 @@ app.factory('Unprovision', function($resource) {
 });
 
 
-app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master','Agents','Proxies', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master,Agents,Proxies) {
+app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$http', 'Servers', 'Log', 'Settings','Alerts', 'Master','Agents','Proxies','Slaves', function ($scope,$routeParams,$interval, $http,Servers, Log, Settings,Alerts, Master,Agents,Proxies,Slaves) {
 
    var timeFrame = $routeParams.timeFrame;
    if (timeFrame=="") {
@@ -140,6 +152,11 @@ app.controller('DashboardController', ['$scope', '$routeParams','$interval', '$h
   });
   Agents.query({}, function(data) {
     $scope.agents = data;
+  }, function(error) {
+    $scope.reserror = true;
+  });
+  Slaves.query({}, function(data) {
+    $scope.slaves = data;
   }, function(error) {
     $scope.reserror = true;
   });
