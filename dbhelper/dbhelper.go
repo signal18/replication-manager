@@ -150,6 +150,13 @@ func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
 	return pl, nil
 }
 
+func GetLastPseudoGTID(db *sqlx.DB) (string, error) {
+	var value string
+	value = ""
+	err := db.QueryRowx("select * from replication_manager_schema.pseudo_gtid_v").Scan(&value)
+	return value, err
+}
+
 func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	var value string
 	value = ""

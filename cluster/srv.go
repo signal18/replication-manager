@@ -80,6 +80,7 @@ type ServerMonitor struct {
 	HaveLogSlaveUpdates         bool
 	HaveGtidStrictMode          bool
 	HaveMySQLGTID               bool
+	HaveMariaDBGTID             bool
 	HaveWsrep                   bool
 	Version                     int
 	IsWsrepSync                 bool
@@ -465,6 +466,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsSlave = false
 	} else {
 		server.IsSlave = true
+		if slaveStatus.UsingGtid.String == "Slave_Pos" || slaveStatus.UsingGtid.String == "Current_pos" {
+			server.HaveMariaDBGTID = true
+		} else {
+			server.HaveMariaDBGTID = false
+		}
 	}
 	server.ReplicationHealth = server.replicationCheck()
 	// if MaxScale exit at fetch variables and status part as not supported

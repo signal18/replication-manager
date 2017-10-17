@@ -110,3 +110,7 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 	}
 	return nil, errors.New("Empty replications channels")
 }
+
+func (server *ServerMonitor) GetLastPseudoGTID() (string, error) {
+	return dbhelper.GetLastPseudoGTID(server.Conn)
+}
