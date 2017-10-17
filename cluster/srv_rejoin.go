@@ -352,7 +352,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					if err == nil {
 						err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
 						if err2 == nil {
-
+							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
 							server.StopSlave()
 							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
 							changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -360,8 +360,8 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Port:      server.ClusterGroup.master.Port,
 								User:      server.ClusterGroup.rplUser,
 								Password:  server.ClusterGroup.rplPass,
-								Logfile:   mycurrentmaster.BinaryLogFile,
-								Logpos:    mycurrentmaster.BinaryLogPos,
+								Logfile:   myparentss.MasterLogFile.String,
+								Logpos:    myparentss.ReadMasterLogPos.String,
 								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
 								Mode:      "POSITIONAL",
