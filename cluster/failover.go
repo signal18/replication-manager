@@ -492,10 +492,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					cluster.LogPrintf("ERROR", "Could not Found pseudoGTID in master %s, %s", cluster.master.URL, err)
 				}
 				cluster.LogPrintf("INFO", "Found Coordonate on master %s,%s", mFile, mPos)
-				//GetEventsAfterPos
 
-				// do nothing stay connected to dead master proced with relay fix later
-				/*	cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
+					mFile, mPos, err = cluster.master.GetBinlogPosAfterSkipNumberOfEvents(mFile, mPos, slSkip)
+
+					cluster.LogPrintf("INFO", "Found skip coordonate on master %s,%s", mFile, mPos)
+
+
+						cluster.LogPrintf("INFO", "Doing Positional switch of slave %s", sl.DSN)
 					changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.master.Host,
 						Port:      cluster.master.Port,
@@ -508,6 +511,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 						Mode:      "POSITIONAL",
 					})*/
 			}
+			// do nothing stay connected to dead master proceed with relay fix later
+
 		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
