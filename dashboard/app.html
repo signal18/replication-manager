@@ -170,7 +170,7 @@
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true ">{{server.GTIDExecuted}}</td>
                               <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}:{{server.Replications[0].ExecMasterLogPos.String}}</th>
-                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile.String}}:{{server.server.BinaryLogPos.String}}</th>
+                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}:{{server.BinaryLogPos}}</th>
 
                               <td>{{server.Replications[0].SlaveIORunning.String}}</td>
                               <td>{{server.Replications[0].SlaveSQLRunning.String}}</td>
@@ -182,7 +182,8 @@
                               <td ng-if="server.SemiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i></td>
                               <td ng-if="server.SemiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>
                               <td ng-if="server.SemiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i></td>
-                              <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>                              <td>
+                              <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i></td>
+                              <td>
                                  <button width=15 height=15	type="button"  ng-click="maintenance(server.Id)">
                                  <img width=15 height=15 src="/static/maintenance.png">
                                  </button>
