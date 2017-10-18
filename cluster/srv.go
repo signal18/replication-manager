@@ -430,10 +430,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not parse server_id, reason: %s", err)
 		}
 		server.ServerID = uint(sid)
-		err = dbhelper.SetDefaultMasterConn(server.Conn, server.ClusterGroup.conf.MasterConn)
-		if err != nil {
-			return err
-		}
+
 		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not get events")
@@ -449,7 +446,10 @@ func (server *ServerMonitor) Refresh() error {
 	}
 
 	// SHOW SLAVE STATUS
-
+	server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
+	if err != nil {
+		server.ClusterGroup.LogPrintf("ERROR", "Could not set replication channel")
+	}
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {

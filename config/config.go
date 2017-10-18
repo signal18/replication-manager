@@ -17,6 +17,7 @@ type Config struct {
 	Socket                             string `mapstructure:"monitoring-socket"`
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host"`
 	TunnelCredential                   string `mapstructure:"monitoring-tunnel-credential"`
+	MonitorAddress                     string `mapstructure:"monitoring-address"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"log-file"`

@@ -62,3 +62,13 @@ func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonit
 		Logpos:    master.FailoverMasterLogPos,
 	})
 }
+
+func (server *ServerMonitor) SetReplicationChannel(source string) error {
+	if server.DBVersion.IsMariaDB() {
+		err := dbhelper.SetDefaultMasterConn(server.Conn, source)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
