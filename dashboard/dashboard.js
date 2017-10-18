@@ -336,6 +336,19 @@ if (r == true) {
   }
 };
 
+$scope.setrejoinpseudogtid = function() {
+var r = confirm("Confirm Change Auto Rejoin Pseudo GTID ?");
+if (r == true) {
+  var response = $http.get('/setpseudogtid');
+  response.success(function(data, status, headers, config) {
+      console.log("Ok.");
+    });
+  response.error(function(data, status, headers, config) {
+      console.log("Error.");
+    });
+  }
+};
+
 
 $scope.setrejoinbackupbinlog = function() {
 var r = confirm("Confirm Change Auto backup binlogs ?");

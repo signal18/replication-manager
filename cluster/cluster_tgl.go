@@ -23,6 +23,10 @@ func (cluster *Cluster) ToggleInteractive() {
 	}
 }
 
+func (cluster *Cluster) SwitchPseudoGTID() {
+	cluster.conf.AutorejoinSlavePositionalHearbeat = !cluster.conf.AutorejoinSlavePositionalHearbeat
+}
+
 func (cluster *Cluster) SwitchReadOnly() {
 	cluster.conf.ReadOnly = !cluster.conf.ReadOnly
 }

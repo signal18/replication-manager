@@ -163,6 +163,7 @@ func httpserver() {
 		router.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
 		router.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
 		router.HandleFunc("/setrejoindump", handlerRejoinDump)
+		router.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
 		router.HandleFunc("/settest", handlerSetTest)
 		router.HandleFunc("/tests", handlerTests)
 		router.HandleFunc("/sysbench", handlerSysbench)
@@ -209,6 +210,7 @@ func httpserver() {
 		http.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
 		http.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
 		http.HandleFunc("/setrejoindump", handlerRejoinDump)
+		http.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
 		http.HandleFunc("/setverbosity", handlerVerbosity)
 		http.HandleFunc("/settest", handlerSetTest)
 		http.HandleFunc("/tests", handlerTests)
@@ -472,6 +474,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
 	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
 	s.RejoinUnsafe = fmt.Sprintf("%v", currentCluster.GetConf().FailRestartUnsafe)
+	s.RejoinPseudoGTID = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSlavePositionalHearbeat)
 	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().FailMaxDelay)
 	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
 	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
@@ -622,6 +625,13 @@ func handlerRejoinSemisync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Semisync SYNC %v", currentCluster.GetRejoinSemisync())
 	currentCluster.SetRejoinSemisync(!currentCluster.GetRejoinSemisync())
+	return
+}
+
+func handlerRejoinPseudoGTID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Pseudo GTID")
+	currentCluster.SwitchPseudoGTID()
 	return
 }
 

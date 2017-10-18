@@ -77,6 +77,7 @@ type Settings struct {
 	RejoinFlashback     string   `json:"rejoinflashback"`
 	RejoinUnsafe        string   `json:"rejoinunsafe"`
 	RejoinDump          string   `json:"rejoindump"`
+	RejoinPseudoGTID    string   `json:"rejoinpseudogtid"`
 	Test                string   `json:"test"`
 	Heartbeat           string   `json:"heartbeat"`
 	Status              string   `json:"runstatus"`

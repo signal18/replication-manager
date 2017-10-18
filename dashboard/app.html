@@ -474,6 +474,23 @@
                            <div flex-gt-xs="30" class="col-lg-33">
                               <table ng-if="settings" class="table">
                                  <tr>
+                                    <th>Auto Rejoin Pseudo GTID</th>
+                                 </tr>
+                                 <tr>
+                                    <td>
+                                       <md-switch ng-model="settings.rejoinpseudogtid=='true'" ng-click="setrejoinpseudogtid()"  aria-label="Auto Rejoin Pseudo GTID">
+                                          <span ng-if="settings.rejoinpseudogtid=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinpseudogtid=='false'" class="label label-warning">Off</span>
+                                    </td>
+                                    </md-switch>
+                                    </td>
+                                 </tr>
+                              </table>
+                           </div>
+                        </div>
+                        <div layout="column" layout-gt-xs="row">
+                           <div flex-gt-xs="30" class="col-lg-33">
+                              <table ng-if="settings" class="table">
+                                 <tr>
                                     <th>Test Mode</th>
                                  </tr>
                                  <tr>
