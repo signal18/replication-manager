@@ -67,6 +67,7 @@ type Cluster struct {
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
 	switchoverChan       chan bool
+	errorChan            chan error
 	testStopCluster      bool
 	testStartCluster     bool
 	clusterDown          bool

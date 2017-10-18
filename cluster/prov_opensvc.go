@@ -15,7 +15,6 @@ import (
 )
 
 var dockerMinusRm bool
-var channelError chan error
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
@@ -352,7 +351,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	agent, err := cluster.FoundDatabaseAgent(s)
 	if err != nil {
-		channelError <- err
+		cluster.cha <- err
 		return
 	}
 
@@ -366,7 +365,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		idsrv, err = svc.CreateService(s.Id, "MariaDB")
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
-			channelError <- err
+			cluster.errorChan <- err
 			return
 		}
 	}
@@ -374,7 +373,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Can't delete service tags")
-		channelError <- err
+		cluster.errorChan < <-err
 		return
 	}
 	taglist = strings.Split(svc.ProvTags, ",")
@@ -390,7 +389,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	// create template && bootstrap
 	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 	if err != nil {
-		channelError <- err
+		cluster.errorChan < <-err
 		return
 	}
 	idtemplate, _ := svc.CreateTemplate(s.Id, res)
@@ -404,13 +403,13 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.WaitDatabaseStart(s)
 
-	channelError <- nil
+	cluster.errorChan < <-nil
 	return
 }
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
-	channelError := make(chan error, len(cluster.servers))
+	cluster.errorChan = make(chan error, len(cluster.servers))
 	for _, s := range cluster.servers {
 
 		go cluster.OpenSVCProvisionDatabaseService(s)
@@ -418,7 +417,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 	}
 	for _, s := range cluster.servers {
 		select {
-		case err := <-channelError:
+		case err := <-cluster.errorChan:
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Provisionning error %s on  %s", err, s.Id)
 			} else {
