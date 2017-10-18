@@ -410,7 +410,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
-	channelError := make(chan error)
+	channelError := make(chan error, len(cluster.servers))
 	for _, s := range cluster.servers {
 
 		go cluster.OpenSVCProvisionDatabaseService(s)
@@ -421,6 +421,8 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		case err := <-channelError:
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Provisionning error %s on  %s", err, s.Id)
+			} else {
+				cluster.LogPrintf("INFO", "Provisionning done for database %s", s.Id)
 			}
 		}
 	}
