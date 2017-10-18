@@ -58,26 +58,38 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 }
 
 func (cluster *Cluster) OpenSVCUnprovision() {
-	opensvc := cluster.OpenSVCConnect()
-	agents := opensvc.GetNodes()
-	for _, node := range agents {
-		for _, svc := range node.Svc {
-			for _, db := range cluster.servers {
-				if db.Id == svc.Svc_name {
-					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+	//opensvc := cluster.OpenSVCConnect()
+	//agents := opensvc.GetNodes()
+	//for _, node := range agents {
+	//	for _, svc := range node.Svc {
+	for _, db := range cluster.servers {
+		go cluster.OpenSVCUnprovisionDatabaseService(db)
+		/*		if db.Id == svc.Svc_name {
+				idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+				} else {
+					err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 					if err != nil {
 						cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
-					} else {
-						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-						if err != nil {
-							cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
-						}
 					}
-					//opensvc.DeleteService(svc.Svc_id)
 				}
+		*/
+	}
+	for _, db := range cluster.servers {
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Unprovisionning error %s on  %s", err, db.Id)
+			} else {
+				cluster.LogPrintf("INFO", "Unprovisionning done for database %s", db.Id)
 			}
-			for _, prx := range cluster.proxies {
-				if prx.Id == svc.Svc_name {
+		}
+	}
+	//}
+	for _, prx := range cluster.proxies {
+		go cluster.OpenSVCUnprovisionProxyService(prx)
+		/*		if prx.Id == svc.Svc_name {
 					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 					if err != nil {
 						cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
@@ -87,11 +99,21 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 						}
 					}
-					//opensvc.DeleteService(svc.Svc_id)
 				}
+			}*/
+
+	}
+	for _, prx := range cluster.proxies {
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Unprovisionning proxy error %s on  %s", err, prx.Id)
+			} else {
+				cluster.LogPrintf("INFO", "Unprovisionning done for proxy %s", prx.Id)
 			}
 		}
 	}
+	//	}
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
@@ -104,10 +126,9 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
 			}
-
-			//	opensvc.DeleteService(svc.Svc_id)
 		}
 	}
+	cluster.errorChan <- nil
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
@@ -121,10 +142,9 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
 			}
-			//		opensvc.DeleteService(svc.Svc_id)
 		}
 	}
-
+	cluster.errorChan <- nil
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
