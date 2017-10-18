@@ -134,7 +134,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			server.ClusterGroup.LogPrintf("ERROR", "Failed in GTID rejoin old Master in sync %s", err)
 			return err
 		}
-	} else if realmaster.IsMaxscale {
+	} else if server.ClusterGroup.conf.MxsBinlogOn {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
 			Port:      realmaster.Port,
@@ -147,27 +147,29 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logpos:    crash.FailoverMasterLogPos,
 		})
 		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
+			return err
+		}
+	} else {
+		// not maxscale the new master coordonate are in crash
+		server.ClusterGroup.LogPrintf("INFO", "Change master to positional in Rejoin old Master")
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      realmaster.Host,
+			Port:      realmaster.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "POSITIONAL",
+			Logfile:   crash.NewMasterLogFile,
+			Logpos:    crash.NewMasterLogPos,
+		})
+		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
 			return err
-		} else {
-			// not maxscale the new master coordonate are in crash
-			err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-				Host:      realmaster.Host,
-				Port:      realmaster.Port,
-				User:      server.ClusterGroup.rplUser,
-				Password:  server.ClusterGroup.rplPass,
-				Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-				Mode:      "POSITIONAL",
-				Logfile:   crash.NewMasterLogFile,
-				Logpos:    crash.NewMasterLogPos,
-			})
-			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
-				return err
-			}
 		}
 	}
+
 	dbhelper.StartSlave(server.Conn)
 	return err
 }
