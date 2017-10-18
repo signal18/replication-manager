@@ -23,6 +23,10 @@ func (server *ServerMonitor) SetReadWrite() error {
 	return dbhelper.SetReadOnly(server.Conn, false)
 }
 
+func (server *ServerMonitor) SetMaintenance() {
+	server.IsMaintenance = true
+}
+
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
 
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{

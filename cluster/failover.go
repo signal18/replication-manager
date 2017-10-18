@@ -511,6 +511,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
 				})
+			} else {
+				sl.SetMaintenance()
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 

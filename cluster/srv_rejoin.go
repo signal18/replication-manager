@@ -375,6 +375,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 						server.StartSlave()
 					}
 					mycurrentmaster.StartSlave()
+					if server.IsMaintenance {
+						server.SwitchMaintenance()
+					}
 				} else {
 					//Adding state waiting for old master to rejoin in positional mode
 					// this state prevent crash info to be removed

@@ -141,8 +141,8 @@
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Current GTID</th>
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Slave GTID Pos</th>
                               <th ng-if="servers[0].DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true">Executed GTID Set</th>
-                              <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">Position</th>
-
+                              <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">File</th>
+                              <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">Pos</th>
                               <th>IO Thread</th>
                               <th>SQL Thread</th>
                               <th>Delay</th>
@@ -169,8 +169,10 @@
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.CurrentGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true ">{{server.GTIDExecuted}}</td>
-                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}:{{server.Replications[0].ExecMasterLogPos.String}}</th>
-                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}:{{server.BinaryLogPos}}</th>
+                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}</th>
+                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].ExecMasterLogPos.String}}</th>
+                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}</th>
+                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}</th>
 
                               <td>{{server.Replications[0].SlaveIORunning.String}}</td>
                               <td>{{server.Replications[0].SlaveSQLRunning.String}}</td>
