@@ -15,6 +15,7 @@ import (
 )
 
 var dockerMinusRm bool
+var channelError chan error
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
@@ -344,14 +345,15 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error {
+func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	svc := cluster.OpenSVCConnect()
 	var taglist []string
 
 	agent, err := cluster.FoundDatabaseAgent(s)
 	if err != nil {
-		return err
+		channelError <- err
+		return
 	}
 
 	// Unprovision if already in OpenSVC
@@ -364,14 +366,16 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 		idsrv, err = svc.CreateService(s.Id, "MariaDB")
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
-			return err
+			channelError <- err
+			return
 		}
 	}
 
 	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Can't delete service tags")
-		return err
+		channelError <- err
+		return
 	}
 	taglist = strings.Split(svc.ProvTags, ",")
 	svctags, _ := svc.GetTags()
@@ -386,7 +390,8 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	// create template && bootstrap
 	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 	if err != nil {
-		return err
+		channelError <- err
+		return
 	}
 	idtemplate, _ := svc.CreateTemplate(s.Id, res)
 	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, s.Id)
@@ -399,18 +404,27 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) error 
 	}
 	cluster.WaitDatabaseStart(s)
 
-	return nil
+	channelError <- nil
+	return
 }
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
+	channelError := make(chan error)
 	for _, s := range cluster.servers {
-		err := cluster.OpenSVCProvisionDatabaseService(s)
-		if err != nil {
-			return err
-		}
+
+		go cluster.OpenSVCProvisionDatabaseService(s)
 
 	}
+	for _, s := range cluster.servers {
+		select {
+		case err := <-channelError:
+			if err != nil {
+				cluster.LogPrintf("ERROR", "Provisionning error %s on  %s", err, s.Id)
+			}
+		}
+	}
+
 	return nil
 }
 

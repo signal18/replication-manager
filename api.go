@@ -1192,7 +1192,7 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false {
+		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)

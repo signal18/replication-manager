@@ -82,6 +82,7 @@ type ServerMonitor struct {
 	HaveMySQLGTID               bool
 	HaveMariaDBGTID             bool
 	HaveWsrep                   bool
+	HaveReadOnly                bool
 	Version                     int
 	IsWsrepSync                 bool
 	IsWsrepDonor                bool
@@ -367,6 +368,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.Strict = sv["GTID_STRICT_MODE"]
 		server.LogBin = sv["LOG_BIN"]
 		server.ReadOnly = sv["READ_ONLY"]
+		if sv["READ_ONLY"] != "ON" {
+			server.HaveReadOnly = false
+		} else {
+			server.HaveReadOnly = true
+		}
 		if sv["lOG_BIN_COMPRESS"] != "ON" {
 			server.HaveBinlogCompress = false
 		} else {

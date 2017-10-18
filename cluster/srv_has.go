@@ -127,6 +127,13 @@ func (server *ServerMonitor) IsIgnored() bool {
 	return false
 }
 
+func (server *ServerMonitor) IsReadOnly() bool {
+	if server.HaveReadOnly {
+		return true
+	}
+	return false
+}
+
 func (server *ServerMonitor) IsIOThreadRunning() bool {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {

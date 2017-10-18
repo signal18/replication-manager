@@ -495,7 +495,12 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
 	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
-	dumpCmd := exec.Command(cluster.conf.ShareDir+"/"+cluster.conf.GoArch+"/"+cluster.conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", "--gtid", "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	usegtid := ""
+
+	if dest.HasGTIDReplication() {
+		usegtid = "--gtid"
+	}
+	dumpCmd := exec.Command(cluster.conf.ShareDir+"/"+cluster.conf.GoArch+"/"+cluster.conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	clientCmd := exec.Command(cluster.conf.ShareDir+"/"+cluster.conf.GoArch+"/"+cluster.conf.GoOS+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	var err error
