@@ -11,7 +11,7 @@ package cluster
 
 func (server *ServerMonitor) SwitchMaintenance() error {
 	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep || server.ClusterGroup.GetTopology() == topoMultiMasterRing {
-		if server.IsVirtualMaster {
+		if server.IsVirtualMaster && server.IsMaintenance == false {
 			server.ClusterGroup.SwitchOver()
 		}
 	}
@@ -22,5 +22,8 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 			server.RejoinLoop()
 		}
 	}
+	server.IsMaintenance = !server.IsMaintenance
+	server.ClusterGroup.failoverProxies()
+
 	return nil
 }

@@ -339,7 +339,7 @@ if (r == true) {
 $scope.setrejoinpseudogtid = function() {
 var r = confirm("Confirm Change Auto Rejoin Pseudo GTID ?");
 if (r == true) {
-  var response = $http.get('/setpseudogtid');
+  var response = $http.get('/setrejoinpseudogtid');
   response.success(function(data, status, headers, config) {
       console.log("Ok.");
     });
