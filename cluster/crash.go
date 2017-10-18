@@ -20,6 +20,8 @@ type Crash struct {
 	URL                         string
 	FailoverMasterLogFile       string
 	FailoverMasterLogPos        string
+	NewMasterLogFile            string
+	NewMasterLogPos             string
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
 	ElectedMasterURL            string

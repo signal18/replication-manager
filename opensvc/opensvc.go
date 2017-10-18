@@ -1188,6 +1188,9 @@ func (collector *Collector) GetAction(actionid string) *Action {
 		log.Println("JSON ERROR unmarchaling action", err)
 		return nil
 	}
+	if len(r.Data) == 0 {
+		return nil
+	}
 	return &r.Data[0]
 }
 

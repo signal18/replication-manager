@@ -176,6 +176,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
 	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+	crash.NewMasterLogFile = cluster.master.BinaryLogFile
+	crash.NewMasterLogPos = cluster.master.BinaryLogPos
 	if cluster.master.DBVersion.IsMariaDB() {
 		if cluster.conf.MxsBinlogOn {
 			//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
