@@ -1077,6 +1077,8 @@ tags = pod` + pod + `
 type = docker
 run_image = {env.haproxy_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
+		-v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
+		-v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc/haproxy:rw
 `
@@ -1104,8 +1106,6 @@ tags = pod` + pod + `
 type = docker
 run_image = {env.proxysql_img}
 run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00` + pod + `
-    -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
-    -v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
 `
