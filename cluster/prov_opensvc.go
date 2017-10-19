@@ -940,10 +940,10 @@ docker_daemon_private = true
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m `
 	if collector.ProvFSPool == "zpool" {
-		conf = conf + `--storage-driver=overlay
+		conf = conf + `--storage-driver=zfs
 `
 	} else {
-		conf = conf + `--storage-driver=zfs
+		conf = conf + `--storage-driver=overlay
 `
 	}
 	if collector.ProvFSMode == "loopback" {
