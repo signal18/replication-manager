@@ -117,16 +117,19 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
 	))
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortMasterStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
 	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
@@ -1204,12 +1207,52 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+			w.Write([]byte("200 -Valid Master!"))
+			return
+
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Master!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
+		if node.IsSlave && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+			w.Write([]byte("200 -Valid Slave!"))
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Slave!"))
+		}
+
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsSlave && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
 			return
 		} else {

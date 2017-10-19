@@ -15,7 +15,12 @@ for ip in $(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | sed "s/,/ /g")
 do
 	i=i+1
 	buff="\\n[server$i]\\ntype=server\\naddress=$ip\\nport=3306\\nprotocol=MySQLBackend\\n"
+	buffhaproxyread="\\nserver server$i $ip  weight 100 maxconn 2000 check-external command /bin/checkslave inter 1000"
+	buffhaproxywrite="\\nserver server$i $ip  weight 100 maxconn 2000 check-external command /bin/checkmaster inter 1000"
+
 	OSVC_COMP_SERVERS="${OSVC_COMP_SERVERS}${buff}"
+	OSVC_COMP_SERVERS_HAPROXY_READ="${OSVC_COMP_SERVERS_HAPROXY_READ}${buff}"
+	OSVC_COMP_SERVERS_HAPROXY_WRITE="${OSVC_COMP_SERVERS_HAPROXY_WRITE}${buff}"
 	[ $i == 0 ] && {
 		OSVC_COMP_SERVERS_LIST="server$i"
 	} || {
@@ -24,7 +29,8 @@ do
 done
 
 export OSVC_COMP_SERVERS
-export OSVC_COMP_SERVERS_LIST
+export OSVC_COMP_SERVERS_HAPROXY_READ
+export OSVC_COMP_SERVERS_HAPROXY_WRITE
 
 case $1 in
 check)

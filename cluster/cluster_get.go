@@ -26,6 +26,10 @@ func (cluster *Cluster) GetTraffic() bool {
 	return cluster.conf.TestInjectTraffic
 }
 
+func (cluster *Cluster) GetClusterName() string {
+	return cluster.cfgGroup
+}
+
 func (cluster *Cluster) GetServers() serverList {
 	return cluster.servers
 }

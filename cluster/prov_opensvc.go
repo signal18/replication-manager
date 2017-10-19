@@ -609,6 +609,8 @@ port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.MonitorAddress + ":" + cluster.conf.APIPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	log.Println(conf)
 	return conf, nil
@@ -1097,6 +1099,8 @@ tags = pod` + pod + `
 type = docker
 run_image = {env.proxysql_img}
 run_args = --net=container:{svcname}.container.00` + pod + `
+  	-v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
+		-v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
 `
