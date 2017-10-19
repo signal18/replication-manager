@@ -116,7 +116,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 			cluster.LogPrintf("ERROR", "Haproxy can't log generated config for provisioning %s", err)
 		}
 		cluster.OpenSVCProvisionReloadHaproxyConf(string(cf))*/
-		cluster.OpenSVCProvisionReloadHaproxyConf("test")
+		//cluster.OpenSVCProvisionReloadHaproxyConf("test")
 	} else {
 
 		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {

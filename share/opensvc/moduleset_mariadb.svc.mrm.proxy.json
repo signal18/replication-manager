@@ -502,16 +502,16 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bach\\n\\nif [[ $(curl --insecure https://%%ENV:SVC_CONF_ENV_MRM_ADDR%%/api/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$2/%3/slave-status | grep -vc 200) > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
-                    "var_updated": "2017-10-19 14:15:00",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nif [[ $(curl --insecure https://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/api/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$2/%3/slave-status | grep -vc 200) > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
+                    "var_updated": "2017-10-19 16:06:20",
                     "var_name": "proxy_cnf_checkslave",
                     "id": 5964
                 },
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GD%%\",\"fmt\":\"#!/bin/bach\\n\\nif [[ $(curl --insecure https://%%ENV:SVC_CONF_ENV_MRM_ADDR%%/api/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$2/%3/master-status | grep -vc 200) > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
-                    "var_updated": "2017-10-19 14:14:29",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nif [[ $(curl --insecure https://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/api/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$2/%3/master-status | grep -vc 200) > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
+                    "var_updated": "2017-10-19 16:07:02",
                     "var_name": "proxy_cnf_checkmaster",
                     "id": 5965
                 }

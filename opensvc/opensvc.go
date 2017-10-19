@@ -825,6 +825,10 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 func (collector *Collector) SetRulesetVariableValue(RulesetName string, VariableName string, Content string) (string, error) {
 
 	rls, err := collector.GetRuleset(RulesetName)
+	if err != nil {
+		log.Println(string(err.Error()))
+		return "", err
+	}
 	rlsv, err := collector.GetRulesetVariable(rls[0].Id, VariableName)
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
