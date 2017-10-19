@@ -19,8 +19,8 @@ do
 	buffhaproxywrite="\\nserver server$i $ip  weight 100 maxconn 2000 check-external command /bin/checkmaster inter 1000"
 
 	OSVC_COMP_SERVERS="${OSVC_COMP_SERVERS}${buff}"
-	OSVC_COMP_SERVERS_HAPROXY_READ="${OSVC_COMP_SERVERS_HAPROXY_READ}${buff}"
-	OSVC_COMP_SERVERS_HAPROXY_WRITE="${OSVC_COMP_SERVERS_HAPROXY_WRITE}${buff}"
+	OSVC_COMP_SERVERS_HAPROXY_READ="${OSVC_COMP_SERVERS_HAPROXY_READ}${buffhaproxyread}"
+	OSVC_COMP_SERVERS_HAPROXY_WRITE="${OSVC_COMP_SERVERS_HAPROXY_WRITE}${buffhaproxywrite}"
 	[ $i == 0 ] && {
 		OSVC_COMP_SERVERS_LIST="server$i"
 	} || {
