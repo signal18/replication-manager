@@ -609,7 +609,7 @@ port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.MonitorAddress + ":" + cluster.conf.APIPort + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	log.Println(conf)

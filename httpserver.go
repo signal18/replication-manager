@@ -222,6 +222,10 @@ func httpserver() {
 		http.HandleFunc("/repocomp/current", handlerRepoComp)
 		http.HandleFunc("/unprovision", handlerUnprovision)
 		http.HandleFunc("/rolling", handlerRollingUpgrade)
+		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
+		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
+		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)
+		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", handlerMuxServersPortSlaveStatus)
 	}
 	http.Handle("/static/", http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	if confs[currentClusterName].Verbose {
