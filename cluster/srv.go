@@ -147,8 +147,10 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsRelay = false
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
-	server.URL = url
+
 	server.Host, server.Port = misc.SplitHostPort(url)
+	// Fixing URL with port option
+	server.URL = server.Host + ":" + server.Port
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 
