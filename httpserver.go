@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
@@ -46,6 +47,8 @@ func httpserver() {
 		currentCluster.LogPrintf("ERROR", "Dashboard dashboard.js file missing - will not start http server")
 		return
 	}
+	// create mux router
+	router := mux.NewRouter()
 
 	if confs[currentClusterName].HttpAuth {
 		// set authguard options
@@ -120,13 +123,9 @@ func httpserver() {
 			Gelada:    g,
 			AuthGuard: ag,
 		}
-
-		// create mux router
-		router := mux.NewRouter()
-
-		// main page
+		router.Handle("/", g.GlobalAuth(router))
 		router.HandleFunc("/", hm.HandleMainPage)
-		// page to view which does not need authorization
+
 		router.HandleFunc("/noauth/page", hm.HandleLoginFreePage)
 		// login page
 		router.HandleFunc("/login", hm.HandleLoginPage).Methods("GET")
@@ -136,102 +135,72 @@ func httpserver() {
 		router.HandleFunc("/stats", handlerStats)
 		//http.HandleFunc("/", handlerApp)
 		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
-		router.HandleFunc("/servers", handlerServers)
-		router.HandleFunc("/stop", handlerStopServer)
-		router.HandleFunc("/start", handlerStartServer)
-		router.HandleFunc("/maintenance", handlerMaintenanceServer)
-		router.HandleFunc("/setcluster", handlerSetCluster)
-		router.HandleFunc("/runonetest", handlerSetOneTest)
-		router.HandleFunc("/master", handlerMaster)
-		router.HandleFunc("/slaves", handlerSlaves)
-		router.HandleFunc("/agents", handlerAgents)
-		router.HandleFunc("/proxies", handlerProxies)
-		router.HandleFunc("/crashes", handlerCrashes)
-		router.HandleFunc("/log", handlerLog)
-		router.HandleFunc("/switchover", handlerSwitchover)
-		router.HandleFunc("/failover", handlerFailover)
-		router.HandleFunc("/interactive", handlerInteractiveToggle)
-		router.HandleFunc("/settings", handlerSettings)
-		router.HandleFunc("/alerts", handlerAlerts)
-		router.HandleFunc("/resetfail", handlerResetFailoverCtr)
-		router.HandleFunc("/rplchecks", handlerRplChecks)
-		router.HandleFunc("/bootstrap", handlerBootstrap)
-		router.HandleFunc("/failsync", handlerFailSync)
-		router.HandleFunc("/switchsync", handlerSwitchSync)
-		router.HandleFunc("/setrejoin", handlerRejoin)
-		router.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
-		router.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
-		router.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
-		router.HandleFunc("/setrejoindump", handlerRejoinDump)
-		router.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
-		router.HandleFunc("/settest", handlerSetTest)
-		router.HandleFunc("/tests", handlerTests)
-		router.HandleFunc("/sysbench", handlerSysbench)
-		router.HandleFunc("/setactive", handlerSetActive)
-		router.HandleFunc("/dashboard.js", handlerJS)
-		router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
-		router.HandleFunc("/setverbosity", handlerVerbosity)
-		router.HandleFunc("/template", handlerOpenSVCTemplate)
-		router.HandleFunc("/repocomp/current", handlerRepoComp)
-		router.HandleFunc("/unprovision", handlerUnprovision)
-		router.HandleFunc("/rolling", handlerRollingUpgrade)
-		router.HandleFunc("/toggletraffic", handlerTraffic)
-
-		// wrap around our router
-		http.Handle("/", g.GlobalAuth(router))
 	} else {
-		http.HandleFunc("/", handlerApp)
-		http.HandleFunc("/stats", handlerStats)
-		http.HandleFunc("/servers", handlerServers)
-		http.HandleFunc("/stop", handlerStopServer)
-		http.HandleFunc("/start", handlerStartServer)
-		http.HandleFunc("/maintenance", handlerMaintenanceServer)
-		http.HandleFunc("/setcluster", handlerSetCluster)
-		http.HandleFunc("/runonetest", handlerSetOneTest)
-		http.HandleFunc("/toggletraffic", handlerTraffic)
-		http.HandleFunc("/master", handlerMaster)
-		http.HandleFunc("/slaves", handlerSlaves)
-		http.HandleFunc("/agents", handlerAgents)
-		http.HandleFunc("/proxies", handlerProxies)
-		http.HandleFunc("/crashes", handlerCrashes)
-		http.HandleFunc("/alerts", handlerAlerts)
-		http.HandleFunc("/log", handlerLog)
-		http.HandleFunc("/switchover", handlerSwitchover)
-		http.HandleFunc("/failover", handlerFailover)
-		http.HandleFunc("/interactive", handlerInteractiveToggle)
-		http.HandleFunc("/settings", handlerSettings)
-		http.HandleFunc("/resetfail", handlerResetFailoverCtr)
-		http.HandleFunc("/rplchecks", handlerRplChecks)
-		http.HandleFunc("/bootstrap", handlerBootstrap)
-		http.HandleFunc("/failsync", handlerFailSync)
-		http.HandleFunc("/switchsync", handlerSwitchSync)
-		http.HandleFunc("/setrejoin", handlerRejoin)
-		http.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
-		http.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
-		http.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
-		http.HandleFunc("/setrejoindump", handlerRejoinDump)
-		http.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
-		http.HandleFunc("/setverbosity", handlerVerbosity)
-		http.HandleFunc("/settest", handlerSetTest)
-		http.HandleFunc("/tests", handlerTests)
-		http.HandleFunc("/sysbench", handlerSysbench)
-		http.HandleFunc("/setactive", handlerSetActive)
-		http.HandleFunc("/dashboard.js", handlerJS)
-		http.HandleFunc("/heartbeat", handlerMrmHeartbeat)
-		http.HandleFunc("/template", handlerOpenSVCTemplate)
-		http.HandleFunc("/repocomp/current", handlerRepoComp)
-		http.HandleFunc("/unprovision", handlerUnprovision)
-		http.HandleFunc("/rolling", handlerRollingUpgrade)
-		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
-		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
-		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)
-		http.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", handlerMuxServersPortSlaveStatus)
+		router.HandleFunc("/", handlerApp)
 	}
-	http.Handle("/static/", http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	// main page
+
+	// page to view which does not need authorization
+
+	router.HandleFunc("/servers", handlerServers)
+	router.HandleFunc("/stop", handlerStopServer)
+	router.HandleFunc("/start", handlerStartServer)
+	router.HandleFunc("/maintenance", handlerMaintenanceServer)
+	router.HandleFunc("/setcluster", handlerSetCluster)
+	router.HandleFunc("/runonetest", handlerSetOneTest)
+	router.HandleFunc("/master", handlerMaster)
+	router.HandleFunc("/slaves", handlerSlaves)
+	router.HandleFunc("/agents", handlerAgents)
+	router.HandleFunc("/proxies", handlerProxies)
+	router.HandleFunc("/crashes", handlerCrashes)
+	router.HandleFunc("/log", handlerLog)
+	router.HandleFunc("/switchover", handlerSwitchover)
+	router.HandleFunc("/failover", handlerFailover)
+	router.HandleFunc("/interactive", handlerInteractiveToggle)
+	router.HandleFunc("/settings", handlerSettings)
+	router.HandleFunc("/alerts", handlerAlerts)
+	router.HandleFunc("/resetfail", handlerResetFailoverCtr)
+	router.HandleFunc("/rplchecks", handlerRplChecks)
+	router.HandleFunc("/bootstrap", handlerBootstrap)
+	router.HandleFunc("/failsync", handlerFailSync)
+	router.HandleFunc("/switchsync", handlerSwitchSync)
+	router.HandleFunc("/setrejoin", handlerRejoin)
+	router.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
+	router.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
+	router.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
+	router.HandleFunc("/setrejoindump", handlerRejoinDump)
+	router.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
+	router.HandleFunc("/settest", handlerSetTest)
+	router.HandleFunc("/tests", handlerTests)
+	router.HandleFunc("/sysbench", handlerSysbench)
+	router.HandleFunc("/setactive", handlerSetActive)
+	router.HandleFunc("/dashboard.js", handlerJS)
+	router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
+	router.HandleFunc("/setverbosity", handlerVerbosity)
+	router.HandleFunc("/template", handlerOpenSVCTemplate)
+	router.HandleFunc("/repocomp/current", handlerRepoComp)
+	router.HandleFunc("/unprovision", handlerUnprovision)
+	router.HandleFunc("/rolling", handlerRollingUpgrade)
+	router.HandleFunc("/toggletraffic", handlerTraffic)
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortMasterStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
+	))
+
+	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+
 	if confs[currentClusterName].Verbose {
 		log.Printf("Starting http monitor on port " + confs[currentClusterName].HttpPort)
 	}
-	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, nil))
+	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, router))
 }
 
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
