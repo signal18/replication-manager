@@ -195,7 +195,7 @@ func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 
 func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 	for _, server := range cluster.servers {
-		if server.URL == url {
+		if server.Host+":"+server.Port == url {
 			return server
 		}
 	}
