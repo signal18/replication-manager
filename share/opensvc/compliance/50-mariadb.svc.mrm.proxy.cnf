@@ -12,7 +12,7 @@ OSVC_COMP_SERVERS_HAPROXY_WRITE=""
 OSVC_COMP_SERVERS_PROXYSQL=""
 OSVC_COMP_SERVERS_LIST=""
 
-typeset -i n=$(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | sed -e ",")
+typeset -i n=$(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | grep -o "," | wc -l)
 
 for ip in $(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | sed "s/,/ /g")
 do
