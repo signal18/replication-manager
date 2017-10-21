@@ -589,7 +589,8 @@ show_disabled = false
 nodes = ` + agent.Node_name + `
 size = ` + collector.ProvDisk + `
 ` + ipPods + `
-mysql_root_password = ` + collector.ProvPwd + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
@@ -652,7 +653,8 @@ show_disabled = false
 nodes = ` + agent.Node_name + `
 size = ` + collector.ProvDisk + `
 ` + ipPods + `
-mysql_root_password = ` + collector.ProvPwd + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
@@ -672,6 +674,8 @@ port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	log.Println(conf)
 	return conf, nil
@@ -713,7 +717,8 @@ show_disabled = false
 nodes = ` + agent.Node_name + `
 size = ` + collector.ProvDisk + `
 ` + ipPods + `
-mysql_root_password = ` + collector.ProvPwd + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
@@ -733,6 +738,8 @@ port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	log.Println(conf)
 	return conf, nil
@@ -803,7 +810,8 @@ size = ` + collector.ProvDisk + `
 db_img = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
-mysql_root_password = ` + collector.ProvPwd + `
+mysql_root_password = ` + server.ClusterGroup.dbPass + `
+mysql_root_user = ` + server.ClusterGroup.dbUser + `
 network = ` + network + `
 gateway =  ` + collector.ProvNetGateway + `
 netmask =  ` + collector.ProvNetMask + `
@@ -813,6 +821,8 @@ max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + server.ClusterGroup.GetGComm() + `
+mrm_api_addr = ` + server.ClusterGroup.conf.BindAddr + ":" + server.ClusterGroup.conf.HttpPort + `
+mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
 `
 	log.Println(conf)
 

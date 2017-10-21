@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/signal18/replication-manager/proxysql"
+	"github.com/signal18/replication-manager/state"
 )
 
 func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
@@ -31,7 +32,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
 	defer psql.Connection.Close()
