@@ -71,7 +71,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
 	defer psql.Connection.Close()
@@ -136,7 +136,7 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, host string, port s
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "ProxySQL connection error: %s", err)
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
 	defer psql.Connection.Close()
