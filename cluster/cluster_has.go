@@ -32,3 +32,11 @@ func (cluster *Cluster) IsMasterFailed() bool {
 		return false
 	}
 }
+
+func (cluster *Cluster) IsActive() bool {
+	if cluster.runStatus == "A" {
+		return true
+	} else {
+		return false
+	}
+}

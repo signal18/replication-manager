@@ -1195,7 +1195,8 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+		if mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+			w.Write([]byte("200 -Valid Master!"))
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1217,7 +1218,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Node not Found!"))
 		}
-		if node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+		if mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 
@@ -1237,7 +1238,7 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node.IsSlave && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -1257,7 +1258,8 @@ func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node.IsSlave && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
