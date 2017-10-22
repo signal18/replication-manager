@@ -1117,7 +1117,8 @@ type = docker
 run_image = {env.proxysql_img}
 run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00` + pod + `
     -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/conf/proxysql.cfg:/etc/proxysql.cfg:rw
+    -v {env.base_dir}/pod` + pod + `/conf/proxysql.cnf:/etc/proxysql.cnf:rw
+		-v {env.base_dir}/pod` + pod + `/data:/var/lib/proxysql:rw
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm
