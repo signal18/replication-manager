@@ -13,14 +13,14 @@ OSVC_COMP_SERVERS_PROXYSQL=""
 OSVC_COMP_SERVERS_LIST=""
 
 typeset -i n=$(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | grep -o "," | wc -l)
-
+n=n+1
 for ip in $(echo $OSVC_COMP_SVC_CONF_ENV_BACKEND_IPS | sed "s/,/ /g")
 do
 	i=i+1
 	buff="\\n[server$i]\\ntype=server\\naddress=$ip\\nport=3306\\nprotocol=MySQLBackend\\n"
 	buffhaproxyread="\\nserver server$i $ip:3306  weight 100 maxconn 2000 check inter 1000"
 	buffhaproxywrite="\\nserver server$i $ip:3306  weight 100 maxconn 2000 check inter 1000"
-	buffproxysql="\\n{ address="$ip" , port=3306 , hostgroup=0, max_connections=1024 }"
+	buffproxysql="\\n{ address=\"$ip\" , port=3306 , hostgroup=0, max_connections=1024 }"
 
 	OSVC_COMP_SERVERS="${OSVC_COMP_SERVERS}${buff}"
 	OSVC_COMP_SERVERS_HAPROXY_READ="${OSVC_COMP_SERVERS_HAPROXY_READ}${buffhaproxyread}"

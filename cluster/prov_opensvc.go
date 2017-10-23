@@ -342,7 +342,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	}
 	if prx.Type == proxySqlproxy {
 		if strings.Contains(svc.ProvAgents, agent.Node_name) {
-			res, err := cluster.GetProxysqlTemplate(svc, strings.Join(srvlist, " "), agent, prx)
+			res, err := cluster.GetProxysqlTemplate(svc, strings.Join(srvlist, ","), agent, prx)
 			if err != nil {
 				return err
 			}
