@@ -34,7 +34,7 @@ prov-db-disk-iops = "300"
 proxysql=true
 proxysql-write-port=3303
 proxysql-servers = "192.168.100.50"
-
+proxysql-user ="external"
 
 prov-proxy-disk-size = "1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"
