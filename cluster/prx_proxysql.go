@@ -13,8 +13,8 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 		Password: proxy.Pass,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
-		WriterHG: fmt.Sprintf("%d", proxy.WritePort),
-		ReaderHG: fmt.Sprintf("%d", proxy.ReadPort),
+		WriterHG: fmt.Sprintf("%d", proxy.WriterHostgroup),
+		ReaderHG: fmt.Sprintf("%d", proxy.ReaderHostgroup),
 	}
 
 	var err error
