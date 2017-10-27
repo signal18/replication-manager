@@ -104,12 +104,6 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 			}
 		}
 	}
-
-	err = haConfig.Render()
-	if err != nil {
-		log.Fatal("Could not render initial haproxy config, exiting...")
-		os.Exit(1)
-	}
 	if cluster.conf.Enterprise {
 		/*cf, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "-haproxy.cfg") // just pass the file name
 		if err != nil {
@@ -118,6 +112,11 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		cluster.OpenSVCProvisionReloadHaproxyConf(string(cf))*/
 		//cluster.OpenSVCProvisionReloadHaproxyConf("test")
 	} else {
+		err = haConfig.Render()
+		if err != nil {
+			log.Fatal("Could not render initial haproxy config, exiting...")
+			os.Exit(1)
+		}
 
 		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
 			cluster.LogPrintf("WARNING", "Haproxy pidfile exists at %s, proceeding with reload config...", haConfig.PidFile)
