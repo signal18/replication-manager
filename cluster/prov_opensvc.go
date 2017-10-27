@@ -51,6 +51,8 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxDockerMaxscaleImg = cluster.conf.ProvProxMaxscaleImg
 	svc.ProvProxDockerHaproxyImg = cluster.conf.ProvProxHaproxyImg
 	svc.ProvProxDockerProxysqlImg = cluster.conf.ProvProxProxysqlImg
+	svc.ProvProxDockerShardproxyImg = cluster.conf.ProvProxShardingImg
+
 	svc.ProvProxTags = cluster.conf.ProvProxTags
 	svc.Verbose = 1
 
@@ -300,7 +302,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 				return nil
 			}
 			srv.ClusterGroup = cluster
-			res, err := srv.GenerateDBTemplate(svc, []string{prx.Host}, []string{prx.Port}, []opensvc.Host{agent}, prx.Id, agent.Node_name)
+			res, err := cluster.GetShardproxyTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
 				return err
 			}
@@ -681,6 +683,71 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 	return conf, nil
 }
 
+func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+
+	ipPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerShardproxyTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
+network = ` + network + `
+gateway =  ` + collector.ProvProxNetGateway + `
+netmask =  ` + collector.ProvProxNetMask + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
+shardproxy_img = ` + collector.ProvProxDockerShardproxyImg + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + collector.ProvProxNetMask + `
+port_rw = ` + strconv.Itoa(prx.ReadWritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_http = 80
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
+`
+	log.Println(conf)
+	return conf, nil
+}
+
 func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	ipPods := ""
@@ -1035,6 +1102,38 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
 			vm = vm + `run_command = mysqld --wsrep_new_cluster
 `
 		}
+
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodDockerShardproxyTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+	-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.shardproxy_img}
+run_args =  --net=container:{svcname}.container.00` + pod + `
+ -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
+ -e MYSQL_INITDB_SKIP_TZINFO=yes
+ -v /etc/localtime:/etc/localtime:ro
+ -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
+ -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
+ -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+`
 
 		if dockerMinusRm {
 			vm = vm + ` --rm

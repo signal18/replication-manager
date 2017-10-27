@@ -214,6 +214,7 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) error {
 			cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
 			return err
 		}
+
 		query = `create table if not exists mysql.spider_tables(
       db_name char(64) not null default '',
       table_name char(64) not null default '',
@@ -237,9 +238,40 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) error {
       tgt_db_name char(64) default null,
       tgt_table_name char(64) default null,
       link_status tinyint not null default 1,
-      primary key (db_name, table_name, link_id),
+		  primary key (db_name, table_name, link_id),
       key idx1 (priority)
     ) engine=MyISAM default charset=utf8 collate=utf8_bin`
+		query = `	create table if not exists mysql.spider_tables(
+	db_name char(64) not null default '',
+	table_name char(199) not null default '',
+	link_id int not null default 0,
+	priority bigint not null default 0,
+	server char(64) default null,
+	scheme char(64) default null,
+	host char(64) default null,
+	port char(5) default null,
+	socket text,
+	username char(64) default null,
+	password char(64) default null,
+	ssl_ca text,
+	ssl_capath text,
+	ssl_cert text,
+	ssl_cipher char(64) default null,
+	ssl_key text,
+	ssl_verify_server_cert tinyint not null default 0,
+	monitoring_binlog_pos_at_failing tinyint not null default 0,
+	default_file text,
+	default_group char(64) default null,
+	tgt_db_name char(64) default null,
+	tgt_table_name char(64) default null,
+	link_status tinyint not null default 1,
+	block_status tinyint not null default 0,
+	static_link_id char(64) default null,
+	primary key (db_name, table_name, link_id),
+	key idx1 (priority),
+	unique key uidx1 (db_name, table_name, static_link_id)
+) engine=MyISAM default charset=utf8 collate=utf8_bin;
+`
 		_, err = c.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)

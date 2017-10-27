@@ -236,9 +236,9 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
 	}
 	if WithMariadbshardproxy == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "mdbshardproxy", false, "Wrapper to use Spider MdbProxy ")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "mdbshardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "mdbshardproxy-user", "root:mariadb", "MaxScale admin user")
+		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "Wrapper to use Spider MdbProxy ")
+		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
+		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "shardproxy-credential", "root:mariadb", "MaxScale admin user")
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
@@ -291,7 +291,8 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 		monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 		monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "db-servers-binary-path", "/usr/local/mysql/bin", "Path to mysqld binary for testing")
-		monitorCmd.Flags().MarkDeprecated("mariadb-binary-path", "mariadb-binary-path is deprecated, please replace by mariadb-mysqlbinlog-path")
+		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
+
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
@@ -345,6 +346,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxProxysqlImg, "prov-proxy-docker-proxysql-img", "signal18/proxysql:1.4", "Docker image for proxysql")
 			monitorCmd.Flags().StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "asosso/maxscale:latest", "Docker image for maxscale proxy")
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:alpine", "Docker image for haproxy")
+			monitorCmd.Flags().StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-sharding-img", "tanji/spdc", "Docker image for sharding proxy")
 		}
 	}
 

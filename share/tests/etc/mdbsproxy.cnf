@@ -1,6 +1,7 @@
 [mysqld]
 
-
+skip-innodb
+default-storage-engine=MyISAM
 skip_name_resolve
 
 back_log=128

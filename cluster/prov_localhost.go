@@ -118,7 +118,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	}
 	cluster.LogPrintf("INFO", "Remove datadir done: %s", string(out))
 
-	out, err = exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data", path).CombinedOutput()
+	out, err = exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data"+cluster.conf.ProvDatadirVersion, path).CombinedOutput()
 	if err != nil {
 		cluster.LogPrintf("ERROR", "%s", err)
 	}

@@ -113,9 +113,9 @@ type Config struct {
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
-	MdbsProxyOn                        bool   `mapstructure:"mdbshardproxy"`
-	MdbsProxyHosts                     string `mapstructure:"mdbshardproxy-servers"`
-	MdbsProxyUser                      string `mapstructure:"mdbshardproxy-user"`
+	MdbsProxyOn                        bool   `mapstructure:"shardproxy"`
+	MdbsProxyHosts                     string `mapstructure:"shardproxy-servers"`
+	MdbsProxyUser                      string `mapstructure:"shardproxy-user"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-servers"`
 	MxsPort                            string `mapstructure:"maxscale-port"`
@@ -206,6 +206,8 @@ type Config struct {
 	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
 	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
+	ProvDatadirVersion                 string `mapstructure:"prov-db-datadir-version"`
+	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-sharding-img"`
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
