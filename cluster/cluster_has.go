@@ -40,3 +40,11 @@ func (cluster *Cluster) IsActive() bool {
 		return false
 	}
 }
+
+func (cluster *Cluster) IsVerbose() bool {
+	if cluster.conf.Verbose {
+		return true
+	} else {
+		return false
+	}
+}

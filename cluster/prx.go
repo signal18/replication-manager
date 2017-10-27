@@ -211,20 +211,31 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 		for _, pr := range cluster.proxies {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
+				if cluster.IsVerbose() {
+					cluster.LogPrintf("ERROR", "Can't get a proxy connection: %s", err)
+				}
 				return false
 			}
 			defer db.Close()
 			var sv map[string]string
 			sv, err = dbhelper.GetVariables(db)
 			if err != nil {
+				if cluster.IsVerbose() {
+					cluster.LogPrintf("ERROR", "Can't get variables: %s", err)
+				}
 				return false
 			}
 			var sid uint64
 			sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
 			if err != nil {
+				if cluster.IsVerbose() {
+					cluster.LogPrintf("ERROR", "Can't form proxy server_id convert: %s", err)
+				}
 				return false
 			}
-
+			if cluster.IsVerbose() {
+				cluster.LogPrintf("INFO", "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
+			}
 			if cluster.GetMaster().ServerID == uint(sid) || pr.Type == proxySpider {
 				return true
 			}
