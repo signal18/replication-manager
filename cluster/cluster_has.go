@@ -48,3 +48,7 @@ func (cluster *Cluster) IsVerbose() bool {
 		return false
 	}
 }
+
+func (cluster *Cluster) IsInFailover() bool {
+	return cluster.sme.IsInFailover()
+}

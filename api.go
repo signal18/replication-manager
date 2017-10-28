@@ -1195,7 +1195,7 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+		if mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 		} else {
@@ -1218,7 +1218,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Node not Found!"))
 		}
-		if mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
+		if mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 
