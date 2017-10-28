@@ -557,21 +557,23 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
+		server.Refresh()
 		myGtid_IO_Pos := gtid.NewList(ss.GtidIOPos.String)
-		myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
-
-		//server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s equal: %s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint(), myGtid_Slave_Pos.Equal(myGtid_IO_Pos))
+		myGtid_Slave_Pos := server.SlaveGtid
+		//myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
+		//https://jira.mariadb.org/browse/MDEV-14182
 
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
+			server.Refresh()
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
 			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
-			myGtid_Slave_Pos = gtid.NewList(ss.GtidSlavePos.String)
+			myGtid_Slave_Pos = server.SlaveGtid
 
-			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", ss.GtidIOPos, ss.GtidSlavePos)
+			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn)
