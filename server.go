@@ -553,6 +553,9 @@ For interacting with this daemon use,
 			go currentCluster.Run()
 			currentClusterName = gl
 		}
+		for _, gl := range clusters {
+			gl.SetClusterList(clusters)
+		}
 		currentCluster.SetCfgGroupDisplay(currentClusterName)
 
 		// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting

@@ -126,3 +126,7 @@ func (server *ServerMonitor) GetBinlogPosAfterSkipNumberOfEvents(file string, po
 func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) (int, error) {
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
+
+func (server *ServerMonitor) GetTableFromDict(URI string) dbhelper.Table {
+	return server.DictTables[URI]
+}

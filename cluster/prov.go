@@ -575,6 +575,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
 
 				if server.State != stateFailed && cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+					cluster.servers[masterKey].Refresh()
 					_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[masterKey].CurrentGtid.Sprint() + "\"")
 					if err != nil {
 						return err

@@ -159,3 +159,7 @@ func (cluster *Cluster) SetTestStartCluster(check bool) {
 func (cluster *Cluster) SetLogStdout() {
 	cluster.conf.Daemon = true
 }
+
+func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
+	cluster.clusterList = clusters
+}

@@ -101,6 +101,7 @@ type ServerMonitor struct {
 	Status                      map[string]string
 	ReplicationHealth           string
 	TestConfig                  string
+	DictTables                  map[string]dbhelper.Table
 }
 
 type serverList []*ServerMonitor

@@ -273,7 +273,7 @@ func (cluster *Cluster) refreshProxies() {
 			cluster.refreshMaxscale(pr)
 		}
 		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
-			if cluster.GetStateMachine().GetHeartbeats()%60 == 0 {
+			if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
 				cluster.refreshMdbsproxy(nil, pr)
 			}
 		}

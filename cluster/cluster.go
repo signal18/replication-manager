@@ -31,6 +31,7 @@ import (
 type Cluster struct {
 	hostList             []string
 	proxyList            []string
+	clusterList          map[string]*Cluster
 	servers              serverList
 	slaves               serverList
 	proxies              proxyList

@@ -34,6 +34,7 @@ type Table struct {
 	Table_rows   int64
 	Data_length  int64
 	Index_length int64
+	Table_crc    uint64
 }
 
 type Event struct {
@@ -611,25 +612,6 @@ func GetMasterStatus(db *sqlx.DB) (MasterStatus, error) {
 	return ms, err
 }
 
-func GetTables(db *sqlx.DB) ([]Table, error) {
-	tbl := []Table{}
-
-	err := db.Select(&tbl, "SELECT  TABLE_SCHEMA as Table_schema ,  TABLE_NAME as Table_name ,ENGINE as Engine,TABLE_ROWS as Table_rows ,DATA_LENGTH as Data_length,INDEX_LENGTH as Index_length FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
-	if err != nil {
-		return nil, errors.New("Could not get table list")
-	}
-	return tbl, nil
-}
-
-func GetSchemas(db *sqlx.DB) ([]string, error) {
-	sch := []string{}
-	err := db.Select(&sch, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
-	if err != nil {
-		return nil, errors.New("Could not get table lis")
-	}
-	return sch, nil
-}
-
 func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, error) {
 	rows, err := db.Queryx("SHOW SLAVE HOSTS")
 	if err != nil {
@@ -763,6 +745,32 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 		vars[v.Variable_name] = v.Value
 	}
 	return vars, err
+}
+
+func GetTables(db *sqlx.DB) (map[string]Table, error) {
+	vars := make(map[string]Table)
+	rows, err := db.Queryx("SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,a.DATA_LENGTH as Data_length,a.INDEX_LENGTH as Index_length ,(select CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10)    FROM information_schema.COLUMNS b left join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  and  b.table_name=c.table_name where b.table_schema=a.table_schema  and  b.table_name=a.table_name ) as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
+	if err != nil {
+		return nil, errors.New("Could not get table list")
+	}
+	for rows.Next() {
+		var v Table
+		err = rows.Scan(&v.Table_schema, &v.Table_name, &v.Engine, &v.Table_rows, &v.Data_length, &v.Index_length, &v.Table_crc)
+		if err != nil {
+			return vars, err
+		}
+		vars[v.Table_schema+"."+v.Table_name] = v
+	}
+	return vars, nil
+}
+
+func GetSchemas(db *sqlx.DB) ([]string, error) {
+	sch := []string{}
+	err := db.Select(&sch, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
+	if err != nil {
+		return nil, errors.New("Could not get table lis")
+	}
+	return sch, nil
 }
 
 func GetVariableByName(db *sqlx.DB, name string) (string, error) {
