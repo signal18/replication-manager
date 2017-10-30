@@ -1217,7 +1217,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 		if node == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Node not Found!"))
-			http.Error(w, "502 -Node not Found!", 502)
+
 		}
 		if mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			w.Write([]byte("200 -Valid Master!"))
@@ -1226,7 +1226,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Master!"))
-			http.Error(w, "503 -Not a Valid Master!", 503)
+
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

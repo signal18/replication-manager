@@ -69,6 +69,10 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not fetch master tables %s", err)
 	}
+	//	spidertables, err := dbhelper.GetTables(c)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not fetch spider tables %s", err)
+	}
 	var duplicates []*ServerMonitor
 	for _, t := range tables {
 		if cluster.conf.Verbose {
@@ -97,6 +101,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 					}
 				}
 			}
+			cluster.LogPrintf("INFO", "duplictaes %d", len(duplicates))
 			if len(duplicates) == 0 {
 				cluster.LogPrintf("INFO", "Creating table in shard proxy %s", t.Table_schema+"."+t.Table_name)
 
@@ -105,6 +110,41 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
 				}
+
+			} else {
+				query := "SELECT group_concat(column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + t.Table_schema + "' AND TABLE_NAME='" + t.Table_name + "'"
+				var pk string
+				err := c.QueryRowx(query).Scan(&pk)
+				//				' ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
+				}
+
+				query = "CREATE OR REPLACE TABLE " + t.Table_schema + "." + t.Table_name + " ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\"' PARTITION BY HASH (" + pk + ") (\n"
+				i := 1
+				for _, cl := range cluster.clusterList {
+					checksum64 := crc64.Checksum([]byte(t.Table_schema+"_"+cl.GetName()), crcTable)
+					query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"s" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + t.Table_name + "\", database \"" + t.Table_schema + "\"'"
+					if i != len(cluster.clusterList) {
+						query = query + ",\n"
+					}
+					i++
+				}
+
+				query = query + "\n)"
+				_, err = c.Exec(query)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
+				}
+				//	, srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+
+				//	PARTITION BY HASH
+				// code for partionned table
+				/*if _, ok := spidertables[t.Table_schema+"."+t.Table_name]; ok {
+					//do nothing already here
+				} else {
+					cluster.LogPrintf("INFO", "Table %s does not yet exist in shard proxy ", t.Table_schema+"."+t.Table_name)
+				}*/
 			}
 		}
 	}
