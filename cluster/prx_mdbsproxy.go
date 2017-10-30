@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"strconv"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -120,7 +121,18 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 					cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
 				}
 
-				query = "CREATE OR REPLACE TABLE " + t.Table_schema + "." + t.Table_name + " ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\"' PARTITION BY HASH (" + pk + ") (\n"
+				query = "SHOW CREATE TABLE `" + t.Table_schema + "`.`" + t.Table_name + "`"
+				var tbl, ddl string
+
+				err = cluster.master.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+				//				' ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Failed query %s %s", query, err)
+				}
+				pos := strings.Index(ddl, "ENGINE=")
+				ddl = ddl[12:pos]
+
+				query = "CREATE OR REPLACE TABLE `" + t.Table_schema + "`." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\"' PARTITION BY HASH (" + pk + ") (\n"
 				i := 1
 				for _, cl := range cluster.clusterList {
 					checksum64 := crc64.Checksum([]byte(t.Table_schema+"_"+cl.GetName()), crcTable)
