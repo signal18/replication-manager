@@ -1,0 +1,11 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+[arbitrator]
+db-servers-hosts = "192.168.100.21:3306"
+db-servers-credential = "testres:testres4repman"
+title = "arbitrator"
+arbitrator-port=10001
+[default]
