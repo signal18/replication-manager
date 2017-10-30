@@ -421,3 +421,7 @@ func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) error {
 	c.Close()
 	return nil
 }
+
+func (cluster *Cluster) MdbsproxyCopyTable(oldmaster *ServerMonitor, newmaster *ServerMonitor, proxy *Proxy) {
+
+}
