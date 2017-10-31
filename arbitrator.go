@@ -10,13 +10,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
-
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/dbhelper"
 	log "github.com/sirupsen/logrus"
@@ -73,13 +75,17 @@ type response struct {
 }
 
 var (
-	arbitratorPort int
+	arbitratorPort    int
+	arbitratorDriver  string
+	arbitratorCluster *cluster.Cluster
 )
 
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 8080, "Arbitrator API port")
+	arbitratorCmd.Flags().StringVar(&arbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
+
 }
 
 var arbitratorCmd = &cobra.Command{
@@ -87,13 +93,19 @@ var arbitratorCmd = &cobra.Command{
 	Short: "Arbitrator environment",
 	Long:  `The arbitrator is used for false positive detection`,
 	Run: func(cmd *cobra.Command, args []string) {
-		currentCluster := new(cluster.Cluster)
 		var err error
-		db, err := currentCluster.InitAgent(confs["arbitrator"])
-		if err != nil {
-			panic(err)
+		var db *sqlx.DB
+
+		if arbitratorDriver == "mysql" {
+			arbitratorCluster = new(cluster.Cluster)
+			db, err = arbitratorCluster.InitAgent(confs["arbitrator"])
+			if err != nil {
+				panic(err)
+			}
+			arbitratorCluster.SetLogStdout()
 		}
-		currentCluster.SetLogStdout()
+
+		db, err = getArbitratorBackendStorageConnection()
 
 		err = dbhelper.SetHeartbeatTable(db)
 		if err != nil {
@@ -103,6 +115,19 @@ var arbitratorCmd = &cobra.Command{
 		log.Infof("Arbitrator listening on port %d", arbitratorPort)
 		log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(arbitratorPort), router))
 	},
+}
+
+func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
+
+	var err error
+	var db *sqlx.DB
+	if arbitratorDriver == "sqllite" {
+		db, err = dbhelper.MemDBConnect()
+	}
+	if arbitratorDriver == "mysql" {
+		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", confs["arbitrator"].Timeout))
+	}
+	return db, err
 }
 
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
@@ -123,8 +148,8 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var send response
-	//currentCluster := new(cluster.Cluster)
-	db, err := dbhelper.MemDBConnect()
+
+	db, err := getArbitratorBackendStorageConnection()
 	defer db.Close()
 	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
@@ -163,11 +188,10 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentCluster := new(cluster.Cluster)
 	var send string
-	db, err := dbhelper.MemDBConnect()
+	db, err := getArbitratorBackendStorageConnection()
 	if err != nil {
-		currentCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
 	}
 	defer db.Close()
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
@@ -207,7 +231,7 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 
 	//	currentCluster := new(cluster.Cluster)
 	var send string
-	db, err := dbhelper.MemDBConnect()
+	db, err := getArbitratorBackendStorageConnection()
 	defer db.Close()
 	res := dbhelper.ForgetArbitration(db, h.Secret)
 	if res == nil {

@@ -18,6 +18,7 @@ type Config struct {
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host"`
 	TunnelCredential                   string `mapstructure:"monitoring-tunnel-credential"`
 	MonitorAddress                     string `mapstructure:"monitoring-address"`
+	MonitorWriteHearbeat               bool   `mapstructure:"monitoring-write-hearbeat"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"log-file"`
@@ -33,7 +34,7 @@ type Config struct {
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
 	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
-	DbServerLocality                   string `mapstructure:"db-servers-locality"`
+	DBServersLocality                  string `mapstructure:"db-servers-locality"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
 	RplUser                            string `mapstructure:"replication-credential"`
 	MasterConn                         string `mapstructure:"replication-source-name"`
@@ -113,6 +114,8 @@ type Config struct {
 	MailTo                             string `mapstructure:"mail-to"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table"`
+	ExtProxyOn                         bool   `mapstructure:"extproxy"`
+	ExtProxyVIP                        string `mapstructure:"extproxy-address"`
 	MdbsProxyOn                        bool   `mapstructure:"shardproxy"`
 	MdbsProxyHosts                     string `mapstructure:"shardproxy-servers"`
 	MdbsProxyUser                      string `mapstructure:"shardproxy-user"`

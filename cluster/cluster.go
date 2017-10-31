@@ -191,7 +191,7 @@ func (cluster *Cluster) Run() {
 				}
 			} else {
 				cluster.refreshProxies()
-				if cluster.conf.TestInjectTraffic || cluster.conf.AutorejoinSlavePositionalHearbeat {
+				if cluster.conf.TestInjectTraffic || cluster.conf.AutorejoinSlavePositionalHearbeat || cluster.conf.MonitorWriteHearbeat {
 					go cluster.InjectTraffic()
 				}
 			}

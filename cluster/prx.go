@@ -46,6 +46,7 @@ const (
 	proxyHaproxy  string = "haproxy"
 	proxySqlproxy string = "proxysql"
 	proxySpider   string = "mdbsproxy"
+	proxyExternal string = "extproxy"
 )
 
 type proxyList []*Proxy
@@ -123,6 +124,15 @@ func (cluster *Cluster) newProxyList() error {
 			ctproxy++
 		}
 	}
+	if cluster.conf.ExtProxyOn {
+		prx := new(Proxy)
+		prx.Type = proxyExternal
+		prx.Host, prx.Port = misc.SplitHostPort(cluster.conf.ExtProxyVIP)
+		prx.WritePort, _ = strconv.Atoi(prx.Port)
+		prx.ReadPort = prx.WritePort
+		prx.ReadWritePort = prx.WritePort
+		ctproxy++
+	}
 	if cluster.conf.ProxysqlOn {
 
 		for _, proxyHost := range strings.Split(cluster.conf.ProxysqlHosts, ",") {
@@ -156,6 +166,7 @@ func (cluster *Cluster) newProxyList() error {
 			ctproxy++
 		}
 	}
+
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
 			cluster.LogPrintf("INFO", "Loading MdbShardProxy...")
@@ -198,6 +209,8 @@ func (cluster *Cluster) InjectTraffic() {
 				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + uuid.NewV4().String() + "' from dual")
 				if err != nil {
 					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					db.Exec("CREATE DATABASE IF NO EXISTS replication_manager_schema")
+
 				}
 				db.Close()
 			}
