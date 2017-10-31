@@ -20,8 +20,11 @@ import (
 
 	"github.com/armon/go-metrics"
 	"github.com/hashicorp/consul/acl"
+	"github.com/hashicorp/consul/agent/ae"
+	"github.com/hashicorp/consul/agent/checks"
 	"github.com/hashicorp/consul/agent/config"
 	"github.com/hashicorp/consul/agent/consul"
+	"github.com/hashicorp/consul/agent/local"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/agent/systemd"
 	"github.com/hashicorp/consul/agent/token"
@@ -107,32 +110,36 @@ type Agent struct {
 
 	// state stores a local representation of the node,
 	// services and checks. Used for anti-entropy.
-	state *localState
+	State *local.State
+
+	// sync manages the synchronization of the local
+	// and the remote state.
+	sync *ae.StateSyncer
 
 	// checkReapAfter maps the check ID to a timeout after which we should
 	// reap its associated service
 	checkReapAfter map[types.CheckID]time.Duration
 
 	// checkMonitors maps the check ID to an associated monitor
-	checkMonitors map[types.CheckID]*CheckMonitor
+	checkMonitors map[types.CheckID]*checks.CheckMonitor
 
 	// checkHTTPs maps the check ID to an associated HTTP check
-	checkHTTPs map[types.CheckID]*CheckHTTP
+	checkHTTPs map[types.CheckID]*checks.CheckHTTP
 
 	// checkTCPs maps the check ID to an associated TCP check
-	checkTCPs map[types.CheckID]*CheckTCP
+	checkTCPs map[types.CheckID]*checks.CheckTCP
 
 	// checkTTLs maps the check ID to an associated check TTL
-	checkTTLs map[types.CheckID]*CheckTTL
+	checkTTLs map[types.CheckID]*checks.CheckTTL
 
 	// checkDockers maps the check ID to an associated Docker Exec based check
-	checkDockers map[types.CheckID]*CheckDocker
+	checkDockers map[types.CheckID]*checks.CheckDocker
 
 	// checkLock protects updates to the check* maps
 	checkLock sync.Mutex
 
 	// dockerClient is the client for performing docker health checks.
-	dockerClient *DockerClient
+	dockerClient *checks.DockerClient
 
 	// eventCh is used to receive user events
 	eventCh chan serf.UserEvent
@@ -200,11 +207,11 @@ func New(c *config.RuntimeConfig) (*Agent, error) {
 		config:          c,
 		acls:            acls,
 		checkReapAfter:  make(map[types.CheckID]time.Duration),
-		checkMonitors:   make(map[types.CheckID]*CheckMonitor),
-		checkTTLs:       make(map[types.CheckID]*CheckTTL),
-		checkHTTPs:      make(map[types.CheckID]*CheckHTTP),
-		checkTCPs:       make(map[types.CheckID]*CheckTCP),
-		checkDockers:    make(map[types.CheckID]*CheckDocker),
+		checkMonitors:   make(map[types.CheckID]*checks.CheckMonitor),
+		checkTTLs:       make(map[types.CheckID]*checks.CheckTTL),
+		checkHTTPs:      make(map[types.CheckID]*checks.CheckHTTP),
+		checkTCPs:       make(map[types.CheckID]*checks.CheckTCP),
+		checkDockers:    make(map[types.CheckID]*checks.CheckDocker),
 		eventCh:         make(chan serf.UserEvent, 1024),
 		eventBuf:        make([]*UserEvent, 256),
 		joinLANNotifier: &systemd.Notifier{},
@@ -222,6 +229,22 @@ func New(c *config.RuntimeConfig) (*Agent, error) {
 	a.tokens.UpdateACLReplicationToken(a.config.ACLReplicationToken)
 
 	return a, nil
+}
+
+func LocalConfig(cfg *config.RuntimeConfig) local.Config {
+	lc := local.Config{
+		AdvertiseAddr:       cfg.AdvertiseAddrLAN.String(),
+		CheckUpdateInterval: cfg.CheckUpdateInterval,
+		Datacenter:          cfg.Datacenter,
+		DiscardCheckOutput:  cfg.DiscardCheckOutput,
+		NodeID:              cfg.NodeID,
+		NodeName:            cfg.NodeName,
+		TaggedAddresses:     map[string]string{},
+	}
+	for k, v := range cfg.TaggedAddresses {
+		lc.TaggedAddresses[k] = v
+	}
+	return lc
 }
 
 func (a *Agent) Start() error {
@@ -242,7 +265,11 @@ func (a *Agent) Start() error {
 	}
 
 	// create the local state
-	a.state = NewLocalState(c, a.logger, a.tokens)
+	a.State = local.NewState(LocalConfig(c), a.logger, a.tokens)
+
+	// create the state synchronization manager which performs
+	// regular and on-demand state synchronizations (anti-entropy).
+	a.sync = ae.NewStateSyncer(a.State, c.AEInterval, a.shutdownCh, a.logger)
 
 	// create the config for the rpc server/client
 	consulCfg, err := a.consulConfig()
@@ -250,8 +277,10 @@ func (a *Agent) Start() error {
 		return err
 	}
 
-	// link consul client/server with the state
-	consulCfg.ServerUp = a.state.ConsulServerUp
+	// ServerUp is used to inform that a new consul server is now
+	// up. This can be used to speed up the sync process if we are blocking
+	// waiting to discover a consul server
+	consulCfg.ServerUp = a.sync.SyncFull.Trigger
 
 	// Setup either the client or the server.
 	if c.ServerMode {
@@ -259,18 +288,24 @@ func (a *Agent) Start() error {
 		if err != nil {
 			return fmt.Errorf("Failed to start Consul server: %v", err)
 		}
-
 		a.delegate = server
-		a.state.delegate = server
 	} else {
 		client, err := consul.NewClientLogger(consulCfg, a.logger)
 		if err != nil {
 			return fmt.Errorf("Failed to start Consul client: %v", err)
 		}
-
 		a.delegate = client
-		a.state.delegate = client
 	}
+
+	// the staggering of the state syncing depends on the cluster size.
+	a.sync.ClusterSize = func() int { return len(a.delegate.LANMembers()) }
+
+	// link the state with the consul server/client and the state syncer
+	// via callbacks. After several attempts this was easier than using
+	// channels since the event notification needs to be non-blocking
+	// and that should be hidden in the state syncer implementation.
+	a.State.Delegate = a.delegate
+	a.State.TriggerSyncChanges = a.sync.SyncChanges.Trigger
 
 	// Load checks/services/metadata.
 	if err := a.loadServices(c); err != nil {
@@ -534,16 +569,46 @@ func (a *Agent) reloadWatches(cfg *config.RuntimeConfig) error {
 	// Compile the watches
 	var watchPlans []*watch.Plan
 	for _, params := range cfg.Watches {
-		// Parse the watches, excluding the handler
-		wp, err := watch.ParseExempt(params, []string{"handler"})
+		if handlerType, ok := params["handler_type"]; !ok {
+			params["handler_type"] = "script"
+		} else if handlerType != "http" && handlerType != "script" {
+			return fmt.Errorf("Handler type '%s' not recognized", params["handler_type"])
+		}
+
+		// Parse the watches, excluding 'handler' and 'args'
+		wp, err := watch.ParseExempt(params, []string{"handler", "args"})
 		if err != nil {
 			return fmt.Errorf("Failed to parse watch (%#v): %v", params, err)
 		}
 
-		// Get the handler
-		h := wp.Exempt["handler"]
-		if _, ok := h.(string); h == nil || !ok {
+		// Get the handler and subprocess arguments
+		handler, hasHandler := wp.Exempt["handler"]
+		args, hasArgs := wp.Exempt["args"]
+		if hasHandler {
+			a.logger.Printf("[WARN] agent: The 'handler' field in watches has been deprecated " +
+				"and replaced with the 'args' field. See https://www.consul.io/docs/agent/watches.html")
+		}
+		if _, ok := handler.(string); hasHandler && !ok {
 			return fmt.Errorf("Watch handler must be a string")
+		}
+		if raw, ok := args.([]interface{}); hasArgs && ok {
+			var parsed []string
+			for _, arg := range raw {
+				if v, ok := arg.(string); !ok {
+					return fmt.Errorf("Watch args must be a list of strings")
+				} else {
+					parsed = append(parsed, v)
+				}
+			}
+			wp.Exempt["args"] = parsed
+		} else if hasArgs && !ok {
+			return fmt.Errorf("Watch args must be a list of strings")
+		}
+		if hasHandler && hasArgs || hasHandler && wp.HandlerType == "http" || hasArgs && wp.HandlerType == "http" {
+			return fmt.Errorf("Only one watch handler allowed")
+		}
+		if !hasHandler && !hasArgs && wp.HandlerType != "http" {
+			return fmt.Errorf("Must define a watch handler")
 		}
 
 		// Store the watch plan
@@ -566,7 +631,14 @@ func (a *Agent) reloadWatches(cfg *config.RuntimeConfig) error {
 	for _, wp := range watchPlans {
 		a.watchPlans = append(a.watchPlans, wp)
 		go func(wp *watch.Plan) {
-			wp.Handler = makeWatchHandler(a.LogOutput, wp.Exempt["handler"])
+			if h, ok := wp.Exempt["handler"]; ok {
+				wp.Handler = makeWatchHandler(a.LogOutput, h)
+			} else if h, ok := wp.Exempt["args"]; ok {
+				wp.Handler = makeWatchHandler(a.LogOutput, h)
+			} else {
+				httpConfig := wp.Exempt["http_handler_config"].(*watch.HttpHandlerConfig)
+				wp.Handler = makeHTTPWatchHandler(a.LogOutput, httpConfig)
+			}
 			wp.LogOutput = a.LogOutput
 			if err := wp.Run(addr); err != nil {
 				a.logger.Printf("[ERR] Failed to run watch: %v", err)
@@ -718,6 +790,14 @@ func (a *Agent) consulConfig() (*consul.Config, error) {
 	}
 	if a.config.RPCMaxBurst > 0 {
 		base.RPCMaxBurst = a.config.RPCMaxBurst
+	}
+
+	// RPC-related performance configs.
+	if a.config.RPCHoldTimeout > 0 {
+		base.RPCHoldTimeout = a.config.RPCHoldTimeout
+	}
+	if a.config.LeaveDrainTime > 0 {
+		base.LeaveDrainTime = a.config.LeaveDrainTime
 	}
 
 	// set the src address for outgoing rpc connections
@@ -1219,18 +1299,18 @@ func (a *Agent) WANMembers() []serf.Member {
 // StartSync is called once Services and Checks are registered.
 // This is called to prevent a race between clients and the anti-entropy routines
 func (a *Agent) StartSync() {
-	// Start the anti entropy routine
-	go a.state.antiEntropy(a.shutdownCh)
+	go a.sync.Run()
+	a.logger.Printf("[INFO] agent: started state syncer")
 }
 
 // PauseSync is used to pause anti-entropy while bulk changes are make
 func (a *Agent) PauseSync() {
-	a.state.Pause()
+	a.sync.Pause()
 }
 
 // ResumeSync is used to unpause anti-entropy after bulk changes are make
 func (a *Agent) ResumeSync() {
-	a.state.Resume()
+	a.sync.Resume()
 }
 
 // GetLANCoordinate returns the coordinates of this node in the local pools
@@ -1294,29 +1374,31 @@ OUTER:
 
 // reapServicesInternal does a single pass, looking for services to reap.
 func (a *Agent) reapServicesInternal() {
-	reaped := make(map[string]struct{})
-	for checkID, check := range a.state.CriticalChecks() {
+	reaped := make(map[string]bool)
+	for checkID, cs := range a.State.CriticalCheckStates() {
+		serviceID := cs.Check.ServiceID
+
 		// There's nothing to do if there's no service.
-		if check.Check.ServiceID == "" {
+		if serviceID == "" {
 			continue
 		}
 
 		// There might be multiple checks for one service, so
 		// we don't need to reap multiple times.
-		serviceID := check.Check.ServiceID
-		if _, ok := reaped[serviceID]; ok {
+		if reaped[serviceID] {
 			continue
 		}
 
 		// See if there's a timeout.
+		// todo(fs): this looks fishy... why is there anoter data structure in the agent with its own lock?
 		a.checkLock.Lock()
-		timeout, ok := a.checkReapAfter[checkID]
+		timeout := a.checkReapAfter[checkID]
 		a.checkLock.Unlock()
 
 		// Reap, if necessary. We keep track of which service
 		// this is so that we won't try to remove it again.
-		if ok && check.CriticalFor > timeout {
-			reaped[serviceID] = struct{}{}
+		if timeout > 0 && cs.CriticalFor() > timeout {
+			reaped[serviceID] = true
 			a.RemoveService(serviceID, true)
 			a.logger.Printf("[INFO] agent: Check %q for service %q has been critical for too long; deregistered service",
 				checkID, serviceID)
@@ -1351,7 +1433,7 @@ func (a *Agent) persistService(service *structs.NodeService) error {
 	svcPath := filepath.Join(a.config.DataDir, servicesDir, stringHash(service.ID))
 
 	wrapped := persistedService{
-		Token:   a.state.ServiceToken(service.ID),
+		Token:   a.State.ServiceToken(service.ID),
 		Service: service,
 	}
 	encoded, err := json.Marshal(wrapped)
@@ -1379,7 +1461,7 @@ func (a *Agent) persistCheck(check *structs.HealthCheck, chkType *structs.CheckT
 	wrapped := persistedCheck{
 		Check:   check,
 		ChkType: chkType,
-		Token:   a.state.CheckToken(check.CheckID),
+		Token:   a.State.CheckToken(check.CheckID),
 	}
 
 	encoded, err := json.Marshal(wrapped)
@@ -1447,8 +1529,8 @@ func (a *Agent) AddService(service *structs.NodeService, chkTypes []*structs.Che
 		service.ID = service.Service
 	}
 	for _, check := range chkTypes {
-		if !check.Valid() {
-			return fmt.Errorf("Check type is not valid")
+		if err := check.Validate(); err != nil {
+			return fmt.Errorf("Check is not valid: %v", err)
 		}
 	}
 
@@ -1478,7 +1560,7 @@ func (a *Agent) AddService(service *structs.NodeService, chkTypes []*structs.Che
 	defer a.restoreCheckState(snap)
 
 	// Add the service
-	a.state.AddService(service, token)
+	a.State.AddService(service, token)
 
 	// Persist the service to a file
 	if persist && !a.config.DevMode {
@@ -1528,7 +1610,7 @@ func (a *Agent) RemoveService(serviceID string, persist bool) error {
 	}
 
 	// Remove service immediately
-	if err := a.state.RemoveService(serviceID); err != nil {
+	if err := a.State.RemoveService(serviceID); err != nil {
 		a.logger.Printf("[WARN] agent: Failed to deregister service %q: %s", serviceID, err)
 		return nil
 	}
@@ -1541,8 +1623,8 @@ func (a *Agent) RemoveService(serviceID string, persist bool) error {
 	}
 
 	// Deregister any associated health checks
-	for checkID, health := range a.state.Checks() {
-		if health.ServiceID != serviceID {
+	for checkID, check := range a.State.Checks() {
+		if check.ServiceID != serviceID {
 			continue
 		}
 		if err := a.RemoveCheck(checkID, persist); err != nil {
@@ -1564,8 +1646,8 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 	}
 
 	if chkType != nil {
-		if !chkType.Valid() {
-			return fmt.Errorf("Check type is not valid")
+		if err := chkType.Validate(); err != nil {
+			return fmt.Errorf("Check is not valid: %v", err)
 		}
 
 		if chkType.IsScript() && !a.config.EnableScriptChecks {
@@ -1574,11 +1656,11 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 	}
 
 	if check.ServiceID != "" {
-		svc, ok := a.state.Services()[check.ServiceID]
-		if !ok {
+		s := a.State.Service(check.ServiceID)
+		if s == nil {
 			return fmt.Errorf("ServiceID %q does not exist", check.ServiceID)
 		}
-		check.ServiceName = svc.Service
+		check.ServiceName = s.Service
 	}
 
 	a.checkLock.Lock()
@@ -1594,8 +1676,8 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				delete(a.checkTTLs, check.CheckID)
 			}
 
-			ttl := &CheckTTL{
-				Notify:  a.state,
+			ttl := &checks.CheckTTL{
+				Notify:  a.State,
 				CheckID: check.CheckID,
 				TTL:     chkType.TTL,
 				Logger:  a.logger,
@@ -1615,14 +1697,14 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				existing.Stop()
 				delete(a.checkHTTPs, check.CheckID)
 			}
-			if chkType.Interval < MinInterval {
+			if chkType.Interval < checks.MinInterval {
 				a.logger.Println(fmt.Sprintf("[WARN] agent: check '%s' has interval below minimum of %v",
-					check.CheckID, MinInterval))
-				chkType.Interval = MinInterval
+					check.CheckID, checks.MinInterval))
+				chkType.Interval = checks.MinInterval
 			}
 
-			http := &CheckHTTP{
-				Notify:        a.state,
+			http := &checks.CheckHTTP{
+				Notify:        a.State,
 				CheckID:       check.CheckID,
 				HTTP:          chkType.HTTP,
 				Header:        chkType.Header,
@@ -1640,14 +1722,14 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				existing.Stop()
 				delete(a.checkTCPs, check.CheckID)
 			}
-			if chkType.Interval < MinInterval {
+			if chkType.Interval < checks.MinInterval {
 				a.logger.Println(fmt.Sprintf("[WARN] agent: check '%s' has interval below minimum of %v",
-					check.CheckID, MinInterval))
-				chkType.Interval = MinInterval
+					check.CheckID, checks.MinInterval))
+				chkType.Interval = checks.MinInterval
 			}
 
-			tcp := &CheckTCP{
-				Notify:   a.state,
+			tcp := &checks.CheckTCP{
+				Notify:   a.State,
 				CheckID:  check.CheckID,
 				TCP:      chkType.TCP,
 				Interval: chkType.Interval,
@@ -1662,31 +1744,40 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				existing.Stop()
 				delete(a.checkDockers, check.CheckID)
 			}
-			if chkType.Interval < MinInterval {
+			if chkType.Interval < checks.MinInterval {
 				a.logger.Println(fmt.Sprintf("[WARN] agent: check '%s' has interval below minimum of %v",
-					check.CheckID, MinInterval))
-				chkType.Interval = MinInterval
+					check.CheckID, checks.MinInterval))
+				chkType.Interval = checks.MinInterval
+			}
+			if chkType.Script != "" {
+				a.logger.Printf("[WARN] agent: check %q has the 'script' field, which has been deprecated "+
+					"and replaced with the 'args' field. See https://www.consul.io/docs/agent/checks.html",
+					check.CheckID)
 			}
 
 			if a.dockerClient == nil {
-				dc, err := NewDockerClient(os.Getenv("DOCKER_HOST"), CheckBufSize)
+				dc, err := checks.NewDockerClient(os.Getenv("DOCKER_HOST"), checks.BufSize)
 				if err != nil {
 					a.logger.Printf("[ERR] agent: error creating docker client: %s", err)
 					return err
 				}
-				a.logger.Printf("[DEBUG] agent: created docker client for %s", dc.host)
+				a.logger.Printf("[DEBUG] agent: created docker client for %s", dc.Host())
 				a.dockerClient = dc
 			}
 
-			dockerCheck := &CheckDocker{
-				Notify:            a.state,
+			dockerCheck := &checks.CheckDocker{
+				Notify:            a.State,
 				CheckID:           check.CheckID,
 				DockerContainerID: chkType.DockerContainerID,
 				Shell:             chkType.Shell,
 				Script:            chkType.Script,
+				ScriptArgs:        chkType.ScriptArgs,
 				Interval:          chkType.Interval,
 				Logger:            a.logger,
-				client:            a.dockerClient,
+				Client:            a.dockerClient,
+			}
+			if prev := a.checkDockers[check.CheckID]; prev != nil {
+				prev.Stop()
 			}
 			dockerCheck.Start()
 			a.checkDockers[check.CheckID] = dockerCheck
@@ -1696,19 +1787,25 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				existing.Stop()
 				delete(a.checkMonitors, check.CheckID)
 			}
-			if chkType.Interval < MinInterval {
-				a.logger.Println(fmt.Sprintf("[WARN] agent: check '%s' has interval below minimum of %v",
-					check.CheckID, MinInterval))
-				chkType.Interval = MinInterval
+			if chkType.Interval < checks.MinInterval {
+				a.logger.Printf("[WARN] agent: check '%s' has interval below minimum of %v",
+					check.CheckID, checks.MinInterval)
+				chkType.Interval = checks.MinInterval
+			}
+			if chkType.Script != "" {
+				a.logger.Printf("[WARN] agent: check %q has the 'script' field, which has been deprecated "+
+					"and replaced with the 'args' field. See https://www.consul.io/docs/agent/checks.html",
+					check.CheckID)
 			}
 
-			monitor := &CheckMonitor{
-				Notify:   a.state,
-				CheckID:  check.CheckID,
-				Script:   chkType.Script,
-				Interval: chkType.Interval,
-				Timeout:  chkType.Timeout,
-				Logger:   a.logger,
+			monitor := &checks.CheckMonitor{
+				Notify:     a.State,
+				CheckID:    check.CheckID,
+				Script:     chkType.Script,
+				ScriptArgs: chkType.ScriptArgs,
+				Interval:   chkType.Interval,
+				Timeout:    chkType.Timeout,
+				Logger:     a.logger,
 			}
 			monitor.Start()
 			a.checkMonitors[check.CheckID] = monitor
@@ -1731,7 +1828,7 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 	}
 
 	// Add to the local state for anti-entropy
-	err := a.state.AddCheck(check, token)
+	err := a.State.AddCheck(check, token)
 	if err != nil {
 		a.cancelCheckMonitors(check.CheckID)
 		return err
@@ -1754,7 +1851,7 @@ func (a *Agent) RemoveCheck(checkID types.CheckID, persist bool) error {
 	}
 
 	// Add to the local state for anti-entropy
-	a.state.RemoveCheck(checkID)
+	a.State.RemoveCheck(checkID)
 
 	a.checkLock.Lock()
 	defer a.checkLock.Unlock()
@@ -1829,7 +1926,7 @@ func (a *Agent) updateTTLCheck(checkID types.CheckID, status, output string) err
 // persistCheckState is used to record the check status into the data dir.
 // This allows the state to be restored on a later agent start. Currently
 // only useful for TTL based checks.
-func (a *Agent) persistCheckState(check *CheckTTL, status, output string) error {
+func (a *Agent) persistCheckState(check *checks.CheckTTL, status, output string) error {
 	// Create the persisted state
 	state := persistedCheckState{
 		CheckID: check.CheckID,
@@ -1914,15 +2011,13 @@ func (a *Agent) GossipEncrypted() bool {
 
 // Stats is used to get various debugging state from the sub-systems
 func (a *Agent) Stats() map[string]map[string]string {
-	toString := func(v uint64) string {
-		return strconv.FormatUint(v, 10)
-	}
 	stats := a.delegate.Stats()
 	stats["agent"] = map[string]string{
-		"check_monitors": toString(uint64(len(a.checkMonitors))),
-		"check_ttls":     toString(uint64(len(a.checkTTLs))),
-		"checks":         toString(uint64(len(a.state.checks))),
-		"services":       toString(uint64(len(a.state.services))),
+		"check_monitors": strconv.Itoa(len(a.checkMonitors)),
+		"check_ttls":     strconv.Itoa(len(a.checkTTLs)),
+	}
+	for k, v := range a.State.Stats() {
+		stats["agent"][k] = v
 	}
 
 	revision := a.config.Revision
@@ -1991,9 +2086,12 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig) error {
 	// Register the services from config
 	for _, service := range conf.Services {
 		ns := service.NodeService()
-		chkTypes := service.CheckTypes()
+		chkTypes, err := service.CheckTypes()
+		if err != nil {
+			return fmt.Errorf("Failed to validate checks for service %q: %v", service.Name, err)
+		}
 		if err := a.AddService(ns, chkTypes, false, service.Token); err != nil {
-			return fmt.Errorf("Failed to register service '%s': %v", service.ID, err)
+			return fmt.Errorf("Failed to register service %q: %v", service.Name, err)
 		}
 	}
 
@@ -2042,7 +2140,7 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig) error {
 		}
 		serviceID := p.Service.ID
 
-		if _, ok := a.state.services[serviceID]; ok {
+		if a.State.Service(serviceID) != nil {
 			// Purge previously persisted service. This allows config to be
 			// preferred over services persisted from the API.
 			a.logger.Printf("[DEBUG] agent: service %q exists, not restoring from %q",
@@ -2062,15 +2160,13 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig) error {
 	return nil
 }
 
-// unloadServices will deregister all services other than the 'consul' service
-// known to the local agent.
+// unloadServices will deregister all services.
 func (a *Agent) unloadServices() error {
-	for _, service := range a.state.Services() {
-		if err := a.RemoveService(service.ID, false); err != nil {
-			return fmt.Errorf("Failed deregistering service '%s': %v", service.ID, err)
+	for id := range a.State.Services() {
+		if err := a.RemoveService(id, false); err != nil {
+			return fmt.Errorf("Failed deregistering service '%s': %v", id, err)
 		}
 	}
-
 	return nil
 }
 
@@ -2122,7 +2218,7 @@ func (a *Agent) loadChecks(conf *config.RuntimeConfig) error {
 		}
 		checkID := p.Check.CheckID
 
-		if _, ok := a.state.checks[checkID]; ok {
+		if a.State.Check(checkID) != nil {
 			// Purge previously persisted check. This allows config to be
 			// preferred over persisted checks from the API.
 			a.logger.Printf("[DEBUG] agent: check %q exists, not restoring from %q",
@@ -2153,12 +2249,11 @@ func (a *Agent) loadChecks(conf *config.RuntimeConfig) error {
 
 // unloadChecks will deregister all checks known to the local agent.
 func (a *Agent) unloadChecks() error {
-	for _, check := range a.state.Checks() {
-		if err := a.RemoveCheck(check.CheckID, false); err != nil {
-			return fmt.Errorf("Failed deregistering check '%s': %s", check.CheckID, err)
+	for id := range a.State.Checks() {
+		if err := a.RemoveCheck(id, false); err != nil {
+			return fmt.Errorf("Failed deregistering check '%s': %s", id, err)
 		}
 	}
-
 	return nil
 }
 
@@ -2166,7 +2261,7 @@ func (a *Agent) unloadChecks() error {
 // checks. This is done before we reload our checks, so that we can properly
 // restore into the same state.
 func (a *Agent) snapshotCheckState() map[types.CheckID]*structs.HealthCheck {
-	return a.state.Checks()
+	return a.State.Checks()
 }
 
 // restoreCheckState is used to reset the health state based on a snapshot.
@@ -2174,33 +2269,24 @@ func (a *Agent) snapshotCheckState() map[types.CheckID]*structs.HealthCheck {
 // in health state and potential session invalidations.
 func (a *Agent) restoreCheckState(snap map[types.CheckID]*structs.HealthCheck) {
 	for id, check := range snap {
-		a.state.UpdateCheck(id, check.Status, check.Output)
+		a.State.UpdateCheck(id, check.Status, check.Output)
 	}
 }
 
 // loadMetadata loads node metadata fields from the agent config and
 // updates them on the local agent.
 func (a *Agent) loadMetadata(conf *config.RuntimeConfig) error {
-	a.state.Lock()
-	defer a.state.Unlock()
-
-	for key, value := range conf.NodeMeta {
-		a.state.metadata[key] = value
+	meta := map[string]string{}
+	for k, v := range conf.NodeMeta {
+		meta[k] = v
 	}
-
-	a.state.metadata[structs.MetaSegmentKey] = conf.SegmentName
-
-	a.state.changeMade()
-
-	return nil
+	meta[structs.MetaSegmentKey] = conf.SegmentName
+	return a.State.LoadMetadata(meta)
 }
 
 // unloadMetadata resets the local metadata state
 func (a *Agent) unloadMetadata() {
-	a.state.Lock()
-	defer a.state.Unlock()
-
-	a.state.metadata = make(map[string]string)
+	a.State.UnloadMetadata()
 }
 
 // serviceMaintCheckID returns the ID of a given service's maintenance check
@@ -2211,14 +2297,14 @@ func serviceMaintCheckID(serviceID string) types.CheckID {
 // EnableServiceMaintenance will register a false health check against the given
 // service ID with critical status. This will exclude the service from queries.
 func (a *Agent) EnableServiceMaintenance(serviceID, reason, token string) error {
-	service, ok := a.state.Services()[serviceID]
+	service, ok := a.State.Services()[serviceID]
 	if !ok {
 		return fmt.Errorf("No service registered with ID %q", serviceID)
 	}
 
 	// Check if maintenance mode is not already enabled
 	checkID := serviceMaintCheckID(serviceID)
-	if _, ok := a.state.Checks()[checkID]; ok {
+	if _, ok := a.State.Checks()[checkID]; ok {
 		return nil
 	}
 
@@ -2246,13 +2332,13 @@ func (a *Agent) EnableServiceMaintenance(serviceID, reason, token string) error 
 // DisableServiceMaintenance will deregister the fake maintenance mode check
 // if the service has been marked as in maintenance.
 func (a *Agent) DisableServiceMaintenance(serviceID string) error {
-	if _, ok := a.state.Services()[serviceID]; !ok {
+	if _, ok := a.State.Services()[serviceID]; !ok {
 		return fmt.Errorf("No service registered with ID %q", serviceID)
 	}
 
 	// Check if maintenance mode is enabled
 	checkID := serviceMaintCheckID(serviceID)
-	if _, ok := a.state.Checks()[checkID]; !ok {
+	if _, ok := a.State.Checks()[checkID]; !ok {
 		return nil
 	}
 
@@ -2266,7 +2352,7 @@ func (a *Agent) DisableServiceMaintenance(serviceID string) error {
 // EnableNodeMaintenance places a node into maintenance mode.
 func (a *Agent) EnableNodeMaintenance(reason, token string) {
 	// Ensure node maintenance is not already enabled
-	if _, ok := a.state.Checks()[structs.NodeMaint]; ok {
+	if _, ok := a.State.Checks()[structs.NodeMaint]; ok {
 		return
 	}
 
@@ -2289,7 +2375,7 @@ func (a *Agent) EnableNodeMaintenance(reason, token string) {
 
 // DisableNodeMaintenance removes a node from maintenance mode
 func (a *Agent) DisableNodeMaintenance() {
-	if _, ok := a.state.Checks()[structs.NodeMaint]; !ok {
+	if _, ok := a.State.Checks()[structs.NodeMaint]; !ok {
 		return
 	}
 	a.RemoveCheck(structs.NodeMaint, true)
@@ -2332,6 +2418,8 @@ func (a *Agent) ReloadConfig(newCfg *config.RuntimeConfig) error {
 
 	// Update filtered metrics
 	metrics.UpdateFilter(newCfg.TelemetryAllowedPrefixes, newCfg.TelemetryBlockedPrefixes)
+
+	a.State.SetDiscardCheckOutput(newCfg.DiscardCheckOutput)
 
 	return nil
 }

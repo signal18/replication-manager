@@ -144,9 +144,11 @@ func (m *aclManager) lookupACL(a *Agent, id string) (acl.ACL, error) {
 	}
 	if cached != nil && time.Now().Before(cached.Expires) {
 		metrics.IncrCounter([]string{"consul", "acl", "cache_hit"}, 1)
+		metrics.IncrCounter([]string{"acl", "cache_hit"}, 1)
 		return cached.ACL, nil
 	}
 	metrics.IncrCounter([]string{"consul", "acl", "cache_miss"}, 1)
+	metrics.IncrCounter([]string{"acl", "cache_miss"}, 1)
 
 	// At this point we might have a stale cached ACL, or none at all, so
 	// try to contact the servers.
@@ -257,7 +259,7 @@ func (a *Agent) vetServiceRegister(token string, service *structs.NodeService) e
 	}
 
 	// Vet any service that might be getting overwritten.
-	services := a.state.Services()
+	services := a.State.Services()
 	if existing, ok := services[service.ID]; ok {
 		if !rule.ServiceWrite(existing.Service, nil) {
 			return acl.ErrPermissionDenied
@@ -280,7 +282,7 @@ func (a *Agent) vetServiceUpdate(token string, serviceID string) error {
 	}
 
 	// Vet any changes based on the existing services's info.
-	services := a.state.Services()
+	services := a.State.Services()
 	if existing, ok := services[serviceID]; ok {
 		if !rule.ServiceWrite(existing.Service, nil) {
 			return acl.ErrPermissionDenied
@@ -316,7 +318,7 @@ func (a *Agent) vetCheckRegister(token string, check *structs.HealthCheck) error
 	}
 
 	// Vet any check that might be getting overwritten.
-	checks := a.state.Checks()
+	checks := a.State.Checks()
 	if existing, ok := checks[check.CheckID]; ok {
 		if len(existing.ServiceName) > 0 {
 			if !rule.ServiceWrite(existing.ServiceName, nil) {
@@ -344,7 +346,7 @@ func (a *Agent) vetCheckUpdate(token string, checkID types.CheckID) error {
 	}
 
 	// Vet any changes based on the existing check's info.
-	checks := a.state.Checks()
+	checks := a.State.Checks()
 	if existing, ok := checks[checkID]; ok {
 		if len(existing.ServiceName) > 0 {
 			if !rule.ServiceWrite(existing.ServiceName, nil) {

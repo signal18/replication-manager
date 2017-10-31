@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/testutil"
+	"github.com/hashicorp/consul/testutil/retry"
 	"github.com/hashicorp/serf/serf"
 )
 
@@ -42,16 +43,14 @@ func TestAPI_AgentMetrics(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	var found bool
-	for _, g := range metrics.Gauges {
-		if g.Name == "consul.runtime.alloc_bytes" {
-			found = true
-			break
+	retry.Run(t, func(r *retry.R) {
+		for _, g := range metrics.Gauges {
+			if g.Name == "consul.runtime.alloc_bytes" {
+				return
+			}
 		}
-	}
-	if !found {
-		t.Fatalf("missing runtime metrics")
-	}
+		r.Fatalf("missing runtime metrics")
+	})
 }
 
 func TestAPI_AgentReload(t *testing.T) {
@@ -498,6 +497,69 @@ func TestAPI_AgentChecks(t *testing.T) {
 	}
 }
 
+func TestAPI_AgentScriptCheck(t *testing.T) {
+	t.Parallel()
+	c, s := makeClientWithConfig(t, nil, func(c *testutil.TestServerConfig) {
+		c.EnableScriptChecks = true
+	})
+	defer s.Stop()
+
+	agent := c.Agent()
+
+	t.Run("node script check", func(t *testing.T) {
+		reg := &AgentCheckRegistration{
+			Name: "foo",
+			AgentServiceCheck: AgentServiceCheck{
+				Interval: "10s",
+				Args:     []string{"sh", "-c", "false"},
+			},
+		}
+		if err := agent.CheckRegister(reg); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		checks, err := agent.Checks()
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if _, ok := checks["foo"]; !ok {
+			t.Fatalf("missing check: %v", checks)
+		}
+	})
+
+	t.Run("service script check", func(t *testing.T) {
+		reg := &AgentServiceRegistration{
+			Name: "bar",
+			Port: 1234,
+			Checks: AgentServiceChecks{
+				&AgentServiceCheck{
+					Interval: "10s",
+					Args:     []string{"sh", "-c", "false"},
+				},
+			},
+		}
+		if err := agent.ServiceRegister(reg); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		services, err := agent.Services()
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if _, ok := services["bar"]; !ok {
+			t.Fatalf("missing service: %v", services)
+		}
+
+		checks, err := agent.Checks()
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if _, ok := checks["service:bar"]; !ok {
+			t.Fatalf("missing check: %v", checks)
+		}
+	})
+}
+
 func TestAPI_AgentCheckStartPassing(t *testing.T) {
 	t.Parallel()
 	c, s := makeClient(t)
@@ -638,7 +700,7 @@ func TestAPI_AgentJoin(t *testing.T) {
 	}
 
 	// Join ourself
-	addr := info["Config"]["SerfAdvertiseAddrLAN"].(string)
+	addr := info["DebugConfig"]["SerfAdvertiseAddrLAN"].(string)
 	// strip off 'tcp://'
 	addr = addr[len("tcp://"):]
 	err = agent.Join(addr, false)

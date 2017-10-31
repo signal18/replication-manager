@@ -31,7 +31,7 @@ bin: tools
 	@GOTAGS='$(GOTAGS)' sh -c "'$(CURDIR)/scripts/build.sh'"
 
 # dev creates binaries for testing locally - these are put into ./bin and $GOPATH
-dev: vendorfmt dev-build
+dev: changelogfmt vendorfmt dev-build
 
 dev-build:
 	@echo "--> Building consul"
@@ -44,6 +44,10 @@ vendorfmt:
 	@echo "--> Formatting vendor/vendor.json"
 	test -x $(GOPATH)/bin/vendorfmt || go get -u github.com/magiconair/vendorfmt/cmd/vendorfmt
 	vendorfmt
+
+changelogfmt:
+	@echo "--> Making [GH-xxxx] references clickable..."
+	@sed -E 's|([^\[])\[GH-([0-9]+)\]|\1[[GH-\2](https://github.com/hashicorp/consul/issues/\2)]|g' CHANGELOG.md > changelog.tmp && mv changelog.tmp CHANGELOG.md
 
 # linux builds a linux package independent of the source platform
 linux:
@@ -58,11 +62,11 @@ cov:
 	gocov test $(GOFILES) | gocov-html > /tmp/coverage.html
 	open /tmp/coverage.html
 
-test: other-consul porter dev-build vet
+test: other-consul dev-build vet
 	@echo "--> Running go test"
 	@rm -f test.log exit-code
 	go test -tags '$(GOTAGS)' -i ./...
-	porter go test $(GOTEST_FLAGS) -tags '$(GOTAGS)' -timeout 5m -v ./... &>test.log ; echo $$? > exit-code
+	go test $(GOTEST_FLAGS) -tags '$(GOTAGS)' -timeout 5m -v ./... &>test.log ; echo $$? > exit-code
 	@echo "Exit code: $$(cat exit-code)" >> test.log
 	@grep -A5 'DATA RACE' test.log || true
 	@grep -A10 'panic: test timed out' test.log || true
@@ -81,10 +85,6 @@ other-consul:
 		echo "Found other running consul agents. This may affect your tests." ; \
 		exit 1 ; \
 	fi
-
-porter:
-	@echo "--> Building port number service..."
-	go install github.com/hashicorp/consul/test/porter/cmd/porter
 
 cover:
 	go test $(GOFILES) --cover

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/consul/acl"
+	"github.com/hashicorp/consul/agent/checks"
+	"github.com/hashicorp/consul/agent/config"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/ipaddr"
@@ -20,11 +22,12 @@ import (
 )
 
 type Self struct {
-	Config map[string]interface{}
-	Coord  *coordinate.Coordinate
-	Member serf.Member
-	Stats  map[string]map[string]string
-	Meta   map[string]string
+	Config      interface{}
+	DebugConfig map[string]interface{}
+	Coord       *coordinate.Coordinate
+	Member      serf.Member
+	Stats       map[string]map[string]string
+	Meta        map[string]string
 }
 
 func (s *HTTPServer) AgentSelf(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
@@ -51,12 +54,26 @@ func (s *HTTPServer) AgentSelf(resp http.ResponseWriter, req *http.Request) (int
 		return nil, acl.ErrPermissionDenied
 	}
 
+	config := struct {
+		Datacenter string
+		NodeName   string
+		Revision   string
+		Server     bool
+		Version    string
+	}{
+		Datacenter: s.agent.config.Datacenter,
+		NodeName:   s.agent.config.NodeName,
+		Revision:   s.agent.config.Revision,
+		Server:     s.agent.config.ServerMode,
+		Version:    s.agent.config.Version,
+	}
 	return Self{
-		Config: s.agent.config.Sanitized(),
-		Coord:  cs[s.agent.config.SegmentName],
-		Member: s.agent.LocalMember(),
-		Stats:  s.agent.Stats(),
-		Meta:   s.agent.state.Metadata(),
+		Config:      config,
+		DebugConfig: s.agent.config.Sanitized(),
+		Coord:       cs[s.agent.config.SegmentName],
+		Member:      s.agent.LocalMember(),
+		Stats:       s.agent.Stats(),
+		Meta:        s.agent.State.Metadata(),
 	}, nil
 }
 
@@ -121,7 +138,7 @@ func (s *HTTPServer) AgentServices(resp http.ResponseWriter, req *http.Request) 
 	var token string
 	s.parseToken(req, &token)
 
-	services := s.agent.state.Services()
+	services := s.agent.State.Services()
 	if err := s.agent.filterServices(token, &services); err != nil {
 		return nil, err
 	}
@@ -145,7 +162,7 @@ func (s *HTTPServer) AgentChecks(resp http.ResponseWriter, req *http.Request) (i
 	var token string
 	s.parseToken(req, &token)
 
-	checks := s.agent.state.Checks()
+	checks := s.agent.State.Checks()
 	if err := s.agent.filterChecks(token, &checks); err != nil {
 		return nil, err
 	}
@@ -288,12 +305,10 @@ func (s *HTTPServer) AgentForceLeave(resp http.ResponseWriter, req *http.Request
 // services and checks to the server. If the operation fails, we only
 // only warn because the write did succeed and anti-entropy will sync later.
 func (s *HTTPServer) syncChanges() {
-	if err := s.agent.state.syncChanges(); err != nil {
+	if err := s.agent.State.SyncChanges(); err != nil {
 		s.agent.logger.Printf("[ERR] agent: failed to sync changes: %v", err)
 	}
 }
-
-const invalidCheckMessage = "Must provide TTL or Script/DockerContainerID/HTTP/TCP and Interval"
 
 func (s *HTTPServer) AgentRegisterCheck(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "PUT" {
@@ -329,9 +344,10 @@ func (s *HTTPServer) AgentRegisterCheck(resp http.ResponseWriter, req *http.Requ
 
 	// Verify the check type.
 	chkType := args.CheckType()
-	if !chkType.Valid() {
+	err := chkType.Validate()
+	if err != nil {
 		resp.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(resp, invalidCheckMessage)
+		fmt.Fprint(resp, fmt.Errorf("Invalid check: %v", err))
 		return nil, nil
 	}
 
@@ -475,9 +491,9 @@ func (s *HTTPServer) AgentCheckUpdate(resp http.ResponseWriter, req *http.Reques
 	}
 
 	total := len(update.Output)
-	if total > CheckBufSize {
+	if total > checks.BufSize {
 		update.Output = fmt.Sprintf("%s ... (captured %d of %d bytes)",
-			update.Output[:CheckBufSize], CheckBufSize, total)
+			update.Output[:checks.BufSize], checks.BufSize, total)
 	}
 
 	checkID := types.CheckID(strings.TrimPrefix(req.URL.Path, "/v1/agent/check/update/"))
@@ -508,6 +524,12 @@ func (s *HTTPServer) AgentRegisterService(resp http.ResponseWriter, req *http.Re
 		if !ok {
 			return nil
 		}
+
+		// see https://github.com/hashicorp/consul/pull/3557 why we need this
+		// and why we should get rid of it.
+		config.TranslateKeys(rawMap, map[string]string{
+			"enable_tag_override": "EnableTagOverride",
+		})
 
 		for k, v := range rawMap {
 			switch strings.ToLower(k) {
@@ -554,16 +576,16 @@ func (s *HTTPServer) AgentRegisterService(resp http.ResponseWriter, req *http.Re
 	ns := args.NodeService()
 
 	// Verify the check type.
-	chkTypes := args.CheckTypes()
+	chkTypes, err := args.CheckTypes()
+	if err != nil {
+		resp.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(resp, fmt.Errorf("Invalid check: %v", err))
+		return nil, nil
+	}
 	for _, check := range chkTypes {
 		if check.Status != "" && !structs.ValidStatus(check.Status) {
 			resp.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(resp, "Status for checks must 'passing', 'warning', 'critical'")
-			return nil, nil
-		}
-		if !check.Valid() {
-			resp.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(resp, invalidCheckMessage)
 			return nil, nil
 		}
 	}

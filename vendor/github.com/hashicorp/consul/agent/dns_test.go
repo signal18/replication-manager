@@ -796,7 +796,7 @@ func TestDNS_ServiceLookupWithInternalServiceAddress(t *testing.T) {
 
 	wantAnswer := []dns.RR{
 		&dns.SRV{
-			Hdr:      dns.RR_Header{Name: "db.service.consul.", Rrtype: 0x21, Class: 0x1, Rdlength: 0x15},
+			Hdr:      dns.RR_Header{Name: "db.service.consul.", Rrtype: 0x21, Class: 0x1, Rdlength: 0x1b},
 			Priority: 0x1,
 			Weight:   0x1,
 			Port:     12345,
@@ -2208,7 +2208,7 @@ func TestDNS_RecursorTimeout(t *testing.T) {
 	start := time.Now()
 	in, _, err := c.Exchange(m, a.DNSAddr())
 
-	duration := time.Now().Sub(start)
+	duration := time.Since(start)
 
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -4154,6 +4154,9 @@ func TestDNS_InvalidQueries(t *testing.T) {
 		"node.consul.",
 		"service.consul.",
 		"query.consul.",
+		"foo.node.dc1.extra.consul.",
+		"foo.service.dc1.extra.consul.",
+		"foo.query.dc1.extra.consul.",
 	}
 	for _, question := range questions {
 		m := new(dns.Msg)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/consul/agent/config"
 )
 
 var errInvalidHeaderFormat = errors.New("agent: invalid format of 'header' field")
@@ -14,6 +16,19 @@ func FixupCheckType(raw interface{}) error {
 	if !ok {
 		return nil
 	}
+
+	// See https://github.com/hashicorp/consul/pull/3557 why we need this
+	// and why we should get rid of it. In Consul 1.0 we also didn't map
+	// Args correctly, so we ended up exposing (and need to carry forward)
+	// ScriptArgs, see https://github.com/hashicorp/consul/issues/3587.
+	config.TranslateKeys(rawMap, map[string]string{
+		"args":                              "ScriptArgs",
+		"script_args":                       "ScriptArgs",
+		"deregister_critical_service_after": "DeregisterCriticalServiceAfter",
+		"docker_container_id":               "DockerContainerID",
+		"tls_skip_verify":                   "TLSSkipVerify",
+		"service_id":                        "ServiceID",
+	})
 
 	parseDuration := func(v interface{}) (time.Duration, error) {
 		if v == nil {
@@ -56,13 +71,6 @@ func FixupCheckType(raw interface{}) error {
 		return m, nil
 	}
 
-	replace := func(oldKey, newKey string, val interface{}) {
-		rawMap[newKey] = val
-		if oldKey != newKey {
-			delete(rawMap, oldKey)
-		}
-	}
-
 	for k, v := range rawMap {
 		switch strings.ToLower(k) {
 		case "header":
@@ -72,28 +80,12 @@ func FixupCheckType(raw interface{}) error {
 			}
 			rawMap[k] = h
 
-		case "ttl", "interval", "timeout":
+		case "ttl", "interval", "timeout", "deregistercriticalserviceafter":
 			d, err := parseDuration(v)
 			if err != nil {
 				return fmt.Errorf("invalid %q: %v", k, err)
 			}
 			rawMap[k] = d
-
-		case "deregister_critical_service_after", "deregistercriticalserviceafter":
-			d, err := parseDuration(v)
-			if err != nil {
-				return fmt.Errorf("invalid %q: %v", k, err)
-			}
-			replace(k, "DeregisterCriticalServiceAfter", d)
-
-		case "docker_container_id":
-			replace(k, "DockerContainerID", v)
-
-		case "service_id":
-			replace(k, "ServiceID", v)
-
-		case "tls_skip_verify":
-			replace(k, "TLSSkipVerify", v)
 		}
 	}
 	return nil
