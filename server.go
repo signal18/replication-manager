@@ -98,9 +98,10 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel")
 	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "", "Credential Access to bastion host topology via SSH tunnel")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHearbeat, "monitoring-write-hearbeat", false, "Inject heartbeat into proxy or via external vip")
+	monitorCmd.Flags().StringVar(&conf.MonitorWriteHearbeatCredential, "monitoring-write-hearbeat-credential", "repman-heartbeat:repman", "Database user:password to inject traffic into proxy or via external vip")
+
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
-
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "db-servers-tls-client-key", "", "Database TLS client key")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "db-servers-tls-client-cert", "", "Database TLS client certificate")

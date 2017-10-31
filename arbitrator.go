@@ -83,7 +83,7 @@ var (
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
-	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 8080, "Arbitrator API port")
+	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 10001, "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&arbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
 
 }
@@ -95,7 +95,7 @@ var arbitratorCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
 		var db *sqlx.DB
-
+		arbitratorPort = confs["arbitrator"].arbitratorPort
 		if arbitratorDriver == "mysql" {
 			arbitratorCluster = new(cluster.Cluster)
 			db, err = arbitratorCluster.InitAgent(confs["arbitrator"])
