@@ -29,55 +29,56 @@ import (
 )
 
 type Cluster struct {
-	hostList             []string
-	proxyList            []string
-	clusterList          map[string]*Cluster
-	servers              serverList
-	slaves               serverList
-	proxies              proxyList
-	crashes              crashList
-	master               *ServerMonitor
-	vmaster              *ServerMonitor
-	mxs                  *maxscale.MaxScale
-	dbUser               string
-	dbPass               string
-	rplUser              string
-	rplPass              string
-	failoverCtr          int
-	failoverTs           int64
-	sme                  *state.StateMachine
-	runStatus            string
-	runOnceAfterTopology bool
-	ignoreList           []string
-	conf                 config.Config
-	tlog                 *termlog.TermLog
-	logPtr               *os.File
-	termlength           int
-	runUUID              string
-	cfgGroup             string
-	cfgGroupDisplay      string
-	repmgrVersion        string
-	repmgrHostname       string
-	key                  []byte
-	exitMsg              string
-	exit                 bool
-	CleanAll             bool
-	canFlashBack         bool
-	failoverCond         *nbc.NonBlockingChan
-	switchoverCond       *nbc.NonBlockingChan
-	rejoinCond           *nbc.NonBlockingChan
-	bootstrapCond        *nbc.NonBlockingChan
-	switchoverChan       chan bool
-	errorChan            chan error
-	testStopCluster      bool
-	testStartCluster     bool
-	clusterDown          bool
-	isProvisionned       bool
-	lastmaster           *ServerMonitor //saved when all cluster down
-	benchmarkType        string
-	openSVCServiceStatus int
-	haveDBTLSCert        bool
-	tlsconf              *tls.Config
+	hostList                   []string
+	proxyList                  []string
+	clusterList                map[string]*Cluster
+	servers                    serverList
+	slaves                     serverList
+	proxies                    proxyList
+	crashes                    crashList
+	master                     *ServerMonitor
+	vmaster                    *ServerMonitor
+	mxs                        *maxscale.MaxScale
+	dbUser                     string
+	dbPass                     string
+	rplUser                    string
+	rplPass                    string
+	failoverCtr                int
+	failoverTs                 int64
+	sme                        *state.StateMachine
+	runStatus                  string
+	runOnceAfterTopology       bool
+	ignoreList                 []string
+	conf                       config.Config
+	tlog                       *termlog.TermLog
+	logPtr                     *os.File
+	termlength                 int
+	runUUID                    string
+	cfgGroup                   string
+	cfgGroupDisplay            string
+	repmgrVersion              string
+	repmgrHostname             string
+	key                        []byte
+	exitMsg                    string
+	exit                       bool
+	CleanAll                   bool
+	canFlashBack               bool
+	failoverCond               *nbc.NonBlockingChan
+	switchoverCond             *nbc.NonBlockingChan
+	rejoinCond                 *nbc.NonBlockingChan
+	bootstrapCond              *nbc.NonBlockingChan
+	switchoverChan             chan bool
+	errorChan                  chan error
+	testStopCluster            bool
+	testStartCluster           bool
+	clusterDown                bool
+	isProvisionned             bool
+	lastmaster                 *ServerMonitor //saved when all cluster down
+	benchmarkType              string
+	openSVCServiceStatus       int
+	haveDBTLSCert              bool
+	tlsconf                    *tls.Config
+	HaveWriteDuringCatchBinlog bool
 }
 
 type Alerts struct {
