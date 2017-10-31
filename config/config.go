@@ -18,8 +18,8 @@ type Config struct {
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host"`
 	TunnelCredential                   string `mapstructure:"monitoring-tunnel-credential"`
 	MonitorAddress                     string `mapstructure:"monitoring-address"`
-	MonitorWriteHearbeat               bool   `mapstructure:"monitoring-write-hearbeat"`
-	MonitorWriteHearbeatCredential     string `mapstructure:"monitoring-write-hearbeat-credential"`
+	MonitorWriteHeartbeat              bool   `mapstructure:"monitoring-write-heartbeat"`
+	MonitorWriteHeartbeatCredential    string `mapstructure:"monitoring-write-heartbeat-credential"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"log-file"`

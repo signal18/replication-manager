@@ -81,7 +81,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
-	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
+	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
 
 }
 
@@ -118,7 +118,7 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 
 	var err error
 	var db *sqlx.DB
-	if confs["arbitrator"].ArbitratorDriver == "sqllite" {
+	if confs["arbitrator"].ArbitratorDriver == "sqlite" {
 		db, err = dbhelper.MemDBConnect()
 	}
 	if confs["arbitrator"].ArbitratorDriver == "mysql" {
