@@ -171,7 +171,7 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
-	ArbitratorPort                     string `mapstructure:"arbitrator-port"`
+	ArbitratorAddress                  string `mapstructure:"arbitrator-bind-address"`
 	ArbitratorDriver                   string `mapstructure:"arbitrator-driver"`
 	FailForceGtid                      bool   //suspicious code
 	Test                               bool   `mapstructure:"test"`

@@ -74,15 +74,13 @@ type response struct {
 }
 
 var (
-	arbitratorPort    int
-	arbitratorDriver  string
 	arbitratorCluster *cluster.Cluster
 )
 
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
-	arbitratorCmd.Flags().StringVar(&conf.ArbitratorPort, "arbitrator-port", "10001", "Arbitrator API port")
+	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
 
 }
@@ -111,8 +109,8 @@ var arbitratorCmd = &cobra.Command{
 			log.WithError(err).Error("Error creating tables")
 		}
 		router := newRouter()
-		log.Infof("Arbitrator listening on port %d", confs["arbitrator"].ArbitratorPort)
-		log.Fatal(http.ListenAndServe("0.0.0.0:"+confs["arbitrator"].ArbitratorPort, router))
+		log.Infof("Arbitrator listening  %s", confs["arbitrator"].ArbitratorAddress)
+		log.Fatal(http.ListenAndServe(confs["arbitrator"].ArbitratorAddress, router))
 	},
 }
 
