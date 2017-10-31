@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
@@ -83,8 +82,8 @@ var (
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.AddCommand(arbitratorCmd)
-	arbitratorCmd.Flags().IntVar(&arbitratorPort, "arbitrator-port", 10001, "Arbitrator API port")
-	arbitratorCmd.Flags().StringVar(&arbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
+	arbitratorCmd.Flags().StringVar(&conf.ArbitratorPort, "arbitrator-port", "10001", "Arbitrator API port")
+	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqllite", "sqllite|mysql, use a local sqllite or use a mysql backend")
 
 }
 
@@ -95,8 +94,8 @@ var arbitratorCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
 		var db *sqlx.DB
-		arbitratorPort = confs["arbitrator"].arbitratorPort
-		if arbitratorDriver == "mysql" {
+
+		if confs["arbitrator"].ArbitratorDriver == "mysql" {
 			arbitratorCluster = new(cluster.Cluster)
 			db, err = arbitratorCluster.InitAgent(confs["arbitrator"])
 			if err != nil {
@@ -112,8 +111,8 @@ var arbitratorCmd = &cobra.Command{
 			log.WithError(err).Error("Error creating tables")
 		}
 		router := newRouter()
-		log.Infof("Arbitrator listening on port %d", arbitratorPort)
-		log.Fatal(http.ListenAndServe("0.0.0.0:"+strconv.Itoa(arbitratorPort), router))
+		log.Infof("Arbitrator listening on port %d", confs["arbitrator"].ArbitratorPort)
+		log.Fatal(http.ListenAndServe("0.0.0.0:"+confs["arbitrator"].ArbitratorPort, router))
 	},
 }
 
@@ -121,10 +120,10 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 
 	var err error
 	var db *sqlx.DB
-	if arbitratorDriver == "sqllite" {
+	if confs["arbitrator"].ArbitratorDriver == "sqllite" {
 		db, err = dbhelper.MemDBConnect()
 	}
-	if arbitratorDriver == "mysql" {
+	if confs["arbitrator"].ArbitratorDriver == "mysql" {
 		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", confs["arbitrator"].Timeout))
 	}
 	return db, err

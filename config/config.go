@@ -19,6 +19,7 @@ type Config struct {
 	TunnelCredential                   string `mapstructure:"monitoring-tunnel-credential"`
 	MonitorAddress                     string `mapstructure:"monitoring-address"`
 	MonitorWriteHearbeat               bool   `mapstructure:"monitoring-write-hearbeat"`
+	MonitorWriteHearbeatCredential     string `mapstructure:"monitoring-write-hearbeat-credential"`
 	Interactive                        bool   `mapstructure:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose"`
 	LogFile                            string `mapstructure:"log-file"`
@@ -170,6 +171,8 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts"`
+	ArbitratorPort                     string `mapstructure:"arbitrator-port"`
+	ArbitratorDriver                   string `mapstructure:"arbitrator-driver"`
 	FailForceGtid                      bool   //suspicious code
 	Test                               bool   `mapstructure:"test"`
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic"`
