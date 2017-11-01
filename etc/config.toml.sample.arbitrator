@@ -8,5 +8,5 @@ db-servers-hosts = "192.168.100.21:3306"
 db-servers-credential = "testres:testres4repman"
 title = "arbitrator"
 arbitrator-bind-address = "0.0.0.0:10001"
-arbitrator-driver = "sqllite"
+arbitrator-driver = "sqlite"
 [default]
