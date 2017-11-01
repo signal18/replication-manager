@@ -57,12 +57,15 @@ func (cluster *Cluster) newProxyList() error {
 		nbproxies += len(strings.Split(cluster.conf.MxsHost, ","))
 	}
 	if cluster.conf.HaproxyOn {
-		nbproxies++
+		nbproxies += len(strings.Split(cluster.conf.HaproxyHosts, ","))
 	}
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		nbproxies += len(strings.Split(cluster.conf.MdbsProxyHosts, ","))
 	}
 	if cluster.conf.ProxysqlOn {
+		nbproxies += len(strings.Split(cluster.conf.ProxysqlHosts, ","))
+	}
+	if cluster.conf.ExtProxyOn {
 		nbproxies++
 	}
 
