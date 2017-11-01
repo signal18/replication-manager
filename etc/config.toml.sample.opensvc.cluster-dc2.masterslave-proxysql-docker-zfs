@@ -33,11 +33,11 @@ prov-db-disk-iops = "300"
 
 proxysql=true
 proxysql-write-port=3303
-proxysql-servers = "192.168.100.51"
+proxysql-servers = "192.168.100.50,192.168.100.51"
 proxysql-user ="external"
 
 prov-proxy-disk-size = "1G"
-prov-proxy-agents = "node-1-2.vdc.opensvc.com"
+prov-proxy-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-fs = "zfs"
 prov-proxy-disk-pool = "zpool"
