@@ -9,8 +9,8 @@
 
 [ux_dck_zpool_loop]
 title = "ClusterEnterpriseMasterSlave"
-db-servers-hosts = "192.168.100.72,192.168.100.73"
-db-servers-prefered-master = "192.168.100.72"
+db-servers-hosts = "192.168.100.70,192.168.100.71"
+db-servers-prefered-master = "192.168.100.70"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
@@ -51,7 +51,7 @@ prov-proxy-net-mask = "255.255.255.0"
 arbitration-external = true
 arbitration-external-id=1
 arbitration-external-hosts = "reparb.signal18.io:80"
-arbitration-peer-hosts = "repmgr-2.signal18.io:80"
+arbitration-peer-hosts = "repmgr.signal18.io:80"
 arbitration-external-secret = "signal18.io"
 opensvc-host = "ci.signal18.io:9443"
 http-bootstrap-button = true
