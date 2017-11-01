@@ -262,7 +262,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.conf.MultiMaster == true {
 		srw := 0
 		for _, s := range cluster.servers {
-			if s.ReadOnly == "OFF" {
+			if s.IsReadWrite() {
 				srw++
 			}
 		}
@@ -271,7 +271,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		srw = 0
 		for _, s := range cluster.servers {
-			if s.ReadOnly == "ON" {
+			if s.IsReadOnly() {
 				srw++
 			}
 		}
@@ -279,7 +279,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.sme.AddState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getPreferedMaster()
 			if server != nil {
-				dbhelper.SetReadOnly(server.Conn, false)
+				server.SetReadWrite()
 			} else {
 				cluster.sme.AddState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
 			}
@@ -305,7 +305,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					}
 				}
 				if cluster.conf.MultiMaster == true && !cluster.servers[k].IsDown() {
-					if s.ReadOnly == "OFF" {
+					if s.IsReadWrite() {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
 						if cluster.conf.LogLevel > 2 {

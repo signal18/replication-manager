@@ -134,6 +134,13 @@ func (server *ServerMonitor) IsReadOnly() bool {
 	return false
 }
 
+func (server *ServerMonitor) IsReadWrite() bool {
+	if server.HaveReadOnly {
+		return false
+	}
+	return true
+}
+
 func (server *ServerMonitor) IsIOThreadRunning() bool {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {
@@ -174,4 +181,12 @@ func (server *ServerMonitor) IsMaster() bool {
 		return true
 	}
 	return false
+}
+
+func (server *ServerMonitor) IsMySQL() bool {
+	return server.DBVersion.IsMySQL()
+}
+
+func (server *ServerMonitor) HasSuperReadOnly() bool {
+	return server.DBVersion.IsMySQL57()
 }

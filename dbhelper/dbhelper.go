@@ -1031,6 +1031,15 @@ func SetReadOnly(db *sqlx.DB, flag bool) error {
 		return err
 	}
 }
+func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
+	if flag == true {
+		_, err := db.Exec("SET GLOBAL super-read-only=1")
+		return err
+	} else {
+		_, err := db.Exec("SET GLOBAL super-read-only=0")
+		return err
+	}
+}
 
 func CheckLongRunningWrites(db *sqlx.DB, thresh int) int {
 	var count int

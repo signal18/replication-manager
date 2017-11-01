@@ -568,7 +568,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 			}
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
-				dbhelper.SetReadOnly(server.Conn, false)
+				server.SetReadWrite()
 				continue
 			} else {
 				var hasMyGTID bool
@@ -635,7 +635,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
-				dbhelper.SetReadOnly(server.Conn, true)
+				server.SetReadOnly()
 			}
 
 		}
@@ -650,7 +650,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 			}
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
-				dbhelper.SetReadOnly(server.Conn, false)
+				server.SetReadWrite()
 				continue
 			} else {
 				dbhelper.StopAllSlaves(server.Conn)
@@ -682,7 +682,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					}
 
 				}
-				dbhelper.SetReadOnly(server.Conn, true)
+				server.SetReadOnly()
 			}
 		}
 		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
@@ -706,7 +706,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.sme.RemoveFailoverState()
 					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
-				dbhelper.SetReadOnly(server.Conn, true)
+				server.SetReadOnly()
 			}
 			if key == 1 {
 
@@ -723,7 +723,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 			}
-			dbhelper.SetReadOnly(server.Conn, true)
+			server.SetReadOnly()
 		}
 	}
 	// Ring
@@ -752,7 +752,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				return errors.New(fmt.Sprintln("Can't start slave: ", err))
 			}
 			cluster.vmaster = cluster.servers[0]
-			//dbhelper.SetReadOnly(server.Conn, true)
+
 		}
 	}
 	cluster.sme.RemoveFailoverState()

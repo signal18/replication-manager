@@ -59,7 +59,7 @@ func (mv *MySQLVersion) IsMariaDB() bool {
 }
 
 func (mv *MySQLVersion) IsMySQL57() bool {
-	if mv.Flavor == "MySQL" && mv.Major == 5 && mv.Minor == 7 {
+	if mv.Flavor == "MySQL" && mv.Major == 5 && mv.Minor > 6 {
 		return true
 	}
 	return false

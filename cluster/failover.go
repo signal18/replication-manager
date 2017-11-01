@@ -578,13 +578,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			dbhelper.StartSlave(oldMaster.Conn)
 		}
 		if cluster.conf.ReadOnly && cluster.conf.MxsBinlogOn == false {
-			err = dbhelper.SetReadOnly(sl.Conn, true)
+
+			err = sl.SetReadOnly()
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		} else {
 			if cluster.conf.MxsBinlogOn == false {
-				err = dbhelper.SetReadOnly(sl.Conn, false)
+				err = sl.SetReadWrite()
 				if err != nil {
 					cluster.LogPrintf("ERROR", "Could not remove slave %s as read-only, %s", sl.URL, err)
 				}
@@ -1011,8 +1012,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogPrintf("INFO", "Post-failover script complete", string(out))
 	}
 	cluster.failoverProxies()
+	cluster.master.SetReadWrite()
 
-	err = dbhelper.SetReadOnly(cluster.master.Conn, false)
 	if err != nil {
 		cluster.LogPrintf("ERROR", "Could not set new master as read-write")
 	}
@@ -1050,12 +1051,13 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 
 		if cluster.conf.ReadOnly {
-			err = dbhelper.SetReadOnly(oldMaster.Conn, true)
+
+			err = oldMaster.SetReadOnly()
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not set old master as read-only, %s", err)
 			}
 		} else {
-			err = dbhelper.SetReadOnly(oldMaster.Conn, false)
+			err = oldMaster.SetReadWrite()
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not set old master as read-write, %s", err)
 			}
