@@ -658,12 +658,18 @@ func fHeartbeat() {
 		defer resp.Body.Close()
 		monjson, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			currentCluster.LogPrintf("ERROR", "Could not read body from peer response")
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR", "Could not read body from peer response")
+			}
+			continue
 		}
 		// Use json.Decode for reading streams of JSON data
 		var h heartbeat
 		if err := json.Unmarshal(monjson, &h); err != nil {
-			currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
+			if bcksplitbrain == false {
+				currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
+			}
+			continue
 		} else {
 			splitBrain = false
 			if conf.LogLevel > 1 {
