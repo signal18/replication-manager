@@ -52,3 +52,7 @@ func (cluster *Cluster) IsVerbose() bool {
 func (cluster *Cluster) IsInFailover() bool {
 	return cluster.sme.IsInFailover()
 }
+
+func (cluster *Cluster) IsDiscovered() bool {
+	return cluster.sme.IsDiscovered()
+}

@@ -209,7 +209,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
 					}
 					// Additional health checks go here
-					if sv.acidTest() == false && cluster.sme.IsDiscovered() {
+					if sv.acidTest() == false && cluster.IsDiscovered() {
 						cluster.sme.AddState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 					}
 				}

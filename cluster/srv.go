@@ -282,9 +282,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
 			if server.ClusterGroup.conf.LogLevel > 1 {
-				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected", server.URL)
+				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected %s", server.URL)
 			}
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false {
+			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
@@ -299,7 +299,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.ClusterGroup.conf.LogLevel > 1 {
 				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false {
+			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
