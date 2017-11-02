@@ -25,6 +25,7 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
 	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -222,6 +223,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if err != nil {
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG", "Failure detection handling for server %s", server.URL)
+		}
+		if driverErr, ok := err.(*mysql.MySQLError); ok {
+			// access denied
+			if driverErr.Number == 1045 {
+				server.State = stateUnconn
+				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+			}
 		}
 		if err != sql.ErrNoRows {
 			server.FailCount++
