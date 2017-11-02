@@ -149,6 +149,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsMaxscale = true
 	server.ClusterGroup = cluster
 	server.URL = url
+	server.State = stateSuspect
+	server.PrevState = stateSuspect
 	server.Host, server.Port = misc.SplitHostPort(url)
 
 	crcTable := crc64.MakeTable(crc64.ECMA)
@@ -218,7 +220,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
-
 		if server.ClusterGroup.conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf("DEBUG", "Failure detection handling for server %s", server.URL)
 		}
@@ -266,7 +267,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 		}
 
-	} else {
+	} else if server.ClusterGroup.IsInFailover() == false {
 		server.Refresh()
 	}
 

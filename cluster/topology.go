@@ -75,6 +75,7 @@ func (cluster *Cluster) pingServerList() {
 				defer conn.Close()
 				if err != nil {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
+						// access denied
 						if driverErr.Number == 1045 {
 							sv.State = stateUnconn
 							cluster.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
@@ -112,7 +113,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	wg.Wait()
 
-	cluster.pingServerList()
+	//	cluster.pingServerList()
 	if cluster.sme.IsInFailover() {
 		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
