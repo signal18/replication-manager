@@ -7,6 +7,7 @@
 package cluster
 
 import "github.com/signal18/replication-manager/dbhelper"
+import "github.com/signal18/replication-manager/state"
 
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 	cluster.cfgGroupDisplay = cfgGroup
@@ -162,4 +163,8 @@ func (cluster *Cluster) SetLogStdout() {
 
 func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 	cluster.clusterList = clusters
+}
+
+func (cluster *Cluster) SetState(key string, s state.State) {
+	cluster.sme.AddState(key, s)
 }

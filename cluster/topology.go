@@ -77,10 +77,10 @@ func (cluster *Cluster) pingServerList() {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						if driverErr.Number == 1045 {
 							sv.State = stateUnconn
-							cluster.sme.AddState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
+							cluster.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
 					} else {
-						cluster.sme.AddState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
+						cluster.SetState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
 						// We can set the failed state at this point if we're in the initial loop
 						// Otherwise, let the monitor check function handle failures
 						if sv.State == "" {
@@ -128,13 +128,16 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
+
+		/* MOVE THIS CODE IN PING
 		err := sv.Refresh()
 		if err != nil {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Server %s could not be refreshed: %s", sv.URL, err)
 			}
 			continue
-		}
+		} */
+
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf("DEBUG", "Server %s is configured as a slave", sv.URL)
@@ -145,7 +148,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			var n int
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 			if err != nil {
-				cluster.sme.AddState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
+				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
 				if cluster.conf.LogLevel > 2 {
 					cluster.LogPrint("DEBUG: State failed set by topology detection ERR00014")
 				}
@@ -181,20 +184,20 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.LogPrintf("DEBUG", "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
 			}
 			if err != nil {
-				cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
+				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
 			} else {
 				priv, err := dbhelper.GetPrivileges(sv.Conn, cluster.dbUser, cluster.repmgrHostname, myip)
 				if err != nil {
-					cluster.sme.AddState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, cluster.repmgrHostname, err), ErrFrom: "CONF"})
+					cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, cluster.repmgrHostname, err), ErrFrom: "CONF"})
 				}
 				if priv.Repl_client_priv == "N" {
-					cluster.sme.AddState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF"})
+					cluster.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF"})
 				}
 				if priv.Super_priv == "N" {
-					cluster.sme.AddState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF"})
+					cluster.SetState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF"})
 				}
 				if priv.Reload_priv == "N" {
-					cluster.sme.AddState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF"})
+					cluster.SetState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF"})
 				}
 			}
 			// Check replication user has correct privs.
@@ -203,14 +206,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
 					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
-						cluster.sme.AddState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
+						cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
 					}
 					if rpriv.Repl_slave_priv == "N" {
-						cluster.sme.AddState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
+						cluster.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
 					}
 					// Additional health checks go here
 					if sv.acidTest() == false && cluster.IsDiscovered() {
-						cluster.sme.AddState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+						cluster.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 					}
 				}
 			}
@@ -219,7 +222,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 	// If no cluster.slaves are detected, generate an error
 	if len(cluster.slaves) == 0 {
-		cluster.sme.AddState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
+		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
 	// Check that all slave servers have the same master and conformity.
@@ -230,7 +233,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 				sl.SlaveCheck()
 				if sl.HasCycling() {
 					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
-						cluster.sme.AddState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
 						cluster.conf.MultiMaster = true
 					}
 					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
@@ -244,7 +247,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 				} else if cluster.conf.MultiMasterRing == true {
 					//setting a virtual master if none
 
-					cluster.sme.AddState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
+					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
 					cluster.master = cluster.GetFailedServer()
 				}
 
@@ -267,7 +270,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
+			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
 		for _, s := range cluster.servers {
@@ -276,12 +279,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.sme.AddState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
+			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getPreferedMaster()
 			if server != nil {
 				server.SetReadWrite()
 			} else {
-				cluster.sme.AddState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
+				cluster.SetState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
 			}
 		}
 	}
@@ -340,7 +343,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	if cluster.master == nil {
 		// could not detect master
 		if cluster.GetMaster() == nil {
-			cluster.sme.AddState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+			cluster.SetState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
 		}
 	} else {
 		cluster.master.RplMasterStatus = false
@@ -360,7 +363,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
-						cluster.sme.AddState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: Pointing to %s", sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
+						cluster.SetState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: Pointing to %s", sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
 
 						if cluster.conf.ReplicationNoRelay {
 							cluster.RejoinFixRelay(sl, cluster.master)
@@ -368,7 +371,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 					}
 					if sl.LogBin == "OFF" {
-						cluster.sme.AddState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
 				if sl.GetReplicationDelay() <= cluster.conf.FailMaxDelay && sl.IsSQLThreadRunning() {
@@ -379,7 +382,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		// State also check in failover_check false positive
 		if cluster.master.IsDown() && cluster.slaves.checkAllSlavesRunning() {
-			cluster.sme.AddState("ERR00016", state.State{
+			cluster.SetState("ERR00016", state.State{
 				ErrType: "ERROR",
 				ErrDesc: clusterError["ERR00016"],
 				ErrFrom: "NET",
@@ -394,7 +397,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		status, err := cluster.GetOpenSVCSeviceStatus()
 		cluster.openSVCServiceStatus = status
 		if err != nil {
-			cluster.sme.AddState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
+			cluster.SetState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
 		}
 	}*/
 	if cluster.IsProvision() {
@@ -430,7 +433,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				cluster.master = nil
 
 			}
-			cluster.sme.AddState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
 			return true
 		}
 		//}

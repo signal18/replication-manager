@@ -266,6 +266,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 		}
 
+	} else {
+		server.Refresh()
 	}
 
 	// Reset FailCount
