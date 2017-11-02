@@ -274,10 +274,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			//}
 			server.SendAlert()
 		}
-
-	} else if server.ClusterGroup.IsInFailover() == false {
-		server.Refresh()
+		if server.PrevState != server.State {
+			server.PrevState = server.State
+		}
+		return
 	}
+	// from here we have connection
+	server.Refresh()
 
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime)*/ {
@@ -485,7 +488,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsSlave = false
 	} else {
 		server.IsSlave = true
-		if slaveStatus.UsingGtid.String == "Slave_Pos" || slaveStatus.UsingGtid.String == "Current_pos" {
+		if slaveStatus.UsingGtid.String == "Slave_Pos" || slaveStatus.UsingGtid.String == "Current_Pos" {
 			server.HaveMariaDBGTID = true
 		} else {
 			server.HaveMariaDBGTID = false
