@@ -325,7 +325,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 func (server *ServerMonitor) Refresh() error {
 
 	if server.Conn.Unsafe() == nil {
-		server.State = stateFailed
+		//	server.State = stateFailed
 		return errors.New("Connection is closed, server unreachable")
 	}
 	conn, err := sqlx.Connect("mysql", server.DSN)
