@@ -150,10 +150,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 			if err != nil {
 				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
-				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrint("DEBUG: State failed set by topology detection ERR00014")
-				}
-				sv.State = stateFailed
+				//		if cluster.conf.LogLevel > 2 {
+				//			cluster.LogPrint("DEBUG: State failed set by topology detection ERR00014")
+				//		}
+				//	sv.State = stateFailed
 				continue
 			}
 			if n == 0 {
