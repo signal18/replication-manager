@@ -52,7 +52,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		case stateFailed:
 			// Let ProxySQL handle that case
 		case stateUnconn:
-			err = psql.SetOfflineHard(s.Host, s.Port)
+			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
@@ -97,7 +97,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn && s.MxsServerStatus == "ONLINE" {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting offline standalone server %s", s.URL)
-			err = psql.SetOfflineHard(s.Host, s.Port)
+			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
