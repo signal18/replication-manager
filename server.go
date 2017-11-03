@@ -682,9 +682,13 @@ func fHeartbeat() {
 				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
 				runStatus = "S"
 			}
+			// propagate all runStatus to clusters after peer negotiation
+			for _, cl := range clusters {
+				cl.SetActiveStatus(runStatus)
+			}
 		}
 
-	}
+	} //end check all peers
 	if splitBrain {
 		if bcksplitbrain != splitBrain {
 			currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
