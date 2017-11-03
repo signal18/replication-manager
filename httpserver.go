@@ -449,6 +449,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
 	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
 	s.Status = fmt.Sprintf("%v", runStatus)
+	s.IsActive = fmt.Sprintf("%v", currentCluster.IsActive())
 	s.ConfGroup = fmt.Sprintf("%s", currentClusterName)
 	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
 	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)

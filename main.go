@@ -81,6 +81,7 @@ type Settings struct {
 	Test                string   `json:"test"`
 	Heartbeat           string   `json:"heartbeat"`
 	Status              string   `json:"runstatus"`
+	IsActive            string   `json:"isactive"`
 	ConfGroup           string   `json:"confgroup"`
 	MonitoringTicker    string   `json:"monitoringticker"`
 	FailResetTime       string   `json:"failresettime"`

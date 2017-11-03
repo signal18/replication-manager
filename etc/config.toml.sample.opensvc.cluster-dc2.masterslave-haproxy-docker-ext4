@@ -55,7 +55,3 @@ arbitration-peer-hosts = "repmgr.signal18.io:80"
 arbitration-external-secret = "signal18.io"
 opensvc-host = "ci.signal18.io:9443"
 http-bootstrap-button = true
-
-
-opensvc-host = "ci.signal18.io:9443"
-http-bootstrap-button = true
