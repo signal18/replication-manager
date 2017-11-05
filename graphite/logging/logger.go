@@ -17,8 +17,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/howeyc/fsnotify"
+	"github.com/sirupsen/logrus"
 )
 
 var std = NewFileLogger()
