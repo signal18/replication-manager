@@ -642,6 +642,16 @@ func lbcheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Ok\n"))
 }
 
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+
+	//if config.GraphiteWeb09Compatibility {
+	//w.Write([]byte("0.9.15\n"))
+	//} else {
+	w.Write([]byte("1.0.0\n"))
+	//}
+
+}
+
 var usageMsg = []byte(`
 supported requests:
 	/render/?target=
@@ -818,6 +828,9 @@ func RunCarbonApi(z string, port int, l int, cacheType string, mc string, memsiz
 
 	r.HandleFunc("/info/", passthroughHandler)
 	r.HandleFunc("/info", passthroughHandler)
+
+	r.HandleFunc("/version", versionHandler)
+	r.HandleFunc("/version/", versionHandler)
 
 	r.HandleFunc("/lb_check", lbcheckHandler)
 	r.HandleFunc("/", usageHandler)

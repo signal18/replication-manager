@@ -1,7 +1,7 @@
 [common]
 user = ""
 logfile = ""
-log-level = "info"
+log-level = "warn"
 graph-prefix = "carbon.agents.mrm"
 
 

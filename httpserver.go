@@ -473,6 +473,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.Topology = currentCluster.GetTopology()
 	s.Version = fmt.Sprintf("%s %s %s %s", FullVersion, Build, GoOS, GoArch)
 	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
 	err := e.Encode(s)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)

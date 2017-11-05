@@ -17,7 +17,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/howeyc/fsnotify"
 )
 

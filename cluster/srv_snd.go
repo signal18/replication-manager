@@ -12,6 +12,8 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/alert"
@@ -34,11 +36,27 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), server.Status["QUERIES"], time.Now().Unix())
 	metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), server.Status["BYTES_SENT"], time.Now().Unix())
 	metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), server.Status["BYTES_RECEIVED"], time.Now().Unix())
+
 	//	metrics[5] = graphite.NewMetric(, time.Now().Unix())
 	//	metrics[6] = graphite.NewMetric(, time.Now().Unix())
 	//	metrics[7] = graphite.NewMetric(, time.Now().Unix())
 	//	metrics[8] = graphite.NewMetric(, time.Now().Unix())
 	graph.SendMetrics(metrics)
+
+	isNumeric := func(s string) bool {
+		_, err := strconv.ParseFloat(s, 64)
+		return err == nil
+	}
+
+	var globalstatusmetrics = make([]graphite.Metric, len(server.Status))
+	i := 0
+	for k, v := range server.Status {
+		if isNumeric(v) {
+			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("server%d.mysql_global_status_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+		}
+		i++
+	}
+	graph.SendMetrics(globalstatusmetrics)
 	graph.Disconnect()
 
 	return nil

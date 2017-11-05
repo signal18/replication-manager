@@ -20,14 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	//log "github.com/sirupsen/logrus"
 
 	"github.com/signal18/replication-manager/graphite/carbon"
-	"github.com/signal18/replication-manager/graphite/logging"
+	logging "github.com/signal18/replication-manager/graphite/logging"
 	"github.com/sirupsen/logrus"
+
+	_ "net/http/pprof"
 )
 
-import _ "net/http/pprof"
+var log = logrus.New()
 
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
