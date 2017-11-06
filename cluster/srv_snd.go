@@ -57,6 +57,17 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 		i++
 	}
 	graph.SendMetrics(globalstatusmetrics)
+
+	var globalvariablesmetrics = make([]graphite.Metric, len(server.Variables))
+	i = 0
+	for k, v := range server.Variables {
+		if isNumeric(v) {
+			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("server%d.mysql_global_variables_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+		}
+		i++
+	}
+	graph.SendMetrics(globalvariablesmetrics)
+
 	graph.Disconnect()
 
 	return nil

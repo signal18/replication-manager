@@ -100,6 +100,7 @@ type ServerMonitor struct {
 	ReplicationSourceName       string
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
+	Variables                   map[string]string
 	ReplicationHealth           string
 	TestConfig                  string
 	DictTables                  map[string]dbhelper.Table
@@ -362,92 +363,93 @@ func (server *ServerMonitor) Refresh() error {
 
 	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) {
 		// maxscale don't support show variables
-		var sv map[string]string
-		sv, err = dbhelper.GetVariables(server.Conn)
+
+		server.Variables, err = dbhelper.GetVariables(server.Conn)
+
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not get varaibles %s", err)
 			return err
 		}
-		server.Version = dbhelper.MariaDBVersion(sv["VERSION"]) // Deprecated
+		server.Version = dbhelper.MariaDBVersion(server.Variables["VERSION"]) // Deprecated
 		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not get database version")
 		}
 
-		if sv["EVENT_SCHEDULER"] != "ON" {
+		if server.Variables["EVENT_SCHEDULER"] != "ON" {
 			server.EventScheduler = false
 		} else {
 			server.EventScheduler = true
 		}
-		server.GTIDBinlogPos = gtid.NewList(sv["GTID_BINLOG_POS"])
-		server.GTIDExecuted = sv["GTID_EXECUTED"]
-		server.Strict = sv["GTID_STRICT_MODE"]
-		server.LogBin = sv["LOG_BIN"]
-		server.ReadOnly = sv["READ_ONLY"]
-		if sv["READ_ONLY"] != "ON" {
+		server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
+		server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
+		server.Strict = server.Variables["GTID_STRICT_MODE"]
+		server.LogBin = server.Variables["LOG_BIN"]
+		server.ReadOnly = server.Variables["READ_ONLY"]
+		if server.Variables["READ_ONLY"] != "ON" {
 			server.HaveReadOnly = false
 		} else {
 			server.HaveReadOnly = true
 		}
-		if sv["lOG_BIN_COMPRESS"] != "ON" {
+		if server.Variables["lOG_BIN_COMPRESS"] != "ON" {
 			server.HaveBinlogCompress = false
 		} else {
 			server.HaveBinlogCompress = true
 		}
-		if sv["GTID_STRICT_MODE"] != "ON" {
+		if server.Variables["GTID_STRICT_MODE"] != "ON" {
 			server.HaveGtidStrictMode = false
 		} else {
 			server.HaveGtidStrictMode = true
 		}
-		if sv["LOG_SLAVE_UPDATES"] != "ON" {
+		if server.Variables["LOG_SLAVE_UPDATES"] != "ON" {
 			server.HaveLogSlaveUpdates = false
 		} else {
 			server.HaveLogSlaveUpdates = true
 		}
-		if sv["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
+		if server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
 			server.HaveInnodbTrxCommit = false
 		} else {
 			server.HaveInnodbTrxCommit = true
 		}
-		if sv["SYNC_BINLOG"] != "1" {
+		if server.Variables["SYNC_BINLOG"] != "1" {
 			server.HaveSyncBinLog = false
 		} else {
 			server.HaveSyncBinLog = true
 		}
-		if sv["INNODB_CHECKSUM"] == "NONE" {
+		if server.Variables["INNODB_CHECKSUM"] == "NONE" {
 			server.HaveChecksum = false
 		} else {
 			server.HaveChecksum = true
 		}
-		if sv["BINLOG_FORMAT"] != "ROW" {
+		if server.Variables["BINLOG_FORMAT"] != "ROW" {
 			server.HaveBinlogRow = false
 		} else {
 			server.HaveBinlogRow = true
 		}
-		if sv["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
+		if server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
 			server.HaveBinlogAnnotate = false
 		} else {
 			server.HaveBinlogAnnotate = true
 		}
-		if sv["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
+		if server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
 			server.HaveBinlogSlowqueries = false
 		} else {
 			server.HaveBinlogSlowqueries = true
 		}
-		if sv["WSREP_ON"] != "ON" {
+		if server.Variables["WSREP_ON"] != "ON" {
 			server.HaveWsrep = false
 		} else {
 			server.HaveWsrep = true
 		}
-		if sv["ENFORCE_GTID_CONSISTENCY"] == "ON" && sv["GTID_MODE"] == "ON" {
+		if server.Variables["ENFORCE_GTID_CONSISTENCY"] == "ON" && server.Variables["GTID_MODE"] == "ON" {
 			server.HaveMySQLGTID = true
 		}
 
-		server.RelayLogSize, _ = strconv.ParseUint(sv["RELAY_LOG_SPACE_LIMIT"], 10, 64)
-		server.CurrentGtid = gtid.NewList(sv["GTID_CURRENT_POS"])
-		server.SlaveGtid = gtid.NewList(sv["GTID_SLAVE_POS"])
+		server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+		server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
+		server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
 		var sid uint64
-		sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
+		sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not parse server_id, reason: %s", err)
 		}
