@@ -301,7 +301,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if fail == false {
 		// Get latest GTID pos
 		oldMaster.Refresh()
-
+		cluster.master.Refresh()
 		// ********
 		// Phase 4: Demote old master to slave
 		// ********
@@ -312,7 +312,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
 		if cluster.conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
-			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.GTIDBinlogPos.Sprint() + "'")
+			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf("ERROR", "Could not set gtid_slave_pos on old master, reason: %s", err)
 			}
