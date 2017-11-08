@@ -688,11 +688,14 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		if errss == nil {
 			filepos = ss.ReadMasterLogPos.String
 			logfile = ss.MasterLogFile.String
-
+		}
+		if strings.Contains(logfile, ".") == false {
+			continue
 		}
 		for len(filepos) > 10 {
 			filepos = "0" + filepos
 		}
+
 		pos := strings.Split(logfile, ".")[1] + filepos
 		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
 
