@@ -101,6 +101,8 @@ type ServerMonitor struct {
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
 	Variables                   map[string]string
+	EngineInnoDB                map[string]string
+	Queries                     map[string]string
 	ReplicationHealth           string
 	TestConfig                  string
 	DictTables                  map[string]dbhelper.Table
@@ -468,7 +470,12 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogFile = masterStatus.File
 		server.BinaryLogPos = strconv.FormatUint(uint64(masterStatus.Position), 10)
 	}
-
+	if server.ClusterGroup.conf.GraphiteEmbedded {
+		// SHOW ENGINE INNODB STATUS
+		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
+		// GET PFS query digest
+		server.Queries, err = dbhelper.GetQueries(server.Conn)
+	}
 	// SHOW SLAVE STATUS
 	server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
 	if err != nil {

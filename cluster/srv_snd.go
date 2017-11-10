@@ -68,6 +68,26 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	}
 	graph.SendMetrics(globalvariablesmetrics)
 
+	var globalinnodbengine = make([]graphite.Metric, len(server.EngineInnoDB))
+	i = 0
+	for k, v := range server.EngineInnoDB {
+		if isNumeric(v) {
+			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("server%d.engine_innodb_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+		}
+		i++
+	}
+	graph.SendMetrics(globalinnodbengine)
+
+	var queries = make([]graphite.Metric, len(server.Queries))
+	i = 0
+	for k, v := range server.Queries {
+		if isNumeric(v) {
+			queries[i] = graphite.NewMetric(fmt.Sprintf("server%d.pfs.digest_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+		}
+		i++
+	}
+	graph.SendMetrics(queries)
+
 	graph.Disconnect()
 
 	return nil

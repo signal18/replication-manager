@@ -706,6 +706,63 @@ func GetStatus(db *sqlx.DB) (map[string]string, error) {
 	return vars, nil
 }
 
+func GetEngineInnoDB(db *sqlx.DB) (map[string]string, error) {
+	vars := make(map[string]string)
+	rows, err := db.Query("SHOW ENGINE INNODB STATUS")
+	if err != nil {
+		return vars, err
+	}
+	defer rows.Close()
+
+	var typeCol, nameCol, statusCol string
+	// First row should contain the necessary info. If many rows returned then it's unknown case.
+	if rows.Next() {
+		if err := rows.Scan(&typeCol, &nameCol, &statusCol); err != nil {
+			return vars, err
+		}
+	}
+
+	// 0 queries inside InnoDB, 0 queries in queue
+	// 0 read views open inside InnoDB
+	rQueries, _ := regexp.Compile(`(\d+) queries inside InnoDB, (\d+) queries in queue`)
+	rViews, _ := regexp.Compile(`(\d+) read views open inside InnoDB`)
+
+	for _, line := range strings.Split(statusCol, "\n") {
+		if data := rQueries.FindStringSubmatch(line); data != nil {
+			vars["queries_inside_innodb"] = data[1]
+			vars["queries_in_queue"] = data[2]
+		} else if data := rViews.FindStringSubmatch(line); data != nil {
+			vars["read_views_open_inside_innodb"] = data[1]
+		}
+	}
+	return vars, nil
+}
+
+func GetQueries(db *sqlx.DB) (map[string]string, error) {
+	type Variable struct {
+		Digest string
+		Value  string
+	}
+	vars := make(map[string]string)
+	query := "set session group_concat_max_len=2048"
+	db.Exec(query)
+	query = "select digest_text as digest, round(sum_timer_wait/ 1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest order by sum_timer_wait desc limit 20"
+
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return nil, errors.New("Could not get queries")
+	}
+	for rows.Next() {
+		var v Variable
+		err := rows.Scan(&v.Digest, &v.Value)
+		if err != nil {
+			return nil, errors.New("Could not get results from status scan")
+		}
+		vars[v.Digest] = v.Value
+	}
+	return vars, nil
+}
+
 func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 	type Variable struct {
 		Variable_name string
