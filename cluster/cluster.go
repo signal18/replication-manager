@@ -445,6 +445,14 @@ func (cluster *Cluster) IsMasterFailed() bool {
 	}
 }
 
+func (cluster *Cluster) IsActive() bool {
+	if cluster.runStatus == "A" {
+		return true
+	} else {
+		return false
+	}
+}
+
 func (cluster *Cluster) SetFailRestartUnsafe(check bool) {
 	cluster.conf.FailRestartUnsafe = check
 }
