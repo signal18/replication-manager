@@ -15,9 +15,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/spf13/cobra"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/spf13/cobra"
 )
 
 type route struct {
@@ -293,6 +293,10 @@ func fHeartbeat() {
 			} else {
 				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
 				runStatus = "S"
+			}
+			// propagate all runStatus to clusters after peer negotiation
+			for _, cl := range clusters {
+				cl.SetActiveStatus(runStatus)
 			}
 		}
 

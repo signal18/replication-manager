@@ -290,7 +290,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
-			if server.ClusterGroup.conf.Autorejoin {
+			if server.ClusterGroup.conf.Autorejoin && server.ClusterGroup.IsActive() {
 				server.RejoinMaster()
 			} else {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
@@ -307,7 +307,7 @@ func (server *ServerMonitor) check(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
-	} else if errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
+	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
 		server.rejoinSlave(ss)
 	}
 
