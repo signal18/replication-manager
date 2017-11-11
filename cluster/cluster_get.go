@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -205,11 +204,14 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.servers {
-
+		if server.ServerID == s.ServerID {
+			//Ignoring same ServerID
+			continue
+		}
 		if len(s.Replications) > 0 {
 
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Rejoin replication master id %d was lookup if master %s is that one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
+				cluster.LogPrintf("DEBUG", "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
 			}
 			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
 				if s.GetReplicationServerID() == server.ServerID {
@@ -225,7 +227,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 	}
 	// Possible that we can't found the master because the replication host and configurartion host missmatch:  hostname vs IP
 	// Lookup for reverse DNS IP match
-	if cluster.master != nil {
+	/*	if cluster.master != nil {
 		is, err := dbhelper.IsSlaveof(s.Conn, s.Host, cluster.master.IP, cluster.master.Port)
 		if err != nil {
 			return nil, nil
@@ -233,7 +235,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		if is {
 			return cluster.master, nil
 		}
-	}
+	}*/
 	return nil, nil
 }
 
