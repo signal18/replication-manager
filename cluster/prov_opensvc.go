@@ -164,17 +164,25 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 }
 
 func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
-	svc := cluster.OpenSVCConnect()
-	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host
+	svc := cluster.OpenSVCConnect()
+	agents := svc.GetNodes()
+
+	if agents == nil {
+		return agent, errors.New("Error getting agent list")
+	}
 	for _, node := range agents {
 		if strings.Contains(svc.ProvAgents, node.Node_name) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
 	for i, srv := range cluster.servers {
+
 		if srv.Id == server.Id {
+			if len(clusteragents) == 0 {
+				return agent, errors.New("Indice not found in database agent list")
+			}
 			return clusteragents[i%len(clusteragents)], nil
 		}
 	}

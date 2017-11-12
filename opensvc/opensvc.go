@@ -719,7 +719,7 @@ func (collector *Collector) GetNodes() []Host {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
-
+		return nil
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)

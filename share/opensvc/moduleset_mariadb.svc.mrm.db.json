@@ -1,21 +1,6 @@
 {
     "modulesets": [
         {
-            "modules": [],
-            "rulesets": [],
-            "modset_name": "mariadb.svc.mrm.db",
-            "modulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 344,
-            "responsibles": [
-                "replication-manager"
-            ]
-        },
-        {
             "modules": [
                 {
                     "autofix": false,
@@ -429,6 +414,25 @@
                 }
             ],
             "fset_name": "mariadb.svc.prov.nowsrep"
+        },
+        {
+            "fset_stats": false,
+            "id": 277,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "pfs",
+                        "f_table": "v_tags",
+                        "id": 228
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.pfs"
         }
     ],
     "rulesets": [
@@ -1073,6 +1077,14 @@
                     "var_updated": "2017-10-17 13:05:30",
                     "var_name": "db_cnf_path",
                     "id": 5960
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/pfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nperformance_schema\\nperformance_schema_instrument=\\\"events_statements_history_long=ON\\\"\"}",
+                    "var_updated": "2017-11-12 09:41:43",
+                    "var_name": "db_cnf_pfs",
+                    "id": 5966
                 }
             ],
             "ruleset_public": false,
@@ -1095,7 +1107,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.mysqlgtid",
                 "mariadb.svc.mrm.db.cnf.generic.smallredolog",
                 "mariadb.svc.mrm.db.cnf.generic.wsrep",
-                "mariadb.svc.mrm.db.cnf.generic.nowsrep"
+                "mariadb.svc.mrm.db.cnf.generic.nowsrep",
+                "mariadb.svc.mrm.db.cnf.generic.pfs"
             ],
             "publications": [
                 "replication-manager"
@@ -1533,6 +1546,30 @@
                 "replication-maanger"
             ],
             "id": 1022,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.pfs",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.pfs",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/pfs.cnf\",\"target\":\"../pfs.cnf\"}",
+                    "var_updated": "2017-11-12 09:47:12",
+                    "var_name": "db_link_pfs",
+                    "id": 5967
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1024,
             "responsibles": [
                 "replication-maanger"
             ]

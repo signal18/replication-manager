@@ -494,24 +494,24 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n\\n daemon\\n maxconn 4096\\n stats socket /run/admin.sock level admin\\n log 127.0.0.1 local0 debug\\n external-check\\n \\ndefaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n   retries 3\\n   maxconn 500000\\n   timeout http-request 5s\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind 0.0.0.0:1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n\\nfrontend my_write_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_RW%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_write\\n\\nfrontend my_read_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_read\\n\\nbackend service_write\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n   %%ENV:SERVERS_HAPROXY_WRITE%%\\n\\nbackend service_read\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n    %%ENV:SERVERS_HAPROXY_READ%%\\n\"}",
-                    "var_updated": "2017-10-21 07:42:23",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n\\n daemon\\n maxconn 4096\\n stats socket /run/admin.sock level admin\\n log /dev/log local0 debug\\n external-check\\n \\ndefaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n   retries 3\\n   maxconn 500000\\n   timeout http-request 5s\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind 0.0.0.0:1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n\\nfrontend my_write_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_RW%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_write\\n\\nfrontend my_read_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_read\\n\\nbackend service_write\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n   %%ENV:SERVERS_HAPROXY_WRITE%%\\n\\nbackend service_read\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n    %%ENV:SERVERS_HAPROXY_READ%%\\n\"}",
+                    "var_updated": "2017-11-11 17:48:19",
                     "var_name": "proxy_cnf_haproxy",
                     "id": 5954
                 },
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\n\\nif [[ $(wget -O - http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$3/$4/slave-status | grep -vc \\\"200 -\\\") > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
-                    "var_updated": "2017-10-21 06:56:35",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://192.168.100.20:10001/clusters/ux_dck_zpool_loop/servers/$3/$4/slave-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-11-12 09:16:16",
                     "var_name": "proxy_cnf_checkslave",
                     "id": 5964
                 },
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\n\\nif [[ $(wget -O - http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$3/$4/master-status | grep -vc \\\"200 -\\\") > 0 ]] ; then exit 0; else exit 1 ; fi\\n\"}",
-                    "var_updated": "2017-10-21 06:57:02",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://192.168.100.20:10001/clusters/ux_dck_zpool_loop/servers/$3/$4/master-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-11-12 09:16:24",
                     "var_name": "proxy_cnf_checkmaster",
                     "id": 5965
                 }
