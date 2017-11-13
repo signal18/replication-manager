@@ -2641,34 +2641,90 @@
           "steppedLine": false,
           "targets": [
             {
-              "calculatedInterval": "2m",
-              "datasourceErrors": {},
-              "errors": {},
-              "expr": "topk(5, rate($host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate($host.mysql_global_status_commands_total[5m])>0)",
-              "hide": false,
-              "interval": "$interval",
-              "intervalFactor": 1,
-              "legendFormat": "Com_{{ command }}",
-              "metric": "",
-              "refId": "B",
-              "step": 20,
-              "target": "alias(derivative($host.mysql_global_status_com_select), 'Selects')"
-            },
-            {
               "refId": "A",
-              "target": "alias(derivative($host.mysql_global_status_com_show_status), 'Show Status')"
+              "target": "groupByNode(derivative($host.pfs.*), 2, 'sum')",
+              "textEditor": false
+            }
+          ],
+          "thresholds": [],
+          "timeFrom": null,
+          "timeShift": null,
+          "title": "Top Command Counters",
+          "tooltip": {
+            "msResolution": false,
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "buckets": null,
+            "mode": "time",
+            "name": null,
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": 0,
+              "show": true
             },
             {
-              "refId": "C",
-              "target": "alias(derivative($host.mysql_global_status_com_show_master_status), 'Show Master Status')"
-            },
-            {
-              "refId": "D",
-              "target": "alias(derivative($host.mysql_global_status_com_show_slave_status), 'Show Slave Status')"
-            },
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": 0,
+              "show": true
+            }
+          ]
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "datasource": "${DS_REPMANAGER}",
+          "decimals": 2,
+          "editable": true,
+          "error": false,
+          "fill": 2,
+          "grid": {},
+          "id": 387,
+          "legend": {
+            "alignAsTable": true,
+            "avg": true,
+            "current": false,
+            "hideEmpty": false,
+            "hideZero": false,
+            "max": true,
+            "min": true,
+            "rightSide": true,
+            "show": true,
+            "sort": "avg",
+            "sortDesc": true,
+            "total": false,
+            "values": true
+          },
+          "lines": true,
+          "linewidth": 2,
+          "links": [],
+          "nullPointMode": "null",
+          "percentage": false,
+          "pointradius": 5,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "span": 12,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
             {
               "refId": "E",
-              "target": "alias(derivative($host.mysql_global_status_com_show_variables), 'Show Variables')"
+              "target": "derivative($host.pfs.*)"
             }
           ],
           "thresholds": [],
@@ -4256,7 +4312,7 @@
     ]
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {

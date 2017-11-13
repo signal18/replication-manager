@@ -98,7 +98,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel")
 	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "", "Credential Access to bastion host topology via SSH tunnel")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
-	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "repman-heartbeat:repman", "Database user:password to inject traffic into proxy or via external vip")
+	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "mrm_heartbeat:repman", "Database user:password to inject traffic into proxy or via external vip")
 
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")

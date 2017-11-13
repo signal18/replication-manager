@@ -1,5 +1,8 @@
 [mysqld]
 
+performance_schema
+performance_schema_instrument="events_statements_history_long=ON"
+
 sync_binlog                     = 1
 thread_handling=pool-of-threads
 extra-max-connections=10

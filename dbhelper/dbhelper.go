@@ -746,7 +746,7 @@ func GetQueries(db *sqlx.DB) (map[string]string, error) {
 	vars := make(map[string]string)
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
-	query = "select digest_text as digest, round(sum_timer_wait/ 1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest order by sum_timer_wait desc limit 20"
+	query = "select digest_text as digest, round(sum_timer_wait/1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest order by sum_timer_wait desc limit 20"
 
 	rows, err := db.Queryx(query)
 	if err != nil {

@@ -210,6 +210,7 @@ func (cluster *Cluster) InjectTraffic() {
 				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
 				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + uuid.NewV4().String() + "' from dual")
+
 				if err != nil {
 					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 					db.Exec("CREATE DATABASE IF NO EXISTS replication_manager_schema")
@@ -346,7 +347,7 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 }
 
 func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
-
+	//MonitorWriteHeartbeatCredential
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
 	if prx.Host != "" {
@@ -356,7 +357,6 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 			dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
 		}
 	}
-
 	return sqlx.Open("mysql", dsn)
 
 }

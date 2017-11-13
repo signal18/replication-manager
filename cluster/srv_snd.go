@@ -82,7 +82,12 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i = 0
 	for k, v := range server.Queries {
 		if isNumeric(v) {
-			queries[i] = graphite.NewMetric(fmt.Sprintf("server%d.pfs.digest_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
+			label := replacer.Replace(k)
+			if len(label) > 198 {
+				label = label[0:198]
+			}
+			queries[i] = graphite.NewMetric(fmt.Sprintf("server%d.pfs.%s", server.ServerID, label), v, time.Now().Unix())
 		}
 		i++
 	}
