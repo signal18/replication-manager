@@ -86,6 +86,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			Port:           s.Port,
 			Status:         s.State,
 			PrxName:        s.URL,
+			PrxStatus:      proxysqlServerStatus,
 			PrxConnections: strconv.Itoa(proxysqlServerConnections),
 			PrxByteIn:      strconv.Itoa(proxysqlByteOut),
 			PrxByteOut:     strconv.Itoa(proxysqlByteIn),
