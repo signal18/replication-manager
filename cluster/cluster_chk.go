@@ -64,6 +64,59 @@ func (cluster *Cluster) CheckFailed() {
 	}
 }
 
+func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
+	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
+		return false
+	}
+	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
+	if err != nil {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Could not check binlog filters")
+		}
+		return false
+	}
+	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
+		}
+		return false
+	}
+	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.conf.CheckReplFilter == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Replication filters differ on master and slave %s. Skipping", sl.URL)
+		}
+		return false
+	}
+	if cluster.conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.conf.RplChecks == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+		}
+		return false
+	}
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		}
+		return false
+	}
+	if ss.SecondsBehindMaster.Valid == false && cluster.conf.RplChecks == true {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Slave %s is stopped. Skipping", sl.URL)
+		}
+		return false
+	}
+
+	if sl.IsMaxscale || sl.IsRelay {
+		if cluster.conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf("WARN", "Slave %s is a relay slave. Skipping", sl.URL)
+		}
+		return false
+	}
+	return true
+}
+
 func (cluster *Cluster) isAutomaticFailover() bool {
 	if cluster.conf.Interactive == false {
 		return true
@@ -368,4 +421,32 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	return nil
+}
+
+func (cluster *Cluster) IsEqualBinlogFilters(m *ServerMonitor, s *ServerMonitor) (bool, error) {
+
+	if m.MasterStatus.Binlog_Do_DB == s.MasterStatus.Binlog_Do_DB && m.MasterStatus.Binlog_Ignore_DB == s.MasterStatus.Binlog_Ignore_DB {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMonitor) bool {
+
+	if m.Variables["REPLICATE_DO_TABLE"] == s.Variables["REPLICATE_DO_TABLE"] && m.Variables["REPLICATE_IGNORE_TABLE"] == s.Variables["REPLICATE_IGNORE_TABLE"] && m.Variables["REPLICATE_WILD_DO_TABLE"] == s.Variables["REPLICATE_WILD_DO_TABLE"] && m.Variables["REPLICATE_WILD_IGNORE_TABLE"] == s.Variables["REPLICATE_WILD_IGNORE_TABLE"] && m.Variables["REPLICATE_DO_DB"] == s.Variables["REPLICATE_DO_DB"] && m.Variables["REPLICATE_IGNORE_DB"] == s.Variables["REPLICATE_IGNORE_DB"] {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bool {
+
+	sGtid := s.Variables["GTID_CURRENT_POS"]
+	mGtid := m.Variables["GTID_CURRENT_POS"]
+	if sGtid == mGtid {
+		return true
+	} else {
+		return false
+	}
 }

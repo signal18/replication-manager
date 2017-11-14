@@ -294,21 +294,42 @@
 
                         <table ng-if="servers"   class="table" ng-style="width:400">
                            <tr>
+                              <th>Role</th>
                               <th>Host</th>
                               <th>Port</th>
                               <th>Status</th>
                               <th>Proxy Name</th>
                               <th>Proxy Status</th>
                               <th>Proxy Connections</th>
+                              <th>Proxy Bytes Out</th>
+                              <th>Proxy Bytes In</th>
+                              <th>Proxy Session Avg Time</th>
                               <th ng-if="proxy.Type=='proxysql'">Proxy Hostgroup</th>
                            </tr>
-                           <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                           <tr ng-repeat="server in proxy.BackendsWrite" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                               <th>Write</th>
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>
-                              <td>{{server.State}}</td>
-                              <td>{{server.MxsServerName}}</td>
-                              <td>{{server.MxsServerStatus}}</td>
-                              <td>{{server.MxsServerConnections}}</td>
+                              <td>{{server.Status}}</td>
+                              <td>{{server.PrxName}}</td>
+                              <td>{{server.PrxStatus}}</td>
+                              <td>{{server.PrxConnections}}</td>
+                              <td>{{server.PrxByteOut}}</td>
+                              <td>{{server.PrxByteIn}}</td>
+                              <td>{{server.PrxLatency}}</td>
+                              <td ng-if="proxy.Type=='proxysql'">{{server.ProxysqlHostgroup}}</td>
+                           </tr>
+                           <tr ng-repeat="server in proxy.BackendsRead" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                               <th>Read</th>
+                              <td>{{server.Host}}</td>
+                              <td>{{server.Port}}</td>
+                              <td>{{server.Status}}</td>
+                              <td>{{server.PrxName}}</td>
+                              <td>{{server.PrxStatus}}</td>
+                              <td>{{server.PrxConnections}}</td>
+                              <td>{{server.PrxByteOut}}</td>
+                              <td>{{server.PrxByteIn}}</td>
+                              <td>{{server.PrxLatency}}</td>
                               <td ng-if="proxy.Type=='proxysql'">{{server.ProxysqlHostgroup}}</td>
                            </tr>
                         </table>

@@ -59,6 +59,7 @@ var clusterError = map[string]string{
 	"ERR00049": "Waiting old master to rejoin in positional mode to rejoin slave",
 	"ERR00050": "Can't connect to proxy %s",
 	"ERR00051": "ProxySQL connection error: %s",
+	"ERR00052": "Could not get stats to HaProxy: %s",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is working",

@@ -40,7 +40,8 @@ listen stats
    stats uri /
    stats refresh 2s
    stats realm Haproxy\ Stats
-   
+  stats show-legends
+
 ### BEGIN GENERATED SECTION ###
 {{range .Frontends}}
 frontend {{.Name}}

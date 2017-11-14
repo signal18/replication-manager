@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/signal18/replication-manager/proxysql"
 	"github.com/signal18/replication-manager/state"
@@ -77,15 +78,32 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	defer psql.Connection.Close()
 
 	var updated bool
+	proxy.BackendsWrite = nil
 	for _, s := range cluster.servers {
-		s.ProxysqlHostgroup, s.MxsServerStatus, s.MxsServerConnections, err = psql.GetStatsForHost(s.Host, s.Port)
-		s.MxsServerName = s.URL
-		if err != nil {
-			s.MxsServerStatus = "REMOVED"
+		proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHost(s.Host, s.Port)
+		var bke = Backend{
+			Host:           s.Host,
+			Port:           s.Port,
+			Status:         s.State,
+			PrxName:        s.URL,
+			PrxConnections: strconv.Itoa(proxysqlServerConnections),
+			PrxByteIn:      strconv.Itoa(proxysqlByteOut),
+			PrxByteOut:     strconv.Itoa(proxysqlByteIn),
+			PrxLatency:     strconv.Itoa(proxysqlLatency),
+			PrxHostgroup:   proxysqlHostgroup,
 		}
 
+		s.MxsServerName = s.URL
+		s.ProxysqlHostgroup = proxysqlHostgroup
+		s.MxsServerStatus = proxysqlServerStatus
+
+		if err != nil {
+			s.MxsServerStatus = "REMOVED"
+			bke.PrxStatus = "REMOVED"
+		}
+		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		// if ProxySQL and replication-manager states differ, resolve the conflict
-		if s.MxsServerStatus == "OFFLINE_HARD" && s.State == stateSlave {
+		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
@@ -95,7 +113,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		}
 
 		// if server is Standalone, set offline in ProxySQL
-		if s.State == stateUnconn && s.MxsServerStatus == "ONLINE" {
+		if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {

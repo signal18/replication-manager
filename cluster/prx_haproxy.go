@@ -7,14 +7,20 @@
 package cluster
 
 import (
+	"encoding/csv"
 	"fmt"
 	"hash/crc64"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/haproxy"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
@@ -127,4 +133,76 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 			os.Exit(1)
 		}
 	}
+}
+
+func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
+	url := "http://" + proxy.Host + ":" + proxy.Port + "/stats;csv"
+	client := &http.Client{
+		Timeout: time.Duration(2 * time.Second),
+	}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Could not reach haproxy node, might be down or incorrect address")
+		return err
+	}
+	defer resp.Body.Close()
+	/*	moncsv, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not read body from peer response")
+			return err
+
+		}*/
+	reader := csv.NewReader(resp.Body)
+
+	proxy.BackendsWrite = nil
+	proxy.BackendsRead = nil
+
+	for {
+		line, error := reader.Read()
+		if error == io.EOF {
+			break
+		} else if error != nil {
+			cluster.LogPrintf("ERROR", "Could not read csv from haproxy response")
+		}
+		if strings.Contains(strings.ToLower(line[0]), "write") {
+			srv := cluster.GetServerFromURL(line[73])
+			if srv != nil {
+
+				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
+					Host:           srv.Host,
+					Port:           srv.Port,
+					Status:         srv.State,
+					PrxName:        line[73],
+					PrxStatus:      line[17],
+					PrxConnections: line[5],
+					PrxByteIn:      line[8],
+					PrxByteOut:     line[9],
+					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
+				})
+			}
+		}
+		if strings.Contains(strings.ToLower(line[0]), "read") {
+			srv := cluster.GetServerFromURL(line[73])
+			if srv != nil {
+
+				proxy.BackendsRead = append(proxy.BackendsRead, Backend{
+					Host:           srv.Host,
+					Port:           srv.Port,
+					Status:         srv.State,
+					PrxName:        line[73],
+					PrxStatus:      line[17],
+					PrxConnections: line[5],
+					PrxByteIn:      line[8],
+					PrxByteOut:     line[9],
+					PrxLatency:     line[61],
+				})
+			}
+		}
+	}
+	return nil
 }

@@ -34,30 +34,49 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 			return
 		}
 	}
+	proxy.BackendsWrite = nil
 	for _, server := range cluster.servers {
+
+		var bke = Backend{
+			Host:    server.Host,
+			Port:    server.Port,
+			Status:  server.State,
+			PrxName: server.URL,
+		}
+
 		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
 			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/servers")
 			if err != nil {
 				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
 			}
 			srvport, _ := strconv.Atoi(server.Port)
-			server.MxsServerName, server.MxsServerStatus, server.MxsServerConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
+			mxsConnections := 0
+			bke.PrxName, bke.PrxStatus, mxsConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
+			bke.PrxConnections = strconv.Itoa(mxsConnections)
+			server.MxsServerStatus = bke.PrxStatus
+			server.MxsServerName = bke.PrxName
+
 		} else {
 			_, err := m.ListServers()
 			if err != nil {
 				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
 			} else {
-				var connections string
+
 				if proxy.Tunnel {
-					server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.Host, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
-					server.MxsServerConnections, _ = strconv.Atoi(connections)
+
+					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.Host, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					server.MxsServerStatus = bke.PrxStatus
+					server.MxsServerName = bke.PrxName
+
 				} else {
-					server.MxsServerName, connections, server.MxsServerStatus = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
-					server.MxsServerConnections, _ = strconv.Atoi(connections)
+					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					server.MxsServerStatus = bke.PrxStatus
+					server.MxsServerName = bke.PrxName
 				}
 				//server.ClusterGroup.LogPrintf("INFO", "Affect for server %s, %s %s  ", server.IP, server.MxsServerName, server.MxsServerStatus)
 			}
 		}
+		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 	}
 	m.Close()
 }

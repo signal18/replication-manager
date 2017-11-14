@@ -39,6 +39,22 @@ type Proxy struct {
 	ReadWritePort   int
 	ReaderHostgroup int
 	WriterHostgroup int
+	BackendsWrite   []Backend
+	BackendsRead    []Backend
+}
+
+type Backend struct {
+	Host           string
+	Port           string
+	Status         string
+	PrxName        string
+	PrxStatus      string
+	PrxConnections string
+	PrxHostgroup   string
+	PrxByteOut     string
+	PrxByteIn      string
+	PrxLatency     string
+	PrxMaintenance bool
 }
 
 const (
@@ -296,6 +312,9 @@ func (cluster *Cluster) refreshProxies() {
 		}
 		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.refreshProxysql(pr)
+		}
+		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+			cluster.refreshHaproxy(pr)
 		}
 	}
 

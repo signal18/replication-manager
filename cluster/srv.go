@@ -68,7 +68,6 @@ type ServerMonitor struct {
 	Process                     *os.Process
 	MxsServerName               string //Unique server Name in maxscale conf
 	MxsServerStatus             string
-	MxsServerConnections        int
 	ProxysqlHostgroup           string
 	HaveSemiSync                bool
 	HaveInnodbTrxCommit         bool
@@ -97,6 +96,7 @@ type ServerMonitor struct {
 	RelayLogSize                uint64
 	Replications                []dbhelper.SlaveStatus
 	LastSeenReplications        []dbhelper.SlaveStatus
+	MasterStatus                dbhelper.MasterStatus
 	ReplicationSourceName       string
 	DBVersion                   *dbhelper.MySQLVersion
 	Status                      map[string]string
@@ -463,12 +463,12 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 	// SHOW MASTER STATUS
-	masterStatus, err := dbhelper.GetMasterStatus(server.Conn)
+	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn)
 	if err != nil {
 		// binary log might be closed for that server
 	} else {
-		server.BinaryLogFile = masterStatus.File
-		server.BinaryLogPos = strconv.FormatUint(uint64(masterStatus.Position), 10)
+		server.BinaryLogFile = server.MasterStatus.File
+		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 	}
 	if server.ClusterGroup.conf.GraphiteEmbedded {
 		// SHOW ENGINE INNODB STATUS
