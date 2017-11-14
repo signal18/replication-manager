@@ -231,7 +231,7 @@ func (cluster *Cluster) InjectTraffic() {
 
 				if err != nil {
 					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
-					db.Exec("CREATE DATABASE IF NO EXISTS replication_manager_schema")
+					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 
 				}
 				db.Close()
