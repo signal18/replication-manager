@@ -52,7 +52,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i := 0
 	for k, v := range server.Status {
 		if isNumeric(v) {
-			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("server%d.mysql_global_status_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.mysql_global_status_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -62,7 +62,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i = 0
 	for k, v := range server.Variables {
 		if isNumeric(v) {
-			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("server%d.mysql_global_variables_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.mysql_global_variables_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -72,7 +72,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i = 0
 	for k, v := range server.EngineInnoDB {
 		if isNumeric(v) {
-			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("server%d.engine_innodb_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.engine_innodb_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -87,7 +87,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 			if len(label) > 198 {
 				label = label[0:198]
 			}
-			queries[i] = graphite.NewMetric(fmt.Sprintf("server%d.pfs.%s", server.ServerID, label), v, time.Now().Unix())
+			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.pfs.%s", server.ServerID, label), v, time.Now().Unix())
 		}
 		i++
 	}

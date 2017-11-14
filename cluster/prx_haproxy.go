@@ -147,7 +147,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not reach haproxy node, might be down or incorrect address")
+		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 		return err
 	}
 	defer resp.Body.Close()

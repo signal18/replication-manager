@@ -91,12 +91,12 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub($host.mysql_global_status_innodb_purge_trx_id_age, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_purge_trx_id_age, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub($host.mysql_global_status_innodb_purge_view_trx_id_age, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_purge_view_trx_id_age, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -198,7 +198,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "sumSeries($host.mysql_global_variables_innodb_buffer_pool_size)"
+              "target": "sumSeries(mysql.$host.mysql_global_variables_innodb_buffer_pool_size)"
             }
           ],
           "thresholds": "90,95",
@@ -276,20 +276,20 @@
             {
               "hide": true,
               "refId": "A",
-              "target": "$host.mysql_global_variables_innodb_buffer_pool_size"
+              "target": "mysql.$host.mysql_global_variables_innodb_buffer_pool_size"
             },
             {
               "hide": true,
               "refId": "B",
-              "target": "multiplySeries(sumSeries($host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), #A)",
-              "targetFull": "multiplySeries(sumSeries($host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), $host.mysql_global_variables_innodb_buffer_pool_size)",
+              "target": "multiplySeries(sumSeries(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), #A)",
+              "targetFull": "multiplySeries(sumSeries(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), mysql.$host.mysql_global_variables_innodb_buffer_pool_size)",
               "textEditor": true
             },
             {
               "hide": false,
               "refId": "C",
               "target": "divideSeries(#A, #B)",
-              "targetFull": "divideSeries($host.mysql_global_variables_innodb_buffer_pool_size, multiplySeries(sumSeries($host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), #A))"
+              "targetFull": "divideSeries(mysql.$host.mysql_global_variables_innodb_buffer_pool_size, multiplySeries(sumSeries(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_{buffered,free,used,cached}), #A))"
             },
             {
               "hide": true,
@@ -360,17 +360,17 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub(perSecond($host.engine_innodb_queries_inside_innodb), '[^a-z0-9+]|engine|innodb', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.engine_innodb_queries_inside_innodb), '[^a-z0-9+]|engine|innodb', ' ')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub($host.engine_innodb_queries_in_queue, '[^a-z0-9+]|engine|innodb', ' ')",
+              "target": "aliasSub(mysql.$host.engine_innodb_queries_in_queue, '[^a-z0-9+]|engine|innodb', ' ')",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasSub($host.engine_innodb_read_views_open_inside_innodb, '[^a-z0-9+]|engine|innodb', ' ')",
+              "target": "aliasSub(mysql.$host.engine_innodb_read_views_open_inside_innodb, '[^a-z0-9+]|engine|innodb', ' ')",
               "textEditor": true
             }
           ],
@@ -466,7 +466,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_rows_deleted), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_rows_deleted), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -481,7 +481,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_rows_inserted), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_rows_inserted), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -496,7 +496,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_rows_read), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_rows_read), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -511,7 +511,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "D",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_rows_updated), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_rows_updated), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -611,7 +611,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_os_log_written),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_os_log_written),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -627,7 +627,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "$host.mysql_global_variables_innodb_log_files_in_group",
+              "target": "mysql.$host.mysql_global_variables_innodb_log_files_in_group",
               "textEditor": true
             },
             {
@@ -643,13 +643,13 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "$host.mysql_global_variables_innodb_log_file_size",
+              "target": "mysql.$host.mysql_global_variables_innodb_log_file_size",
               "textEditor": false
             },
             {
               "refId": "D",
               "target": "alias(multiplySeries(#C, #B), 'Redo Log Size')",
-              "targetFull": "alias(multiplySeries($host.mysql_global_variables_innodb_log_files_in_group, $host.mysql_global_variables_innodb_log_file_size), 'Redo Log Size')",
+              "targetFull": "alias(multiplySeries(mysql.$host.mysql_global_variables_innodb_log_files_in_group, mysql.$host.mysql_global_variables_innodb_log_file_size), 'Redo Log Size')",
               "textEditor": false
             }
           ],
@@ -738,7 +738,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_data_reads), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_data_reads), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -753,7 +753,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_data_writes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_data_writes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -768,7 +768,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_data_fsyncs), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_data_fsyncs), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -783,7 +783,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "D",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_log_writes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_log_writes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -876,7 +876,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_row_lock_waits), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_row_lock_waits), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -892,13 +892,13 @@
               "refId": "C",
               "step": 5,
               "target": "alias(divideSeries(#B, #A), 'Ratio ')",
-              "targetFull": "alias(divideSeries(aliasSub(perSecond($host.mysql_global_status_innodb_row_lock_time), '[^a-z0-9+]|global|status|mysql|variables', ' '), aliasSub(perSecond($host.mysql_global_status_innodb_row_lock_waits), '[^a-z0-9+]|global|status|mysql|variables', ' ')), 'Ratio ')",
+              "targetFull": "alias(divideSeries(aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_row_lock_time), '[^a-z0-9+]|global|status|mysql|variables', ' '), aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_row_lock_waits), '[^a-z0-9+]|global|status|mysql|variables', ' ')), 'Ratio ')",
               "textEditor": true
             },
             {
               "hide": false,
               "refId": "B",
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_row_lock_time), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_row_lock_time), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1003,7 +1003,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub($host.mysql_global_status_innodb_buffer_pool_bytes_data, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_buffer_pool_bytes_data, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1018,7 +1018,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub($host.mysql_global_status_innodb_buffer_pool_bytes_dirty, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_buffer_pool_bytes_dirty, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1106,7 +1106,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub($host.mysql_global_status_innodb_buffer_pool_pages_data, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_data, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1121,7 +1121,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub($host.mysql_global_status_innodb_buffer_pool_pages_free, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_free, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1136,7 +1136,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "aliasSub($host.mysql_global_status_innodb_buffer_pool_pages_dirty, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_buffer_pool_pages_dirty, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1229,7 +1229,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_pages_created), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_pages_created), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1244,7 +1244,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_pages_read), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_pages_read), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1259,7 +1259,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_pages_written), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_pages_written), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1352,7 +1352,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_buffer_pool_read_requests), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_buffer_pool_read_requests), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1367,7 +1367,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22mysql_global_variables_thread_cache_size%7Balias%3D%5C%22%24host%5C%22%7D%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-8-27%208%3A18%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "aliasSub(perSecond($host.mysql_global_status_innodb_buffer_pool_write_requests), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_innodb_buffer_pool_write_requests), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1468,7 +1468,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "F",
               "step": 5,
-              "target": "$host.mysql_global_status_innodb_ibuf_segment_size",
+              "target": "mysql.$host.mysql_global_status_innodb_ibuf_segment_size",
               "textEditor": true
             },
             {
@@ -1484,7 +1484,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "$host.mysql_global_status_innodb_ibuf_free_list",
+              "target": "mysql.$host.mysql_global_status_innodb_ibuf_free_list",
               "textEditor": true
             },
             {
@@ -1500,28 +1500,28 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "$host.mysql_global_status_innodb_page_size",
+              "target": "mysql.$host.mysql_global_status_innodb_page_size",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "C",
               "target": "alias(multiplySeries(#F, #B), 'Allocated')",
-              "targetFull": "alias(multiplySeries($host.mysql_global_status_innodb_ibuf_segment_size, $host.mysql_global_status_innodb_page_size), 'Allocated')",
+              "targetFull": "alias(multiplySeries(mysql.$host.mysql_global_status_innodb_ibuf_segment_size, mysql.$host.mysql_global_status_innodb_page_size), 'Allocated')",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "D",
               "target": "alias(multiplySeries(#E, #B), 'Used')",
-              "targetFull": "alias(multiplySeries(diffSeries($host.mysql_global_status_innodb_ibuf_segment_size, $host.mysql_global_status_innodb_ibuf_free_list), $host.mysql_global_status_innodb_page_size), 'Used')",
+              "targetFull": "alias(multiplySeries(diffSeries(mysql.$host.mysql_global_status_innodb_ibuf_segment_size, mysql.$host.mysql_global_status_innodb_ibuf_free_list), mysql.$host.mysql_global_status_innodb_page_size), 'Used')",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "E",
               "target": "diffSeries(#F, #A)",
-              "targetFull": "diffSeries($host.mysql_global_status_innodb_ibuf_segment_size, $host.mysql_global_status_innodb_ibuf_free_list)",
+              "targetFull": "diffSeries(mysql.$host.mysql_global_status_innodb_ibuf_segment_size, mysql.$host.mysql_global_status_innodb_ibuf_free_list)",
               "textEditor": true
             }
           ],
@@ -1609,7 +1609,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "F",
               "step": 5,
-              "target": "alias(perSecond($host.mysql_global_status_innodb_ibuf_merges), 'Merges')",
+              "target": "alias(perSecond(mysql.$host.mysql_global_status_innodb_ibuf_merges), 'Merges')",
               "textEditor": true
             },
             {
@@ -1624,7 +1624,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "A",
               "step": 5,
-              "target": "alias(perSecond($host.mysql_global_status_innodb_ibuf_merged_inserts), 'Merged Inserts')",
+              "target": "alias(perSecond(mysql.$host.mysql_global_status_innodb_ibuf_merged_inserts), 'Merged Inserts')",
               "textEditor": true
             },
             {
@@ -1639,7 +1639,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "B",
               "step": 5,
-              "target": "alias(perSecond($host.select metric), 'Merged Deletes')",
+              "target": "alias(perSecond(mysql.$host.select metric), 'Merged Deletes')",
               "textEditor": true
             },
             {
@@ -1654,7 +1654,7 @@
               "prometheusLink": "/api/datasources/proxy/1/graph#%5B%7B%22expr%22%3A%22rate(mysql_global_status_table_locks_waited%7Balias%3D%5C%22%24host%5C%22%7D%5B%24interval%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-18%2015%3A45%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
               "refId": "C",
               "step": 5,
-              "target": "alias(perSecond($host.mysql_global_status_innodb_ibuf_merged_delete_marks), 'Merged Delete Marks')",
+              "target": "alias(perSecond(mysql.$host.mysql_global_status_innodb_ibuf_merged_delete_marks), 'Merged Delete Marks')",
               "textEditor": true
             }
           ],

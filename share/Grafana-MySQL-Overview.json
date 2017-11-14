@@ -45,28 +45,6 @@
   "id": null,
   "links": [
     {
-      "icon": "bolt",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Query Analytics",
-      "type": "link",
-      "url": "/qan/profile"
-    },
-    {
-      "asDropdown": true,
-      "icon": "external link",
-      "includeVars": true,
-      "keepTime": true,
-      "tags": [
-        "OS"
-      ],
-      "targetBlank": true,
-      "title": "OS",
-      "type": "dashboards"
-    },
-    {
       "asDropdown": true,
       "icon": "external link",
       "includeVars": true,
@@ -84,10 +62,10 @@
       "includeVars": true,
       "keepTime": true,
       "tags": [
-        "HA"
+        "Proxy"
       ],
       "targetBlank": true,
-      "title": "HA",
+      "title": "Proxy",
       "type": "dashboards"
     }
   ],
@@ -173,7 +151,7 @@
             {
               "hide": false,
               "refId": "A",
-              "target": "highestCurrent(nonNegativeDerivative($host.mysql_global_status_queries), 1)",
+              "target": "highestCurrent(nonNegativeDerivative(mysql.$host.mysql_global_status_queries), 1)",
               "textEditor": false
             }
           ],
@@ -265,7 +243,7 @@
               "metric": "",
               "refId": "A",
               "step": 300,
-              "target": "maxSeries($host.mysql_global_variables_innodb_buffer_pool_size)"
+              "target": "maxSeries(mysql.$host.mysql_global_variables_innodb_buffer_pool_size)"
             }
           ],
           "thresholds": "90,95",
@@ -430,18 +408,18 @@
           "targets": [
             {
               "refId": "A",
-              "target": "aliasSub($host.mysql_global_status_max_used_connections, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_max_used_connections, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub($host.mysql_global_status_threads_connected, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_threads_connected, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "hide": false,
               "refId": "C",
-              "target": "aliasSub($host.mysql_global_variables_max_connections, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_max_connections, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -541,7 +519,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "max_over_time($host.mysql_global_status_threads_connected[$interval])",
+              "expr": "max_over_time(mysql.$host.mysql_global_status_threads_connected[$interval])",
               "format": "time_series",
               "hide": false,
               "interval": "$interval",
@@ -550,14 +528,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_threads_connected,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_threads_connected,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "max_over_time($host.mysql_global_status_threads_running[$interval])",
+              "expr": "max_over_time(mysql.$host.mysql_global_status_threads_running[$interval])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -565,7 +543,7 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_threads_running, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_threads_running, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -675,14 +653,14 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_questions[$interval]) or irate($host.mysql_global_status_questions[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_questions[$interval]) or irate(mysql.$host.mysql_global_status_questions[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Questions",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_questions), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_questions), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -778,14 +756,14 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_thread_cache_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_thread_cache_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "$host.mysql_global_status_threads_cached",
+              "expr": "mysql.$host.mysql_global_status_threads_cached",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -793,14 +771,14 @@
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_threads_cached, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_threads_cached, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_threads_created[$interval]) or irate($host.mysql_global_status_threads_created[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_threads_created[$interval]) or irate(mysql.$host.mysql_global_status_threads_created[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -808,7 +786,7 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_threads_created), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_threads_created), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -903,42 +881,42 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_created_tmp_tables[$interval]) or irate($host.mysql_global_status_created_tmp_tables[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_created_tmp_tables[$interval]) or irate(mysql.$host.mysql_global_status_created_tmp_tables[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Created Tmp Tables",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_created_tmp_tables), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_created_tmp_tables), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_created_tmp_disk_tables[$interval]) or irate($host.mysql_global_status_created_tmp_disk_tables[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_created_tmp_disk_tables[$interval]) or irate(mysql.$host.mysql_global_status_created_tmp_disk_tables[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Created Tmp Disk Tables",
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_created_tmp_disk_tables), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_created_tmp_disk_tables), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_created_tmp_files[$interval]) or irate($host.mysql_global_status_created_tmp_files[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_created_tmp_files[$interval]) or irate(mysql.$host.mysql_global_status_created_tmp_files[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Created Tmp Files",
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_created_tmp_files), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_created_tmp_files), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1023,7 +1001,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_select_full_join[$interval]) or irate($host.mysql_global_status_select_full_join[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_select_full_join[$interval]) or irate(mysql.$host.mysql_global_status_select_full_join[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1031,14 +1009,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_select_full_join ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_select_full_join ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_select_full_range_join[$interval]) or irate($host.mysql_global_status_select_full_range_join[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_select_full_range_join[$interval]) or irate(mysql.$host.mysql_global_status_select_full_range_join[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1046,14 +1024,14 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_select_full_range_join ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_select_full_range_join ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_select_range[$interval]) or irate($host.mysql_global_status_select_range[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_select_range[$interval]) or irate(mysql.$host.mysql_global_status_select_range[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1061,14 +1039,14 @@
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_select_range ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_select_range ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_select_range_check[$interval]) or irate($host.mysql_global_status_select_range_check[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_select_range_check[$interval]) or irate(mysql.$host.mysql_global_status_select_range_check[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1076,14 +1054,14 @@
               "metric": "",
               "refId": "D",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_select_range_check ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_select_range_check ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_select_scan[$interval]) or irate($host.mysql_global_status_select_scan[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_select_scan[$interval]) or irate(mysql.$host.mysql_global_status_select_scan[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1091,7 +1069,7 @@
               "metric": "",
               "refId": "E",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_select_scan ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_select_scan ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1187,7 +1165,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_sort_rows[$interval]) or irate($host.mysql_global_status_sort_rows[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_sort_rows[$interval]) or irate(mysql.$host.mysql_global_status_sort_rows[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1195,14 +1173,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_sort_rows), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_sort_rows), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_sort_range[$interval]) or irate($host.mysql_global_status_sort_range[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_sort_range[$interval]) or irate(mysql.$host.mysql_global_status_sort_range[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1210,14 +1188,14 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_sort_range), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_sort_range), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_sort_merge_passes[$interval]) or irate($host.mysql_global_status_sort_merge_passes[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_sort_merge_passes[$interval]) or irate(mysql.$host.mysql_global_status_sort_merge_passes[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1225,14 +1203,14 @@
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_sort_merge_passes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_sort_merge_passes), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_sort_scan[$interval]) or irate($host.mysql_global_status_sort_scan[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_sort_scan[$interval]) or irate(mysql.$host.mysql_global_status_sort_scan[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1240,7 +1218,7 @@
               "metric": "",
               "refId": "D",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_sort_scan), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_sort_scan), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1320,7 +1298,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_slow_queries[$interval]) or irate($host.mysql_global_status_slow_queries[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_slow_queries[$interval]) or irate(mysql.$host.mysql_global_status_slow_queries[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1328,7 +1306,7 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_slow_queries), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_slow_queries), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1431,7 +1409,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_aborted_connects[$interval]) or irate($host.mysql_global_status_aborted_connects[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_aborted_connects[$interval]) or irate(mysql.$host.mysql_global_status_aborted_connects[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1439,14 +1417,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_aborted_connects), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_aborted_connects), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_aborted_clients[$interval]) or irate($host.mysql_global_status_aborted_clients[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_aborted_clients[$interval]) or irate(mysql.$host.mysql_global_status_aborted_clients[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1454,7 +1432,7 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_aborted_clients), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_aborted_clients), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1539,7 +1517,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_table_locks_immediate[$interval]) or irate($host.mysql_global_status_table_locks_immediate[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_table_locks_immediate[$interval]) or irate(mysql.$host.mysql_global_status_table_locks_immediate[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1547,14 +1525,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_table_locks_immediate ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_table_locks_immediate ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_table_locks_waited[$interval]) or irate($host.mysql_global_status_table_locks_waited[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_table_locks_waited[$interval]) or irate(mysql.$host.mysql_global_status_table_locks_waited[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1562,7 +1540,7 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_table_locks_waited ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_table_locks_waited ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1657,7 +1635,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_bytes_received[$interval]) or irate($host.mysql_global_status_bytes_received[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_bytes_received[$interval]) or irate(mysql.$host.mysql_global_status_bytes_received[5m])",
               "format": "time_series",
               "hide": false,
               "interval": "$interval",
@@ -1666,14 +1644,14 @@
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_bytes_received ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_bytes_received ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_bytes_sent[$interval]) or irate($host.mysql_global_status_bytes_sent[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_bytes_sent[$interval]) or irate(mysql.$host.mysql_global_status_bytes_sent[5m])",
               "format": "time_series",
               "interval": "$interval",
               "intervalFactor": 1,
@@ -1681,7 +1659,7 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_bytes_sent ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_bytes_sent ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1765,7 +1743,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "increase($host.mysql_global_status_bytes_received[1h])",
+              "expr": "increase(mysql.$host.mysql_global_status_bytes_received[1h])",
               "format": "time_series",
               "interval": "1h",
               "intervalFactor": 1,
@@ -1773,14 +1751,14 @@
               "metric": "",
               "refId": "A",
               "step": 3600,
-              "target": "aliasSub($host.mysql_global_status_bytes_received, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_bytes_received, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "increase($host.mysql_global_status_bytes_sent[1h])",
+              "expr": "increase(mysql.$host.mysql_global_status_bytes_sent[1h])",
               "format": "time_series",
               "interval": "1h",
               "intervalFactor": 1,
@@ -1788,7 +1766,7 @@
               "metric": "",
               "refId": "B",
               "step": 3600,
-              "target": "aliasSub($host.mysql_global_status_bytes_sent, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_bytes_sent, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -1888,7 +1866,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "$host.mysql_global_status_innodb_page_size * on (instance) $host.mysql_global_status_buffer_pool_pages{instance=\"$host\",state=\"data\"}",
+              "expr": "mysql.$host.mysql_global_status_innodb_page_size * on (instance) mysql.$host.mysql_global_status_buffer_pool_pages{instance=\"$host\",state=\"data\"}",
               "format": "time_series",
               "hide": true,
               "interval": "$interval",
@@ -1896,7 +1874,7 @@
               "legendFormat": "InnoDB Buffer Pool Data",
               "refId": "A",
               "step": 20,
-              "target": "$host.mysql_global_status_innodb_buffer_pool_pages_total",
+              "target": "mysql.$host.mysql_global_status_innodb_buffer_pool_pages_total",
               "textEditor": true
             },
             {
@@ -1907,7 +1885,7 @@
               "legendFormat": "InnoDB Log Buffer Size",
               "refId": "D",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_innodb_log_buffer_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_innodb_log_buffer_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1918,7 +1896,7 @@
               "legendFormat": "Key Buffer Size",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_key_buffer_size,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_key_buffer_size,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1929,7 +1907,7 @@
               "legendFormat": "Query Cache Size",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_query_cache_size , '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_query_cache_size , '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -1942,30 +1920,30 @@
               "refId": "I",
               "step": 20,
               "target": "multiplySeries(#H, #A)",
-              "targetFull": "multiplySeries($host.mysql_global_status_innodb_page_size, $host.mysql_global_status_innodb_buffer_pool_pages_total)",
+              "targetFull": "multiplySeries(mysql.$host.mysql_global_status_innodb_page_size, mysql.$host.mysql_global_status_innodb_buffer_pool_pages_total)",
               "textEditor": false
             },
             {
               "refId": "E",
-              "target": "aliasSub($host.mysql_global_status_memory_used, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_memory_used, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "F",
-              "target": "$host.mysql_global_status_innodb_buffer_pool_pages_data",
+              "target": "mysql.$host.mysql_global_status_innodb_buffer_pool_pages_data",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "G",
-              "target": "multiplySeries($host.mysql_global_status_innodb_page_size, $host.mysql_global_status_innodb_buffer_pool_pages_data)",
+              "target": "multiplySeries(mysql.$host.mysql_global_status_innodb_page_size, mysql.$host.mysql_global_status_innodb_buffer_pool_pages_data)",
               "textEditor": true
             },
             {
               "hide": true,
               "refId": "H",
-              "target": "$host.mysql_global_status_innodb_page_size",
+              "target": "mysql.$host.mysql_global_status_innodb_page_size",
               "textEditor": true
             }
           ],
@@ -2062,74 +2040,74 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_handlers_total{instance=\"$host\", handler!~\"commit|rollback|savepoint.*|prepare\"}[$interval]) or irate($host.mysql_global_status_handlers_total{instance=\"$host\", handler!~\"commit|rollback|savepoint.*|prepare\"}[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_handlers_total{instance=\"$host\", handler!~\"commit|rollback|savepoint.*|prepare\"}[$interval]) or irate(mysql.$host.mysql_global_status_handlers_total{instance=\"$host\", handler!~\"commit|rollback|savepoint.*|prepare\"}[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "{{ handler }}",
               "metric": "",
               "refId": "J",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_commit), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_commit), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "A",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_delete), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_delete), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_icp_attempts),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_icp_attempts),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_icp_match), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_icp_match), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "D",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_prepare), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_prepare), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "E",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_read_key), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_read_key), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "F",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_read_next),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_read_next),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "G",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_read_rnd_next), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_read_rnd_next), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "H",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_tmp_write),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_tmp_write),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "I",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_write), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_write), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "K",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_update), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_update), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "L",
-              "target": "aliasSub(perSecond($host.mysql_global_status_handler_rollback), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_handler_rollback), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "M",
-              "target": "aliasSub(perSecond($host.mysql_global_status_Handler_read_rnd_deleted),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_Handler_read_rnd_deleted),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -2212,14 +2190,14 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_handlers_total{instance=\"$host\", handler=~\"commit|rollback|savepoint.*|prepare\"}[$interval]) or irate($host.mysql_global_status_handlers_total{instance=\"$host\", handler=~\"commit|rollback|savepoint.*|prepare\"}[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_handlers_total{instance=\"$host\", handler=~\"commit|rollback|savepoint.*|prepare\"}[$interval]) or irate(mysql.$host.mysql_global_status_handlers_total{instance=\"$host\", handler=~\"commit|rollback|savepoint.*|prepare\"}[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "{{ handler }}",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.engine_innodb_queries_inside_innodb), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.engine_innodb_queries_inside_innodb), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": false
             }
           ],
@@ -2303,7 +2281,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "topk(5, rate($host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate($host.mysql_global_status_commands_total[5m])>0)",
+              "expr": "topk(5, rate(mysql.$host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate(mysql.$host.mysql_global_status_commands_total[5m])>0)",
               "hide": false,
               "interval": "$interval",
               "intervalFactor": 1,
@@ -2311,27 +2289,27 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_show_create_user), '[^a-z0-9+]|global|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_show_create_user), '[^a-z0-9+]|global|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "A",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_show_status), '[^a-z0-9+]|global|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_show_status), '[^a-z0-9+]|global|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_show_master_status), '[^a-z0-9+]|global|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_show_master_status), '[^a-z0-9+]|global|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "D",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_show_slave_status),  '[^a-z0-9+]|global|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_show_slave_status),  '[^a-z0-9+]|global|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "E",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_show_variables), '[^a-z0-9+]|global|status|mysql', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_show_variables), '[^a-z0-9+]|global|status|mysql', ' ')",
               "textEditor": true
             }
           ],
@@ -2415,7 +2393,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "topk(5, rate($host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate($host.mysql_global_status_commands_total[5m])>0)",
+              "expr": "topk(5, rate(mysql.$host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate(mysql.$host.mysql_global_status_commands_total[5m])>0)",
               "hide": false,
               "interval": "$interval",
               "intervalFactor": 1,
@@ -2423,32 +2401,32 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_select), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_select), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "A",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_update),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_update),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_delete),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_delete),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "D",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_insert), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_insert), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "E",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_replace),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_replace),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "F",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_insert_select),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_insert_select),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -2532,7 +2510,7 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "topk(5, rate($host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate($host.mysql_global_status_commands_total[5m])>0)",
+              "expr": "topk(5, rate(mysql.$host.mysql_global_status_commands_total[$interval])>0) or topk(5, irate(mysql.$host.mysql_global_status_commands_total[5m])>0)",
               "hide": false,
               "interval": "$interval",
               "intervalFactor": 1,
@@ -2540,12 +2518,12 @@
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_alter_table),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_alter_table),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "A",
-              "target": "aliasSub(perSecond($host.mysql_global_status_com_drop_table),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_com_drop_table),'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -2642,7 +2620,7 @@
           "targets": [
             {
               "refId": "A",
-              "target": "groupByNode(derivative($host.pfs.*), 2, 'sum')",
+              "target": "groupByNode(derivative(mysql.$host.pfs.*), 2, 'sum')",
               "textEditor": false
             }
           ],
@@ -2724,7 +2702,7 @@
           "targets": [
             {
               "refId": "E",
-              "target": "derivative($host.pfs.*)"
+              "target": "derivative(mysql.$host.pfs.*)"
             }
           ],
           "thresholds": [],
@@ -2817,14 +2795,14 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "$host.mysql_global_status_qcache_free_memory",
+              "expr": "mysql.$host.mysql_global_status_qcache_free_memory",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Free Memory",
               "metric": "",
               "refId": "F",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_qcache_free_memory, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_qcache_free_memory, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -2838,7 +2816,7 @@
               "metric": "",
               "refId": "E",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_query_cache_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_query_cache_size, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -2921,70 +2899,70 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_qcache_hits[$interval]) or irate($host.mysql_global_status_qcache_hits[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_qcache_hits[$interval]) or irate(mysql.$host.mysql_global_status_qcache_hits[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Hits",
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_qcache_hits), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_qcache_hits), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_qcache_inserts[$interval]) or irate($host.mysql_global_status_qcache_inserts[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_qcache_inserts[$interval]) or irate(mysql.$host.mysql_global_status_qcache_inserts[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Inserts",
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_qcache_inserts),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_qcache_inserts),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_qcache_not_cached[$interval]) or irate($host.mysql_global_status_qcache_not_cached[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_qcache_not_cached[$interval]) or irate(mysql.$host.mysql_global_status_qcache_not_cached[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Not Cached",
               "metric": "",
               "refId": "D",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_qcache_not_cached),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_qcache_not_cached),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_qcache_lowmem_prunes[$interval]) or irate($host.mysql_global_status_qcache_lowmem_prunes[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_qcache_lowmem_prunes[$interval]) or irate(mysql.$host.mysql_global_status_qcache_lowmem_prunes[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Prunes",
               "metric": "",
               "refId": "F",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_qcache_lowmem_prunes),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_qcache_lowmem_prunes),  '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "$host.mysql_global_status_qcache_queries_in_cache",
+              "expr": "mysql.$host.mysql_global_status_qcache_queries_in_cache",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Queries in Cache",
               "metric": "",
               "refId": "E",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_qcache_queries_in_cache, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_qcache_queries_in_cache, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -3076,29 +3054,29 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_opened_files[$interval]) or irate($host.mysql_global_status_opened_files[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_opened_files[$interval]) or irate(mysql.$host.mysql_global_status_opened_files[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Openings",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_opened_files ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_opened_files ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "B",
-              "target": "aliasSub($host.mysql_global_status_open_files, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_open_files, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasSub($host.mysql_global_variables_open_files_limit, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_open_files_limit, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
               "refId": "D",
-              "target": "aliasSub($host.mysql_global_status_innodb_num_open_files, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_innodb_num_open_files, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -3179,14 +3157,14 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "$host.mysql_global_status_open_files",
+              "expr": "mysql.$host.mysql_global_status_open_files",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Open Files",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasByNode(perSecond($host.mysql_global_status_opened_tables ),0,1)",
+              "target": "aliasByNode(perSecond(mysql.$host.mysql_global_status_opened_tables ),0,1)",
               "textEditor": true
             },
             {
@@ -3200,27 +3178,27 @@
               "metric": "",
               "refId": "D",
               "step": 20,
-              "target": "aliasByNode(perSecond($host.mysql_global_status_table_open_cache_hits ),0,1)",
+              "target": "aliasByNode(perSecond(mysql.$host.mysql_global_status_table_open_cache_hits ),0,1)",
               "textEditor": true
             },
             {
-              "expr": "$host.mysql_global_status_innodb_num_open_files",
+              "expr": "mysql.$host.mysql_global_status_innodb_num_open_files",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "InnoDB Open Files",
               "refId": "B",
               "step": 20,
-              "target": "aliasByNode(perSecond($host.mysql_global_status_table_open_cache_misses),0,1)",
+              "target": "aliasByNode(perSecond(mysql.$host.mysql_global_status_table_open_cache_misses),0,1)",
               "textEditor": true
             },
             {
               "refId": "C",
-              "target": "aliasByNode(perSecond($host.mysql_global_status_table_open_cache_overflows ),0,1)",
+              "target": "aliasByNode(perSecond(mysql.$host.mysql_global_status_table_open_cache_overflows ),0,1)",
               "textEditor": true
             },
             {
               "refId": "E",
-              "target": "aliasByNode(perSecond($host.mysql_global_status_table_open_cache_hits ),0,1)",
+              "target": "aliasByNode(perSecond(mysql.$host.mysql_global_status_table_open_cache_hits ),0,1)",
               "textEditor": true
             }
           ],
@@ -3319,28 +3297,28 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "rate($host.mysql_global_status_opened_tables[$interval]) or irate($host.mysql_global_status_opened_tables[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_opened_tables[$interval]) or irate(mysql.$host.mysql_global_status_opened_tables[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Openings",
               "metric": "",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_open_tables, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_open_tables, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
-              "expr": "rate($host.mysql_global_status_table_open_cache_hits[$interval]) or irate($host.mysql_global_status_table_open_cache_hits[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_table_open_cache_hits[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_hits[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Hits",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_table_open_cache, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_table_open_cache, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
-              "expr": "rate($host.mysql_global_status_table_open_cache_misses[$interval]) or irate($host.mysql_global_status_table_open_cache_misses[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_table_open_cache_misses[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_misses[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Misses",
@@ -3350,7 +3328,7 @@
               "textEditor": true
             },
             {
-              "expr": "rate($host.mysql_global_status_table_open_cache_overflows[$interval]) or irate($host.mysql_global_status_table_open_cache_overflows[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_table_open_cache_overflows[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_overflows[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Misses due to Overflows",
@@ -3360,7 +3338,7 @@
               "textEditor": true
             },
             {
-              "expr": "(rate($host.mysql_global_status_table_open_cache_hits[$interval]) or irate($host.mysql_global_status_table_open_cache_hits[5m]))/((rate($host.mysql_global_status_table_open_cache_hits[$interval]) or irate($host.mysql_global_status_table_open_cache_hits[5m]))+(rate($host.mysql_global_status_table_open_cache_misses[$interval]) or irate($host.mysql_global_status_table_open_cache_misses[5m])))",
+              "expr": "(rate(mysql.$host.mysql_global_status_table_open_cache_hits[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_hits[5m]))/((rate(mysql.$host.mysql_global_status_table_open_cache_hits[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_hits[5m]))+(rate(mysql.$host.mysql_global_status_table_open_cache_misses[$interval]) or irate(mysql.$host.mysql_global_status_table_open_cache_misses[5m])))",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Table Open Cache Hit Ratio",
@@ -3465,14 +3443,14 @@
               "calculatedInterval": "2m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "$host.mysql_global_status_open_table_definitions",
+              "expr": "mysql.$host.mysql_global_status_open_table_definitions",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Open Table Definitions",
               "metric": "",
               "refId": "B",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_status_open_table_definitions, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_status_open_table_definitions, '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
@@ -3486,17 +3464,17 @@
               "metric": "",
               "refId": "C",
               "step": 20,
-              "target": "aliasSub($host.mysql_global_variables_table_definition_cache ,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(mysql.$host.mysql_global_variables_table_definition_cache ,'[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             },
             {
-              "expr": "rate($host.mysql_global_status_opened_table_definitions[$interval]) or irate($host.mysql_global_status_opened_table_definitions[5m])",
+              "expr": "rate(mysql.$host.mysql_global_status_opened_table_definitions[$interval]) or irate(mysql.$host.mysql_global_status_opened_table_definitions[5m])",
               "interval": "$interval",
               "intervalFactor": 1,
               "legendFormat": "Opened Table Definitions",
               "refId": "A",
               "step": 20,
-              "target": "aliasSub(perSecond($host.mysql_global_status_opened_table_definitions ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
+              "target": "aliasSub(perSecond(mysql.$host.mysql_global_status_opened_table_definitions ), '[^a-z0-9+]|global|status|mysql|variables', ' ')",
               "textEditor": true
             }
           ],
@@ -4347,6 +4325,6 @@
     "type": "timepicker"
   },
   "timezone": "browser",
-  "title": "MySQL Overview",
-  "version": 51
+  "title": "MySQL Overview2",
+  "version": 3
 }

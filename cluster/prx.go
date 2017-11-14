@@ -14,11 +14,13 @@ import (
 	"hash/crc64"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	uuid "github.com/satori/go.uuid"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
@@ -316,6 +318,9 @@ func (cluster *Cluster) refreshProxies() {
 		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.refreshHaproxy(pr)
 		}
+		if cluster.conf.GraphiteMetrics {
+			cluster.SendProxyStats(pr)
+		}
 	}
 
 }
@@ -386,5 +391,36 @@ func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
 			return pr
 		}
 	}
+	return nil
+}
+
+func (cluster *Cluster) SendProxyStats(proxy *Proxy) error {
+	graph, err := graphite.NewGraphite(cluster.conf.GraphiteCarbonHost, cluster.conf.GraphiteCarbonPort)
+	if err != nil {
+		return err
+	}
+	for _, wbackend := range proxy.BackendsWrite {
+		var metrics = make([]graphite.Metric, 4)
+		replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
+		server := "rw-" + replacer.Replace(wbackend.PrxName)
+		metrics[0] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_send", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
+		metrics[1] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_received", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
+		metrics[2] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.connections", proxy.Type, proxy.Id, server), wbackend.PrxConnections, time.Now().Unix())
+		metrics[3] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix())
+		graph.SendMetrics(metrics)
+	}
+	for _, wbackend := range proxy.BackendsRead {
+		var metrics = make([]graphite.Metric, 4)
+		replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
+		server := "ro-" + replacer.Replace(wbackend.PrxName)
+		metrics[0] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_send", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
+		metrics[1] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_received", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
+		metrics[2] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.connections", proxy.Type, proxy.Id, server), wbackend.PrxConnections, time.Now().Unix())
+		metrics[3] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix())
+		graph.SendMetrics(metrics)
+	}
+
+	graph.Disconnect()
+
 	return nil
 }
