@@ -13,7 +13,7 @@ rpl_semi_sync_master=ON
 rpl_semi_sync_slave=ON
 loose_rpl_semi_sync_master_enabled=ON
 loose_rpl_semi_sync_slave_enabled=ON
-slave-parallel-threads        = 6
+slave-parallel-threads        = 2
 slave-parallel-mode=optimistic
 log_slave_updates
 sync_binlog=1
@@ -32,7 +32,7 @@ innodb_stats_on_metadata = 0
 innodb_buffer_pool_instances = 1
 innodb_flush_method = O_DIRECT
 innodb_log_file_size = 128M
-innodb_log_files_in_group=8
+innodb_log_files_in_group=2
 innodb_buffer_pool_size = 128M
 innodb_log_buffer_size = 128M
 innodb_max_dirty_pages_pct = 30
@@ -40,15 +40,15 @@ innodb_file_per_table
 innodb_doublewrite = 1
 innodb_flush_log_at_trx_commit = 1
 innodb_adaptive_hash_index = 0
-innodb_write_io_threads = 16
+innodb_write_io_threads = 4
 innodb_flush_neighbors = 0
 innodb_thread_concurrency = 0
-innodb_defragment = 1
+innodb_defragment = 0
 innodb_purge_threads =4
 innodb_change_buffering=none
 innodb_concurrency_tickets =5000
-innodb_io_capacity=20000
-innodb_io_capacity_max=40000
+innodb_io_capacity=1000
+innodb_io_capacity_max=200
 
 back_log=128
 max_connections = 1024
