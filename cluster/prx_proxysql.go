@@ -100,6 +100,12 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		s.ProxysqlHostgroup = proxysqlHostgroup
 		s.MxsServerStatus = proxysqlServerStatus
 
+		if err != nil {
+			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+			s.MxsServerStatus = "REMOVED"
+			bke.PrxStatus = "REMOVED"
+		}
+
 		rproxysqlHostgroup, rproxysqlServerStatus, rproxysqlServerConnections, rproxysqlByteOut, rproxysqlByteIn, rproxysqlLatency, err := psql.GetStatsForHostRead(s.Host, s.Port)
 		var bkeread = Backend{
 			Host:           s.Host,
@@ -113,13 +119,9 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			PrxLatency:     strconv.Itoa(rproxysqlLatency),
 			PrxHostgroup:   rproxysqlHostgroup,
 		}
-
 		if err != nil {
-			s.MxsServerStatus = "REMOVED"
-			bke.PrxStatus = "REMOVED"
+			proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 		}
-		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
-		proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave {
 			cluster.LogPrintf("DEBUG", "ProxySQL setting online rejoining server %s", s.URL)
