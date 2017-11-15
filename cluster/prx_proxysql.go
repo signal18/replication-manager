@@ -101,11 +101,12 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		s.MxsServerStatus = proxysqlServerStatus
 
 		if err != nil {
-			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+
 			s.MxsServerStatus = "REMOVED"
 			bke.PrxStatus = "REMOVED"
+		} else {
+			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		}
-
 		rproxysqlHostgroup, rproxysqlServerStatus, rproxysqlServerConnections, rproxysqlByteOut, rproxysqlByteIn, rproxysqlLatency, err := psql.GetStatsForHostRead(s.Host, s.Port)
 		var bkeread = Backend{
 			Host:           s.Host,
@@ -119,7 +120,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			PrxLatency:     strconv.Itoa(rproxysqlLatency),
 			PrxHostgroup:   rproxysqlHostgroup,
 		}
-		if err != nil {
+		if err == nil {
 			proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
