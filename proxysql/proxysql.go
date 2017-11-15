@@ -71,7 +71,7 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 	return err
 }
 
-func (psql *ProxySQL) GetStatsForHost(host string, port string) (string, string, int, int, int, int, error) {
+func (psql *ProxySQL) GetStatsForHostRead(host string, port string) (string, string, int, int, int, int, error) {
 	var (
 		hostgroup string
 		status    string
@@ -80,7 +80,22 @@ func (psql *ProxySQL) GetStatsForHost(host string, port string) (string, string,
 		bytein    int
 		latency   int
 	)
-	sql := fmt.Sprintf("SELECT hostgroup, status, ConnUsed, Bytes_data_sent , Bytes_data_recv , Latency_us FROM stats.stats_mysql_connection_pool WHERE srv_host='%s' AND srv_port='%s'", host, port)
+	sql := fmt.Sprintf("SELECT hostgroup, status, ConnUsed, Bytes_data_sent , Bytes_data_recv , Latency_us FROM stats.stats_mysql_connection_pool INNER JOIN mysql_replication_hostgroups ON stats_mysql_connection_pool.reader_hostgroup=hostgroup  WHERE srv_host='%s' AND srv_port='%s'", host, port)
+	row := psql.Connection.QueryRow(sql)
+	err := row.Scan(&hostgroup, &status, &connused, &byteout, &bytein, &latency)
+	return hostgroup, status, connused, byteout, bytein, latency, err
+}
+
+func (psql *ProxySQL) GetStatsForHostWrite(host string, port string) (string, string, int, int, int, int, error) {
+	var (
+		hostgroup string
+		status    string
+		connused  int
+		byteout   int
+		bytein    int
+		latency   int
+	)
+	sql := fmt.Sprintf("SELECT hostgroup, status, ConnUsed, Bytes_data_sent , Bytes_data_recv , Latency_us FROM stats.stats_mysql_connection_pool INNER JOIN mysql_replication_hostgroups ON stats_mysql_connection_pool.writer_hostgroup=hostgroup  WHERE srv_host='%s' AND srv_port='%s'", host, port)
 	row := psql.Connection.QueryRow(sql)
 	err := row.Scan(&hostgroup, &status, &connused, &byteout, &bytein, &latency)
 	return hostgroup, status, connused, byteout, bytein, latency, err

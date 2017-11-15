@@ -317,7 +317,7 @@
                               <td>{{server.PrxByteOut}}</td>
                               <td>{{server.PrxByteIn}}</td>
                               <td>{{server.PrxLatency}}</td>
-                              <td ng-if="proxy.Type=='proxysql'">{{server.ProxysqlHostgroup}}</td>
+                              <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
                            </tr>
                            <tr ng-repeat="server in proxy.BackendsRead" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                                <th>Read</th>
@@ -330,7 +330,7 @@
                               <td>{{server.PrxByteOut}}</td>
                               <td>{{server.PrxByteIn}}</td>
                               <td>{{server.PrxLatency}}</td>
-                              <td ng-if="proxy.Type=='proxysql'">{{server.ProxysqlHostgroup}}</td>
+                              <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
                            </tr>
                         </table>
 											</td>

@@ -461,6 +461,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	for _, server := range cluster.servers {
 		err := server.Refresh()
 		if err != nil {
+			cluster.LogPrintf("ERROR", "Refresh failed in Cleanup on server %s %s", server.URL, err)
 			return err
 		}
 		if cluster.conf.Verbose {
@@ -482,6 +483,9 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
+		if cluster.conf.Verbose {
+			cluster.LogPrintf("INFO", "Stop all slaves or stop slave %s ", server.URL)
+		}
 		if server.DBVersion.IsMariaDB() {
 			err = dbhelper.StopAllSlaves(server.Conn)
 		} else {
@@ -491,12 +495,18 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
+		if cluster.conf.Verbose {
+			cluster.LogPrintf("INFO", "Reset all slaves", server.URL)
+		}
 		err = dbhelper.ResetAllSlaves(server.Conn)
 		if err != nil {
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
 		if server.DBVersion.IsMariaDB() {
+			if cluster.conf.Verbose {
+				cluster.LogPrintf("INFO", "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
+			}
 			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
 			if err != nil {
 				cluster.sme.RemoveFailoverState()
