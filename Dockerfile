@@ -1,13 +1,13 @@
-FROM alpine:3.4
+FROM alpine:edge
 
 # set env from golang container
 ENV \
     GOPATH="/go" \
     PATH="/go/bin:/usr/local/go/bin:$PATH"
 
-RUN mkdir -p /go/src/github.com/tanji/replication-manager
-WORKDIR /go/src/github.com/tanji/replication-manager
-COPY . /go/src/github.com/tanji/replication-manager/
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+COPY . /go/src/github.com/signal18/replication-manager/
 
 RUN mkdir -p \
         /go/bin \
@@ -15,8 +15,8 @@ RUN mkdir -p \
         /usr/share/replication-manager/dashboard
 
 RUN \
-    apk --no-cache --update add git go haproxy && \
-    go install github.com/tanji/replication-manager && \
+    apk --no-cache --update add git go haproxy musl-dev && \
+    go install github.com/signal18/replication-manager && \
     apk --no-cache del git go && \
     rm -rf /go/src /go/pkg && \
     rm -rf /var/cache/apk/*
