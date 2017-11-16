@@ -117,9 +117,9 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.replicationCheck()
 	if ret == "Running OK" {
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 func (server *ServerMonitor) IsIgnored() bool {
