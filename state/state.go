@@ -11,11 +11,11 @@ package state
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
-
-import "strconv"
 
 type State struct {
 	ErrType string
@@ -289,6 +289,7 @@ func (SM *StateMachine) GetOpenErrors() []StateHttp {
 		}
 	}
 	SM.Unlock()
+	sort.SliceStable(log, func(i, j int) bool { return log[i].ErrNumber < log[j].ErrNumber })
 	return log
 }
 func (SM *StateMachine) GetOpenWarnings() []StateHttp {
@@ -304,5 +305,6 @@ func (SM *StateMachine) GetOpenWarnings() []StateHttp {
 		}
 	}
 	SM.Unlock()
+	sort.SliceStable(log, func(i, j int) bool { return log[i].ErrNumber < log[j].ErrNumber })
 	return log
 }
