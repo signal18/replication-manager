@@ -1,4 +1,5 @@
-var graphite_url = "http://"+window.location.hostname+":10002";  // enter your graphite url, e.g. http://your.graphite.com
+//var graphite_url = "http://"+window.location.hostname+":10002";  // enter your graphite url, e.g. http://your.graphite.com
+var graphite_url = "http://127.0.0.1:10002";  // enter your graphite url, e.g. http://your.graphite.com
 
 var dashboards =
 [
@@ -11,7 +12,7 @@ var dashboards =
     [
       {
         "alias": "Avg QPS",  // display name for this metric
-        "target": "perSecond(server*.status.Queries)",  // enter your graphite barebone target expression here
+        "target": "perSecond(mysql.*.mysql_global_status_queries)",  // enter your graphite barebone target expression here
         "description": "",  // enter your metric description here
         "summary": "avg",  // available options: [sum|min|max|avg|last|<function>]
         "summary_formatter": d3.format(",f") // customize your summary format function. see d3 formatting docs for more options
@@ -19,7 +20,7 @@ var dashboards =
       },
       {
         "alias": "Max Replication Delay ",
-        "targets": "sumSeries(*.replication.delay)",  // targets array is also supported
+        "targets": "sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)",  // targets array is also supported
                   // see below for more advanced usage
         "description": "",
         "renderer": "area",   // use any rickshaw-supported renderer ( bar,line)
@@ -30,9 +31,9 @@ var dashboards =
       },
       {
         "alias": "Network",
-        "target": "perSecond(server*.status.Byte*)",
+        "target": "perSecond(mysql.*.mysql_global_status_bytes_*)",
         "alias": "Network In&Out",
-        "targets": "perSecond(server*.status.Byte*)",  // targets array is also supported
+        "targets": "perSecond(mysql.*.mysql_global_status_bytes_*)",  // targets array is also supported
                   // see below for more advanced usage
         "description": "",
         "renderer": "area",   // use any rickshaw-supported renderer ( bar,line)
@@ -42,7 +43,7 @@ var dashboards =
       },
       {
         "alias": "Last Threads",  // display name for this metric
-        "target": "sumSeries(server*.status.ThreadsRunning)",  // enter your graphite barebone target expression here
+        "target": "sumSeries(mysql.*.mysql_global_status_threads_running)",  // enter your graphite barebone target expression here
         "description": "",  // enter your metric description here
         "summary": "last",  // available options: [sum|min|max|avg|last|<function>]
         // also supported are tick_formatter to customize y axis ticks, and totals_formatter to format the values in the legend
