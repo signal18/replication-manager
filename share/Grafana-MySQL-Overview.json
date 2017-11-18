@@ -3,10 +3,12 @@
     {
       "name": "DS_REPMANAGER",
       "label": "repmanager",
-      "description": "",
+      "description": "repmanager",
       "type": "datasource",
       "pluginId": "graphite",
-      "pluginName": "Graphite"
+      "pluginName": "Graphite",
+      "access":"proxy",
+      "url":"http://127.0.0.1:10002"
     }
   ],
   "__requires": [

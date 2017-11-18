@@ -30,12 +30,12 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 
 	var metrics = make([]graphite.Metric, 5)
 	if server.IsSlave {
-		metrics[0] = graphite.NewMetric(fmt.Sprintf("server%d.replication.delay", server.ServerID), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
+		metrics[0] = graphite.NewMetric(fmt.Sprintf("%s.replication.delay", server.Variables["HOSTNAME"]), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
 	}
-	metrics[2] = graphite.NewMetric(fmt.Sprintf("server%d.status.ThreadsRunning", server.ServerID), server.Status["THREADS_RUNNING"], time.Now().Unix())
-	metrics[1] = graphite.NewMetric(fmt.Sprintf("server%d.status.Queries", server.ServerID), server.Status["QUERIES"], time.Now().Unix())
-	metrics[3] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesOut", server.ServerID), server.Status["BYTES_SENT"], time.Now().Unix())
-	metrics[4] = graphite.NewMetric(fmt.Sprintf("server%d.status.BytesIn", server.ServerID), server.Status["BYTES_RECEIVED"], time.Now().Unix())
+	metrics[2] = graphite.NewMetric(fmt.Sprintf("server%s.status.ThreadsRunning", server.Variables["HOSTNAME"]), server.Status["THREADS_RUNNING"], time.Now().Unix())
+	metrics[1] = graphite.NewMetric(fmt.Sprintf("server%s.status.Queries", server.Variables["HOSTNAME"]), server.Status["QUERIES"], time.Now().Unix())
+	metrics[3] = graphite.NewMetric(fmt.Sprintf("server%s.status.BytesOut", server.Variables["HOSTNAME"]), server.Status["BYTES_SENT"], time.Now().Unix())
+	metrics[4] = graphite.NewMetric(fmt.Sprintf("server%s.status.BytesIn", server.Variables["HOSTNAME"]), server.Status["BYTES_RECEIVED"], time.Now().Unix())
 
 	//	metrics[5] = graphite.NewMetric(, time.Now().Unix())
 	//	metrics[6] = graphite.NewMetric(, time.Now().Unix())
@@ -52,7 +52,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i := 0
 	for k, v := range server.Status {
 		if isNumeric(v) {
-			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.mysql_global_status_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_status_%s", server.Variables["HOSTNAME"], strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -62,7 +62,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i = 0
 	for k, v := range server.Variables {
 		if isNumeric(v) {
-			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.mysql_global_variables_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_variables_%s", server.Variables["HOSTNAME"], strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -72,7 +72,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	i = 0
 	for k, v := range server.EngineInnoDB {
 		if isNumeric(v) {
-			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.engine_innodb_%s", server.ServerID, strings.ToLower(k)), v, time.Now().Unix())
+			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.engine_innodb_%s", server.Variables["HOSTNAME"], strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
@@ -87,7 +87,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 			if len(label) > 198 {
 				label = label[0:198]
 			}
-			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.server%d.pfs.%s", server.ServerID, label), v, time.Now().Unix())
+			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", server.Variables["HOSTNAME"], label), v, time.Now().Unix())
 		}
 		i++
 	}
