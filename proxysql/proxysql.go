@@ -111,3 +111,8 @@ func (psql *ProxySQL) Truncate() error {
 	_, err := psql.Connection.Exec("DELETE FROM mysql_servers")
 	return err
 }
+
+func (psql *ProxySQL) AddUser(User string, Password string) error {
+	_, err := psql.Connection.Exec("REPLACE INTO mysql_users(username,password) VALUES('" + User + "','" + Password + "')")
+	return err
+}

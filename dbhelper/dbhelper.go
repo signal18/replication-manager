@@ -37,6 +37,13 @@ type Table struct {
 	Table_crc    uint64
 }
 
+type Grant struct {
+	User     string
+	Host     string
+	Password string `json:"-"`
+	Hash     uint64
+}
+
 type Event struct {
 	Db      string
 	Name    string
@@ -817,6 +824,40 @@ func GetTables(db *sqlx.DB) (map[string]Table, error) {
 			return vars, err
 		}
 		vars[v.Table_schema+"."+v.Table_name] = v
+	}
+	return vars, nil
+}
+
+func GetUsers(db *sqlx.DB) (map[string]Grant, error) {
+	vars := make(map[string]Grant)
+	rows, err := db.Queryx("SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user")
+	if err != nil {
+		return nil, errors.New("Could not get DB user list")
+	}
+	for rows.Next() {
+		var g Grant
+		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash)
+		if err != nil {
+			return vars, err
+		}
+		vars["'"+g.User+"'@'"+g.Host+"'"] = g
+	}
+	return vars, nil
+}
+
+func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, error) {
+	vars := make(map[string]Grant)
+	rows, err := db.Queryx("SELECT username, password , CONV(LEFT(MD5(concat(username, password)), 16), 16, 10)    FROM mysql_users")
+	if err != nil {
+		return nil, errors.New("Could not get proxySQL user list")
+	}
+	for rows.Next() {
+		var g Grant
+		err = rows.Scan(&g.User, &g.Password, &g.Hash)
+		if err != nil {
+			return vars, err
+		}
+		vars[g.User+":"+g.Password+"'"] = g
 	}
 	return vars, nil
 }

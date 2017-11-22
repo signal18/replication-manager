@@ -120,6 +120,7 @@ type Config struct {
 	MdbsProxyOn                        bool   `mapstructure:"shardproxy"`
 	MdbsProxyHosts                     string `mapstructure:"shardproxy-servers"`
 	MdbsProxyUser                      string `mapstructure:"shardproxy-user"`
+	MdbsProxyCopyGrants                bool   `mapstructure:"shardproxy-copy-grants"`
 	MxsOn                              bool   `mapstructure:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-servers"`
 	MxsPort                            string `mapstructure:"maxscale-port"`
@@ -150,6 +151,7 @@ type Config struct {
 	ProxysqlPassword                   string `mapstructure:"proxysql-password"`
 	ProxysqlWriterHostgroup            string `mapstructure:"proxysql-writer-hostgroup"`
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup"`
+	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants"`
 	RegistryConsul                     bool   `mapstructure:"registry-consul"`
 	RegistryHosts                      string `mapstructure:"registry-servers"`
 	KeyPath                            string `mapstructure:"keypath"`

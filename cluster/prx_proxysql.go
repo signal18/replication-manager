@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/proxysql"
 	"github.com/signal18/replication-manager/state"
 )
@@ -157,6 +158,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
 				}
 				updated = true
+			}
+		}
+		// laod the grants
+		if s.IsMaster() && cluster.conf.ProxysqlCopyGrants {
+			myprxusermap, err := dbhelper.GetProxySQLUsers(psql.Connection)
+			cluster.LogPrintf("ERROR", "ProxySQL can load users (%s)", err)
+			for _, user := range s.Users {
+				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
+					cluster.LogPrintf("INFO", "Add user %s ", user.User)
+					psql.AddUser(user.User, user.Password)
+				}
 			}
 		}
 	}

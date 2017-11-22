@@ -106,6 +106,7 @@ type ServerMonitor struct {
 	ReplicationHealth           string
 	TestConfig                  string
 	DictTables                  map[string]dbhelper.Table
+	Users                       map[string]dbhelper.Grant
 }
 
 type serverList []*ServerMonitor
@@ -461,7 +462,10 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not get events")
 		}
+		// get Users
+		server.Users, _ = dbhelper.GetUsers(server.Conn)
 	}
+
 	// SHOW MASTER STATUS
 	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn)
 	if err != nil {
