@@ -34,6 +34,7 @@ chown -R $MRMUSER:$MRMGROUP $MRMDATADIR
 CMD=$MRMBASEDIR/replication-manager-arb
 PIDFILE=$MRMDATADIR/mrm.pid
 
+. /lib/lsb/init-functions
 
 start()
 {
