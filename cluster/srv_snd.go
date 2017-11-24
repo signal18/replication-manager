@@ -32,8 +32,8 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	var metrics = make([]graphite.Metric, 3)
 	if server.IsSlave {
 		metrics[0] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
-		metrics[1] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%d", slaveStatus.ExecMasterLogPos), time.Now().Unix())
-		metrics[2] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%d", slaveStatus.ReadMasterLogPos), time.Now().Unix())
+		metrics[1] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", slaveStatus.ExecMasterLogPos.String), time.Now().Unix())
+		metrics[2] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%s", slaveStatus.ReadMasterLogPos.String), time.Now().Unix())
 		//metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_relay_log_pos", hostname), fmt.Sprintf("%d", slaveStatus.re), time.Now().Unix())
 	}
 

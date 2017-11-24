@@ -76,7 +76,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	}
 	var duplicates []*ServerMonitor
 	for _, t := range tables {
-		if cluster.conf.Verbose {
+		if cluster.conf.LogLevel > 1 {
 			cluster.LogPrintf("INFO", "Lookup for table %s", t.Table_schema+"."+t.Table_name)
 		}
 		duplicates = nil

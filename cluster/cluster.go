@@ -139,6 +139,11 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
 	}
 	cluster.ReloadFromSave()
+	if _, err := os.Stat(cluster.conf.WorkingDir + "/" + cluster.cfgGroup); os.IsNotExist(err) {
+		os.MkdirAll(cluster.conf.WorkingDir+"/"+cluster.cfgGroup, os.ModePerm)
+		cluster.CreateKey()
+	}
+
 	return nil
 }
 
@@ -228,7 +233,7 @@ func (cluster *Cluster) Save() error {
 	clsave.Servers = cluster.conf.Hosts
 	clsave.SLA = cluster.sme.GetSla()
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
-	err := ioutil.WriteFile(cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json", saveJson, 0644)
+	err := ioutil.WriteFile(cluster.conf.WorkingDir+"/"+cluster.cfgGroup+"/clusterstate.json", saveJson, 0644)
 	if err != nil {
 		return err
 	}
@@ -244,7 +249,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 	}
 
 	var clsave Save
-	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".json")
+	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/clusterstate.json")
 	if err != nil {
 		cluster.LogPrintf("WARN", "File error: %v\n", err)
 		return err

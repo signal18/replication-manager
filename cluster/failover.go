@@ -946,7 +946,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.crashes = append(cluster.crashes, crash)
 		cluster.Save()
 		t := time.Now()
-		crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".crash." + t.Format("20060102150405") + ".json")
+		crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/crash-" + t.Format("20060102150405") + ".json")
 	}
 
 	// Phase 3: Prepare new master
