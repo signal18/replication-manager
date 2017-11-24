@@ -33,6 +33,7 @@
       <script src="/static/angular-material.min.js"></script>
       <script src="/static/angular-route.js"></script>
       <script src="dashboard.js"></script>
+      <link rel="stylesheet" href="/static/css/theme-default.css">
       <link rel="stylesheet" href="/static/angular-material.min.css">
       <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
       <style>
@@ -75,7 +76,7 @@
    <body ng-app="dashboard" ng-cloak>
       <div ng-controller="DashboardController" class="col-lg-12">
          <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
-            <table width="100%">
+            <table  width="100%">
                <tr>
                   <td>
 			  <h1><span class="title"><img src="/static/logo.png" alt="Replication Manager"/></span></h1>
@@ -132,7 +133,8 @@
                               </table>
                            </div>
                         </div>
-                        <table ng-if="servers" class="table">
+                        <table ng-if="servers" class="table table-hover">
+                          <thead>
                            <tr>
                               <th>Host</th>
                               <th>Port</th>
@@ -154,6 +156,8 @@
                               <th>Slave Sync</th>
                               <th>Actions</th>
                            </tr>
+                           </thead>
+                           <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>
@@ -198,6 +202,7 @@
                                  </button >
                               </td>
                            </tr>
+                            </tbody>
                         </table>
                         <table class="table">
                            <tr>
