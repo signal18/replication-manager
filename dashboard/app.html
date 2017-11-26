@@ -106,6 +106,7 @@
                            <div flex-gt-xs="30" class="col-lg-33">
                               <p class="sectionheader">MONITOR GROUP</p>
                               <table class="table">
+
                                  <tr>
                                     <th>Group Name</th>
                                     <th>Topology</th>
@@ -133,7 +134,7 @@
                               </table>
                            </div>
                         </div>
-                        <table ng-if="servers" class="table table-hover">
+                        <table ng-if="servers" class="table">
                           <thead>
                            <tr>
                               <th>Host</th>
@@ -250,12 +251,14 @@
                      <md-content class="md-padding">
                         <p class="sectionheader">SLA</p>
                         <table ng-if="settings" class="table">
+                            <thead>
                            <tr>
                               <th>Monitor Tickers</th>
                               <th>Master Available</th>
                               <th>Can Failover Acceptable Data Loss</th>
                               <th>Can Failover No Data Loss</th>
                            </tr>
+                         </thead>
                            <tr>
                               <td>{{settings.monheartbeats}}</td>
                               <td>{{settings.uptime}}</td>
@@ -282,9 +285,7 @@
                              <th ng-if="proxy.Type=='proxysql'">ReaderHG</th>
 														 <th>ReadWritePort</th>
 													</tr>
-
 														<tr>
-
 															<td><p class="sectionheader">{{proxy.Type}}</p></td>
                               <td>{{proxy.Id}}</td>
                               <td>{{proxy.Host}}</td>
@@ -299,6 +300,7 @@
 														<td colspan="6">
 
                         <table ng-if="servers"   class="table" ng-style="width:400">
+                          <thead>
                            <tr>
                               <th>Role</th>
                               <th>Host</th>
@@ -312,6 +314,7 @@
                               <th>Proxy Session Avg Time</th>
                               <th ng-if="proxy.Type=='proxysql'">Proxy Hostgroup</th>
                            </tr>
+                           </thead>
                            <tr ng-repeat="server in proxy.BackendsWrite" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                                <th>Write</th>
                               <td>{{server.Host}}</td>
@@ -350,10 +353,17 @@
                      <md-content class="md-padding">
                         <div layout="column" layout-gt-xs="row">
                            <div flex-gt-xs="30" class="col-lg-33">
+                             <div class="panel-heading">
+                                  <h3 class="panel-title">List of Hosts</h3>
+                              </div>
+                              <div class="panel-body">
                               <table ng-if="settings" class="table">
+                                <thead>
                                  <tr>
                                     <th>Failover Mode (interactive)</th>
                                  </tr>
+                               </thead>
+                                <tbody>
                                  <tr>
                                     <td>
                                        <md-switch ng-model="settings.interactive=='true'" ng-click="inttoggle()"  aria-label="Mode Change">
@@ -362,7 +372,9 @@
                                     </md-switch>
                                     </td>
                                  </tr>
+                               </tbody>
                               </table>
+                              </div>
                            </div>
                         </div>
                         <div layout="column" layout-gt-xs="row">

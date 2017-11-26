@@ -1,6 +1,21 @@
 {
     "modulesets": [
         {
+            "modules": [],
+            "rulesets": [],
+            "modset_name": "mariadb.svc.mrm.db",
+            "modulesets": [
+                "mariadb.svc.mrm.db.cnf"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 344,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "modules": [
                 {
                     "autofix": false,
@@ -433,6 +448,44 @@
                 }
             ],
             "fset_name": "mariadb.svc.prov.pfs"
+        },
+        {
+            "fset_stats": false,
+            "id": 278,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "ssl",
+                        "f_table": "v_tags",
+                        "id": 229
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.ssl"
+        },
+        {
+            "fset_stats": false,
+            "id": 279,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "sphinx",
+                        "f_table": "v_tags",
+                        "id": 230
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.sphinx"
         }
     ],
     "rulesets": [
@@ -693,11 +746,21 @@
                     "var_updated": "2017-10-12 05:24:54",
                     "var_name": "db_cnf_server",
                     "id": 5884
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2017-11-25 13:56:16",
+                    "var_name": "db_cnf_ssl",
+                    "id": 5971
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "contextual",
-            "rulesets": [],
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf.docker.ssl"
+            ],
             "publications": [
                 "replication-manager"
             ],
@@ -717,11 +780,21 @@
                     "var_updated": "2017-10-12 05:25:21",
                     "var_name": "db_cnf_server",
                     "id": 5885
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=../etc/mysql/ssl/ca-cert.pem\\nssl-cert=../etc/mysql/ssl/server-cert.pem\\nssl-key=../etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2017-11-25 13:59:54",
+                    "var_name": "db_cnf_ssl",
+                    "id": 5974
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "contextual",
-            "rulesets": [],
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf.package.ssl"
+            ],
             "publications": [
                 "replication-manager"
             ],
@@ -1085,6 +1158,22 @@
                     "var_updated": "2017-11-12 09:41:43",
                     "var_name": "db_cnf_pfs",
                     "id": 5966
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/groupreplication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nplugin_load=group_replication.so\\nloose_group_replication_single_primary_mode = ON\\nloose_group_replication = FORCE_PLUS_PERMANENT\\ntransaction_write_set_extraction=XXHASH64\\nloose-group_replication_group_name=\\\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\\\"\\nloose-group_replication_start_on_boot=off\\nloose-group_replication_local_address= \\\"127.0.0.1:24901\\\"\\nloose-group_replication_group_seeds= \\\"127.0.0.1:24901,127.0.0.1:24902,127.0.0.1:24903\\\"\\nloose-group_replication_bootstrap_group= off\"}",
+                    "var_updated": "2017-11-21 10:50:37",
+                    "var_name": "db_cnf_groupreplication",
+                    "id": 5968
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/sphinx.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add=ha_sphinx\"}",
+                    "var_updated": "2017-11-25 14:01:47",
+                    "var_name": "db_cnf_sphinx",
+                    "id": 5969
                 }
             ],
             "ruleset_public": false,
@@ -1108,7 +1197,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.smallredolog",
                 "mariadb.svc.mrm.db.cnf.generic.wsrep",
                 "mariadb.svc.mrm.db.cnf.generic.nowsrep",
-                "mariadb.svc.mrm.db.cnf.generic.pfs"
+                "mariadb.svc.mrm.db.cnf.generic.pfs",
+                "mariadb.svc.mrm.db.cnf.generic.sphinx"
             ],
             "publications": [
                 "replication-manager"
@@ -1570,6 +1660,78 @@
                 "replication-maanger"
             ],
             "id": 1024,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.ssl",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.docker.ssl",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/ssl.cnf\",\"target\":\"../ssl.cnf\"}",
+                    "var_updated": "2017-11-25 14:10:21",
+                    "var_name": "db_link_ssl",
+                    "id": 5975
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1025,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.package.ssl",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/ssl.cnf\",\"target\":\"../ssl.cnf\"}",
+                    "var_updated": "2017-11-25 14:12:01",
+                    "var_name": "db_link_ssl",
+                    "id": 5976
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1026,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.sphinx",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sphinx",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/sphinx.cnf\",\"target\":\"../sphinx.cnf\"}",
+                    "var_updated": "2017-11-25 14:20:11",
+                    "var_name": "db_link_sphinx",
+                    "id": 5978
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1027,
             "responsibles": [
                 "replication-maanger"
             ]
