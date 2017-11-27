@@ -246,7 +246,7 @@
                                     <p class="sectionheader">Tests</p>
                                  </label><BR>
                                  <md-select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
-                                    <option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
+                                    <md-option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
                                  </md-select><BR><BR>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
@@ -287,7 +287,7 @@
                   <md-card><md-card-content>
                         <p class="sectionheader">WARNINGS</p>
                         <BR>
-                        <md-pre class="alert alert-info">
+                        <md-pre >
 					 <div  ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
 				</md-pre>
           </md-card-content></md-card>
