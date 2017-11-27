@@ -82,19 +82,23 @@
 			  <h1><span class="title"><img src="/static/logo.png" alt="Replication Manager"/></span></h1>
                   </td>
                   <td >
-                     <form align=right action="/logout" method="post">
+
+                     <form  ng-if="settings.httpauth=='true'" align=right action="/logout" method="post">
                         <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
                      </form>
-                     <BR>
-                     <form name="myForm">
+                     <form  name="myForm">
+                         <md-panel>  <md-card-content>
+                       <p  class="sectionheader">CLUSTERS</p>
                         <label for="cluster" action="/setcluster" >
-                           <span></span>
-
-                        <select name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()" >
-                           <option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters"  value="{{element}}">{{element}}</option>
-                        </select></label>
+                        <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()" >
+                           <md-option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters"  value="{{element}}">{{element}}</option>
+                        </md-select>
+                      </label>
+                    </md-card-content>
+                  </md-panel>
+                 </td>
                      </form>
-                  </td>
+
                </tr>
             </table>
             <md-content layout="column">
@@ -104,10 +108,10 @@
                         <div  ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
                         <div layout="column" layout-gt-xs="row">
                            <div flex-gt-xs="30" class="col-lg-33">
-                              <p class="sectionheader">MONITOR GROUP</p>
+                             <md-card>
                               <table class="table">
 
-                                 <tr>
+                                 <tr  bgcolor="#adf8a6">
                                     <th>Group Name</th>
                                     <th>Topology</th>
                                  </tr>
@@ -116,12 +120,15 @@
                                     <td><span  class="label label-info">{{settings.topology}}</span></td>
                                  </tr>
                               </table>
+
+                     </md-card>
                            </div>
                            <div  flex-gt-xs="10" ></div>
                            <div  flex-gt-xs="60" class="col-lg-66">
-                              <p class="sectionheader">Arbitrator Status</p>
+                                <md-card>
+
                               <table ng-if="settings" class="table">
-                                 <tr>
+                                 <tr  bgcolor="#adf8a6">
                                     <th>Manager Status</th>
                                     <th>Failover Count</th>
                                     <th>Last Failover Time</th>
@@ -132,11 +139,14 @@
                                     <td>{{settings.lastfailover}}</td>
                                  </tr>
                               </table>
+                               </md-card>
                            </div>
                         </div>
+                        <md-card>
+                        <md-card-content><p class="sectionheader">SERVERS</p></md-card-content>
                         <table ng-if="servers" class="table">
-                          <thead>
-                           <tr>
+
+                           <tr bgcolor="#adf8a6">
                               <th>Host</th>
                               <th>Port</th>
                               <th>Version</th>
@@ -157,7 +167,7 @@
                               <th>Slave Sync</th>
                               <th>Actions</th>
                            </tr>
-                           </thead>
+
                            <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
                               <td>{{server.Host}}</td>
@@ -205,60 +215,90 @@
                            </tr>
                             </tbody>
                         </table>
+                        </md-card>
+
+                          <div layout="column" layout-gt-xs="row">
+                             <div flex-gt-xs="30" class="col-lg-33">
+                               <md-card>
+                        <md-card-content><p class="sectionheader">ACTIONS</p></md-card-content>
+
                         <table class="table">
                            <tr>
                               <td>
                                  <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
                                  <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
-                                 <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
                                  <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
+                                 <BR><BR>
+                                 <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
                                  <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
+                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button><BR><BR>
+                                 <BR><BR>
+                                 <label ng-if="settings.test=='true'" for="test" action="/runonetest" >
+                                    <p class="sectionheader">Tests</p>
+                                 </label><BR>
+                                 <md-select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
+                                    <option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
+                                 </md-select><BR><BR>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
-                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button>
+                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
 
-                                 <label ng-if="settings.test=='true'" for="test" action="/runonetest" >
-                                    <p class="sectionheader">Tests: </p>
-                                 </label>
-                                 <select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
-                                    <option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
-                                 </select>
                               </td>
                               <td>
                               </td>
                            </tr>
                         </table>
+                        </md-card>
+                      </div>
+                      <div  flex-gt-xs="5" ></div>
+                      <div  flex-gt-xs="65" class="col-lg-66">
+                        <md-card>
+                        <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
+                        <md-card-content>
                         <pre>
+
 			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
-				 </pre>
+       </pre>  </md-card-content>
+
+           </md-card>
+         </div>  </div>
                      </md-content>
+
                   </md-tab>
                   <md-tab label="ALERTS ^{{alerts.errors.length}}">
                      <md-content  class="md-padding" >
+                         <md-card><md-card-content>
                         <p class="sectionheader">ERRORS</p>
-                        <pre class="alert alert-danger">
+                          <BR>
+                            <pre class="alert alert-danger">
 				 <div  ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
-				 </pre>
+       </pre>
+                  </md-card-content></md-card>
+                  <BR>
+                  <md-card><md-card-content>
                         <p class="sectionheader">WARNINGS</p>
-                        <pre class="alert alert-warning">
+                        <BR>
+                        <pre class="alert alert-info">
 					 <div  ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
 				</pre>
+          </md-card-content></md-card>
                      </md-content>
                   </md-tab>
                   <md-tab label="SLA">
                      <md-content class="md-padding">
+                        <md-card><md-card-content>
                         <p class="sectionheader">SLA</p>
+                      </md-card-content>
                         <table ng-if="settings" class="table">
-                            <thead>
-                           <tr>
+
+                           <tr  bgcolor="#adf8a6">
                               <th>Monitor Tickers</th>
                               <th>Master Available</th>
                               <th>Can Failover Acceptable Data Loss</th>
                               <th>Can Failover No Data Loss</th>
                            </tr>
-                         </thead>
+
                            <tr>
                               <td>{{settings.monheartbeats}}</td>
                               <td>{{settings.uptime}}</td>
@@ -266,16 +306,24 @@
                               <td>{{settings.uptimesemisync}}</td>
                            </tr>
                         </table>
+                      </md-card>
                      </md-content>
                   </md-tab>
                   <md-tab label="Proxies">
-                     <md-content class="md-padding">
 
+                    <md-content class="md-padding">
+                        <md-card ng-repeat="proxy in proxies">
+                      <md-card-content>
+
+                                              <p class="sectionheader">{{proxy.Type}}</p>
+
+                          </md-card-content>
 											 <table ng-if="proxies" class="table">
-												 <tbody ng-repeat="proxy in proxies">
+												 <tbody >
 
-													<tr bgcolor="#fcf9ed">
-                             <th>Proxy</th>
+
+													<tr valign="middle" bgcolor="#adf8a6">
+
                              <th>Id</th>
 													   <th>Host</th>
 														 <th>Port</th>
@@ -286,7 +334,6 @@
 														 <th>ReadWritePort</th>
 													</tr>
 														<tr>
-															<td><p class="sectionheader">{{proxy.Type}}</p></td>
                               <td>{{proxy.Id}}</td>
                               <td>{{proxy.Host}}</td>
                               <td>{{proxy.Port}}</td>
@@ -296,8 +343,8 @@
 
                            </tr>
 													<tr>
-                            <td ></td>
-														<td colspan="6">
+
+														<td colspan="7">
 
                         <table ng-if="servers"   class="table" ng-style="width:400">
                           <thead>
@@ -347,23 +394,24 @@
 											</tr>
 										</tbody>
 									 </table>
+                 </md-card>
+
+
                      </md-content>
                   </md-tab>
                   <md-tab label="Settings">
                      <md-content class="md-padding">
                         <div layout="column" layout-gt-xs="row">
                            <div flex-gt-xs="30" class="col-lg-33">
-                             <div class="panel-heading">
-                                  <h3 class="panel-title">List of Hosts</h3>
-                              </div>
-                              <div class="panel-body">
-                              <table ng-if="settings" class="table">
-                                <thead>
-                                 <tr>
+                             <md-card>
+
+                               <table ng-if="settings" class="table">
+
+                                 <tr  bgcolor="#adf8a6">
                                     <th>Failover Mode (interactive)</th>
                                  </tr>
-                               </thead>
-                                <tbody>
+
+
                                  <tr>
                                     <td>
                                        <md-switch ng-model="settings.interactive=='true'" ng-click="inttoggle()"  aria-label="Mode Change">
@@ -372,15 +420,44 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                               </tbody>
+
                               </table>
-                              </div>
+                            </md-card>
+                            <BR>
+                            <md-card>
+                            <table ng-if="settings" class="table">
+                               <tr  bgcolor="#adf8a6">
+                                  <th>Test Mode</th>
+                               </tr>
+                               <tr>
+                                  <td>
+                                     <md-switch ng-model="settings.test=='true'" ng-click="settest()"  aria-label="Test Mode Change">
+                                        <span ng-if="settings.test=='true'" class="label label-primary">On</span><span ng-if="settings.test=='false'" class="label label-warning">Off</span>
+                                  </td>
+                                  </md-switch>
+                                  </td>
+                               </tr>
+                               <tr>
+                                  <th>Verbose</th>
+                               </tr>
+                               <tr>
+                                  <td>
+                                     <md-switch ng-model="settings.verbose=='true'" ng-click="verbose()"  aria-label="Verbosity Change">
+                                        <span ng-if="settings.verbose=='true'" class="label label-primary">On</span><span ng-if="settings.verbose=='false'" class="label label-warning">Off</span>
+                                  </td>
+                                  </md-switch>
+                                  </td>
+                               </tr>
+                            </table>
+
                            </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
+                             </md-card>
+
+
                            <div flex-gt-xs="30" class="col-lg-33">
+                              <md-card>
                               <table ng-if="settings" class="table">
-                                 <tr>
+                                 <tr  bgcolor="#adf8a6">
                                     <th>Checks All Replication Constraint</th>
                                  </tr>
                                  <tr>
@@ -416,18 +493,20 @@
                                  <tr>
                                     <td>
                                        <md-slider  class="md-primary" flex  ng-model="settings.maxdelay"  min="10" max="1000" aria-label="delay"></md-slider>
-                                    </td>
-                                    <td>
+
                                        <span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">{{settings.maxdelay}}</span>
                                     </td>
                                  </tr>
                               </table>
+                            </md-card>
                            </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
+
+
+
                            <div flex-gt-xs="30" class="col-lg-33">
+                               <md-card>
                               <table ng-if="settings" class="table">
-                                 <tr>
+                                 <tr  bgcolor="#adf8a6">
                                     <th>Auto Rejoin</th>
                                  </tr>
                                  <tr>
@@ -438,12 +517,7 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                              </table>
-                           </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
+
                                  <tr>
                                     <th>Auto Rejoin Backup ahead events</th>
                                  </tr>
@@ -455,12 +529,7 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                              </table>
-                           </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
+
                                  <tr>
                                     <th>Auto Rejoin Semisync SYNC state</th>
                                  </tr>
@@ -472,12 +541,7 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                              </table>
-                           </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
+
                                  <tr>
                                     <th>Auto Rejoin Flashback</th>
                                  </tr>
@@ -489,12 +553,7 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                              </table>
-                           </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
+
                                  <tr>
                                     <th>Auto Rejoin Dump</th>
                                  </tr>
@@ -506,12 +565,6 @@
                                     </md-switch>
                                     </td>
                                  </tr>
-                              </table>
-                           </div>
-                        </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
                                  <tr>
                                     <th>Auto Rejoin Pseudo GTID</th>
                                  </tr>
@@ -524,45 +577,24 @@
                                     </td>
                                  </tr>
                               </table>
+                              </md-card>
                            </div>
                         </div>
-                        <div layout="column" layout-gt-xs="row">
-                           <div flex-gt-xs="30" class="col-lg-33">
-                              <table ng-if="settings" class="table">
-                                 <tr>
-                                    <th>Test Mode</th>
-                                 </tr>
-                                 <tr>
-                                    <td>
-                                       <md-switch ng-model="settings.test=='true'" ng-click="settest()"  aria-label="Test Mode Change">
-                                          <span ng-if="settings.test=='true'" class="label label-primary">On</span><span ng-if="settings.test=='false'" class="label label-warning">Off</span>
-                                    </td>
-                                    </md-switch>
-                                    </td>
-                                 </tr>
-                                 <tr>
-                                    <th>Verbose</th>
-                                 </tr>
-                                 <tr>
-                                    <td>
-                                       <md-switch ng-model="settings.verbose=='true'" ng-click="verbose()"  aria-label="Verbosity Change">
-                                          <span ng-if="settings.verbose=='true'" class="label label-primary">On</span><span ng-if="settings.verbose=='false'" class="label label-warning">Off</span>
-                                    </td>
-                                    </md-switch>
-                                    </td>
-                                 </tr>
-                              </table>
-                           </div>
-                        </div>
+
+
+
                      </md-content>
                   </md-tab>
                   <md-tab  label="Graphs">
                      <md-content  class="md-padding">
-                        <div class="navbar navbar-inverse navbar-fixed-top">
+                         <div layout="column" layout-gt-xs="row">
+
+                       <md-card>
+                        <div class="navbar ">
                            <div id="giraffe-navbar-inner" class="navbar-inner">
                               <div class="container">
                                  <div class="nav-collapse collapse">
-                                    <div class="btn-toolbar pull-right">
+                                    <div class="btn-toolbar">
                                        <div class="btn-group timepanel">
                                           <a class="btn btn-small range" data-timeframe="10" href="#10m">10m</a>
                                           <a class="btn btn-small range" data-timeframe="60" href="#1h">1h</a>
@@ -583,20 +615,29 @@
                            </div>
                         </div>
                         <div class="container" style="padding-top: 60px;padding-bottom: 40px;">
+                          <script src="/static/graph.js"></script>
+                          <script src="/static/giraffe.js"></script>
                            <div class="dashboard-content">
                               <div id="graphs"></div>
                            </div>
                         </div>
                         <!-- /container -->
-                        <script src="/static/graph.js"></script>
-                        <script src="/static/giraffe.js"></script>
+
+                      </md-card>
+                      
+                          </div>
                      </md-content>
                   </md-tab>
                   <md-tab ng-if="settings.enterprise=='true'" label="Agents">
                      <md-content class="md-padding">
+                     <md-card>
+                    <md-card-content>
                         <p class="sectionheader">Hypervisors</p>
+                          </md-card-content>
                         <table ng-if="agents" class="table">
-                           <tr>
+
+
+                           <tr  bgcolor="#adf8a6">
                               <th>Name</th>
                               <th>CPU Cores</th>
                               <th>CPU Freq</th>
@@ -604,6 +645,7 @@
                               <th>OS Name</th>
                               <th>Kernel</th>
                            </tr>
+
                            <tr ng-repeat="agent in agents" ng-class="">
                               <td>{{agent.nodename}}</td>
                               <td>{{agent.cpu_cores}}</td>
@@ -613,6 +655,7 @@
                               <td>{{agent.os_kernel}}</td>
                            </tr>
                         </table>
+                            </md-card>
                      </md-content>
                   </md-tab>
                </md-tabs>

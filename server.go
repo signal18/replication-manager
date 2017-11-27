@@ -515,6 +515,12 @@ For interacting with this daemon use,
 			if agents == nil {
 				log.Fatalf("Can't connect or agents not registered")
 			}
+			safeid, err := svc.PostSafe(conf.ShareDir + "/Signal18_Root_CA_v1.pem")
+			if err != nil {
+				log.Fatalf("Can't upload root CA to Collector Safe %s", err)
+			} else {
+				log.WithField("bucket", safeid).Info("Upload root Certificate to Safe")
+			}
 		}
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {

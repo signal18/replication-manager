@@ -3,7 +3,7 @@ var graphite_url = "http://127.0.0.1:10002";  // enter your graphite url, e.g. h
 
 var dashboards =
 [
-  { "name": "Demo",  // give your dashboard a name (required!)
+  { "name": "Mrm",  // give your dashboard a name (required!)
     "refresh": 5000,  // each dashboard has its own refresh interval (in ms)
     // add an (optional) dashboard description. description can be written in markdown / html.
     "description": ""

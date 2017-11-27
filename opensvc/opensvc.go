@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
@@ -670,6 +673,74 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+func (collector *Collector) PostSafe(filename string) (string, error) {
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	targetUrl := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/safe/upload"
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+
+	// this step is very important
+	fileWriter, err := bodyWriter.CreateFormFile("file", filename)
+	if err != nil {
+		fmt.Println("error writing to buffer")
+		return "", err
+	}
+
+	// open file handle
+	fh, err := os.Open(filename)
+	if err != nil {
+		fmt.Println("error opening file")
+		return "", err
+	}
+	defer fh.Close()
+
+	//iocopy
+	_, err = io.Copy(fileWriter, fh)
+	if err != nil {
+		return "", err
+	}
+	bodyWriter.WriteField("name", filename)
+	bodyWriter.Close()
+	req, err := http.NewRequest("POST", targetUrl, bodyBuf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", bodyWriter.FormDataContentType())
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	type Ret struct {
+		Name     string `json:"name"`
+		From     string `json:"uploaded_from"`
+		Date     string `json:"uploaded_date"`
+		Uploader int    `json:"uploader"`
+		MD5      string `json:"md5"`
+		Size     int    `json:"size"`
+		Id       int    `json:"id"`
+		UUID     string `json:"uuid"`
+	}
+	type Message struct {
+		Data Ret `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		//	log.Println("ERROR ", err)
+		return "", err
+	}
+	return r.Data.UUID, nil
 }
 
 // Dead code
