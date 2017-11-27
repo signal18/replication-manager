@@ -105,7 +105,9 @@
                <md-tabs   md-dynamic-height=""  md-border-bottom="" >
                   <md-tab label="DASHBOARD">
                      <md-content  class="md-padding">
+                        <md-card>
                         <div  ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
+                      </md-card>
                         <div layout="column" layout-gt-xs="row">
                            <div flex-gt-xs="30" class="col-lg-33">
                              <md-card>

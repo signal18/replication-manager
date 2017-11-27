@@ -163,11 +163,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		// laod the grants
 		if s.IsMaster() && cluster.conf.ProxysqlCopyGrants {
 			myprxusermap, err := dbhelper.GetProxySQLUsers(psql.Connection)
-			cluster.LogPrintf("ERROR", "ProxySQL can load users (%s)", err)
+			if err != nil {
+				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON"})
+			}
 			for _, user := range s.Users {
-				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
-					cluster.LogPrintf("INFO", "Add user %s ", user.User)
-					psql.AddUser(user.User, user.Password)
+				if v, ok := myprxusermap[user.User+":"+user.Password]; !ok {
+					cluster.LogPrintf("INFO", "Add user %s %s ", user.User, v)
+					err := psql.AddUser(user.User, user.Password)
+					if err != nil {
+						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON"})
+
+					}
 				}
 			}
 		}
