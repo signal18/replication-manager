@@ -233,7 +233,15 @@
                                  <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button><BR><BR>
-                                 <BR><BR>
+                                 </td>
+                              </tr>
+                             </table>
+                             </md-card>
+                             <BR>
+                             <md-card>
+                                   <table class="table">
+                                      <tr>
+                                         <td>
                                  <label ng-if="settings.test=='true'" for="test" action="/runonetest" >
                                     <p class="sectionheader">Tests</p>
                                  </label><BR>
@@ -256,10 +264,10 @@
                         <md-card>
                         <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
                         <md-card-content>
-                        <pre>
+                        <md-pre>
 
 			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
-       </pre>  </md-card-content>
+       </md-pre>  </md-card-content>
 
            </md-card>
          </div>  </div>
@@ -271,17 +279,17 @@
                          <md-card><md-card-content>
                         <p class="sectionheader">ERRORS</p>
                           <BR>
-                            <pre class="alert alert-danger">
+                            <md-pre class="alert alert-danger">
 				 <div  ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
-       </pre>
+       </md-pre>
                   </md-card-content></md-card>
                   <BR>
                   <md-card><md-card-content>
                         <p class="sectionheader">WARNINGS</p>
                         <BR>
-                        <pre class="alert alert-info">
+                        <md-pre class="alert alert-info">
 					 <div  ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
-				</pre>
+				</md-pre>
           </md-card-content></md-card>
                      </md-content>
                   </md-tab>
@@ -624,7 +632,7 @@
                         <!-- /container -->
 
                       </md-card>
-                      
+
                           </div>
                      </md-content>
                   </md-tab>
