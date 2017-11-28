@@ -21,9 +21,22 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/google/easypki/pkg/easypki"
 )
 
+const (
+	defaultCAName = "ca"
+)
+
+type router struct {
+	PKI *easypki.EasyPKI
+}
+
 func (cluster *Cluster) CreateKey() error {
+
+	//	r := router{PKI: &easypki.EasyPKI{Store: &store.Local{}}}
+	//	var signer *certificate.Bundle
 
 	reader := rand.Reader
 	bitSize := 2048

@@ -847,13 +847,13 @@ func GetUsers(db *sqlx.DB) (map[string]Grant, error) {
 
 func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, error) {
 	vars := make(map[string]Grant)
-	rows, err := db.Queryx("SELECT username, password , CONV(LEFT(MD5(concat(username, password)), 16), 16, 10)    FROM mysql_users")
+	rows, err := db.Queryx("SELECT username, password    FROM mysql_users")
 	if err != nil {
 		return nil, errors.New("Could not get proxySQL user list")
 	}
 	for rows.Next() {
 		var g Grant
-		err = rows.Scan(&g.User, &g.Password, &g.Hash)
+		err = rows.Scan(&g.User, &g.Password)
 		if err != nil {
 			return vars, err
 		}
