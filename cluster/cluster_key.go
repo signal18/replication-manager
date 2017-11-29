@@ -35,6 +35,8 @@ type router struct {
 
 func (cluster *Cluster) CreateKey() error {
 
+	//	local := r.PKI.Store.(*store.Local)
+
 	//	r := router{PKI: &easypki.EasyPKI{Store: &store.Local{}}}
 	//	var signer *certificate.Bundle
 
