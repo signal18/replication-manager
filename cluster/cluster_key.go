@@ -21,17 +21,11 @@ import (
 	"net"
 	"os"
 	"time"
-
-	"github.com/google/easypki/pkg/easypki"
 )
 
-const (
-	defaultCAName = "ca"
-)
-
-type router struct {
-	PKI *easypki.EasyPKI
-}
+//type router struct {
+//	PKI *easypki.EasyPKI
+//}
 
 func (cluster *Cluster) CreateKey() error {
 

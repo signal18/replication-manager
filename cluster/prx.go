@@ -60,11 +60,12 @@ type Backend struct {
 }
 
 const (
-	proxyMaxscale string = "maxscale"
-	proxyHaproxy  string = "haproxy"
-	proxySqlproxy string = "proxysql"
-	proxySpider   string = "mdbsproxy"
-	proxyExternal string = "extproxy"
+	proxyMaxscale    string = "maxscale"
+	proxyHaproxy     string = "haproxy"
+	proxySqlproxy    string = "proxysql"
+	proxySpider      string = "mdbsproxy"
+	proxyExternal    string = "extproxy"
+	proxyMysqlrouter string = "mysqlrouter"
 )
 
 type proxyList []*Proxy
@@ -82,6 +83,9 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.conf.ProxysqlOn {
 		nbproxies += len(strings.Split(cluster.conf.ProxysqlHosts, ","))
+	}
+	if cluster.conf.MysqlRouterOn {
+		nbproxies += len(strings.Split(cluster.conf.MysqlRouterHosts, ","))
 	}
 	if cluster.conf.ExtProxyOn {
 		nbproxies++

@@ -152,6 +152,14 @@ type Config struct {
 	ProxysqlWriterHostgroup            string `mapstructure:"proxysql-writer-hostgroup"`
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup"`
 	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants"`
+	MysqlRouterOn                      bool   `mapstructure:"mysqlrouter"`
+	MysqlRouterHost                    string `mapstructure:"mysqlrouter-servers"`
+	MysqlRouterPort                    string `mapstructure:"mysqlrouter-port"`
+	MysqlRouterUser                    string `mapstructure:"mysqlrouter-user"`
+	MysqlRouterPass                    string `mapstructure:"mysqlrouter-pass"`
+	MysqlRouterWritePort               int    `mapstructure:"mysqlrouter-write-port"`
+	MysqlRouterReadPort                int    `mapstructure:"mysqlrouter-read-port"`
+	MysqlRouterReadWritePort           int    `mapstructure:"mysqlrouter-read-write-port"`
 	RegistryConsul                     bool   `mapstructure:"registry-consul"`
 	RegistryHosts                      string `mapstructure:"registry-servers"`
 	KeyPath                            string `mapstructure:"keypath"`
@@ -219,6 +227,7 @@ type Config struct {
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
+	ProvProxMysqlRouterImg             string `mapstructure:"prov-proxy-docker-mysqlrouter-img"`
 	ProvProxTags                       string `mapstructure:"prov-proxy-tags"`
 	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`

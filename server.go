@@ -240,6 +240,18 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
 		monitorCmd.Flags().BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
 	}
+
+	if WithMySQLRouter == "ON" {
+		monitorCmd.Flags().BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
+		monitorCmd.Flags().StringVar(&conf.MysqlRouterHost, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
+		monitorCmd.Flags().StringVar(&conf.MysqlRouterPort, "mysqlrouter-port", "6603", "MySQLRouter admin port")
+		monitorCmd.Flags().StringVar(&conf.MysqlRouterUser, "mysqlrouter-user", "admin", "MySQLRouter admin user")
+		monitorCmd.Flags().StringVar(&conf.MysqlRouterPass, "mysqlrouter-pass", "mariadb", "MySQLRouter admin password")
+		monitorCmd.Flags().IntVar(&conf.MysqlRouterWritePort, "mysqlrouter-write-port", 3306, "MySQLRouter read-write port to leader")
+		monitorCmd.Flags().IntVar(&conf.MysqlRouterReadPort, "mysqlrouter-read-port", 3307, "MySQLRouter load balance read port to all nodes")
+		monitorCmd.Flags().IntVar(&conf.MysqlRouterReadWritePort, "mysqlrouter-read-write-port", 3308, "MySQLRouter load balance read port to all nodes")
+	}
+
 	if WithMariadbshardproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "Wrapper to use Spider MdbProxy ")
 		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
@@ -353,6 +365,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxProxysqlImg, "prov-proxy-docker-proxysql-img", "signal18/proxysql:1.4", "Docker image for proxysql")
 			monitorCmd.Flags().StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "asosso/maxscale:latest", "Docker image for maxscale proxy")
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:alpine", "Docker image for haproxy")
+			monitorCmd.Flags().StringVar(&conf.ProvProxMysqlRouterImg, "prov-proxy-docker-mysqlrouter-img", "pulsepointinc/mysql-router", "Docker image for MySQLRouter")
 			monitorCmd.Flags().StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-sharding-img", "signal18/shardproxy", "Docker image for sharding proxy")
 		}
 	}
