@@ -243,7 +243,7 @@ func init() {
 
 	if WithMySQLRouter == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
-		monitorCmd.Flags().StringVar(&conf.MysqlRouterHost, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
+		monitorCmd.Flags().StringVar(&conf.MysqlRouterHosts, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterPort, "mysqlrouter-port", "6603", "MySQLRouter admin port")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterUser, "mysqlrouter-user", "admin", "MySQLRouter admin user")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterPass, "mysqlrouter-pass", "mariadb", "MySQLRouter admin password")

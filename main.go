@@ -46,6 +46,7 @@ var (
 	WithOpenSVC           string
 	WithMultiTiers        string
 	WithTarball           string
+	WithMySQLRouter       string
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
