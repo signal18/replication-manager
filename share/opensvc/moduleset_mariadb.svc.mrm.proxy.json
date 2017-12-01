@@ -502,16 +502,16 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://192.168.100.20:10001/clusters/ux_dck_zpool_loop/servers/$3/$4/slave-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
-                    "var_updated": "2017-11-12 09:16:16",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/ux_dck_zpool_loop/servers/$3/$4/slave-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-12-01 16:30:27",
                     "var_name": "proxy_cnf_checkslave",
                     "id": 5964
                 },
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://192.168.100.20:10001/clusters/ux_dck_zpool_loop/servers/$3/$4/master-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
-                    "var_updated": "2017-11-12 09:16:24",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/ux_dck_zpool_loop/servers/$3/$4/master-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-11-14 15:35:03",
                     "var_name": "proxy_cnf_checkmaster",
                     "id": 5965
                 }
