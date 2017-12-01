@@ -66,7 +66,7 @@ prov-proxy-disk-device = "/srv"
 prov-proxy-net-iface = "br-prd"
 prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
-prov-proxy-tags = "spider,smallredolog"
+prov-proxy-tags = "spider,smallredolog,masterslave"
 
 [default]
 arbitration-external = true
