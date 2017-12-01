@@ -857,7 +857,7 @@ func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, error) {
 		if err != nil {
 			return vars, err
 		}
-		vars[g.User+":"+g.Password+"'"] = g
+		vars[g.User+":"+g.Password] = g
 	}
 	return vars, nil
 }
