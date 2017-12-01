@@ -30,9 +30,11 @@ prov-db-disk-size = "1G"
 prov-db-memory = "256"
 prov-db-disk-iops = "300"
 
-mdbshardproxy = true
-mdbshardproxy-hosts = "192.168.100.55:3306"
-mdbshardproxy-user = "root:mariadb"
+
+shardproxy = true
+shardproxy-servers = "192.168.100.55:3306"
+shardproxy-credentials = "root:mariadb"
+
 
 haproxy=true
 haproxy-servers = "192.168.100.50,192.168.100.51"
@@ -69,6 +71,7 @@ prov-proxy-disk-device = "/srv"
 prov-proxy-net-iface = "br-prd"
 prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
+prov-proxy-tags ="spider"
 
 [default]
 arbitration-external = true

@@ -63,7 +63,7 @@ const (
 	proxyMaxscale    string = "maxscale"
 	proxyHaproxy     string = "haproxy"
 	proxySqlproxy    string = "proxysql"
-	proxySpider      string = "mdbsproxy"
+	proxySpider      string = "shardproxy"
 	proxyExternal    string = "extproxy"
 	proxyMysqlrouter string = "mysqlrouter"
 )

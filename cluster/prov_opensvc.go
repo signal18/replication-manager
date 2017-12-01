@@ -707,7 +707,7 @@ show_disabled = false
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerShardproxyTemplate(collector, pod)
@@ -736,19 +736,12 @@ maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
 haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
 proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
 shardproxy_img = ` + collector.ProvProxDockerShardproxyImg + `
-vip_addr =  ` + prx.Host + `
-vip_netmask =  ` + collector.ProvProxNetMask + `
-port_rw = ` + strconv.Itoa(prx.ReadWritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
-port_http = 80
 base_dir = /srv/{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
+max_iops = ` + collector.ProvIops + `
+max_mem = ` + collector.ProvMem + `
+max_cores = ` + collector.ProvCores + `
+micro_srv = ` + collector.ProvMicroSrv + `
+gcomm	 = ` + cluster.GetGComm() + `
 mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
