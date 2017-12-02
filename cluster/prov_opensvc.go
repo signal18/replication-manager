@@ -1029,7 +1029,7 @@ docker_daemon_args = --log-opt max-size=1m `
 [disk#00]
 type = loop
 file = ` + collector.ProvFSPath + `/{svcname}_docker.dsk
-size = {env.size}
+size = 2g
 
 `
 		if collector.ProvFSPool == "zpool" {
