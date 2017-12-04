@@ -355,9 +355,9 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string) (Privileges
 	stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 	row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 	err := row.StructScan(&priv)
-    if strings.Contains(err.Error(), "unsupported Scan") {
-        return priv, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
-    }
+	if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
+		return priv, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+	}
 	return priv, err
 }
 
