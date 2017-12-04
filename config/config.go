@@ -229,6 +229,9 @@ type Config struct {
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
 	ProvProxMysqlRouterImg             string `mapstructure:"prov-proxy-docker-mysqlrouter-img"`
 	ProvProxTags                       string `mapstructure:"prov-proxy-tags"`
+	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`
+	ProvSSLCert                        string `mapstructure:"prov-tls-server-cert"`
+	ProvSSLKey                         string `mapstructure:"prov-tls-server-key"`
 	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`

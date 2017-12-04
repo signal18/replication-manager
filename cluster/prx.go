@@ -375,9 +375,12 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 }
 
 func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
-	//MonitorWriteHeartbeatCredential
 	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	if cluster.conf.MonitorWriteHeartbeatCredential != "" {
+		dsn = cluster.conf.MonitorWriteHeartbeatCredential + "@"
+	}
+
 	if prx.Host != "" {
 		if prx.Tunnel {
 			dsn += "tcp(localhost:" + strconv.Itoa(prx.TunnelWritePort) + ")/" + params
