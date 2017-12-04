@@ -394,7 +394,7 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveReadOnly = true
 		}
-		if server.Variables["lOG_BIN_COMPRESS"] != "ON" {
+		if server.Variables["LOG_BIN_COMPRESS"] != "ON" {
 			server.HaveBinlogCompress = false
 		} else {
 			server.HaveBinlogCompress = true
