@@ -124,3 +124,13 @@ h2, h3 {
 /*     opacity:1; */
 /*     display: none; */
 /* } */
+
+.label {
+  min-width: 200px;
+  display: inline-block;
+}
+
+.log {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1rem;
+}

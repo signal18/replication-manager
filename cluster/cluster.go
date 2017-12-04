@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
@@ -51,6 +52,7 @@ type Cluster struct {
 	ignoreList                 []string
 	conf                       config.Config
 	tlog                       *termlog.TermLog
+	htlog                      *httplog.HttpLog
 	logPtr                     *os.File
 	termlength                 int
 	runUUID                    string
@@ -95,7 +97,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
 	cluster.errorChan = make(chan error)
@@ -108,6 +110,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.testStartCluster = true
 	cluster.conf = conf
 	cluster.tlog = tlog
+	cluster.htlog = httplog
 	cluster.termlength = termlength
 	cluster.cfgGroup = cfgGroup
 	cluster.runUUID = runUUID

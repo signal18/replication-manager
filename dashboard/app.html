@@ -33,7 +33,6 @@
       <script src="/static/angular-material.min.js"></script>
       <script src="/static/angular-route.js"></script>
       <script src="dashboard.js"></script>
-      <link rel="stylesheet" href="/static/css/theme-default.css">
       <link rel="stylesheet" href="/static/angular-material.min.css">
       <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
       <style>
@@ -267,8 +266,13 @@
                         <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
                         <md-card-content>
                         <md-pre>
-
-			   <div  ng-repeat="logline in log track by $index">{{ logline }}</div>
+         <table>
+			   <tr ng-repeat="logline in log">
+           <td class="log">{{ logline.Timestamp }}</td>
+           <td><span class="label label-primary">{{ logline.Level }}</span></td>
+           <td class="log">{{ logline.Text }}<td>
+        </tr>
+      </table>
        </md-pre>  </md-card-content>
 
            </md-card>

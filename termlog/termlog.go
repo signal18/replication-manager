@@ -40,6 +40,10 @@ func (tl *TermLog) Write(b []byte) (n int, err error) {
 func (tl *TermLog) Add(s string) {
 	ts := time.Now().Format("2006-01-02 15:04:05")
 	s = " " + ts + " " + s
+	tl.AddString(s)
+}
+
+func (tl *TermLog) AddString(s string) {
 	tl.L.Lock()
 	tl.Shift(s)
 	tl.L.Unlock()

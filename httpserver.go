@@ -496,7 +496,7 @@ func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 func handlerLog(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-	err := e.Encode(tlog.Buffer)
+	err := e.Encode(htlog.Buffer)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

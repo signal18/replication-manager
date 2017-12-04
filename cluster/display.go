@@ -15,6 +15,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/signal18/replication-manager/httplog"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/nsf/termbox-go"
@@ -73,6 +74,7 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 }
 
 func (cluster *Cluster) LogPrintf(level string, format string, args ...interface{}) {
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	padright := func(str, pad string, lenght int) string {
 		for {
 			str += pad
@@ -87,7 +89,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		// Only print debug messages if loglevel > 1
 	} else {
 		if cluster.conf.LogFile != "" {
-			f := fmt.Sprintln(fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")), format)
+			f := fmt.Sprintln(stamp, format)
 
 			io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
 		}
@@ -96,6 +98,17 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			cluster.display()
 		}
 	}
+
+	if cluster.conf.HttpServ {
+		msg := httplog.Message{
+			Group:     cluster.cfgGroup,
+			Level:     level,
+			Timestamp: stamp,
+			Text:      fmt.Sprintf(cliformat, args...),
+		}
+		cluster.htlog.Add(msg)
+	}
+
 	if cluster.conf.Daemon {
 		// wrap logrus levels
 		switch level {

@@ -35,6 +35,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/termlog"
@@ -45,6 +46,7 @@ import (
 // Global variables
 var (
 	tlog           termlog.TermLog
+	htlog          httplog.HttpLog
 	termlength     int
 	runUUID        string
 	repmgrHostname string
@@ -512,6 +514,7 @@ For interacting with this daemon use,
 		}
 		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 		tlog = termlog.NewTermLog(loglen)
+		htlog = httplog.NewHttpLog(1000)
 
 		go apiserver()
 
@@ -578,7 +581,7 @@ For interacting with this daemon use,
 				myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
 				myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 			}
-			currentCluster.Init(myClusterConf, gl, &tlog, termlength, runUUID, Version, repmgrHostname, k)
+			currentCluster.Init(myClusterConf, gl, &tlog, &htlog, termlength, runUUID, Version, repmgrHostname, k)
 			clusters[gl] = currentCluster
 			go currentCluster.Run()
 			currentClusterName = gl
