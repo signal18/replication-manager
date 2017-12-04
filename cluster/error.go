@@ -22,7 +22,7 @@ var clusterError = map[string]string{
 	"ERR00012": "Could not find a master in topology",
 	"ERR00013": "Binary log disabled on slave: %s",
 	"ERR00014": "Could not get binlog dump count on server %s: %s",
-	"ERR00015": "Could not get get privileges for user %s on server %s: %s",
+	"ERR00015": "Could not get privileges for user %s on server %s: %s",
 	"ERR00016": "Master is unreachable but slaves are replicating",
 	"ERR00017": "Unable to fetch MaxScale monitoring information",
 	"ERR00018": "Could not connect to MaxScale: %s",
