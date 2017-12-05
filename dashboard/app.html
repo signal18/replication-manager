@@ -239,19 +239,19 @@
                              </table>
                              </md-card>
                              <BR>
-                             <md-card>
+                             <md-card ng-if="settings.test=='true'">
                                    <table class="table">
                                       <tr>
                                          <td>
-                                 <label ng-if="settings.test=='true'" for="test" action="/runonetest" >
+                                 <labelfor="test" action="/runonetest" >
                                     <p class="sectionheader">Tests</p>
                                  </label><BR>
-                                 <md-select ng-if="settings.test=='true'" name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
+                                 <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
                                     <md-option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
                                  </md-select><BR><BR>
-                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
-                                 <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
+                                 <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
+                                 <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
+                                 <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
 
                               </td>
                               <td>
