@@ -53,6 +53,8 @@ var tests = []string{
 }
 
 const recoverTime = 8
+const LvlErr = "ERROR"
+const LvlInfo = "INFO"
 
 type RegTest struct {
 }

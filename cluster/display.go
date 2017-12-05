@@ -21,6 +21,14 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
+// Log levels
+const (
+	LvlInfo = "INFO"
+	LvlWarn = "WARN"
+	LvlErr  = "ERROR"
+	LvlDbg  = "DEBUG"
+)
+
 func (cluster *Cluster) display() {
 	if cluster.cfgGroup != cluster.cfgGroupDisplay {
 		return
