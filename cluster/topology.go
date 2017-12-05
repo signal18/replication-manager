@@ -205,7 +205,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			for _, sv2 := range cluster.servers {
 				if sv2.URL != sv.URL && sv2.IsRelay == false && !sv2.IsDown() {
 					rplhost, _ := misc.GetIPSafe(sv2.Host)
-					rpriv, err := dbhelper.GetPrivileges(sv2.Conn, cluster.rplUser, sv2.Host, rplhost)
+					rpriv, err := dbhelper.GetPrivileges(sv.Conn, cluster.rplUser, sv2.Host, rplhost)
 					if err != nil {
 						cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
 					}
