@@ -105,16 +105,16 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			cluster.tlog.Add(fmt.Sprintf(format, args...))
 			cluster.display()
 		}
-	}
 
-	if cluster.conf.HttpServ {
-		msg := httplog.Message{
-			Group:     cluster.cfgGroup,
-			Level:     level,
-			Timestamp: stamp,
-			Text:      fmt.Sprintf(cliformat, args...),
+		if cluster.conf.HttpServ {
+			msg := httplog.Message{
+				Group:     cluster.cfgGroup,
+				Level:     level,
+				Timestamp: stamp,
+				Text:      fmt.Sprintf(cliformat, args...),
+			}
+			cluster.htlog.Add(msg)
 		}
-		cluster.htlog.Add(msg)
 	}
 
 	if cluster.conf.Daemon {
