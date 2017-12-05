@@ -124,7 +124,7 @@ func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
 		err := cluster.GetMaster().SetReadOnly()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not set  master as read-only, %s", err)
+			cluster.LogPrintf(LvlErr, "Could not set  master as read-only, %s", err)
 		}
 	}
 }

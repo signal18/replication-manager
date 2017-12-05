@@ -47,13 +47,13 @@ func testFailoverAssyncAutoRejoinNowrites(cluster *cluster.Cluster, conf string,
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR", "Inconsitant slave")
+		cluster.LogPrintf(LvlErr, "Inconsitant slave")
 
 		return false
 	}
 
 	if cluster.CheckSlavesRunning() == false {
-		cluster.LogPrintf("ERROR", "Replication issue")
+		cluster.LogPrintf(LvlErr, "Replication issue")
 
 		return false
 	}

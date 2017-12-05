@@ -44,25 +44,25 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		case stateMaster:
 			err = psql.SetWriter(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as writer (%s)", s.URL, err)
 			}
 		case stateSlave:
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 		case stateFailed:
 			// Let ProxySQL handle that case
 		case stateUnconn:
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "ProxySQL could not load servers to runtime (%s)", err)
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
 }
 
@@ -126,20 +126,20 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave {
-			cluster.LogPrintf("DEBUG", "ProxySQL setting online rejoining server %s", s.URL)
+			cluster.LogPrintf(LvlDbg, "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
 			}
 			updated = true
 		}
 
 		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-			cluster.LogPrintf("DEBUG", "ProxySQL setting offline standalone server %s", s.URL)
+			cluster.LogPrintf(LvlDbg, "ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "ProxySQL could not set %s as offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as offline (%s)", s.URL, err)
 			}
 			updated = true
 
@@ -149,13 +149,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if s.State == stateMaster {
 				err = psql.SetWriter(s.Host, s.Port)
 				if err != nil {
-					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as writer (%s)", s.URL, err)
+					cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as writer (%s)", s.URL, err)
 				}
 				updated = true
 			} else if s.IsSlave {
 				err = psql.SetReader(s.Host, s.Port)
 				if err != nil {
-					cluster.LogPrintf("ERROR", "ProxySQL could not set %s as reader (%s)", s.URL, err)
+					cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
 				}
 				updated = true
 			}
@@ -168,7 +168,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			}
 			for _, user := range s.Users {
 				if v, ok := myprxusermap[user.User+":"+user.Password]; !ok {
-					cluster.LogPrintf("INFO", "Add user %s %s ", user.User, v)
+					cluster.LogPrintf(LvlInfo, "Add user %s %s ", user.User, v)
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
 						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON"})
@@ -181,7 +181,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	if updated {
 		err = psql.LoadServersToRuntime()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "ProxySQL could not load servers to runtime (%s)", err)
+			cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 		}
 	}
 }
@@ -200,6 +200,6 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, host string, port s
 
 	err = psql.SetOfflineSoft(host, port)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "ProxySQL could not set %s:%s as offline_soft (%s)", host, port, err)
+		cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", host, port, err)
 	}
 }

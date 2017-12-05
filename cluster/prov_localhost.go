@@ -52,9 +52,9 @@ func (cluster *Cluster) LocalhostProvisionProxies() error {
 
 func (cluster *Cluster) LocalhostProvisionDatabases() error {
 	for _, server := range cluster.servers {
-		cluster.LogPrintf("INFO", "Starting Server %s", server.DSN)
+		cluster.LogPrintf(LvlInfo, "Starting Server %s", server.DSN)
 		/*if server.Conn.Ping() == nil {
-			cluster.LogPrintf("INFO", "DB Server is not stop killing now %s", server.URL)
+			cluster.LogPrintf(LvlInfo, "DB Server is not stop killing now %s", server.URL)
 			if server.Id == "" {
 				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
 				pid, _ := readPidFromFile(pidfile)
@@ -87,18 +87,18 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 	if prx.Type == proxySpider {
-		cluster.LogPrintf("INFO", "Bootstrap MariaDB Sharding Cluster")
+		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 		err := srv.Refresh()
 		if err == nil {
-			cluster.LogPrintf("WARNING", "Can connect to requested signal18 sharding proxy")
+			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
 			//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
 			return nil
 		}
 		srv.ClusterGroup = cluster
 		err = cluster.LocalhostProvisionDatabaseService(srv)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Bootstrap MariaDB Sharding Cluster Failed")
+			cluster.LogPrintf(LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
 			return err
 		}
 		srv.Close()
@@ -114,15 +114,15 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	out, err := exec.Command("rm", "-rf", path).CombinedOutput()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 	}
-	cluster.LogPrintf("INFO", "Remove datadir done: %s", string(out))
+	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", string(out))
 
 	out, err = exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data"+cluster.conf.ProvDatadirVersion, path).CombinedOutput()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 	}
-	cluster.LogPrintf("INFO", "Copy fresh datadir done: %s", string(out))
+	cluster.LogPrintf(LvlInfo, "Copy fresh datadir done: %s", string(out))
 	time.Sleep(time.Millisecond * 2000)
 	err = cluster.LocalhostStartDatabaseService(server)
 	if err != nil {
@@ -156,23 +156,23 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	path := cluster.conf.WorkingDir + "/" + server.Id
 	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err)
+			cluster.LogPrintf(LvlErr, "%s", err)
 			return err
 		}*/
 	usr, err := user.Current()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return err
 	}
 	mariadbdCmd := exec.Command(cluster.conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+cluster.conf.ShareDir+"/tests/etc/"+server.TestConfig, "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+cluster.conf.WorkingDir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
-	cluster.LogPrintf("INFO", "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
 
 	exitloop := 0
 	for exitloop < 30 {
 		time.Sleep(time.Millisecond * 2000)
-		cluster.LogPrintf("INFO", "Waiting database startup ..")
+		cluster.LogPrintf(LvlInfo, "Waiting database startup ..")
 		dsn := "root:@unix(" + cluster.conf.WorkingDir + "/" + server.Id + ".sock)/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
@@ -180,7 +180,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 			conn.Exec("set sql_log_bin=0")
 			grants := "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
 			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
-			cluster.LogPrintf("INFO", "%s", grants)
+			cluster.LogPrintf(LvlInfo, "%s", grants)
 			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			conn.Exec(grants2)
 
@@ -190,10 +190,10 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 
 	}
 	if exitloop == 101 {
-		cluster.LogPrintf("INFO", "Database started.")
+		cluster.LogPrintf(LvlInfo, "Database started.")
 
 	} else {
-		cluster.LogPrintf("INFO", "Database timeout.")
+		cluster.LogPrintf(LvlInfo, "Database timeout.")
 		return errors.New("Failed to start")
 	}
 

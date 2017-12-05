@@ -156,7 +156,7 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf("INFO", "Starting Database service %s", server.Id)
+	cluster.LogPrintf(LvlInfo, "Starting Database service %s", server.Id)
 	if cluster.conf.Enterprise {
 		cluster.OpenSVCStartService(server)
 	} else {
@@ -182,7 +182,7 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
-		cluster.LogPrintf("INFO", "Waiting for failover stopped.")
+		cluster.LogPrintf(LvlInfo, "Waiting for failover stopped.")
 	}
 	time.Sleep(recoverTime * time.Second)
 }
@@ -194,25 +194,25 @@ func (cluster *Cluster) WaitFailoverEnd() error {
 }
 
 func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
-	cluster.LogPrintf("INFO", "Waiting failover end")
+	cluster.LogPrintf(LvlInfo, "Waiting failover end")
 	defer wg.Done()
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 15 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting failover end")
+			cluster.LogPrintf(LvlInfo, "Waiting failover end")
 			exitloop++
 		case <-cluster.failoverCond.Recv:
-			cluster.LogPrintf("INFO", "Failover end receive from channel failoverCond")
+			cluster.LogPrintf(LvlInfo, "Failover end receive from channel failoverCond")
 			return
 		default:
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Failover end")
+		cluster.LogPrintf(LvlInfo, "Failover end")
 	} else {
-		cluster.LogPrintf("ERROR", "Failover end timeout")
+		cluster.LogPrintf(LvlErr, "Failover end timeout")
 		return
 	}
 	return
@@ -226,7 +226,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 	for exitloop < 15 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting switchover end")
+			cluster.LogPrintf(LvlInfo, "Waiting switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
 			return
@@ -234,9 +234,9 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Switchover end")
+		cluster.LogPrintf(LvlInfo, "Switchover end")
 	} else {
-		cluster.LogPrintf("ERROR", "Switchover end timeout")
+		cluster.LogPrintf(LvlErr, "Switchover end timeout")
 		return
 	}
 	return
@@ -253,7 +253,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting Rejoin")
+			cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
 			return
@@ -264,10 +264,10 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	}
 	if exitloop < 15 {
-		cluster.LogPrintf("INFO", "Rejoin Finished")
+		cluster.LogPrintf(LvlInfo, "Rejoin Finished")
 
 	} else {
-		cluster.LogPrintf("ERROR", "Rejoin timeout")
+		cluster.LogPrintf(LvlErr, "Rejoin timeout")
 		return
 	}
 	return
@@ -276,11 +276,11 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 func (cluster *Cluster) WaitClusterStop() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
+	cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
 	for exitloop < 10 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for cluster shutdown")
+			cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
 			exitloop++
 			// All cluster down
 			if cluster.sme.IsInState("ERR00021") == true {
@@ -290,9 +290,9 @@ func (cluster *Cluster) WaitClusterStop() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Cluster is shutdown")
+		cluster.LogPrintf(LvlInfo, "Cluster is shutdown")
 	} else {
-		cluster.LogPrintf("ERROR", "Cluster shutdown timeout")
+		cluster.LogPrintf(LvlErr, "Cluster shutdown timeout")
 		return errors.New("Failed to stop the cluster")
 	}
 	return nil
@@ -301,11 +301,11 @@ func (cluster *Cluster) WaitClusterStop() error {
 func (cluster *Cluster) WaitProxyEqualMaster() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
-	cluster.LogPrintf("INFO", "Waiting for proxy to join master")
+	cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
 	for exitloop < 60 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for proxy to join master")
+			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
 			exitloop++
 			// All cluster down
 			if cluster.IsProxyEqualMaster() == true {
@@ -315,9 +315,9 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Proxy can join master")
+		cluster.LogPrintf(LvlInfo, "Proxy can join master")
 	} else {
-		cluster.LogPrintf("ERROR", "Proxy to join master timeout")
+		cluster.LogPrintf(LvlErr, "Proxy to join master timeout")
 		return errors.New("Failed to join master via proxy")
 	}
 	return nil
@@ -329,7 +329,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting MariaDB shutdown")
+			cluster.LogPrintf(LvlInfo, "Waiting MariaDB shutdown")
 			exitloop++
 			_, err := os.FindProcess(server.Process.Pid)
 			if err != nil {
@@ -339,9 +339,9 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "MariaDB shutdown")
+		cluster.LogPrintf(LvlInfo, "MariaDB shutdown")
 	} else {
-		cluster.LogPrintf("INFO", "MariaDB shutdown timeout")
+		cluster.LogPrintf(LvlInfo, "MariaDB shutdown timeout")
 		return errors.New("Failed to Stop MariaDB")
 	}
 	return nil
@@ -353,7 +353,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for database start %s", server.URL)
+			cluster.LogPrintf(LvlInfo, "Waiting for database start %s", server.URL)
 			exitloop++
 
 			_, err := dbhelper.GetStatus(server.Conn)
@@ -364,22 +364,22 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Database started")
+		cluster.LogPrintf(LvlInfo, "Database started")
 	} else {
-		cluster.LogPrintf("INFO", "Database start timeout")
+		cluster.LogPrintf(LvlInfo, "Database start timeout")
 		return errors.New("Failed to Start MariaDB")
 	}
 	return nil
 }
 
 func (cluster *Cluster) WaitBootstrapDiscovery() error {
-	cluster.LogPrintf("INFO", "Waiting Bootstrap and discovery")
+	cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting Bootstrap and discovery")
+			cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 			exitloop++
 			if cluster.sme.IsDiscovered() {
 				exitloop = 100
@@ -388,22 +388,22 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Cluster is Bootstraped and discovery")
+		cluster.LogPrintf(LvlInfo, "Cluster is Bootstraped and discovery")
 	} else {
-		cluster.LogPrintf("ERROR", "Bootstrap timeout")
+		cluster.LogPrintf(LvlErr, "Bootstrap timeout")
 		return errors.New("Failed Bootstrap timeout")
 	}
 	return nil
 }
 
 func (cluster *Cluster) waitMasterDiscovery() error {
-	cluster.LogPrintf("INFO", "Waiting Master Found")
+	cluster.LogPrintf(LvlInfo, "Waiting Master Found")
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting Master Found")
+			cluster.LogPrintf(LvlInfo, "Waiting Master Found")
 			exitloop++
 			if cluster.GetMaster() != nil {
 				exitloop = 100
@@ -412,9 +412,9 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "Master founded")
+		cluster.LogPrintf(LvlInfo, "Master founded")
 	} else {
-		cluster.LogPrintf("ERROR", "Master found timeout")
+		cluster.LogPrintf(LvlErr, "Master found timeout")
 		return errors.New("Failed Master search timeout")
 	}
 	return nil
@@ -433,11 +433,11 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 
-	cluster.LogPrintf("INFO", "Waiting for databases to start")
+	cluster.LogPrintf(LvlInfo, "Waiting for databases to start")
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf("INFO", "Waiting for databases to start")
+			cluster.LogPrintf(LvlInfo, "Waiting for databases to start")
 			exitloop++
 			if cluster.AllDatabaseCanConn() && cluster.IsProvision() {
 				exitloop = 100
@@ -446,9 +446,9 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 		}
 	}
 	if exitloop == 100 {
-		cluster.LogPrintf("INFO", "All databases can connect")
+		cluster.LogPrintf(LvlInfo, "All databases can connect")
 	} else {
-		cluster.LogPrintf("ERROR", "Timeout waiting for database to be connected")
+		cluster.LogPrintf(LvlErr, "Timeout waiting for database to be connected")
 		return errors.New("Connections to databases failure")
 	}
 	return nil
@@ -456,27 +456,27 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 
 func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
-	cluster.LogPrintf("INFO", "Cleaning up replication on existing servers")
+	cluster.LogPrintf(LvlInfo, "Cleaning up replication on existing servers")
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.servers {
 		err := server.Refresh()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Refresh failed in Cleanup on server %s %s", server.URL, err)
+			cluster.LogPrintf(LvlErr, "Refresh failed in Cleanup on server %s %s", server.URL, err)
 			return err
 		}
 		if cluster.conf.Verbose {
-			cluster.LogPrintf("INFO", "SetDefaultMasterConn on server %s ", server.URL)
+			cluster.LogPrintf(LvlInfo, "SetDefaultMasterConn on server %s ", server.URL)
 		}
 		err = dbhelper.SetDefaultMasterConn(server.Conn, cluster.conf.MasterConn)
 		if err != nil {
 			if cluster.conf.Verbose {
-				cluster.LogPrintf("INFO", "RemoveFailoverState on server %s ", server.URL)
+				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
 			}
 			cluster.sme.RemoveFailoverState()
 			return err
 		}
 		if cluster.conf.Verbose {
-			cluster.LogPrintf("INFO", "ResetMaster on server %s ", server.URL)
+			cluster.LogPrintf(LvlInfo, "ResetMaster on server %s ", server.URL)
 		}
 		err = dbhelper.ResetMaster(server.Conn)
 		if err != nil {
@@ -484,7 +484,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			return err
 		}
 		if cluster.conf.Verbose {
-			cluster.LogPrintf("INFO", "Stop all slaves or stop slave %s ", server.URL)
+			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
 		if server.DBVersion.IsMariaDB() {
 			err = dbhelper.StopAllSlaves(server.Conn)
@@ -496,7 +496,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			return err
 		}
 		if cluster.conf.Verbose {
-			cluster.LogPrintf("INFO", "Reset all slaves", server.URL)
+			cluster.LogPrintf(LvlInfo, "Reset all slaves", server.URL)
 		}
 		err = dbhelper.ResetAllSlaves(server.Conn)
 		if err != nil {
@@ -505,7 +505,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		}
 		if server.DBVersion.IsMariaDB() {
 			if cluster.conf.Verbose {
-				cluster.LogPrintf("INFO", "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
+				cluster.LogPrintf(LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
 			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
 			if err != nil {
@@ -527,13 +527,13 @@ func (cluster *Cluster) BootstrapReplication() error {
 	var err error
 
 	if cluster.conf.MultiMasterWsrep {
-		cluster.LogPrintf("INFO", "Galera cluster ignoring replication setup")
+		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
 	if cluster.CleanAll {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Cleanup error %s", err)
+			cluster.LogPrintf(LvlErr, "Cleanup error %s", err)
 		}
 	}
 	for _, server := range cluster.servers {
@@ -567,7 +567,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 	}
 	//	_, err = cluster.servers[masterKey].Conn.Exec("RESET MASTER")
 	//	if err != nil {
-	//		cluster.LogPrintf("INFO", "RESET MASTER failed on master"
+	//		cluster.LogPrintf(LvlInfo, "RESET MASTER failed on master"
 	//	}
 	// Assume master-slave if nothing else is declared && mariadb >10
 	if cluster.conf.MultiMasterRing == false && cluster.conf.MultiMaster == false && cluster.conf.MxsBinlogOn == false && cluster.conf.MultiTierSlave == false {
@@ -599,7 +599,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
 						Mode:      "SLAVE_POS",
 					})
-					cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
+					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 				} else if hasMyGTID {
 
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -612,7 +612,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Mode:      "MASTER_AUTO_POSITION",
 					})
 					//  Missing  multi source cluster.conf.MasterConn
-					cluster.LogPrintf("INFO", "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
+					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.servers[masterKey].URL)
 
 				} else {
 					//*ss, errss := cluster.servers[masterKey].GetSlaveStatus(cluster.servers[masterKey].ReplicationSourceName)
@@ -630,11 +630,11 @@ func (cluster *Cluster) BootstrapReplication() error {
 					})
 
 					//  Missing  multi source cluster.conf.MasterConn
-					cluster.LogPrintf("INFO", "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
+					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with old replication style and %s as master", cluster.servers[masterKey].URL)
 
 				}
 				if err != nil {
-					cluster.LogPrintf("ERROR", "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
+					cluster.LogPrintf(LvlErr, "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				if server.State != stateFailed && cluster.conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					_, err = server.Conn.Exec("START SLAVE '" + cluster.conf.MasterConn + "'")
@@ -643,7 +643,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				}
 
 				if err != nil {
-					cluster.LogPrintf("ERROR", "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
+					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.servers[masterKey].URL, err)
 				}
 				server.SetReadOnly()
 			}
@@ -695,7 +695,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 				server.SetReadOnly()
 			}
 		}
-		cluster.LogPrintf("INFO", "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
+		cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.servers[masterKey].URL)
 	}
 	// Multi Master
 	if cluster.conf.MultiMaster == true {
@@ -745,14 +745,14 @@ func (cluster *Cluster) BootstrapReplication() error {
 			i := (len(cluster.servers) + key - 1) % len(cluster.servers)
 			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.servers[i].CurrentGtid.Sprint() + "\"")
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Replication bootstrap failed for setting gtid %s", cluster.servers[i].CurrentGtid.Sprint())
+				cluster.LogPrintf(LvlErr, "Replication bootstrap failed for setting gtid %s", cluster.servers[i].CurrentGtid.Sprint())
 				return err
 			}
 			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=slave_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.servers[i].ReplicationSourceName, cluster.servers[i].Host, cluster.servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.conf.MasterConnectRetry, 1)
 			_, err := server.Conn.Exec(stmt)
 			if err != nil {
 				cluster.sme.RemoveFailoverState()
-				cluster.LogPrintf("ERROR", "Bootstrap Relication error %s %s", stmt, err)
+				cluster.LogPrintf(LvlErr, "Bootstrap Relication error %s %s", stmt, err)
 
 				return errors.New(fmt.Sprintln(stmt, err))
 			}

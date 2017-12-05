@@ -58,7 +58,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
 					if err != nil {
-						cluster.LogPrintf("WARN", "Can not set heartbeat table to %s", url)
+						cluster.LogPrintf(LvlWarn, "Can not set heartbeat table to %s", url)
 						return
 					}
 					err = dbhelper.SetMultiSourceRepl(cluster.servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")

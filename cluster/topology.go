@@ -43,19 +43,19 @@ func (cluster *Cluster) newServerList() error {
 	var err error
 	err = cluster.repmgrFlagCheck()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed to validate config: %s", err)
+		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
 	}
-	cluster.LogPrintf("INFO", "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
+	cluster.LogPrintf(LvlInfo, "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
 
 		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
+			cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
 		}
 		if cluster.conf.Verbose {
-			cluster.LogPrintf("INFO", "New server monitored: %v", cluster.servers[k].URL)
+			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.servers[k].URL)
 		}
 	}
 
@@ -86,7 +86,7 @@ func (cluster *Cluster) pingServerList() {
 						// Otherwise, let the monitor check function handle failures
 						if sv.State == "" {
 							if cluster.conf.LogLevel > 2 {
-								cluster.LogPrintf("DEBUG", "State failed set by topology detection INF00001")
+								cluster.LogPrintf(LvlDbg, "State failed set by topology detection INF00001")
 							}
 							sv.State = stateFailed
 						}
@@ -115,11 +115,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 	//	cluster.pingServerList()
 	if cluster.sme.IsInFailover() {
-		cluster.LogPrintf("DEBUG", "In Failover skip topology detection")
+		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
 	if cluster.conf.LogLevel > 2 {
-		cluster.LogPrintf("DEBUG", "Entering topology detection")
+		cluster.LogPrintf(LvlDbg, "Entering topology detection")
 	}
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
@@ -134,14 +134,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 		err := sv.Refresh()
 		if err != nil {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Server %s could not be refreshed: %s", sv.URL, err)
+				cluster.LogPrintf(LvlDbg, "Server %s could not be refreshed: %s", sv.URL, err)
 			}
 			continue
 		} */
 
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Server %s is configured as a slave", sv.URL)
+				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			sv.replicationCheck()
 			cluster.slaves = append(cluster.slaves, sv)
@@ -160,11 +160,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG", "Server %s has no slaves connected", sv.URL)
+					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected", sv.URL)
 				}
 			} else {
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf("DEBUG", "Server %s was set master as last non slave", sv.URL)
+					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 				}
 				cluster.master = cluster.servers[k]
 				cluster.master.State = stateMaster
@@ -173,16 +173,16 @@ func (cluster *Cluster) TopologyDiscover() error {
 		}
 		// Check replication manager user privileges on live servers
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG", "Privilege check on %s", sv.URL)
+			cluster.LogPrintf(LvlDbg, "Privilege check on %s", sv.URL)
 		}
 		if sv.State != "" && !sv.IsDown() && sv.IsRelay == false {
 			myhost, err := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Cant get host for connection user on %s: %s", sv.URL, err)
+				cluster.LogPrintf(LvlErr, "Cant get host for connection user on %s: %s", sv.URL, err)
 			}
 			myip, err := misc.GetIPSafe(myhost)
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
+				cluster.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
 			}
 			if err != nil {
 				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
@@ -303,7 +303,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.master.State = stateMaster
 						cluster.master.SetReadWrite()
 						if cluster.conf.LogLevel > 2 {
-							cluster.LogPrintf("DEBUG", "Server %s was autodetected as a master", s.URL)
+							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
@@ -313,7 +313,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.master = cluster.servers[k]
 						cluster.master.State = stateMaster
 						if cluster.conf.LogLevel > 2 {
-							cluster.LogPrintf("DEBUG", "Server %s was autodetected as a master", s.URL)
+							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
@@ -331,7 +331,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 							if cluster.conf.FailRestartUnsafe {
 								cluster.master = cluster.servers[k]
 								cluster.master.PrevState = stateMaster
-								cluster.LogPrintf("INFO", "Assuming failed server %s was a master", s.URL)
+								cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
 							}
 							break
 						}
@@ -359,7 +359,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 				if sl.IsRelay == false {
 					if cluster.conf.LogLevel > 2 {
-						cluster.LogPrintf("DEBUG", "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
+						cluster.LogPrintf(LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
@@ -403,7 +403,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}*/
 	if cluster.IsProvision() {
 		if len(cluster.crashes) > 0 {
-			cluster.LogPrintf("DEBUG", "Purging crashes, all databses nodes up")
+			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.crashes = nil
 			cluster.Save()
 
@@ -429,7 +429,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 		if allslavefailed {
 			if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
 				// forget the master if safe mode
-				cluster.LogPrintf("INFO", "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+				cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 				cluster.lastmaster = cluster.master
 				cluster.master = nil
 
@@ -444,7 +444,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 
 func (cluster *Cluster) PrintTopology() {
 	for k, v := range cluster.servers {
-		cluster.LogPrintf("INFO", "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
+		cluster.LogPrintf(LvlInfo, "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
 }
 

@@ -19,7 +19,7 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	time.Sleep(2 * time.Second)
@@ -27,25 +27,25 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 	for i := 0; i < 2; i++ {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+			cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 		}
 		cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 		SaveMasterURL := cluster.GetMaster().URL
 		cluster.SwitchoverWaitTest()
 		cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 		if SaveMasterURL == cluster.GetMaster().URL {
-			cluster.LogPrintf("ERROR", "same server URL after switchover")
+			cluster.LogPrintf(LvlErr, "same server URL after switchover")
 			return false
 		}
 	}
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {
-			cluster.LogPrintf("ERROR", "Slave  %s issue on replication", s.URL)
+			cluster.LogPrintf(LvlErr, "Slave  %s issue on replication", s.URL)
 			return false
 		}
 		if s.GetReplicationServerID()!= cluster.GetMaster().ServerID {
-			cluster.LogPrintf("ERROR", "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
+			cluster.LogPrintf(LvlErr, "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
 			return false
 		}
 	}

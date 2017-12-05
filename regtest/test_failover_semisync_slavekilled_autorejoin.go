@@ -48,7 +48,7 @@ func testFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf st
 	SaveMaster.ReadAllRelayLogs()
 
 	if killedSlave.HasSiblings(cluster.GetSlaves()) == false {
-		cluster.LogPrintf("ERROR", "Not all slaves pointing to master")
+		cluster.LogPrintf(LvlErr, "Not all slaves pointing to master")
 
 		return false
 	}

@@ -406,7 +406,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -418,7 +418,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -439,7 +439,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -450,7 +450,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -470,7 +470,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 		var prxs []*cluster.Proxy
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -478,7 +478,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err = e.Encode(prxs)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -500,7 +500,7 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err := e.Encode(a)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -560,7 +560,7 @@ func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Reques
 	if mycluster != nil {
 		err := mycluster.BootstrapReplicationCleanup()
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error Cleanup Replication: %s", err)
+			mycluster.LogPrintf(LvlErr, "API Error Cleanup Replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -643,7 +643,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		err := mycluster.ProvisionServices()
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error Bootstrap Micro Services: ", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -661,7 +661,7 @@ func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		err := mycluster.Bootstrap()
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error Bootstrap Micro Services + replication ", err)
+			mycluster.LogPrintf(LvlErr, "API Error Bootstrap Micro Services + replication ", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -690,17 +690,17 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.LogPrintf("INFO", "Rest API receive switchover request")
+		mycluster.LogPrintf(LvlInfo, "Rest API receive switchover request")
 		savedPrefMaster := mycluster.GetConf().PrefMaster
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if mycluster.IsMasterFailed() {
-			mycluster.LogPrintf("ERROR", "Master failed, cannot initiate switchover")
+			mycluster.LogPrintf(LvlErr, "Master failed, cannot initiate switchover")
 			http.Error(w, "Master failed", http.StatusBadRequest)
 			return
 		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
-		mycluster.LogPrintf("INFO", "Was ask for prefered master: %s", newPrefMaster)
+		mycluster.LogPrintf(LvlInfo, "Was ask for prefered master: %s", newPrefMaster)
 		if mycluster.IsInHostList(newPrefMaster) {
 			mycluster.SetPrefMaster(newPrefMaster)
 		}
@@ -725,7 +725,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 
 			err := json.Unmarshal(data, &srvs)
 			if err != nil {
-				mycluster.LogPrintf("ERROR", "API Error decoding JSON: ", err)
+				mycluster.LogPrintf(LvlErr, "API Error decoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
@@ -924,7 +924,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 		if len(res) > 0 {
 			err := e.Encode(res[0])
 			if err != nil {
-				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+				mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -936,7 +936,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 			test.Name = vars["testName"]
 			err := e.Encode(test)
 			if err != nil {
-				mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+				mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -968,7 +968,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err := e.Encode(res)
 		if err != nil {
-			mycluster.LogPrintf("ERROR", "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -1062,7 +1062,7 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.LogPrintf("INFO", "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
+		mycluster.LogPrintf(LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
 		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 	} else {
 

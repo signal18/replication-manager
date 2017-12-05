@@ -141,7 +141,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 	}
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG", "Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.URL == cluster.conf.PrefMaster {
 			return server
@@ -153,7 +153,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	for _, server := range cluster.servers {
 		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf("DEBUG", "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
 		}
 		if server.IsRelay {
 			return server
@@ -211,7 +211,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		if len(s.Replications) > 0 {
 
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
+				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
 			}
 			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
 				if s.GetReplicationServerID() == server.ServerID {

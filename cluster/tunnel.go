@@ -115,7 +115,7 @@ func (cluster *Cluster) sshTunnelGetLocalPort() int {
 
 		listen, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Can't get tunnel port %s", err)
+			cluster.LogPrintf(LvlErr, "Can't get tunnel port %s", err)
 			continue
 		}
 

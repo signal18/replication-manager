@@ -45,7 +45,7 @@ func testFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf stri
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf("ERROR", "Inconsitant slave")
+		cluster.LogPrintf(LvlErr, "Inconsitant slave")
 
 		return false
 	}

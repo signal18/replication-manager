@@ -18,7 +18,7 @@ func testSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, tes
 	for _, s := range cluster.GetSlaves() {
 		_, err := s.Conn.Exec("set global read_only=1")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err)
+			cluster.LogPrintf(LvlErr, "%s", err)
 			return false
 		}
 	}

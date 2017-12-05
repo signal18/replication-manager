@@ -18,12 +18,12 @@ func testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cluster *cluster.Cluster, co
 	cluster.SetRplChecks(true)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	err = cluster.StopSlaves()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	time.Sleep(15 * time.Second)
@@ -33,12 +33,12 @@ func testSwitchoverAllSlavesDelayRplCheckNoSemiSync(cluster *cluster.Cluster, co
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.StartSlaves()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf(LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 	return true

@@ -12,7 +12,7 @@ func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, con
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 
@@ -27,7 +27,7 @@ func testFailoverAllSlavesDelayRplChecksNoSemiSync(cluster *cluster.Cluster, con
 	cluster.FailoverNow()
 	cluster.LogPrintf("TEST", " New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Old master %s !=  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf(LvlErr, "Old master %s !=  New master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

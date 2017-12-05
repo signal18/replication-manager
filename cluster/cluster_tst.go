@@ -47,7 +47,7 @@ func (cluster *Cluster) PrepareBench() error {
 
 		cmdprepErr := cmdprep.Run()
 		if cmdprepErr != nil {
-			cluster.LogPrintf("ERROR", "%s", cmdprepErr)
+			cluster.LogPrintf(LvlErr, "%s", cmdprepErr)
 			return cmdprepErr
 		}
 		cluster.LogPrintf("BENCH", "%s", outprep.String())
@@ -55,7 +55,7 @@ func (cluster *Cluster) PrepareBench() error {
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+			cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 		} else {
 			cluster.LogPrintf("BENCH", "%s", result)
 		}
@@ -74,7 +74,7 @@ func (cluster *Cluster) CleanupBench() error {
 
 		cmdclsErr := cmdcls.Run()
 		if cmdclsErr != nil {
-			cluster.LogPrintf("ERROR", "%s", cmdclsErr)
+			cluster.LogPrintf(LvlErr, "%s", cmdclsErr)
 			return cmdclsErr
 		}
 		cluster.LogPrintf("BENCH", "%s", outcls.String())
@@ -83,7 +83,7 @@ func (cluster *Cluster) CleanupBench() error {
 
 		err := dbhelper.BenchCleanup(cluster.GetMaster().Conn)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err.Error())
+			cluster.LogPrintf(LvlErr, "%s", err.Error())
 		}
 	}
 	return nil
@@ -92,13 +92,13 @@ func (cluster *Cluster) CleanupBench() error {
 func (cluster *Cluster) ChecksumBench() bool {
 	if cluster.benchmarkType == "table" {
 		if cluster.CheckTableConsistency("replication_manager_schema.bench") != true {
-			cluster.LogPrintf("ERROR", "Inconsitant slave")
+			cluster.LogPrintf(LvlErr, "Inconsitant slave")
 			return false
 		}
 	}
 	if cluster.benchmarkType == "sysbench" {
 		if cluster.CheckTableConsistency("test.sbtest") != true {
-			cluster.LogPrintf("ERROR", "Inconsitant slave")
+			cluster.LogPrintf(LvlErr, "Inconsitant slave")
 			return false
 		}
 	}
@@ -117,7 +117,7 @@ func (cluster *Cluster) RunBench() error {
 
 		cmdrunErr := cmdrun.Run()
 		if cmdrunErr != nil {
-			cluster.LogPrintf("ERROR", "%s", cmdrunErr)
+			cluster.LogPrintf(LvlErr, "%s", cmdrunErr)
 			return cmdrunErr
 		}
 		cluster.LogPrintf("BENCH", "%s", outrun.String())
@@ -125,7 +125,7 @@ func (cluster *Cluster) RunBench() error {
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+			cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 		}
 	}
 	return nil
@@ -163,25 +163,25 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed to take master checksum table ")
+		cluster.LogPrintf(LvlErr, "Failed to take master checksum table ")
 	} else {
-		cluster.LogPrintf("INFO", "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
+		cluster.LogPrintf(LvlInfo, "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
 	}
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could count record in bench table", err)
+		cluster.LogPrintf(LvlErr, "Could count record in bench table", err)
 	} else {
-		cluster.LogPrintf("INFO", "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
+		cluster.LogPrintf(LvlInfo, "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
 	}
 	var max int
 	if cluster.benchmarkType == "table" {
 
 		err = cluster.master.Conn.QueryRowx("select max(val) from " + table).Scan(&max)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Could get max val in bench table", err)
+			cluster.LogPrintf(LvlErr, "Could get max val in bench table", err)
 		} else {
-			cluster.LogPrintf("INFO", "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
+			cluster.LogPrintf(LvlInfo, "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
 		}
 	}
 	ctslave := 0
@@ -190,36 +190,36 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Failed to take slave checksum table ")
+			cluster.LogPrintf(LvlErr, "Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf("INFO", "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
+			cluster.LogPrintf(LvlInfo, "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
 		}
 		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 		if err != nil {
 			log.Println("ERROR: Could not check long running writes", err)
 		} else {
-			cluster.LogPrintf("INFO", "Number of rows slave table %s =  %d %s", table, count, s.URL)
+			cluster.LogPrintf(LvlInfo, "Number of rows slave table %s =  %d %s", table, count, s.URL)
 		}
 		var maxslave int
 		if cluster.benchmarkType == "table" {
 			err = s.Conn.QueryRowx("select max(val) from " + table).Scan(&maxslave)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Could get max val in bench table", err)
+				cluster.LogPrintf(LvlErr, "Could get max val in bench table", err)
 			} else {
-				cluster.LogPrintf("INFO", "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
+				cluster.LogPrintf(LvlInfo, "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
 			}
 		}
 		if checksumslave != checksum && cluster.benchmarkType == "sysbench" {
-			cluster.LogPrintf("ERROR", "Checksum on slave is different from master")
+			cluster.LogPrintf(LvlErr, "Checksum on slave is different from master")
 			return false
 		}
 		if maxslave != max && cluster.benchmarkType == "table" {
-			cluster.LogPrintf("ERROR", "Max table value on slave is different from master")
+			cluster.LogPrintf(LvlErr, "Max table value on slave is different from master")
 			return false
 		}
 	}
 	if ctslave == 0 {
-		cluster.LogPrintf("ERROR", "No slaves while checking consistancy")
+		cluster.LogPrintf(LvlErr, "No slaves while checking consistancy")
 		return false
 	}
 	return true
@@ -255,25 +255,25 @@ func (cluster *Cluster) DelayAllSlaves() error {
 	for _, s := range cluster.slaves {
 		err := dbhelper.StopSlaveSQLThread(s.Conn)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Stopping slave on %s %s", s.URL, err)
+			cluster.LogPrintf(LvlErr, "Stopping slave on %s %s", s.URL, err)
 		}
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+		cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 	}
 	err = dbhelper.InjectLongTrx(cluster.master.Conn, 12)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "InjectLongTrx %s", err.Error())
+		cluster.LogPrintf(LvlErr, "InjectLongTrx %s", err.Error())
 	}
 	result, err = dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s %s", err.Error(), result)
+		cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 	}
 	for _, s := range cluster.slaves {
 		err := dbhelper.StartSlave(s.Conn)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Staring slave on %s %s", s.URL, err)
+			cluster.LogPrintf(LvlErr, "Staring slave on %s %s", s.URL, err)
 		}
 	}
 	time.Sleep(5 * time.Second)
@@ -284,7 +284,7 @@ func (cluster *Cluster) InitBenchTable() error {
 
 	result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Insert some events %s %s", err.Error(), result)
+		cluster.LogPrintf(LvlErr, "Insert some events %s %s", err.Error(), result)
 		return err
 	}
 	return nil
@@ -299,12 +299,12 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	if cluster.testStopCluster {
 		err := cluster.Bootstrap()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Abording test, bootstrap failed, %s", err)
+			cluster.LogPrintf(LvlErr, "Abording test, bootstrap failed, %s", err)
 			cluster.Unprovision()
 			return false
 		}
 	}
-	cluster.LogPrintf("INFO", "Starting Test %s", test.Name)
+	cluster.LogPrintf(LvlInfo, "Starting Test %s", test.Name)
 	return true
 }
 

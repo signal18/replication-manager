@@ -94,7 +94,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 	}
 	err := m.Connect()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not connect to MaxScale:%s", err)
+		cluster.LogPrintf(LvlErr, "Could not connect to MaxScale:%s", err)
 		return
 	}
 	defer m.Close()
@@ -105,31 +105,31 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 	var monitor string
 	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("INFO", "Getting Maxscale monitor via maxinfo")
+			cluster.LogPrintf(LvlInfo, "Getting Maxscale monitor via maxinfo")
 		}
 		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoMonitor()
 
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("INFO", "Getting Maxscale monitor via maxadmin")
+			cluster.LogPrintf(LvlInfo, "Getting Maxscale monitor via maxadmin")
 		}
 		_, err := m.ListMonitors()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "MaxScale client could not list monitors %s", err)
+			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors %s", err)
 		}
 		monitor = m.GetMonitor()
 	}
 	if monitor != "" && cluster.conf.MxsDisableMonitor == true {
 		cmd := "shutdown monitor \"" + monitor + "\""
-		cluster.LogPrintf("INFO", "Maxscale shutdown monitor: %s", cmd)
+		cluster.LogPrintf(LvlInfo, "Maxscale shutdown monitor: %s", cmd)
 		err = m.ShutdownMonitor(monitor)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "MaxScale client could not shutdown monitor:%s", err)
+			cluster.LogPrintf(LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 		m.Response()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "MaxScale client could not shutdown monitor:%s", err)
+			cluster.LogPrintf(LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 	} else {
 		cluster.sme.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO"})
@@ -137,15 +137,15 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+		cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 	}
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "running")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+		cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 	}
 	err = m.ClearServer(cluster.GetMaster().MxsServerName, "slave")
 	if err != nil {
-		cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+		cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 	}
 
 	if cluster.conf.MxsBinlogOn == false {
@@ -154,27 +154,27 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 
 				err = m.ClearServer(s.MxsServerName, "master")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 				}
 
 				if s.State != stateSlave {
 					err = m.ClearServer(s.MxsServerName, "slave")
 					if err != nil {
-						cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+						cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 					}
 					err = m.ClearServer(s.MxsServerName, "running")
 					if err != nil {
-						cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+						cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 					}
 
 				} else {
 					err = m.SetServer(s.MxsServerName, "slave")
 					if err != nil {
-						cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+						cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 					}
 					err = m.SetServer(s.MxsServerName, "running")
 					if err != nil {
-						cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+						cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 					}
 
 				}
@@ -183,26 +183,26 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		if oldmaster != nil {
 			err = m.ClearServer(oldmaster.MxsServerName, "master")
 			if err != nil {
-				cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+				cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 			}
 
 			if oldmaster.State != stateSlave {
 				err = m.ClearServer(oldmaster.MxsServerName, "slave")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 				}
 				err = m.ClearServer(oldmaster.MxsServerName, "running")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 				}
 			} else {
 				err = m.SetServer(oldmaster.MxsServerName, "slave")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 				}
 				err = m.SetServer(oldmaster.MxsServerName, "running")
 				if err != nil {
-					cluster.LogPrintf("ERROR", "MaxScale client could not send command:%s", err)
+					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 				}
 
 			}
@@ -222,7 +222,7 @@ func (cluster *Cluster) setMaintenanceMaxscale(pr *Proxy, server *ServerMonitor)
 		err = m.ClearServer(server.MxsServerName, "maintenance")
 	}
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not set server %s in maintenance", err)
+		cluster.LogPrintf(LvlErr, "Could not set server %s in maintenance", err)
 		m.Close()
 	}
 	m.Close()

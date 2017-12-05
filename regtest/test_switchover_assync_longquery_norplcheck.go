@@ -20,7 +20,7 @@ func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf 
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 
@@ -34,11 +34,11 @@ func testSwitchoverLongQueryNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf 
 	time.Sleep(20 * time.Second)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf(LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 	return true

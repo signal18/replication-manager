@@ -513,7 +513,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 }
 
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf("INFO", "Rejoining via Dump Master")
+	cluster.LogPrintf(LvlInfo, "Rejoining via Dump Master")
 	usegtid := ""
 
 	if dest.HasGTIDReplication() {
@@ -525,19 +525,19 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 	var err error
 	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed opening pipe: %s", err)
+		cluster.LogPrintf(LvlErr, "Failed opening pipe: %s", err)
 		return err
 	}
 	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf("ERROR", "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
+		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, dumpCmd.Path)
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf("ERROR", "Can't start mysql client:%s at %s", err, clientCmd.Path)
+		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, clientCmd.Path)
 		return err
 	}
 	dumpCmd.Wait()
-	cluster.LogPrintf("INFO", "Start slave after dump")
+	cluster.LogPrintf(LvlInfo, "Start slave after dump")
 
 	dbhelper.StartSlave(dest.Conn)
 	return nil

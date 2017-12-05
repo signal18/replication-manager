@@ -59,7 +59,7 @@ func (cluster *Cluster) CheckFailed() {
 		}
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("WARN", "Undiscovered master, skipping failover check")
+			cluster.LogPrintf(LvlWarn, "Undiscovered master, skipping failover check")
 		}
 	}
 }
@@ -67,50 +67,50 @@ func (cluster *Cluster) CheckFailed() {
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf("DEBUG", "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
+		cluster.LogPrintf(LvlDbg, "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
 		return false
 	}
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Could not check binlog filters")
+			cluster.LogPrintf(LvlWarn, "Could not check binlog filters")
 		}
 		return false
 	}
 	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Binlog filters differ on master and slave %s. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
 	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.conf.CheckReplFilter == true {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Replication filters differ on master and slave %s. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
 	if cluster.conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.conf.RplChecks == true {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
 	if ss.SecondsBehindMaster.Valid == false && cluster.conf.RplChecks == true {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Slave %s is stopped. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
 		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf("WARN", "Slave %s is a relay slave. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
 		}
 		return false
 	}
@@ -185,12 +185,12 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 				status, _ := dbhelper.GetStatusAsInt(s.Conn)
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
 				if cluster.conf.LogLevel > 1 {
-					cluster.LogPrintf("DEBUG", "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
 				time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
 				if cluster.conf.LogLevel > 1 {
-					cluster.LogPrintf("DEBUG", "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
 					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.DSN), ErrFrom: "CHECK"})
@@ -213,12 +213,12 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not connect to MaxScale:", err)
+		cluster.LogPrintf(LvlErr, "Could not connect to MaxScale:", err)
 		return false
 	}
 	defer m.Close()
 	if cluster.master.MxsServerName == "" {
-		cluster.LogPrintf("INFO", "MaxScale server name undiscovered")
+		cluster.LogPrintf(LvlInfo, "MaxScale server name undiscovered")
 		return false
 	}
 	//disable monitoring
@@ -226,18 +226,18 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	var monitor string
 	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxinfo")
+			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
 		}
 		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {
 		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf("DEBUG", "Getting Maxscale monitor via maxadmin")
+			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
 		}
 		_, err = m.ListMonitors()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "MaxScale client could not list monitors: %s", err)
+			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors: %s", err)
 			return false
 		}
 		monitor = m.GetStoppedMonitor()
@@ -247,11 +247,11 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		cluster.LogPrintf("INFO : %s", cmd)
 		err = m.RestartMonitor(monitor)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "MaxScale client could not startup monitor: %s", err)
+			cluster.LogPrintf(LvlErr, "MaxScale client could not startup monitor: %s", err)
 			return false
 		}
 	} else {
-		cluster.LogPrintf("INFO", "MaxScale Monitor not found")
+		cluster.LogPrintf(LvlInfo, "MaxScale Monitor not found")
 		return false
 	}
 
@@ -293,7 +293,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err.Error())
+		cluster.LogPrintf(LvlErr, "%s", err.Error())
 		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
@@ -307,12 +307,12 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Arbitrator says invalid JSON")
+		cluster.LogPrintf(LvlErr, "Arbitrator says invalid JSON")
 		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogPrintf("INFO", "Arbitrator says: winner")
+		cluster.LogPrintf(LvlInfo, "Arbitrator says: winner")
 		return true
 	}
 	cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
@@ -363,7 +363,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		var err error
 		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Failed opening logfile, disabling for the rest of the session")
+			cluster.LogPrintf(LvlErr, "Failed opening logfile, disabling for the rest of the session")
 			cluster.conf.LogFile = ""
 		}
 	}
@@ -371,19 +371,19 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	if cluster.conf.Hosts != "" {
 		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
 	} else {
-		cluster.LogPrintf("ERROR", "No hosts list specified")
+		cluster.LogPrintf(LvlErr, "No hosts list specified")
 		return errors.New("No hosts list specified")
 	}
 
 	// validate users
 	if cluster.conf.User == "" {
-		cluster.LogPrintf("ERROR", "No master user/pair specified")
+		cluster.LogPrintf(LvlErr, "No master user/pair specified")
 		return errors.New("No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
 
 	if cluster.conf.RplUser == "" {
-		cluster.LogPrintf("ERROR", "No replication user/pair specified")
+		cluster.LogPrintf(LvlErr, "No replication user/pair specified")
 		return errors.New("No replication user/pair specified")
 	}
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
@@ -405,7 +405,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 	// Check if preferred master is included in Host List
 	pfa := strings.Split(cluster.conf.PrefMaster, ",")
 	if len(pfa) > 1 {
-		cluster.LogPrintf("ERROR", "Prefmaster option takes exactly one argument")
+		cluster.LogPrintf(LvlErr, "Prefmaster option takes exactly one argument")
 		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
@@ -417,7 +417,7 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		return false
 	}
 	if ret() == false && cluster.conf.PrefMaster != "" {
-		cluster.LogPrintf("ERROR", "Preferred master is not included in the hosts option")
+		cluster.LogPrintf(LvlErr, "Preferred master is not included in the hosts option")
 		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	return nil

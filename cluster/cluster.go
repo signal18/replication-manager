@@ -122,24 +122,24 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
 
-	cluster.LogPrintf("INFO", "Loading database TLS certificates")
+	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()
 	if err != nil {
 		cluster.haveDBTLSCert = false
-		cluster.LogPrintf("INFO", "Don't Have database TLS certificates")
+		cluster.LogPrintf(LvlInfo, "Don't Have database TLS certificates")
 	} else {
 		cluster.haveDBTLSCert = true
-		cluster.LogPrintf("INFO", "Have database TLS certificates")
+		cluster.LogPrintf(LvlInfo, "Have database TLS certificates")
 	}
 	cluster.newServerList()
 	if cluster.conf.Interactive {
-		cluster.LogPrintf("INFO", "Failover in interactive mode")
+		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
 	} else {
-		cluster.LogPrintf("INFO", "Failover in automatic mode")
+		cluster.LogPrintf(LvlInfo, "Failover in automatic mode")
 	}
 	err = cluster.newProxyList()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Could not set proxy list %s", err)
+		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	cluster.ReloadFromSave()
 	if _, err := os.Stat(cluster.conf.WorkingDir + "/" + cluster.cfgGroup); os.IsNotExist(err) {
@@ -168,24 +168,24 @@ func (cluster *Cluster) Run() {
 		case sig := <-cluster.switchoverChan:
 			if sig {
 				if cluster.runStatus == "A" {
-					cluster.LogPrintf("INFO", "Signaling Switchover...")
+					cluster.LogPrintf(LvlInfo, "Signaling Switchover...")
 					cluster.MasterFailover(false)
 					cluster.switchoverCond.Send <- true
 				} else {
-					cluster.LogPrintf("INFO", "Not in active mode, cancel switchover %s", cluster.runStatus)
+					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.runStatus)
 				}
 			}
 
 		default:
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf("DEBUG", "Monitoring server loop")
+				cluster.LogPrintf(LvlDbg, "Monitoring server loop")
 				for k, v := range cluster.servers {
-					cluster.LogPrintf("DEBUG", "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 				}
 				if cluster.master != nil {
-					cluster.LogPrintf("DEBUG", "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+					cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
 					for k, v := range cluster.slaves {
-						cluster.LogPrintf("DEBUG", "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
 
@@ -254,16 +254,16 @@ func (cluster *Cluster) ReloadFromSave() error {
 	var clsave Save
 	file, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/clusterstate.json")
 	if err != nil {
-		cluster.LogPrintf("WARN", "File error: %v\n", err)
+		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
 		return err
 	}
 	err = json.Unmarshal(file, &clsave)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "File error: %v\n", err)
+		cluster.LogPrintf(LvlErr, "File error: %v\n", err)
 		return err
 	}
 	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf("INFO", "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
+		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.conf.WorkingDir+"/"+cluster.cfgGroup+".json")
 	}
 	cluster.crashes = clsave.Crashes
 	cluster.sme.SetSla(clsave.SLA)
@@ -302,11 +302,11 @@ func (cluster *Cluster) FailoverForce() error {
 	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
 	err := sf.access()
 	if err != nil {
-		cluster.LogPrintf("WARNING", "Could not create state file")
+		cluster.LogPrintf(LvlWarn, "Could not create state file")
 	}
 	err = sf.read()
 	if err != nil {
-		cluster.LogPrintf("WARNING", "Could not read values from state file:", err)
+		cluster.LogPrintf(LvlWarn, "Could not read values from state file:", err)
 	} else {
 		cluster.failoverCtr = int(sf.Count)
 		cluster.failoverTs = sf.Timestamp
@@ -326,7 +326,7 @@ func (cluster *Cluster) FailoverForce() error {
 				if s.State == "" {
 					s.State = stateFailed
 					if cluster.conf.LogLevel > 2 {
-						cluster.LogPrintf("DEBUG", "State failed set by state detection ERR00012")
+						cluster.LogPrintf(LvlDbg, "State failed set by state detection ERR00012")
 					}
 					cluster.master = s
 				}
@@ -337,16 +337,16 @@ func (cluster *Cluster) FailoverForce() error {
 		}
 	}
 	if cluster.master == nil {
-		cluster.LogPrintf("ERROR", "Could not find a failed server in the hosts list")
+		cluster.LogPrintf(LvlErr, "Could not find a failed server in the hosts list")
 		return errors.New("ERROR: Could not find a failed server in the hosts list")
 	}
 	if cluster.conf.FailLimit > 0 && cluster.failoverCtr >= cluster.conf.FailLimit {
-		cluster.LogPrintf("ERROR", "Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
+		cluster.LogPrintf(LvlErr, "Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.conf.FailLimit)
 		return errors.New("ERROR: Failover has exceeded its configured limit")
 	}
 	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
 	if cluster.conf.FailTime > 0 && rem > 0 {
-		cluster.LogPrintf("ERROR", "Failover time limit enforced. Next failover available in %d seconds", rem)
+		cluster.LogPrintf(LvlErr, "Failover time limit enforced. Next failover available in %d seconds", rem)
 		return errors.New("ERROR: Failover time limit enforced")
 	}
 	if cluster.MasterFailover(true) {
@@ -354,7 +354,7 @@ func (cluster *Cluster) FailoverForce() error {
 		sf.Timestamp = cluster.failoverTs
 		err := sf.write()
 		if err != nil {
-			cluster.LogPrintf("WARN", "Could not write values to state file:%s", err)
+			cluster.LogPrintf(LvlWarn, "Could not write values to state file:%s", err)
 		}
 	}
 	return nil

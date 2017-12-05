@@ -60,22 +60,22 @@ func (cluster *Cluster) initConsul() error {
 		node.Port = port
 		readnodes = append(readnodes, &node)
 		readsrv.Nodes = readnodes
-		cluster.LogPrintf("INFO", "Register consul read service  %s", srv.Id)
+		cluster.LogPrintf(LvlInfo, "Register consul read service  %s", srv.Id)
 		if err := reg.Deregister(&readsrv); err != nil {
-			cluster.LogPrintf("ERROR", "Unexpected deregister error: %v", err)
+			cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
 		}
 		if err := reg.Register(&readsrv); err != nil {
-			cluster.LogPrintf("ERROR", "Unexpected deregister error: %v", err)
+			cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
 		}
 
 	}
-	cluster.LogPrintf("INFO", "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().DSN)
+	cluster.LogPrintf(LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().DSN)
 	delservice, err := reg.GetService("write_" + cluster.GetName())
 	if err != nil {
 		for _, service := range delservice {
 
 			if err := reg.Deregister(service); err != nil {
-				cluster.LogPrintf("ERROR", "Unexpected deregister error: %v", err)
+				cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
 			}
 		}
 	}
@@ -84,7 +84,7 @@ func (cluster *Cluster) initConsul() error {
 		for _, service := range v {
 
 			if err := reg.Register(service); err != nil {
-				cluster.LogPrintf("ERROR", "Unexpected register error: %v", err)
+				cluster.LogPrintf(LvlErr, "Unexpected register error: %v", err)
 			}
 
 		}

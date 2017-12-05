@@ -25,7 +25,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *clust
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 
 		return false
 	}
@@ -36,7 +36,7 @@ func testFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *clust
 	cluster.FailoverAndWait()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf(LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

@@ -93,13 +93,13 @@ func (cluster *Cluster) newProxyList() error {
 
 	cluster.proxies = make([]*Proxy, nbproxies)
 
-	cluster.LogPrintf("INFO", "Loading %d proxies", nbproxies)
+	cluster.LogPrintf(LvlInfo, "Loading %d proxies", nbproxies)
 
 	var ctproxy = 0
 	var err error
 	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MxsHost, ",") {
-			cluster.LogPrintf("INFO", "Loading Maxscale...")
+			cluster.LogPrintf(LvlInfo, "Loading Maxscale...")
 			prx := new(Proxy)
 			prx.Type = proxyMaxscale
 			prx.Host = proxyHost
@@ -121,7 +121,7 @@ func (cluster *Cluster) newProxyList() error {
 
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 			ctproxy++
 		}
@@ -130,7 +130,7 @@ func (cluster *Cluster) newProxyList() error {
 
 		for _, proxyHost := range strings.Split(cluster.conf.HaproxyHosts, ",") {
 
-			cluster.LogPrintf("INFO", "Loading HaProxy...")
+			cluster.LogPrintf(LvlInfo, "Loading HaProxy...")
 
 			prx := new(Proxy)
 			prx.Type = proxyHaproxy
@@ -143,7 +143,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 
 			ctproxy++
@@ -162,7 +162,7 @@ func (cluster *Cluster) newProxyList() error {
 
 		for _, proxyHost := range strings.Split(cluster.conf.ProxysqlHosts, ",") {
 
-			cluster.LogPrintf("INFO", "Loading ProxySQL...")
+			cluster.LogPrintf(LvlInfo, "Loading ProxySQL...")
 
 			prx := new(Proxy)
 			prx.Type = proxySqlproxy
@@ -185,7 +185,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 
 			ctproxy++
@@ -194,7 +194,7 @@ func (cluster *Cluster) newProxyList() error {
 
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
-			cluster.LogPrintf("INFO", "Loading MdbShardProxy...")
+			cluster.LogPrintf(LvlInfo, "Loading MdbShardProxy...")
 			prx := new(Proxy)
 			prx.Type = proxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
@@ -205,10 +205,10 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 			if cluster.conf.LogLevel > 1 {
-				cluster.LogPrintf("DEBUG", "New MdbShardProxy proxy created: %s %s", prx.Host, prx.Port)
+				cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.Port)
 			}
 			ctproxy++
 		}
@@ -251,7 +251,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
 				if cluster.IsVerbose() {
-					cluster.LogPrintf("ERROR", "Can't get a proxy connection: %s", err)
+					cluster.LogPrintf(LvlErr, "Can't get a proxy connection: %s", err)
 				}
 				return false
 			}
@@ -260,7 +260,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			sv, err = dbhelper.GetVariables(db)
 			if err != nil {
 				if cluster.IsVerbose() {
-					cluster.LogPrintf("ERROR", "Can't get variables: %s", err)
+					cluster.LogPrintf(LvlErr, "Can't get variables: %s", err)
 				}
 				return false
 			}
@@ -268,12 +268,12 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
 			if err != nil {
 				if cluster.IsVerbose() {
-					cluster.LogPrintf("ERROR", "Can't form proxy server_id convert: %s", err)
+					cluster.LogPrintf(LvlErr, "Can't form proxy server_id convert: %s", err)
 				}
 				return false
 			}
 			if cluster.IsVerbose() {
-				cluster.LogPrintf("INFO", "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
+				cluster.LogPrintf(LvlInfo, "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
 			}
 			if cluster.GetMaster().ServerID == uint(sid) || pr.Type == proxySpider {
 				return true
@@ -334,7 +334,7 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.proxies {
-		cluster.LogPrintf("INFO", "Init %s %s %s", pr.Type, pr.Host, pr.Port)
+		cluster.LogPrintf(LvlInfo, "Init %s %s %s", pr.Type, pr.Host, pr.Port)
 		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
@@ -368,7 +368,7 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	}
 	conn, err := sqlx.Open("mysql", dsn)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't get a proxy %s connection: %s", dsn, err)
+		cluster.LogPrintf(LvlErr, "Can't get a proxy %s connection: %s", dsn, err)
 	}
 	return conn, err
 

@@ -12,7 +12,7 @@ func testSwitchoverNoReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, t
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 		return false
 	}
 	cluster.SetRplMaxDelay(0)
@@ -23,21 +23,21 @@ func testSwitchoverNoReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, t
 	for _, s := range cluster.GetServers() {
 		_, err := s.Conn.Exec("set global read_only=0")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err.Error())
+			cluster.LogPrintf(LvlErr, "%s", err.Error())
 		}
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.SwitchoverWaitTest()
 	cluster.LogPrintf("TEST", "New Master is %s ", cluster.GetMaster().URL)
 	if SaveMasterURL == cluster.GetMaster().URL {
-		cluster.LogPrintf("ERROR", "same server URL after switchover")
+		cluster.LogPrintf(LvlErr, "same server URL after switchover")
 		return false
 	}
 	for _, s := range cluster.GetSlaves() {
 		cluster.LogPrintf("TEST", "Server  %s is %s", s.URL, s.ReadOnly)
 		s.Refresh()
 		if s.ReadOnly != "OFF" {
-			cluster.LogPrintf("ERROR", "READ ONLY on slave was set by switchover")
+			cluster.LogPrintf(LvlErr, "READ ONLY on slave was set by switchover")
 			return false
 		}
 	}

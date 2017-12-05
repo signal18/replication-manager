@@ -25,7 +25,7 @@ func testFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, te
 	cluster.FailoverAndWait()
 	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("ERROR", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogPrintf(LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

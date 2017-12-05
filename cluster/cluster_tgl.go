@@ -16,10 +16,10 @@ func (cluster *Cluster) SwitchServerMaintenance(serverid uint) {
 func (cluster *Cluster) ToggleInteractive() {
 	if cluster.conf.Interactive == true {
 		cluster.conf.Interactive = false
-		cluster.LogPrintf("INFO", "Failover monitor switched to automatic mode")
+		cluster.LogPrintf(LvlInfo, "Failover monitor switched to automatic mode")
 	} else {
 		cluster.conf.Interactive = true
-		cluster.LogPrintf("INFO", "Failover monitor switched to manual mode")
+		cluster.LogPrintf(LvlInfo, "Failover monitor switched to manual mode")
 	}
 }
 

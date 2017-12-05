@@ -12,13 +12,13 @@ func testFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster *cluster.Cluster, 
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR", "%s", err)
+		cluster.LogPrintf(LvlErr, "%s", err)
 
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 
-	cluster.LogPrintf("INFO", "Master is %s", cluster.GetMaster().URL)
+	cluster.LogPrintf(LvlInfo, "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
 	cluster.SetFailLimit(5)
 	cluster.SetFailTime(0)

@@ -50,19 +50,19 @@ func testFailoverSemisyncAutoRejoinSafeMSMXMS(cluster *cluster.Cluster, conf str
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {
-			cluster.LogPrintf("ERROR", "Slave  %s issue on replication", s.URL)
+			cluster.LogPrintf(LvlErr, "Slave  %s issue on replication", s.URL)
 
 			return false
 		}
 	}
 	time.Sleep(10 * time.Second)
 	if cluster.ChecksumBench() != true {
-		cluster.LogPrintf("ERROR", "Inconsitant slave")
+		cluster.LogPrintf(LvlErr, "Inconsitant slave")
 
 		return false
 	}
 	if len(cluster.GetServers()) == 2 && SaveMasterURL != cluster.GetMaster().URL {
-		cluster.LogPrintf("ERROR", "Unexpected master for 2 nodes cluster")
+		cluster.LogPrintf(LvlErr, "Unexpected master for 2 nodes cluster")
 		return false
 	}
 

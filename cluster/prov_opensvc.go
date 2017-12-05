@@ -69,11 +69,11 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		/*		if db.Id == svc.Svc_name {
 				idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				if err != nil {
-					cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+					cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", db.Id, err)
 				} else {
 					err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 					if err != nil {
-						cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+						cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", db.Id, err)
 					}
 				}
 		*/
@@ -82,9 +82,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Unprovisionning error %s on  %s", err, db.Id)
+				cluster.LogPrintf(LvlErr, "Unprovisionning error %s on  %s", err, db.Id)
 			} else {
-				cluster.LogPrintf("INFO", "Unprovisionning done for database %s", db.Id)
+				cluster.LogPrintf(LvlInfo, "Unprovisionning done for database %s", db.Id)
 			}
 		}
 	}
@@ -94,11 +94,11 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		/*		if prx.Id == svc.Svc_name {
 					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 					if err != nil {
-						cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
+						cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
 					} else {
 						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 						if err != nil {
-							cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
+							cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
 						}
 					}
 				}
@@ -109,9 +109,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Unprovisionning proxy error %s on  %s", err, prx.Id)
+				cluster.LogPrintf(LvlErr, "Unprovisionning proxy error %s on  %s", err, prx.Id)
 			} else {
-				cluster.LogPrintf("INFO", "Unprovisionning done for proxy %s", prx.Id)
+				cluster.LogPrintf(LvlInfo, "Unprovisionning done for proxy %s", prx.Id)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Can't unprovision database %s, %s", db.Id, err)
+				cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", db.Id, err)
 			}
 		}
 	}
@@ -142,7 +142,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Can't unprovision proxy %s, %s", prx.Id, err)
+				cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
 			}
 		}
 	}
@@ -249,20 +249,20 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	mysrv, err := svc.GetServiceFromName(prx.Id)
 	if err == nil {
 		idsrv = mysrv.Svc_id
-		cluster.LogPrintf("INFO", "Found existing service %s service %s", prx.Id, idsrv)
+		cluster.LogPrintf(LvlInfo, "Found existing service %s service %s", prx.Id, idsrv)
 
 	} else {
 		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Can't create OpenSVC proxy service")
+			cluster.LogPrintf(LvlErr, "Can't create OpenSVC proxy service")
 			return err
 		}
 	}
-	cluster.LogPrintf("INFO", "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
+	cluster.LogPrintf(LvlInfo, "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
 
 	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't delete service tags")
+		cluster.LogPrintf(LvlErr, "Can't delete service tags")
 		return err
 	}
 	taglist := strings.Split(svc.ProvProxTags, ",")
@@ -294,9 +294,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 			} else {
-				cluster.LogPrintf("ERROR", "Can't fetch task")
+				cluster.LogPrintf(LvlErr, "Can't fetch task")
 			}
 		}
 	}
@@ -305,7 +305,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 			err := srv.Refresh()
 			if err == nil {
-				cluster.LogPrintf("WARNING", "Can connect to requested signal18 sharding proxy")
+				cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
 				//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
 				return nil
 			}
@@ -323,9 +323,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 			} else {
-				cluster.LogPrintf("ERROR", "Can't fetch task")
+				cluster.LogPrintf(LvlErr, "Can't fetch task")
 			}
 		}
 	}
@@ -344,9 +344,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 			} else {
-				cluster.LogPrintf("ERROR", "Can't fetch task")
+				cluster.LogPrintf(LvlErr, "Can't fetch task")
 			}
 		}
 	}
@@ -365,9 +365,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
-				cluster.LogPrintf("INFO", "%s", task.Stderr)
+				cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 			} else {
-				cluster.LogPrintf("ERROR", "Can't fetch task")
+				cluster.LogPrintf(LvlErr, "Can't fetch task")
 			}
 		}
 	}
@@ -389,12 +389,12 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	var idsrv string
 	mysrv, err := svc.GetServiceFromName(s.Id)
 	if err == nil {
-		cluster.LogPrintf("INFO", "Found opensvc database service %s service %s", s.Id, mysrv.Svc_id)
+		cluster.LogPrintf(LvlInfo, "Found opensvc database service %s service %s", s.Id, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
 	} else {
 		idsrv, err = svc.CreateService(s.Id, "MariaDB")
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Can't create OpenSVC service")
+			cluster.LogPrintf(LvlErr, "Can't create OpenSVC service")
 			cluster.errorChan <- err
 			return
 		}
@@ -402,7 +402,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
-		cluster.LogPrintf("ERROR", "Can't delete service tags")
+		cluster.LogPrintf(LvlErr, "Can't delete service tags")
 		cluster.errorChan <- err
 		return
 	}
@@ -427,9 +427,9 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	cluster.OpenSVCWaitDequeue(svc, idaction)
 	task := svc.GetAction(strconv.Itoa(idaction))
 	if task != nil {
-		cluster.LogPrintf("INFO", "%s", task.Stderr)
+		cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 	} else {
-		cluster.LogPrintf("ERROR", "Can't fetch task")
+		cluster.LogPrintf(LvlErr, "Can't fetch task")
 	}
 	cluster.WaitDatabaseStart(s)
 
@@ -448,9 +448,9 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf("ERROR", "Provisionning error %s on  %s", err, s.Id)
+				cluster.LogPrintf(LvlErr, "Provisionning error %s on  %s", err, s.Id)
 			} else {
-				cluster.LogPrintf("INFO", "Provisionning done for database %s", s.Id)
+				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", s.Id)
 			}
 		}
 	}
@@ -541,9 +541,9 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogPrintf("INFO", "%s", task.Stderr)
+					cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogPrintf("ERROR", "Can't fetch task")
+					cluster.LogPrintf(LvlErr, "Can't fetch task")
 				}
 			}
 		}
