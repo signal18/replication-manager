@@ -712,14 +712,10 @@ func fHeartbeat() {
 				currentCluster.LogPrintf("DEBUG", "RETURN: %v", h)
 			}
 			if h.Status == "S" {
-				if conf.LogLevel > 1 {
-					currentCluster.LogPrintf("DEBUG", "Peer node is Standby, I am Active")
-				}
+				currentCluster.LogPrintf("DEBUG", "Peer node is Standby, I am Active")
 				runStatus = "A"
 			} else {
-				if conf.LogLevel > 1 {
-					currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
-				}
+				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
 				runStatus = "S"
 			}
 			// propagate all runStatus to clusters after peer negotiation
