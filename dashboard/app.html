@@ -112,7 +112,7 @@
                              <md-card>
                               <table class="table">
 
-                                 <tr  bgcolor="#adf8a6">
+                                 <tr >
                                     <th>Group Name</th>
                                     <th>Topology</th>
                                  </tr>
@@ -129,7 +129,7 @@
                                 <md-card>
 
                               <table ng-if="settings" class="table">
-                                 <tr  bgcolor="#adf8a6">
+                                 <tr  >
                                     <th>Manager Status</th>
                                     <th>Failover Count</th>
                                     <th>Last Failover Time</th>
@@ -147,7 +147,7 @@
                         <md-card-content><p class="sectionheader">SERVERS</p></md-card-content>
                         <table ng-if="servers" class="table">
 
-                           <tr bgcolor="#adf8a6">
+                           <tr>
                               <th>Host</th>
                               <th>Port</th>
                               <th>Version</th>
@@ -264,14 +264,18 @@
                       <div  flex-gt-xs="65" class="col-lg-66">
                         <md-card>
                         <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
-                        <md-card-content>
+                        <md-card-content style="height: 400px; overflow-y: auto">
                         <md-pre>
-         <table>
-			   <tr ng-repeat="logline in log">
-           <td class="log">{{ logline.Timestamp }}</td>
-           <td><span class="label label-primary">{{ logline.Level }}</span></td>
-           <td class="log">{{ logline.Text }}<td>
-        </tr>
+         <table class="log">
+			   <tr ng-repeat="logline in log" ng-if="logline.Timestamp">
+                   <td class="stamp">{{ logline.Timestamp }}</td>
+                   <td ng-switch="logline.Level">
+                     <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
+                     <span ng-switch-when="WARN" class="label label-warning">{{ logline.Level }}</span>
+                     <span ng-switch-when="ERROR" class="label label-danger">{{ logline.Level }}</span>
+                     <span ng-switch-default class="label label-primary">{{ logline.Level }}</span>
+                   <td class="text">{{ logline.Text }}<td>
+                </tr>
       </table>
        </md-pre>  </md-card-content>
 
@@ -306,7 +310,7 @@
                       </md-card-content>
                         <table ng-if="settings" class="table">
 
-                           <tr  bgcolor="#adf8a6">
+                           <tr  >
                               <th>Monitor Tickers</th>
                               <th>Master Available</th>
                               <th>Can Failover Acceptable Data Loss</th>
@@ -336,7 +340,7 @@
 												 <tbody >
 
 
-													<tr valign="middle" bgcolor="#adf8a6">
+													<tr valign="middle" >
 
                              <th>Id</th>
 													   <th>Host</th>
@@ -421,7 +425,7 @@
 
                                <table ng-if="settings" class="table">
 
-                                 <tr  bgcolor="#adf8a6">
+                                 <tr  >
                                     <th>Failover Mode (interactive)</th>
                                  </tr>
 
@@ -440,7 +444,7 @@
                             <BR>
                             <md-card>
                             <table ng-if="settings" class="table">
-                               <tr  bgcolor="#adf8a6">
+                               <tr  >
                                   <th>Test Mode</th>
                                </tr>
                                <tr>
@@ -471,7 +475,7 @@
                            <div flex-gt-xs="30" class="col-lg-33">
                               <md-card>
                               <table ng-if="settings" class="table">
-                                 <tr  bgcolor="#adf8a6">
+                                 <tr  >
                                     <th>Checks All Replication Constraint</th>
                                  </tr>
                                  <tr>
@@ -520,7 +524,7 @@
                            <div flex-gt-xs="30" class="col-lg-33">
                                <md-card>
                               <table ng-if="settings" class="table">
-                                 <tr  bgcolor="#adf8a6">
+                                 <tr  >
                                     <th>Auto Rejoin</th>
                                  </tr>
                                  <tr>
@@ -604,7 +608,7 @@
                          <div layout="column" layout-gt-xs="row">
 
                        <md-card>
-                        <div class="navbar ">
+                        <div class="navbar">
                            <div id="giraffe-navbar-inner" class="navbar-inner">
                               <div class="container">
                                  <div class="nav-collapse collapse">
@@ -651,7 +655,7 @@
                         <table ng-if="agents" class="table">
 
 
-                           <tr  bgcolor="#adf8a6">
+                           <tr  >
                               <th>Name</th>
                               <th>CPU Cores</th>
                               <th>CPU Freq</th>

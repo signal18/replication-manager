@@ -125,12 +125,29 @@ h2, h3 {
 /*     display: none; */
 /* } */
 
-.label {
-  min-width: 200px;
+.log .label {
+  min-width: 60px;
   display: inline-block;
 }
 
-.log {
+.log td.text {
   font-family: "Courier New", Courier, monospace;
-  font-size: 1rem;
+  font-size: 1.2rem;
+}
+
+.log td.stamp {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.2rem;
+}
+
+.log td {
+  padding-right: 10px;
+}
+
+body {
+  background: #f5f5f5;
+}
+
+th {
+  background-color: #adf8a6;
 }

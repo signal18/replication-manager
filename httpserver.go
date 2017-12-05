@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -496,7 +497,13 @@ func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 func handlerLog(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
-	err := e.Encode(htlog.Buffer)
+	values := r.URL.Query()
+	off := values.Get("offset")
+	if off == "" {
+		off = "100"
+	}
+	noff, _ := strconv.Atoi(off)
+	err := e.Encode(htlog.Buffer[:noff])
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
