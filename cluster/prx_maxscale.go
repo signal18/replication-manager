@@ -104,16 +104,12 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 
 	var monitor string
 	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf(LvlInfo, "Getting Maxscale monitor via maxinfo")
-		}
+		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
 		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoMonitor()
 
 	} else {
-		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf(LvlInfo, "Getting Maxscale monitor via maxadmin")
-		}
+		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
 		_, err := m.ListMonitors()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors %s", err)

@@ -192,15 +192,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	if server.ClusterGroup.sme.IsInFailover() {
-		if server.ClusterGroup.conf.LogLevel > 2 {
-			server.ClusterGroup.LogPrintf("DEBUG", "Inside failover, skip server check")
-		}
+		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skip server check")
 		return
 	}
 
-	if server.ClusterGroup.conf.LogLevel > 2 {
-		// server.ClusterGroup.LogPrintf("INFO", "Checking server %s", server.Host)
-	}
 	if server.ClusterGroup.vmaster != nil {
 		if server.ClusterGroup.vmaster.ServerID == server.ServerID {
 			server.IsVirtualMaster = true
@@ -225,9 +220,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
-		if server.ClusterGroup.conf.LogLevel > 2 {
-			server.ClusterGroup.LogPrintf("DEBUG", "Failure detection handling for server %s", server.URL)
-		}
+		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
@@ -252,9 +245,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			} else {
 				// not the master
-				if server.ClusterGroup.conf.LogLevel > 2 {
-					server.ClusterGroup.LogPrintf("DEBUG", "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.conf.MaxFail)
-				}
+				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.conf.MaxFail)
 				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring server %s as failed", server.URL)
@@ -299,9 +290,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
-			if server.ClusterGroup.conf.LogLevel > 1 {
-				server.ClusterGroup.LogPrintf("DEBUG", "State comparison reinitialized failed server %s as unconnected %s", server.URL)
-			}
+			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected %s", server.URL)
 			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}
@@ -314,9 +303,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
-			if server.ClusterGroup.conf.LogLevel > 1 {
-				server.ClusterGroup.LogPrintf("DEBUG", "State unconnected set by non-master rule on server %s", server.URL)
-			}
+			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}

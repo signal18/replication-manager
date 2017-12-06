@@ -569,12 +569,11 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 		return false
 	}
 
-	if server.ClusterGroup.conf.LogLevel > 1 {
-		server.ClusterGroup.LogPrintf("DEBUG", "Rejoin Server use GTID %s", ss.UsingGtid.String)
-	}
+	server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin Server use GTID %s", ss.UsingGtid.String)
+
 	// An old master  master do no have replication
 	if crash.FailoverIOGtid == nil {
-		server.ClusterGroup.LogPrintf("DEBUG", "Rejoin server cannot find a saved master election GTID")
+		server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin server cannot find a saved master election GTID")
 		return false
 	}
 	if len(crash.FailoverIOGtid.GetSeqNos()) > 0 {

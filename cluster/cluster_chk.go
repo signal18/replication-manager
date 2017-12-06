@@ -58,9 +58,7 @@ func (cluster *Cluster) CheckFailed() {
 			}
 		}
 	} else {
-		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf(LvlWarn, "Undiscovered master, skipping failover check")
-		}
+		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
 	}
 }
 
@@ -225,16 +223,12 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	var monitor string
 	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
-		}
+		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
 		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {
-		if cluster.conf.LogLevel > 1 {
-			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
-		}
+		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
 		_, err = m.ListMonitors()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors: %s", err)

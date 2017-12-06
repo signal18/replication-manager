@@ -61,14 +61,6 @@ var (
 	isStarted      bool
 )
 
-// Log levels
-const (
-	LvlInfo = "INFO"
-	LvlWarn = "WARN"
-	LvlErr  = "ERROR"
-	LvlDbg  = "DEBUG"
-)
-
 func getClusterByName(clname string) *cluster.Cluster {
 	return clusters[clname]
 }

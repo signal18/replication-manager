@@ -85,9 +85,7 @@ func (cluster *Cluster) pingServerList() {
 						// We can set the failed state at this point if we're in the initial loop
 						// Otherwise, let the monitor check function handle failures
 						if sv.State == "" {
-							if cluster.conf.LogLevel > 2 {
-								cluster.LogPrintf(LvlDbg, "State failed set by topology detection INF00001")
-							}
+							cluster.LogPrintf(LvlDbg, "State failed set by topology detection INF00001")
 							sv.State = stateFailed
 						}
 					}
@@ -118,9 +116,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
-	if cluster.conf.LogLevel > 2 {
-		cluster.LogPrintf(LvlDbg, "Entering topology detection")
-	}
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Spider shard discover
@@ -129,15 +124,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
-
-		/* MOVE THIS CODE IN PING
-		err := sv.Refresh()
-		if err != nil {
-			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "Server %s could not be refreshed: %s", sv.URL, err)
-			}
-			continue
-		} */
 
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
@@ -150,10 +136,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 			if err != nil {
 				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
-				//		if cluster.conf.LogLevel > 2 {
-				//			cluster.LogPrint("DEBUG: State failed set by topology detection ERR00014")
-				//		}
-				//	sv.State = stateFailed
 				continue
 			}
 			if n == 0 {
