@@ -297,9 +297,9 @@ func apiserver() {
 
 	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 	if err != nil {
-		log.Println("ERROR", "JWT API can't start: %s", err)
+		log.Errorf("JWT API can't start: %s", err)
 	}
-	log.Println("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
+	log.Info("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
 
 }
 
