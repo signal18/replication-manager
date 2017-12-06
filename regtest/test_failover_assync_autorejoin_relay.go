@@ -53,7 +53,7 @@ func testFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, te
 	}
 	time.Sleep(8 * time.Second)
 	relay, _ := cluster.GetMasterFromReplication(SaveMaster)
-	cluster.LogPrintf("TEST", "Pointing to relay %s", relay.DSN)
+	cluster.LogPrintf("TEST", "Pointing to relay %s", relay.URL)
 	if relay == nil {
 		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
 

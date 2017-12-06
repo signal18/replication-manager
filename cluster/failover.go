@@ -199,7 +199,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if relaymaster != nil {
 			rs, err := relaymaster.GetSlaveStatus(relaymaster.ReplicationSourceName)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't found slave status on relay server %s", relaymaster.DSN)
+				cluster.LogPrintf(LvlErr, "Can't found slave status on relay server %s", relaymaster.URL)
 			}
 			relaymaster.Refresh()
 
@@ -501,7 +501,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 				cluster.LogPrintf(LvlInfo, "Found skip coordonate on master %s,%s", mFile, mPos)
 
-				cluster.LogPrintf(LvlInfo, "Doing Positional switch of slave %s", sl.DSN)
+				cluster.LogPrintf(LvlInfo, "Doing Positional switch of slave %s", sl.URL)
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.Host,
 					Port:      cluster.master.Port,

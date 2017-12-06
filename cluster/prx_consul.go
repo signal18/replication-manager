@@ -69,7 +69,7 @@ func (cluster *Cluster) initConsul() error {
 		}
 
 	}
-	cluster.LogPrintf(LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().DSN)
+	cluster.LogPrintf(LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().URL)
 	delservice, err := reg.GetService("write_" + cluster.GetName())
 	if err != nil {
 		for _, service := range delservice {

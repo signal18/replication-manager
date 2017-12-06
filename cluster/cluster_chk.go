@@ -191,7 +191,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.DSN), ErrFrom: "CHECK"})
+					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
 					return true
 				}
 			}

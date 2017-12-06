@@ -334,18 +334,18 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	if server.ClusterGroup.master != nil {
 
 		if server.ClusterGroup.conf.Verbose {
-			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
+			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.URL)
 		}
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.conf.MultiTierSlave == false && server.ClusterGroup.conf.ReplicationNoRelay {
 
 			if server.HasGTIDReplication() {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
-					server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.DSN)
+					server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.URL)
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
-				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.DSN)
+				server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.URL)
 
 				realmaster := server.ClusterGroup.master
 				// A SLAVE IS ALWAY BEHIND MASTER
@@ -373,7 +373,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
 							server.StopSlave()
-							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.DSN)
+							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.URL)
 							changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 								Host:      server.ClusterGroup.master.Host,
 								Port:      server.ClusterGroup.master.Port,
@@ -386,7 +386,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Mode:      "POSITIONAL",
 							})
 							if changeMasterErr != nil {
-								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.DSN)
+								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.URL)
 							}
 						} else {
 							server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", err2)

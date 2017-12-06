@@ -211,7 +211,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		if len(s.Replications) > 0 {
 
 			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.DSN, server.ServerID)
+				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.URL, server.ServerID)
 			}
 			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
 				if s.GetReplicationServerID() == server.ServerID {

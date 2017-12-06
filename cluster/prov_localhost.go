@@ -52,7 +52,7 @@ func (cluster *Cluster) LocalhostProvisionProxies() error {
 
 func (cluster *Cluster) LocalhostProvisionDatabases() error {
 	for _, server := range cluster.servers {
-		cluster.LogPrintf(LvlInfo, "Starting Server %s", server.DSN)
+		cluster.LogPrintf(LvlInfo, "Starting Server %s", server.URL)
 		/*if server.Conn.Ping() == nil {
 			cluster.LogPrintf(LvlInfo, "DB Server is not stop killing now %s", server.URL)
 			if server.Id == "" {
