@@ -135,7 +135,14 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		case "ALERT":
 			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "alert"}).Warnf(cliformat, args...)
 		case "STATE":
-			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "state", "err": cliformat[0:8]}).Warnf(cliformat[9:len(cliformat)], args...)
+			status := cliformat[0:6]
+			code := cliformat[7:15]
+			err := cliformat[18:]
+			if status == "OPENED" {
+				log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "state", "status": status, "code": code}).Warnf(err, args...)
+			} else {
+				log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "state", "status": status, "code": code}).Infof(err, args...)
+			}
 		default:
 			log.Printf(cliformat, args...)
 		}
