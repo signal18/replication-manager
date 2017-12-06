@@ -169,7 +169,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Faiover can not fetch replication info on new master: %s", err)
 	}
-	cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile)
+	cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile.String)
 	cluster.LogPrintf(LvlInfo, "master_log_pos=%s", ms.ReadMasterLogPos.String)
 	cluster.LogPrintf(LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 	//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
@@ -925,7 +925,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Faiover can not fetch replication info on new master: %s", err)
 		}
-		cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile)
+		cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile.String)
 		cluster.LogPrintf(LvlInfo, "master_log_pos=%s", ms.ReadMasterLogPos.String)
 		cluster.LogPrintf(LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
