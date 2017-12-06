@@ -275,7 +275,8 @@
                      <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
                      <span ng-switch-when="WARN" class="label label-warning">{{ logline.Level }}</span>
                      <span ng-switch-when="ERROR" class="label label-danger">{{ logline.Level }}</span>
-                     <span ng-switch-default class="label label-primary">{{ logline.Level }}</span>
+                     <span ng-switch-when="DEBUG" class="label label-primary">{{ logline.Level }}</span>
+                     <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
                    <td class="text">{{ logline.Text }}<td>
                 </tr>
       </table>
