@@ -166,10 +166,10 @@ func (server *ServerMonitor) SlaveCheck() {
 	} else if sl.IsIgnored() == false && sl.HaveBinlogSlowqueries == false {
 		server.ClusterGroup.sme.AddState("WARN0054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0054"], sl.URL), ErrFrom: "TOPO"})
 	}
-	if server.ClusterGroup.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false {
+	if server.ClusterGroup.conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(sl.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce annotate on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogAnnotate == false {
+	} else if sl.IsIgnored() == false && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		server.ClusterGroup.sme.AddState("WARN0055", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0055"], sl.URL), ErrFrom: "TOPO"})
 	}
 
@@ -218,10 +218,10 @@ func (server *ServerMonitor) MasterCheck() {
 	} else if server.HaveSyncBinLog == false {
 		server.ClusterGroup.sme.AddState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], server.URL), ErrFrom: "TOPO"})
 	}
-	if server.ClusterGroup.conf.ForceBinlogAnnotate && server.HaveBinlogAnnotate == false {
+	if server.ClusterGroup.conf.ForceBinlogAnnotate && server.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(server.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce binlog annotate on master %s", server.URL)
-	} else if server.HaveBinlogAnnotate == false {
+	} else if server.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		server.ClusterGroup.sme.AddState("WARN0067", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0067"], server.URL), ErrFrom: "TOPO"})
 	}
 	if server.ClusterGroup.conf.ForceBinlogChecksum && server.HaveChecksum == false {
@@ -230,7 +230,7 @@ func (server *ServerMonitor) MasterCheck() {
 	} else if server.HaveChecksum == false {
 		server.ClusterGroup.sme.AddState("WARN0065", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0065"], server.URL), ErrFrom: "TOPO"})
 	}
-	if server.ClusterGroup.conf.ForceBinlogCompress && server.HaveBinlogCompress == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
+	if server.ClusterGroup.conf.ForceBinlogCompress && server.HaveBinlogCompress == false && server.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		dbhelper.SetBinlogCompress(server.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce binlog compression on master %s", server.URL)
 	} else if server.HaveBinlogCompress == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {

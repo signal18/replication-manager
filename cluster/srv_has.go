@@ -189,6 +189,10 @@ func (server *ServerMonitor) IsMySQL() bool {
 	return server.DBVersion.IsMySQL()
 }
 
+func (server *ServerMonitor) IsMariaDB() bool {
+	return server.DBVersion.IsMariaDB()
+}
+
 func (server *ServerMonitor) HasSuperReadOnly() bool {
 	return server.DBVersion.IsMySQL57()
 }
