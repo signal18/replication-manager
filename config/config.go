@@ -83,6 +83,7 @@ type Config struct {
 	CheckType                          string `mapstructure:"check-type"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters"`
+	CheckGrants                        bool   `mapstructure:"check-grants"`
 	RplChecks                          bool   `mapstructure:"check-replication-state"`
 	ForceSlaveHeartbeat                bool   `mapstructure:"force-slave-heartbeat"`
 	ForceSlaveHeartbeatTime            int    `mapstructure:"force-slave-heartbeat-time"`

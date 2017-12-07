@@ -11,12 +11,13 @@ package cluster
 import (
 	"fmt"
 
+	"github.com/mariadb-corporation/mrm/misc"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/state"
 )
 
-/* Check replication health and return status string */
-func (server *ServerMonitor) replicationCheck() string {
+/* CheckReplication Check replication health and return status string */
+func (server *ServerMonitor) CheckReplication() string {
 	if server.ClusterGroup.sme.IsInFailover() {
 		return "In Failover"
 	}
@@ -116,7 +117,8 @@ func (server *ServerMonitor) replicationCheck() string {
 	return "Running OK"
 }
 
-func (server *ServerMonitor) SlaveCheck() {
+// CheckSlaveSettings check slave variables & enforce if set
+func (server *ServerMonitor) CheckSlaveSettings() {
 	sl := server
 	if server.ClusterGroup.conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
 		server.ClusterGroup.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.URL)
@@ -186,14 +188,14 @@ func (server *ServerMonitor) SlaveCheck() {
 		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO"})
 	}
 
-	/* DB read-only variable
-	   if server.ClusterGroup.conf.ForceDiskRelayLogSizeLimit && sl.RelayLogSize != server.ClusterGroup.conf.ForceDiskRelayLogSizeLimitSize {
-	     dbhelper.SetRelayLogSpaceLimit(sl.Conn, strconv.FormatUint(server.ClusterGroup.conf.ForceDiskRelayLogSizeLimitSize, 10))
-	     server.ClusterGroup.LogPrintf("DEBUG: Enforce relay disk space limit on slave %s", sl.URL)
-	   }*/
+	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
+		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+	}
+
 }
 
-func (server *ServerMonitor) MasterCheck() {
+// CheckMasterSettings check master variables & enforce if set
+func (server *ServerMonitor) CheckMasterSettings() {
 	if server.ClusterGroup.conf.ForceSlaveSemisync && server.HaveSemiSync == false {
 		server.ClusterGroup.LogPrintf("INFO", "Enforce semisync on Master %s", server.URL)
 		dbhelper.InstallSemiSync(server.Conn)
@@ -241,5 +243,70 @@ func (server *ServerMonitor) MasterCheck() {
 	}
 	if server.HaveGtidStrictMode == false {
 		server.ClusterGroup.sme.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO"})
+	}
+	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
+		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+	}
+}
+
+// CheckSlaveSameMasterGrants check same serers grants as the master
+func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
+	if server.ClusterGroup.GetMaster() == nil || server.IsIgnored() || server.ClusterGroup.conf.CheckGrants == false {
+		return true
+	}
+	for _, user := range server.ClusterGroup.GetMaster().Users {
+		if _, ok := server.Users["'"+user.User+"'@'"+user.Host+"'"]; !ok {
+			server.ClusterGroup.sme.AddState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], server.URL, "'"+user.User+"'@'"+user.Host+"'"), ErrFrom: "TOPO"})
+			return false
+		}
+	}
+	return true
+}
+
+// CheckPriviledges replication manager user privileges on live servers
+func (server *ServerMonitor) CheckPriviledges() {
+	if server.ClusterGroup.conf.LogLevel > 2 {
+		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
+	}
+	if server.State != "" && !server.IsDown() && server.IsRelay == false {
+		myhost, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Cant get host for connection user on %s: %s", server.URL, err)
+		}
+		myip, err := misc.GetIPSafe(myhost)
+		if server.ClusterGroup.conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)
+		}
+		if err != nil {
+			server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.URL, err), ErrFrom: "CONF"})
+		} else {
+			priv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip)
+			if err != nil {
+				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF"})
+			}
+			if priv.Repl_client_priv == "N" {
+				server.ClusterGroup.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF"})
+			}
+			if priv.Super_priv == "N" {
+				server.ClusterGroup.SetState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF"})
+			}
+			if priv.Reload_priv == "N" {
+				server.ClusterGroup.SetState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF"})
+			}
+		}
+		// Check replication user has correct privs.
+		for _, sv2 := range server.ClusterGroup.servers {
+			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
+				rplhost, _ := misc.GetIPSafe(sv2.Host)
+				rpriv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost)
+				if err != nil {
+					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err), ErrFrom: "CONF"})
+				}
+				if rpriv.Repl_slave_priv == "N" {
+					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
+				}
+
+			}
+		}
 	}
 }

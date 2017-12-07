@@ -49,7 +49,7 @@ func (sl serverList) checkAllSlavesRunning() bool {
 }
 
 /* Check Consistency parameters on server */
-func (server *ServerMonitor) acidTest() bool {
+func (server *ServerMonitor) IsAcid() bool {
 	syncBin, _ := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
 	logFlush, _ := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
 	if syncBin == "1" && logFlush == "1" {
@@ -115,7 +115,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 }
 
 func (server *ServerMonitor) HasReplicationIssue() bool {
-	ret := server.replicationCheck()
+	ret := server.CheckReplication()
 	if ret == "Running OK" {
 		return false
 	}

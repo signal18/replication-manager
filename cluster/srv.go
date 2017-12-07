@@ -494,7 +494,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveMariaDBGTID = false
 		}
 	}
-	server.ReplicationHealth = server.replicationCheck()
+	server.ReplicationHealth = server.CheckReplication()
 	// if MaxScale exit at fetch variables and status part as not supported
 	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
 		return nil

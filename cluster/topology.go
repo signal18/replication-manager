@@ -17,7 +17,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
@@ -129,7 +128,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
-			sv.replicationCheck()
+			sv.CheckReplication()
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			var n int
@@ -153,54 +152,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.master.SetReadWrite()
 			}
 		}
-		// Check replication manager user privileges on live servers
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Privilege check on %s", sv.URL)
-		}
-		if sv.State != "" && !sv.IsDown() && sv.IsRelay == false {
-			myhost, err := dbhelper.GetHostFromConnection(sv.Conn, cluster.dbUser)
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cant get host for connection user on %s: %s", sv.URL, err)
-			}
-			myip, err := misc.GetIPSafe(myhost)
-			if cluster.conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", sv.URL, myip, myhost)
-			}
-			if err != nil {
-				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, sv.URL, err), ErrFrom: "CONF"})
-			} else {
-				priv, err := dbhelper.GetPrivileges(sv.Conn, cluster.dbUser, cluster.repmgrHostname, myip)
-				if err != nil {
-					cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.dbUser, cluster.repmgrHostname, err), ErrFrom: "CONF"})
-				}
-				if priv.Repl_client_priv == "N" {
-					cluster.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF"})
-				}
-				if priv.Super_priv == "N" {
-					cluster.SetState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF"})
-				}
-				if priv.Reload_priv == "N" {
-					cluster.SetState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF"})
-				}
-			}
-			// Check replication user has correct privs.
-			for _, sv2 := range cluster.servers {
-				if sv2.URL != sv.URL && sv2.IsRelay == false && !sv2.IsDown() {
-					rplhost, _ := misc.GetIPSafe(sv2.Host)
-					rpriv, err := dbhelper.GetPrivileges(sv.Conn, cluster.rplUser, sv2.Host, rplhost)
-					if err != nil {
-						cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.rplUser, sv2.URL, err), ErrFrom: "CONF"})
-					}
-					if rpriv.Repl_slave_priv == "N" {
-						cluster.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF"})
-					}
-					// Additional health checks go here
-					if sv.acidTest() == false && cluster.IsDiscovered() {
-						cluster.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
-					}
-				}
-			}
-		}
+		sv.CheckPriviledges()
 	}
 
 	// If no cluster.slaves are detected, generate an error
@@ -211,9 +163,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
 		for _, sl := range cluster.slaves {
-
 			if sl.IsMaxscale == false && !sl.IsDown() {
-				sl.SlaveCheck()
+				sl.CheckSlaveSettings()
+				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
 					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
@@ -229,7 +181,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 					//broken replication ring
 				} else if cluster.conf.MultiMasterRing == true {
 					//setting a virtual master if none
-
 					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
 					cluster.master = cluster.GetFailedServer()
 				}
@@ -332,8 +283,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.master.RplMasterStatus = false
 		// End of autodetection code
 		if !cluster.master.IsDown() {
-			cluster.master.MasterCheck()
-
+			cluster.master.CheckMasterSettings()
 		}
 		// Replication checks
 		if cluster.conf.MultiMaster == false {
