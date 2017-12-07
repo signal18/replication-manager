@@ -33,7 +33,7 @@ type ServerMonitor struct {
 	Id       string //Unique name given by cluster & crc64(URL) used by test to provision
 	Conn     *sqlx.DB
 	User     string
-	Pass     string
+	Pass     string `json:"-"`
 	URL      string
 	DSN      string `json:"-"`
 	Host     string
@@ -106,7 +106,7 @@ type ServerMonitor struct {
 	ReplicationHealth           string
 	TestConfig                  string
 	DictTables                  map[string]dbhelper.Table
-	Users                       map[string]dbhelper.Grant
+	Users                       map[string]dbhelper.Grant `json:"-"`
 }
 
 type serverList []*ServerMonitor

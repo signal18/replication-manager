@@ -400,7 +400,6 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Encoding error", 500)
 			return
 		}
-		srvs.Pass = "XXXXXXXX"
 	}
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
