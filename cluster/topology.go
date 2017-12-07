@@ -45,7 +45,6 @@ func (cluster *Cluster) newServerList() error {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "hostlist: %s %s", cluster.conf.Hosts, cluster.hostList)
 	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
 
