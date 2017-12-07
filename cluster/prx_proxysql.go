@@ -170,13 +170,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			dupUsers := make(map[string]string)
 
 			for _, u := range s.Users {
-				user, ok := uniUsers[u.User]
+				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
 					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON"})
 				} else {
 					if u.Password != "" {
-						uniUsers[user.User] = u
+						uniUsers[u.User+":"+u.Password] = u
 					}
 				}
 			}
