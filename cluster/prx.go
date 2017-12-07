@@ -332,7 +332,7 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.proxies {
-		cluster.LogPrintf(LvlInfo, "Init %s %s %s", pr.Type, pr.Host, pr.Port)
+		cluster.LogPrintf(LvlInfo, "Init Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
 		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
@@ -351,7 +351,7 @@ func (cluster *Cluster) initProxies() {
 
 func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	if len(cluster.proxies) == 0 {
-		return nil, errors.New("No proxies definition")
+		return nil, errors.New("No proxies defined")
 	}
 	prx := cluster.proxies[0]
 
