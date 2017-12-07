@@ -256,7 +256,7 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 	}
 	for _, user := range server.ClusterGroup.GetMaster().Users {
 		if _, ok := server.Users["'"+user.User+"'@'"+user.Host+"'"]; !ok {
-			server.ClusterGroup.sme.AddState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], server.URL, "'"+user.User+"'@'"+user.Host+"'"), ErrFrom: "TOPO"})
+			server.ClusterGroup.sme.AddState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], fmt.Sprintf("'%s'@'%s'", user.User, user.Host), server.URL), ErrFrom: "TOPO"})
 			return false
 		}
 	}
@@ -264,7 +264,7 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 }
 
 // CheckPriviledges replication manager user privileges on live servers
-func (server *ServerMonitor) CheckPriviledges() {
+func (server *ServerMonitor) CheckPrivileges() {
 	if server.ClusterGroup.conf.LogLevel > 2 {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
 	}

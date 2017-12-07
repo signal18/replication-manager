@@ -152,7 +152,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.master.SetReadWrite()
 			}
 		}
-		sv.CheckPriviledges()
+		sv.CheckPrivileges()
 	}
 
 	// If no cluster.slaves are detected, generate an error

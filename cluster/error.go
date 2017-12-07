@@ -63,7 +63,7 @@ var clusterError = map[string]string{
 	"ERR00053": "ProxySQL can't load users (%s)",
 	"ERR00054": "ProxySQL can't add user (%s)",
 	"ERR00055": "Arbitrator unreachable (%s)",
-	"ERR00056": "Candidate replicat %s does not have master user %s ",
+	"ERR00056": "Master user %s is not defined on replication candidate %s",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is working",
