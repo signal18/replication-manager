@@ -166,7 +166,22 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if err != nil {
 				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON"})
 			}
-			for _, user := range s.Users {
+			uniUsers := make(map[string]dbhelper.Grant)
+			dupUsers := make(map[string]string)
+
+			for _, u := range s.Users {
+				user, ok := uniUsers[u.User]
+				if ok {
+					dupUsers[user.User] = user.User
+					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON"})
+				} else {
+					if u.Password != "" {
+						uniUsers[user.User] = u
+					}
+				}
+			}
+
+			for _, user := range uniUsers {
 				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
 					cluster.LogPrintf(LvlInfo, "Add ProxySQL user %s ", user.User)
 					err := psql.AddUser(user.User, user.Password)

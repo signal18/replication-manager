@@ -114,5 +114,9 @@ func (psql *ProxySQL) Truncate() error {
 
 func (psql *ProxySQL) AddUser(User string, Password string) error {
 	_, err := psql.Connection.Exec("REPLACE INTO mysql_users(username,password) VALUES('" + User + "','" + Password + "')")
+	if err != nil {
+		return err
+	}
+	_, err = psql.Connection.Exec("LOAD USERS TO RUNTIME")
 	return err
 }
