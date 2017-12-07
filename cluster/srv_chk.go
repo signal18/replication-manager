@@ -11,8 +11,8 @@ package cluster
 import (
 	"fmt"
 
-	"github.com/mariadb-corporation/mrm/misc"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
 
