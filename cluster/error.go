@@ -62,6 +62,7 @@ var clusterError = map[string]string{
 	"ERR00052": "Could not get stats to HaProxy: %s",
 	"ERR00053": "ProxySQL can't load users (%s)",
 	"ERR00054": "ProxySQL can't add user (%s)",
+	"ERR00055": "Arbitrator unreachable (%s)",
 	"ERR00056": "Candidate replicat %s does not have master user %s ",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
