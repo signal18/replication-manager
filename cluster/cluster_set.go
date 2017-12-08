@@ -8,6 +8,38 @@ package cluster
 
 import "github.com/signal18/replication-manager/dbhelper"
 import "github.com/signal18/replication-manager/state"
+import "github.com/signal18/replication-manager/opensvc"
+
+func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
+	var err error
+	if cluster.conf.Enterprise == false {
+		return
+	}
+	if cluster.conf.ProvSSLCa != "" {
+		cluster.conf.ProvSSLCaUUID, err = svc.PostSafe(cluster.conf.ProvSSLCa)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can't upload root CA to Collector Safe %s", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Upload root Certificate to Safe %s", cluster.conf.ProvSSLCaUUID)
+		}
+	}
+	if cluster.conf.ProvSSLCert != "" {
+		cluster.conf.ProvSSLCertUUID, err = svc.PostSafe(cluster.conf.ProvSSLCert)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can't upload Server TLS Certificate to Collector Safe %s", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.conf.ProvSSLKeyUUID)
+		}
+	}
+	if cluster.conf.ProvSSLKey != "" {
+		cluster.conf.ProvSSLKeyUUID, err = svc.PostSafe(cluster.conf.ProvSSLKey)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can't upload Server TLS Private Key to Collector Safe %s", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.conf.ProvSSLKeyUUID)
+		}
+	}
+}
 
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 	cluster.cfgGroupDisplay = cfgGroup

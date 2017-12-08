@@ -891,6 +891,9 @@ micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + server.ClusterGroup.GetGComm() + `
 mrm_api_addr = ` + server.ClusterGroup.conf.BindAddr + ":" + server.ClusterGroup.conf.HttpPort + `
 mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
+safe_ssl_ca_uuid = ` + server.ClusterGroup.conf.ProvSSLCaUUID + `
+safe_ssl_cert_uuid = ` + server.ClusterGroup.conf.ProvSSLCertUUID + `
+safe_ssl_key_uuid = ` + server.ClusterGroup.conf.ProvSSLKeyUUID + `
 `
 	log.Println(conf)
 

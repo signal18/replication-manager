@@ -233,6 +233,9 @@ type Config struct {
 	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`
 	ProvSSLCert                        string `mapstructure:"prov-tls-server-cert"`
 	ProvSSLKey                         string `mapstructure:"prov-tls-server-key"`
+	ProvSSLCaUUID                      string `mapstructure:"prov-tls-server-ca-uuid"`
+	ProvSSLCertUUID                    string `mapstructure:"prov-tls-server-cert-uuid"`
+	ProvSSLKeyUUID                     string `mapstructure:"prov-tls-server-key-uuid"`
 	APIUser                            string `mapstructure:"api-credential"`
 	APIPort                            string `mapstructure:"api-port"`
 	APIBind                            string `mapstructure:"api-bind"`
