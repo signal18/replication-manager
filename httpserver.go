@@ -499,7 +499,7 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	off := values.Get("offset")
 	if off == "" {
-		off = "100"
+		off = "1000"
 	}
 	noff, _ := strconv.Atoi(off)
 	err := e.Encode(htlog.Buffer[:noff])
