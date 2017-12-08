@@ -1128,10 +1128,10 @@
                     "id": 5925
                 },
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/nomogslaveupdates.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nlog_slave_updates=0\"}",
-                    "var_updated": "2017-08-28 13:38:28",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/nologslaveupdates.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nlog_slave_updates=0\"}",
+                    "var_updated": "2017-12-01 14:13:32",
                     "var_name": "db_cnf_nologslaveupdates",
                     "id": 5926
                 },
@@ -1170,10 +1170,34 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/sphinx.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add=ha_sphinx\"}",
-                    "var_updated": "2017-11-25 14:01:47",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/sphinx.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add=ha_sphinx\"}",
+                    "var_updated": "2017-12-02 08:43:04",
                     "var_name": "db_cnf_sphinx",
                     "id": 5969
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/ca-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CA_UUID%%\"}",
+                    "var_updated": "2017-12-08 16:53:53",
+                    "var_name": "db_cnf_sslca",
+                    "id": 5980
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CERT_UUID%%\"}",
+                    "var_updated": "2017-12-08 16:57:33",
+                    "var_name": "db_cnf_sslcert",
+                    "id": 5981
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-key.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_KEY_UUID%%\"}",
+                    "var_updated": "2017-12-08 16:57:46",
+                    "var_name": "db_cnf_sslkey",
+                    "id": 5982
                 }
             ],
             "ruleset_public": false,
