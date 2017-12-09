@@ -1,5 +1,4 @@
-//var graphite_url = "http://"+window.location.hostname+":10002";  // enter your graphite url, e.g. http://your.graphite.com
-var graphite_url = "http://127.0.0.1:10002";  // enter your graphite url, e.g. http://your.graphite.com
+var graphite_url = "http://"+window.location.hostname+":10002";  // enter your graphite url, e.g. http://your.graphite.com
 
 var dashboards =
 [
