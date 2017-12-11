@@ -675,6 +675,34 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	return string(body), nil
 }
 
+func (collector *Collector) PublishSafe(safeUUID string) error {
+	groupid, err := collector.CreateMRMGroup()
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/safe/" + safeUUID + "/publications/" + strconv.Itoa(groupid)
+	//url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags/" + tag.Tag_id
+	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return err
+	}
+	return nil
+}
+
 func (collector *Collector) PostSafe(filename string) (string, error) {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}

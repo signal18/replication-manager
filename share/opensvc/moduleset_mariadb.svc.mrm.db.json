@@ -750,8 +750,8 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2017-11-25 13:56:16",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2017-12-11 13:49:15",
                     "var_name": "db_cnf_ssl",
                     "id": 5971
                 }
@@ -784,8 +784,8 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=../etc/mysql/ssl/ca-cert.pem\\nssl-cert=../etc/mysql/ssl/server-cert.pem\\nssl-key=../etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2017-11-25 13:59:54",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=../etc/mysql/ssl/ca-cert.pem\\nssl-cert=../etc/mysql/ssl/server-cert.pem\\nssl-key=../etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2017-12-11 13:51:52",
                     "var_name": "db_cnf_ssl",
                     "id": 5974
                 }
@@ -1198,6 +1198,14 @@
                     "var_updated": "2017-12-08 16:57:46",
                     "var_name": "db_cnf_sslkey",
                     "id": 5982
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
+                    "var_updated": "2017-12-11 13:49:46",
+                    "var_name": "db_cnf_dir_conf_ssl",
+                    "id": 5983
                 }
             ],
             "ruleset_public": false,

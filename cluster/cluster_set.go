@@ -22,14 +22,16 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 		} else {
 			cluster.LogPrintf(LvlInfo, "Upload root Certificate to Safe %s", cluster.conf.ProvSSLCaUUID)
 		}
+		svc.PublishSafe(cluster.conf.ProvSSLCaUUID)
 	}
 	if cluster.conf.ProvSSLCert != "" {
 		cluster.conf.ProvSSLCertUUID, err = svc.PostSafe(cluster.conf.ProvSSLCert)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't upload Server TLS Certificate to Collector Safe %s", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.conf.ProvSSLKeyUUID)
+			cluster.LogPrintf(LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.conf.ProvSSLCertUUID)
 		}
+		svc.PublishSafe(cluster.conf.ProvSSLCertUUID)
 	}
 	if cluster.conf.ProvSSLKey != "" {
 		cluster.conf.ProvSSLKeyUUID, err = svc.PostSafe(cluster.conf.ProvSSLKey)
@@ -38,6 +40,7 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 		} else {
 			cluster.LogPrintf(LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.conf.ProvSSLKeyUUID)
 		}
+		svc.PublishSafe(cluster.conf.ProvSSLKeyUUID)
 	}
 }
 
