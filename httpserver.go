@@ -472,6 +472,8 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Topology = currentCluster.GetTopology()
 	s.Version = fmt.Sprintf("%s %s %s %s", FullVersion, Build, GoOS, GoArch)
+	s.DBTags = currentCluster.GetDatabaseTags()
+	s.ProxyTags = currentCluster.GetProxyTags()
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	err := e.Encode(s)

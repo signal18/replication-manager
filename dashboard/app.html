@@ -222,7 +222,7 @@
 
                           <div layout="column" layout-gt-xs="row">
                              <div flex-gt-xs="30" class="col-lg-33">
-                               <md-card>
+                              <md-card>
                         <md-card-content><p class="sectionheader">ACTIONS</p></md-card-content>
 
                         <table class="table">
@@ -231,16 +231,31 @@
                                  <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
                                  <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
                                  <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                                 <BR><BR>
-                                 <button ng-if="settings.heartbeat=='true'"  type="button" class="btn btn-primary" ng-click="setactive()">Force Active Status</button>
-                                 <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
-                                 <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Rolling Upgrade</button><BR><BR>
                                  </td>
                               </tr>
                              </table>
                              </md-card>
                              <BR>
+                               <md-card>
+                         <md-card-content><p class="sectionheader">PRO</p></md-card-content>
+
+                         <table class="table">
+                            <tr>
+                               <td>
+                                  <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
+                                  <button ng-if="settings.enterprise=='true'"  type="button" class="btn btn-primary" ng-click="rolling()">Rolling Upgrade</button><BR><BR>
+                                  </td>
+                               </tr>
+                               <tr>
+                                  <td>
+                                      <div ng-repeat="tag in settings.databasetags"> <span  class="label label-success">{{ tag }}<span></div>
+                                  </td>
+                               </tr>
+                              </table>
+                              </md-card>
+                              <BR>
+
                              <md-card ng-if="settings.test=='true'">
                                    <table class="table">
                                       <tr>

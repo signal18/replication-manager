@@ -270,3 +270,11 @@ func (cluster *Cluster) GetTopology() string {
 	}
 	return cluster.conf.Topology
 }
+
+func (cluster *Cluster) GetDatabaseTags() []string {
+	return strings.Split(cluster.conf.ProvTags, ",")
+}
+
+func (cluster *Cluster) GetProxyTags() []string {
+	return strings.Split(cluster.conf.ProvProxTags, ",")
+}
