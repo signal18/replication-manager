@@ -824,6 +824,25 @@ for _, addr := range agent.Ips {
 		ipdev = addr.Net_intf
 	}
 }*/
+func (server *ServerMonitor) GetSnapshot() string {
+	if !server.IsPrefered() || !server.ClusterGroup.conf.ProvDiskSnapshot {
+		return ""
+	}
+	conf := ""
+	if server.ClusterGroup.conf.ProvDiskPool == "zpool" {
+		conf = `
+[sync#2]
+type = zfssnap
+dataset = {disk#1001.name}/pod01
+recursive = true
+name = daily
+schedule = 00:01-02:00@120
+keep =  ` + strconv.Itoa(server.ClusterGroup.conf.ProvDiskSnapshotKeep) + `
+sync_max_delay = 1440
+`
+	}
+	return conf
+}
 
 func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {
 
@@ -855,6 +874,7 @@ show_disabled = false
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod)
 		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 	`
+		conf = conf + server.GetSnapshot()
 		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)
 		conf = conf + server.GetPodDockerDBTemplate(collector, pod, i)
 		conf = conf + server.ClusterGroup.GetPodPackageTemplate(collector, pod)
@@ -994,6 +1014,7 @@ size = 100%FREE
 			fs = fs + `
 dev = {disk#` + podpool + `.name}/pod` + pod + `
 size = {env.size}
+mkfs_opt = -o recordsize=16K
 `
 
 		} else {

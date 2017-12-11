@@ -205,6 +205,8 @@ type Config struct {
 	ProvDiskPool                       string `mapstructure:"prov-db-disk-pool"`
 	ProvDiskDevice                     string `mapstructure:"prov-db-disk-device"`
 	ProvDiskType                       string `mapstructure:"prov-db-disk-type"`
+	ProvDiskSnapshot                   bool   `mapstructure:"prov-db-disk-snapshot-prefered-master"`
+	ProvDiskSnapshotKeep               int    `mapstructure:"prov-db-disk-snapshot-keep"`
 	ProvNetIface                       string `mapstructure:"prov-db-net-iface"`
 	ProvNetmask                        string `mapstructure:"prov-db-net-mask"`
 	ProvGateway                        string `mapstructure:"prov-db-net-gateway"`
