@@ -7,6 +7,7 @@ package opensvc
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -732,6 +733,14 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	}
 	bodyWriter.WriteField("name", filename)
 	bodyWriter.Close()
+
+	hasher := md5.New()
+	if _, err = io.Copy(hasher, fh); err != nil {
+		return "", err
+	}
+
+	//md5 := hex.EncodeToString(hasher.Sum(nil))
+
 	req, err := http.NewRequest("POST", targetUrl, bodyBuf)
 	if err != nil {
 		return "", err

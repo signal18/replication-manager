@@ -196,7 +196,7 @@ class CompObject(object):
             try:
                 data = json.loads(s)
             except ValueError:
-                perror('failed to concatenate', self.get_env(k), 'to rules list')
+                perror("failed to concatenate '%s=%s' to rules list" % (k, str(self.get_env(k))))
             if type(data) == list:
                 for d in data:
                     rules += [(k, d)]
@@ -263,17 +263,24 @@ class CompObject(object):
         else:
             config.read("/etc/opensvc/node.conf")
         data = {}
-        data["username"] = nodename
+        svcname = os.environ.get("OSVC_COMP_SERVICES_SVCNAME")
+        if svcname:
+            data["username"] = svcname+"@"+nodename
+        else:
+            data["username"] = nodename
         data["password"] = config.get("node", "uuid")
-        data["url"] = config.get("node", "dbopensvc").replace("/feed/default/call/xmlrpc", "/init/rest/api")
+        data["url"] = config.get("node", "dbopensvc").replace("/feed/default/call/xmlrpc", "")
+        data["url"] = data["url"].replace("/init/rest/api", "")
+        data["url"] += "/init/rest/api"
         self.collector_api_cache = data
         return self.collector_api_cache
 
     def collector_url(self):
         api = self.collector_api()
         s = "%s:%s@" % (api["username"], api["password"])
-        url = api["url"].replace("https://", "https://"+s)
-        url = url.replace("http://", "http://"+s)
+        url = api["url"].replace("https://", "")
+        url = url.replace("http://", "")
+        url = "https://"+s+url
         return url
 
     def collector_request(self, path):
@@ -371,6 +378,63 @@ class CompObject(object):
                 hash.update(chunk)
         return hash.hexdigest()
 
+    def backup(self, path):
+        import shutil
+        if not os.path.exists(path):
+            return
+        session_uuid = os.environ.get("OSVC_SESSION_UUID")
+        pathvar = os.environ.get("OSVC_PATH_VAR")
+        if session_uuid is None or pathvar is None:
+            return
+        backup_base_d = os.path.join(pathvar, "compliance_backup", session_uuid)
+        backup_f = os.path.join(backup_base_d, path.lstrip(os.sep))
+        if os.path.exists(backup_f):
+            return
+        backup_d = os.path.dirname(backup_f)
+        if not os.path.exists(backup_d):
+            try:
+                os.makedirs(backup_d)
+            except OSError as exc:
+                perror("failed to backup %s: create dir %s" % (path, backup_d))
+                raise ComplianceError()
+        try:
+            shutil.copy(path, backup_f)
+        except Exception:
+            perror("failed to backup %s: copy to %s" % (path, backup_f))
+            raise ComplianceError()
+        self.remove_old_backups()
+
+    def restore(self, path):
+        import shutil
+        if not os.path.exists(path):
+            return
+        session_uuid = os.environ.get("OSVC_SESSION_UUID")
+        if session_uuid is None:
+            return
+        backup_base_d = os.path.join(pathvar, "compliance_backup", session_uuid)
+        backup_f = os.path.join(backup_base_d, path)
+        if not backup_f:
+            perror("failed to restore %s: no backup" % path)
+            raise ComplianceError()
+        try:
+            shutil.copy(backup, path)
+            pinfo("%s restored" % path)
+        except Exception:
+            perror("failed to restore %s" % path)
+            raise ComplianceError()
+
+    def remove_old_backups(self):
+        import glob
+        import time
+        import shutil
+        threshold = time.time() - 7 * 24 * 60 * 60
+        pathvar = os.environ.get("OSVC_PATH_VAR")
+        for path in glob.glob(os.path.join(pathvar, "compliance_backup", "*-*-*-*-*")):
+            mtime = os.stat(path).st_mtime
+            if mtime < threshold:
+                shutil.rmtree(path)
+
+
     #
     # Placeholders, to override in child class
     #
@@ -418,7 +482,7 @@ def main(co):
 
     argv = [sys.argv[1]]
     if len(sys.argv) > 3:
-        argv += sys.argv[3:] 
+        argv += sys.argv[3:]
     o.__init__(*argv)
     try:
         if sys.argv[2] == 'check':
@@ -446,4 +510,3 @@ def main(co):
 
 if __name__ == "__main__":
     perror("this file is for import into compliance objects")
-
