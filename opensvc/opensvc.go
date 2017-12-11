@@ -675,11 +675,11 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	return string(body), nil
 }
 
-func (collector *Collector) PublishSafe(safeUUID string) error {
-	groupid, err := collector.CreateMRMGroup()
+func (collector *Collector) PublishSafe(safeUUID string, group string) error {
+	groupid, err := collector.GetGroupIdFromName(group)
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
-	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/safe/" + safeUUID + "/publications/" + strconv.Itoa(groupid)
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/safe/" + safeUUID + "/publications/" + groupid
 	//url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags/" + tag.Tag_id
 	log.Println("INFO ", url)
 
@@ -1016,6 +1016,43 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 		return nil, err
 	}
 	return r.Groups, nil
+}
+
+func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
+
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{Transport: tr}
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups/" + group
+	log.Println("INFO ", url)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("ERROR ", err)
+	}
+	req.SetBasicAuth(collector.User, collector.Pass)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "0", err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "0", err
+	}
+
+	type Message struct {
+		Groups []Group `json:"data"`
+	}
+	var r Message
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "0", err
+	}
+	return strconv.Itoa(r.Groups[0].Id), nil
 }
 
 func (collector *Collector) GetTagIdFromTags(tags []Tag, name string) (string, error) {
