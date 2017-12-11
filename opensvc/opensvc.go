@@ -1022,14 +1022,14 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
-	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups/" + group
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups/" + group + "?props=id"
 	log.Println("INFO ", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
 	}
-	req.SetBasicAuth(collector.User, collector.Pass)
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
