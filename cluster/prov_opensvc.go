@@ -1014,7 +1014,7 @@ size = 100%FREE
 			fs = fs + `
 dev = {disk#` + podpool + `.name}/pod` + pod + `
 size = {env.size}
-mkfs_opt = -o recordsize=16K,primarycache=metadata
+mkfs_opt = -o recordsize=16K -o primarycache=metadata
 `
 
 		} else {
