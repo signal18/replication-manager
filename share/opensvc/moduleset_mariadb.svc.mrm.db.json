@@ -486,6 +486,25 @@
                 }
             ],
             "fset_name": "mariadb.svc.prov.sphinx"
+        },
+        {
+            "fset_stats": false,
+            "id": 280,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nodoublewrite",
+                        "f_table": "v_tags",
+                        "id": 231
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.nodoublewrite"
         }
     ],
     "rulesets": [
@@ -1032,11 +1051,11 @@
                     "id": 5913
                 },
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/compress.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.1]\\ninnodb_compression_default=1\\ninnodb_compression_algorithm=bzip2\\ninnodb_use_fallocate = 1\\ninnodb_use_trim = 1\\ninnodb_mtflush_threads = 16\\n[mariadb-10.2]\\nlog_bin_compress=1\"}",
-                    "var_updated": "2017-08-28 13:38:28",
-                    "var_name": "db_cnf_compression",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/compressinnodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.1]\\ninnodb_compression_default=1\\ninnodb_compression_algorithm=bzip2\\ninnodb_use_fallocate = 1\\ninnodb_use_trim = 1\\ninnodb_mtflush_threads = 16\\n\"}",
+                    "var_updated": "2017-12-12 08:11:51",
+                    "var_name": "db_cnf_compression_innodb",
                     "id": 5914
                 },
                 {
@@ -1096,10 +1115,10 @@
                     "id": 5921
                 },
                 {
-                    "var_author": "replication-manager replication-manager@localhost.localdomain",
+                    "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "",
-                    "var_updated": "2017-08-28 13:38:28",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/nodoublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_doublewrite=0\"}",
+                    "var_updated": "2017-12-11 14:50:08",
                     "var_name": "db_cnf_nodoublewrite",
                     "id": 5922
                 },
@@ -1202,10 +1221,18 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
-                    "var_updated": "2017-12-11 13:49:46",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2017-12-11 14:03:31",
                     "var_name": "db_cnf_dir_conf_ssl",
                     "id": 5983
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/compressbinlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.2]\\nlog_bin_compress=1\"}",
+                    "var_updated": "2017-12-12 08:12:03",
+                    "var_name": "db_cnf_compression_binlog",
+                    "id": 5984
                 }
             ],
             "ruleset_public": false,
@@ -1230,7 +1257,9 @@
                 "mariadb.svc.mrm.db.cnf.generic.wsrep",
                 "mariadb.svc.mrm.db.cnf.generic.nowsrep",
                 "mariadb.svc.mrm.db.cnf.generic.pfs",
-                "mariadb.svc.mrm.db.cnf.generic.sphinx"
+                "mariadb.svc.mrm.db.cnf.generic.sphinx",
+                "mariadb.svc.mrm.db.cnf.generic.compressbinlog",
+                "mariadb.svc.mrm.db.cnf.generic.nodoublewrite"
             ],
             "publications": [
                 "replication-manager"
@@ -1764,6 +1793,54 @@
                 "replication-maanger"
             ],
             "id": 1027,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.compressbinlog",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/compressbinlog.cnf\",\"target\":\"../compressbinlog.cnf\"}",
+                    "var_updated": "2017-12-12 08:23:19",
+                    "var_name": "db_link_compressbinlog",
+                    "id": 5985
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1030,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.nodoublewrite",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodoublewrite",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/nodoublewrite.cnf\",\"target\":\"../nodoublewrite.cnf\"}",
+                    "var_updated": "2017-12-12 08:49:30",
+                    "var_name": "db_link_nodoublewrite",
+                    "id": 5987
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1031,
             "responsibles": [
                 "replication-maanger"
             ]
