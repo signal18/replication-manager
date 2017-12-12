@@ -145,6 +145,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Mode:      "MXS",
 			Logfile:   crash.FailoverMasterLogFile,
 			Logpos:    crash.FailoverMasterLogPos,
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
 		})
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
@@ -163,6 +164,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Mode:      "POSITIONAL",
 			Logfile:   crash.NewMasterLogFile,
 			Logpos:    crash.NewMasterLogPos,
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
 		})
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
@@ -241,6 +243,7 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 			Mode:      "MXS",
 			Logfile:   realmaster.FailoverMasterLogFile,
 			Logpos:    realmaster.FailoverMasterLogPos,
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
 		})
 	}
 	if err3 != nil {
@@ -384,6 +387,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 								Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
 								Mode:      "POSITIONAL",
+								SSL:       server.ClusterGroup.conf.ReplicationSSL,
 							})
 							if changeMasterErr != nil {
 								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.URL)

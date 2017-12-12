@@ -336,6 +336,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "POSITIONAL",
+				SSL:       cluster.conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
@@ -355,6 +356,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
+				SSL:       cluster.conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -373,6 +375,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
+				SSL:       cluster.conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -393,6 +396,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
+					SSL:       cluster.conf.ReplicationSSL,
 				})
 			} else {
 				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -405,6 +409,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:      "POSITIONAL",
 					Logfile:   crash.FailoverMasterLogFile,
 					Logpos:    crash.FailoverMasterLogPos,
+					SSL:       cluster.conf.ReplicationSSL,
 				})
 			}
 		}
@@ -512,6 +517,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
+					SSL:       cluster.conf.ReplicationSSL,
 				})
 			} else {
 				sl.SetMaintenance()
@@ -527,6 +533,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
+				SSL:       cluster.conf.ReplicationSSL,
 			})
 		} else if cluster.conf.MxsBinlogOn == false {
 			//MariaDB all cases use GTID
@@ -539,6 +546,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
+				SSL:       cluster.conf.ReplicationSSL,
 			})
 		} else { // We deduct we are in maxscale binlog server , but can heve support for GTID or not
 
@@ -552,6 +560,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
+					SSL:       cluster.conf.ReplicationSSL,
 				})
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -562,6 +571,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 					Mode:      "MXS",
+					SSL:       cluster.conf.ReplicationSSL,
 				})
 			}
 		}
@@ -1103,6 +1113,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 			Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 			Mode:      "",
+			SSL:       cluster.conf.ReplicationSSL,
 		})
 	} else {
 		//MariaDB all cases use GTID
@@ -1115,6 +1126,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 			Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
 			Mode:      "SLAVE_POS",
+			SSL:       cluster.conf.ReplicationSSL,
 		})
 	}
 	if changeMasterErr != nil {

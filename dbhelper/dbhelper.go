@@ -250,6 +250,9 @@ type ChangeMasterOpt struct {
 	Logfile   string
 	Logpos    string
 	Mode      string
+	//	SSLCa     string
+	//	SSLCert   string
+	//	SSLKey    string
 }
 
 func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
@@ -272,6 +275,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	}
 	if opt.SSL {
 		cm += ", MASTER_USE_SSL=1"
+		//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
 	}
 	_, err := db.Exec(cm)
 	if err != nil {
