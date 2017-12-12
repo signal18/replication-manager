@@ -236,10 +236,10 @@
                              </table>
                              </md-card>
                              <BR>
-                               <md-card>
-                         <md-card-content><p class="sectionheader">PRO</p></md-card-content>
+                               <md-card ng-if="settings.enterprise=='true'" >
+                         <md-card-content ng-if="settings.enterprise=='true'" ><p class="sectionheader">PRO</p></md-card-content>
 
-                         <table class="table">
+                         <table class="table" ng-if="settings.enterprise=='true'" >
                             <tr>
                                <td>
                                   <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
