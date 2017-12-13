@@ -274,7 +274,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 		cm += ", MASTER_AUTO_POSITION = 1"
 	}
 	if opt.SSL {
-		cm += ", MASTER_USE_SSL=1"
+		cm += ", MASTER_SSL=1"
 		//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
 	}
 	_, err := db.Exec(cm)
