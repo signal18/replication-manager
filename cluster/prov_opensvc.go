@@ -280,7 +280,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	}
 
 	if prx.Type == proxyMaxscale {
-		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 			res, err := cluster.GetMaxscaleTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
 				return err
@@ -301,7 +301,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		}
 	}
 	if prx.Type == proxySpider {
-		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 			err := srv.Refresh()
 			if err == nil {
@@ -330,8 +330,29 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		}
 	}
 	if prx.Type == proxyHaproxy {
-		if strings.Contains(svc.ProvAgents, agent.Node_name) {
+		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 			res, err := cluster.GetHaproxyTemplate(svc, strings.Join(srvlist, " "), agent, prx)
+			if err != nil {
+				return err
+			}
+			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			if err != nil {
+				return err
+			}
+
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			if task != nil {
+				cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
+			} else {
+				cluster.LogPrintf(LvlErr, "Can't fetch task")
+			}
+		}
+	}
+	if prx.Type == proxySphinx {
+		if strings.Contains(cluster.conf.ProvSphinxAgents, agent.Node_name) {
+			res, err := cluster.GetSphinxTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
 				return err
 			}
@@ -561,6 +582,71 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 		return 0, err
 	}
 	return srvStatus, nil
+}
+
+func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+
+	ipPods := ""
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+cluster_type = flex
+rollback = false
+show_disabled = false
+`
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+`
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerSphinxTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf = conf + `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
+network = ` + network + `
+gateway =  ` + cluster.conf.ProvSphinxGateway + `
+netmask =  ` + cluster.conf.ProvSphinxNetmask + `
+sphinx_img = ` + cluster.conf.ProvSphinxImg + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
+vip_addr =  ` + prx.Host + `
+vip_netmask =  ` + cluster.conf.ProvSphinxNetmask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
+lb_addr  = ` + cluster.GetLocalProxy(prx).Host + `
+lb_port  = ` + cluster.GetLocalProxy(prx).Port + `
+`
+	log.Println(conf)
+	return conf, nil
 }
 
 func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
@@ -1014,7 +1100,7 @@ size = 100%FREE
 			fs = fs + `
 dev = {disk#` + podpool + `.name}/pod` + pod + `
 size = {env.size}
-mkfs_opt = -o recordsize=16K -o primarycache=metadata
+mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip
 `
 
 		} else {
@@ -1244,6 +1330,37 @@ run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00`
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cnf:/etc/proxysql.cnf:rw
 		-v {env.base_dir}/pod` + pod + `/data:/var/lib/proxysql:rw
 run_command = proxysql --initial -f -c /etc/proxysql.cnf
+`
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
+	}
+	return vm
+}
+
+func (cluster *Cluster) GetPodDockerSphinxTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvProxMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+run_image = busybox:latest
+run_args =  --net=none  -i -t
+-v /etc/localtime:/etc/localtime:ro
+run_command = /bin/sh
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.sphinx_img}
+run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00` + pod + `
+    -v /etc/localtime:/etc/localtime:ro
+    -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc:rw
+		-v {env.base_dir}/pod` + pod + `/data:/var/lib/sphinx:rw
+		-v {env.base_dir}/pod` + pod + `/data:/var/idx/sphinx:rw
+		-v {env.base_dir}/pod` + pod + `/log:/var/log/sphinx:rw
+run_command = indexall.sh
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm

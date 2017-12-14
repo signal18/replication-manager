@@ -215,6 +215,10 @@ type Config struct {
 	ProvNetIface                       string `mapstructure:"prov-db-net-iface"`
 	ProvNetmask                        string `mapstructure:"prov-db-net-mask"`
 	ProvGateway                        string `mapstructure:"prov-db-net-gateway"`
+	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
+	ProvDatadirVersion                 string `mapstructure:"prov-db-datadir-version"`
+	ProvDBLoadSQL                      string `mapstructure:"prov-db-load-sql"`
+	ProvDBLoadCSV                      string `mapstructure:"prov-db-load-csv"`
 	ProvProxType                       string `mapstructure:"prov-proxy-service-type"`
 	ProvProxAgents                     string `mapstructure:"prov-proxy-agents"`
 	ProvProxDisk                       string `mapstructure:"prov-proxy-disk-size"`
@@ -229,16 +233,28 @@ type Config struct {
 	ProvMdbshardproxyVip               string `mapstructure:"prov-proxy-net-mdbsproxy-vip"`
 	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
 	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
-	ProvDbImg                          string `mapstructure:"prov-db-docker-img"`
-	ProvDatadirVersion                 string `mapstructure:"prov-db-datadir-version"`
 	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-sharding-img"`
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
 	ProvProxMysqlRouterImg             string `mapstructure:"prov-proxy-docker-mysqlrouter-img"`
-	ProvProxSphinxImg                  string `mapstructure:"prov-proxy-docker-sphinx-img"`
-	ProvSphinxDisk                     string `mapstructure:"prov-sphinx-disk-size"`
 	ProvProxTags                       string `mapstructure:"prov-proxy-tags"`
+	ProvSphinxAgents                   string `mapstructure:"prov-sphinx-agents"`
+	ProvSphinxImg                      string `mapstructure:"prov-sphinx-docker-img"`
+	ProvSphinxMem                      string `mapstructure:"prov-sphinx-memory"`
+	ProvSphinxDisk                     string `mapstructure:"prov-sphinx-disk-size"`
+	ProvSphinxCores                    string `mapstructure:"prov-sphinx-cpu-cores"`
+	ProvSphinxMaxMatches               string `mapstructure:"prov-sphinx-max-matches"`
+	ProvSphinxMaxChildren              string `mapstructure:"prov-sphinx-max-childrens"`
+	ProvSphinxDiskPool                 string `mapstructure:"prov-sphinx-disk-pool"`
+	ProvSphinxDiskFS                   string `mapstructure:"prov-sphinx-disk-fs"`
+	ProvSphinxDiskDevice               string `mapstructure:"prov-sphinx-disk-device"`
+	ProvSphinxDiskType                 string `mapstructure:"prov-sphinx-disk-type"`
+	ProvSphinxNetIface                 string `mapstructure:"prov-sphinx-net-iface"`
+	ProvSphinxNetmask                  string `mapstructure:"prov-sphinx-net-mask"`
+	ProvSphinxGateway                  string `mapstructure:"prov-sphinx-net-gateway"`
+	ProvSphinxTags                     string `mapstructure:"prov-sphinx-tags"`
+	ProvSphinxType                     string `mapstructure:"prov-sphinx-service-type"`
 	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`
 	ProvSSLCert                        string `mapstructure:"prov-tls-server-cert"`
 	ProvSSLKey                         string `mapstructure:"prov-tls-server-key"`

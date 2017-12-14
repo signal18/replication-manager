@@ -42,6 +42,18 @@ haproxy-write-port=3303
 haproxy-read-port=3302
 haproxy-servers = "192.168.100.50"
 
+sphinx=true
+sphinx-servers = "192.168.100.52,192.168.100.53"
+prov-sphinx-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
+prov-sphinx-disk-size = "1G"
+prov-sphinx-service-type = "docker"
+prov-sphinx-disk-fs = "zfs"
+prov-sphinx-disk-pool = "zpool"
+prov-sphinx-disk-type = "loopback"
+prov-sphinx-disk-device = "/srv"
+prov-sphinx-net-iface = "br-prd"
+prov-sphinx-net-gateway = "192.168.100.1"
+prov-sphinx-net-mask = "255.255.255.0"
 
 prov-proxy-disk-size = "1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"

@@ -467,6 +467,14 @@
                     "var_updated": "2017-10-27 10:23:15",
                     "var_name": "proxy_cnf_proxysql",
                     "id": 5953
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/sphinx.cnf\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\ncat <<EOF\\n\\nsource base\\n{\\n\\t# data source type. mandatory, no default value\\n\\t# known types are mysql, pgsql, mssql, xmlpipe, xmlpipe2, odbc\\n\\ttype\\t\\t\\t= mysql \\n\\n\\t#####################################################################\\n\\t## SQL settings (for 'mysql' and 'pgsql' types)\\n\\t#####################################################################\\n\\n\\t# some straightforward parameters for SQL source types\\n\\tsql_host\\t\\t= %%ENV:SVC_CONF_ENV_LB_ADDR%%\\n       \\tsql_user\\t\\t=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\n\\tsql_pass\\t\\t= %%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%PUT_THE_PASSWORD_FOR_THE_DATABASE_USER\\n\\tsql_port\\t\\t=%%ENV:SVC_CONF_ENV_LB_PORT%%\\n}\\n#############################################################################\\n## indexer settings\\n#############################################################################\\n\\nindexer\\n{\\n\\t# memory limit, in bytes, kiloytes (16384K) or megabytes (256M)\\n\\t# optional, default is 32M, max is 2047M, recommended is 256M to 1024M\\n\\tmem_limit\\t\\t= 2047M\\n\\n}\\n\\n#############################################################################\\n## searchd settings\\n#############################################################################\\n\\nsearchd\\n{\\n\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:%%ENV:9312\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%:mysql41\\n\\n\\t# log file, searchd run info is logged here\\n\\t# optional, default is 'searchd.log'\\n\\tlog\\t\\t\\t= /var/log/sphinx/searchd.log\\n\\n\\t# query log file, all search queries are logged here\\n\\t# optional, default is empty (do not log queries)\\n\\tquery_log\\t\\t= /var/log/sphinx/query.log\\n\\n\\t# client read timeout, seconds\\n\\t# optional, default is 5\\n\\tread_timeout\\t\\t= 5\\n\\n\\t# request timeout, seconds\\n\\t# optional, default is 5 minutes\\n\\tclient_timeout\\t\\t= 300\\n\\n\\t# maximum amount of children to fork (concurrent searches to run)\\n\\t# optional, default is 0 (unlimited)\\n\\tmax_children\\t\\t= 30\\n\\n\\t# PID file, searchd process ID file name\\n\\t# mandatory\\n\\tpid_file\\t\\t= /var/run/searchd.pid\\n\\n\\t# max amount of matches the daemon ever keeps in RAM, per-index\\n\\t# WARNING, THERE'S ALSO PER-QUERY LIMIT, SEE SetLimits() API CALL\\n\\t# default is 1000 (just like Google)\\n\\tmax_matches\\t\\t= 1000\\n\\n\\t# seamless rotate, prevents rotate stalls if precaching huge datasets\\n\\t# optional, default is 1\\n\\tseamless_rotate\\t\\t= 1\\n\\n\\t# whether to forcibly preopen all indexes on startup\\n\\t# optional, default is 1 (preopen everything)\\n\\tpreopen_indexes\\t\\t= 1\\n\\n\\t# whether to unlink .old index copies on succesful rotation.\\n\\t# optional, default is 1 (do unlink)\\n\\tunlink_old\\t\\t= 1\\n\\n\\t# MVA updates pool size\\n\\t# shared between all instances of searchd, disables attr flushes!\\n\\t# optional, default size is 1M\\n\\tmva_updates_pool\\t= 1M\\n\\n\\t# max allowed network packet size\\n\\t# limits both query packets from clients, and responses from agents\\n\\t# optional, default size is 8M\\n\\tmax_packet_size\\t\\t= 8M\\n\\n\\t# max allowed per-query filter count\\n\\t# optional, default is 256\\n\\tmax_filters\\t\\t= 256\\n\\n\\t# max allowed per-filter values count\\n\\t# optional, default is 4096\\n\\tmax_filter_values\\t= 4096\\n\\n\\t# max allowed per-batch query count (aka multi-query count)\\n\\t# optional, default is 32\\n\\tmax_batch_queries\\t= 32\\n\\n\\t# multi-processing mode (MPM)\\n\\t# known values are none, fork, prefork, and threads\\n\\t# optional, default is fork\\n\\t#\\n\\tworkers\\t\\t\\t= threads # for RT to work\\n}\\nEOF\\n\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/sphinx-indexes`\\ncat $ret\"}",
+                    "var_updated": "2017-12-14 16:57:52",
+                    "var_name": "proxy_cnf_sphinx",
+                    "id": 5988
                 }
             ],
             "ruleset_public": false,
@@ -502,16 +510,16 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/ux_dck_zpool_loop/servers/$3/$4/slave-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
-                    "var_updated": "2017-12-01 16:30:27",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkslave\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/$3/$4/slave-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-12-14 15:45:43",
                     "var_name": "proxy_cnf_checkslave",
                     "id": 5964
                 },
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/ux_dck_zpool_loop/servers/$3/$4/master-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
-                    "var_updated": "2017-11-14 15:35:03",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/checkmaster\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\necho $3 $4\\nret=`wget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$3/$4/master-status`\\nn=`echo \\\"$ret\\\" | grep -c \\\"200\\\"`\\necho \\\"$n\\\"\\nif [ $n -eq 1 ]\\nthen\\n echo \\\"true\\\"\\n exit 0\\nfi\\nexit 1\"}",
+                    "var_updated": "2017-12-14 15:45:55",
                     "var_name": "proxy_cnf_checkmaster",
                     "id": 5965
                 }

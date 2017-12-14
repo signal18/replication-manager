@@ -1117,8 +1117,8 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/nodoublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_doublewrite=0\"}",
-                    "var_updated": "2017-12-11 14:50:08",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/nodoublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_doublewrite=0\\ninnodb_checksum_algorithm = none\"}",
+                    "var_updated": "2017-12-14 16:41:00",
                     "var_name": "db_cnf_nodoublewrite",
                     "id": 5922
                 },

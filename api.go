@@ -17,6 +17,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -1296,6 +1297,19 @@ func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	} else {
 		io.WriteString(w, `{"alive": "errors"}`)
 	}
+}
+
+func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
+	if err != nil {
+		w.WriteHeader(404)
+		w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+		return
+	}
+	w.Write(data)
+
 }
 
 func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {

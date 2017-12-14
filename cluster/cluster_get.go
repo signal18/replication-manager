@@ -278,3 +278,14 @@ func (cluster *Cluster) GetDatabaseTags() []string {
 func (cluster *Cluster) GetProxyTags() []string {
 	return strings.Split(cluster.conf.ProvProxTags, ",")
 }
+
+func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
+	// dirty: need to point LB to all DB  proxies, just pick the first one so far
+	var prx Proxy
+	for _, p := range cluster.proxies {
+		if p != this && p.Type != proxySphinx {
+			return *p
+		}
+	}
+	return prx
+}

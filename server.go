@@ -286,8 +286,12 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
 		monitorCmd.Flags().StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
 		monitorCmd.Flags().StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
-		monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "", "Path to sphinx config")
-
+		if GoOS == "linux" {
+			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/usr/share/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
+		}
+		if GoOS == "darwin" {
+			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/opt/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
+		}
 	}
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
@@ -364,6 +368,8 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvNetIface, "prov-db-net-iface", "eth0", "HBA Device to hold Ips")
 			monitorCmd.Flags().StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
 			monitorCmd.Flags().StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
+			monitorCmd.Flags().StringVar(&conf.ProvDBLoadCSV, "prov-db-load-csv", "", "List of shema.table csv file to load a bootstrap")
+			monitorCmd.Flags().StringVar(&conf.ProvDBLoadSQL, "prov-db-load-sql", "", "List of sql scripts file to load a bootstrap")
 			monitorCmd.Flags().StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave", "playbook configuration tags wsrep,multimaster,masterslave")
 			monitorCmd.Flags().StringVar(&conf.ProvProxType, "prov-proxy-service-type", "package", "[package|docker]")
 			monitorCmd.Flags().StringVar(&conf.ProvProxAgents, "prov-proxy-agents", "", "Comma seperated list of agents for micro services provisionning")
@@ -379,7 +385,21 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "asosso/maxscale:latest", "Docker image for maxscale proxy")
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:alpine", "Docker image for haproxy")
 			monitorCmd.Flags().StringVar(&conf.ProvProxMysqlRouterImg, "prov-proxy-docker-mysqlrouter-img", "pulsepointinc/mysql-router", "Docker image for MySQLRouter")
-			monitorCmd.Flags().StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-sharding-img", "signal18/shardproxy", "Docker image for sharding proxy")
+			monitorCmd.Flags().StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-shardproxy-img", "signal18/shardproxy", "Docker image for sharding proxy")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxImg, "prov-sphinx-docker-img", "leodido/sphinxsearch", "Docker image for SphinxSearch")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxTags, "prov-sphinx-tags", "masterslave", "playbook configuration tags wsrep,multimaster,masterslave")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxType, "prov-sphinx-service-type", "package", "[package|docker]")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxAgents, "prov-sphinx-agents", "", "Comma seperated list of agents for micro services provisionning")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskFS, "prov-sphinx-disk-fs", "ext4", "[zfs|xfs|ext4]")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskPool, "prov-sphinx-disk-pool", "none", "[none|zpool|lvm]")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskType, "prov-sphinx-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskDevice, "prov-sphinx-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxNetIface, "prov-sphinx-net-iface", "eth0", "HBA Device to hold Ips")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxGateway, "prov-sphinx-net-gateway", "192.168.0.254", "Micro Service network gateway")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxNetmask, "prov-sphinx-net-mask", "255.255.255.0", "Micro Service network mask")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxMem, "prov-sphinx-memory", "256", "Memory in M for micro service VM")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxDisk, "prov-sphinx-disk-size", "20g", "Disk in g for micro service VM")
+			monitorCmd.Flags().StringVar(&conf.ProvSphinxCores, "prov-sphinx-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLCa, "prov-tls-server-ca", "", "server TLS ca")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLCert, "prov-tls-server-cert", "", "server TLS cert")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")

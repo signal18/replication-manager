@@ -186,7 +186,7 @@ func httpserver() {
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", handlerMuxServersPortSlaveStatus)
-
+	router.HandleFunc("/clusters/{clusterName}/sphinx-indexes", handlerMuxSphinxIndexes)
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 
 	if confs[currentClusterName].Verbose {
