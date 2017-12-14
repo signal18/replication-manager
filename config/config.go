@@ -161,6 +161,11 @@ type Config struct {
 	MysqlRouterWritePort               int    `mapstructure:"mysqlrouter-write-port"`
 	MysqlRouterReadPort                int    `mapstructure:"mysqlrouter-read-port"`
 	MysqlRouterReadWritePort           int    `mapstructure:"mysqlrouter-read-write-port"`
+	SphinxOn                           bool   `mapstructure:"sphinx"`
+	SphinxHosts                        string `mapstructure:"sphinx-servers"`
+	SphinxConfig                       string `mapstructure:"sphinx-config"`
+	SphinxQLPort                       string `mapstructure:"sphinx-sql-port"`
+	SphinxPort                         string `mapstructure:"sphinx-port"`
 	RegistryConsul                     bool   `mapstructure:"registry-consul"`
 	RegistryHosts                      string `mapstructure:"registry-servers"`
 	KeyPath                            string `mapstructure:"keypath"`
@@ -231,6 +236,8 @@ type Config struct {
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
 	ProvProxMysqlRouterImg             string `mapstructure:"prov-proxy-docker-mysqlrouter-img"`
+	ProvProxSphinxImg                  string `mapstructure:"prov-proxy-docker-sphinx-img"`
+	ProvSphinxDisk                     string `mapstructure:"prov-sphinx-disk-size"`
 	ProvProxTags                       string `mapstructure:"prov-proxy-tags"`
 	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`
 	ProvSSLCert                        string `mapstructure:"prov-tls-server-cert"`

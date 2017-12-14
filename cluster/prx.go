@@ -43,6 +43,7 @@ type Proxy struct {
 	WriterHostgroup int
 	BackendsWrite   []Backend
 	BackendsRead    []Backend
+	Version         string
 }
 
 type Backend struct {
@@ -66,6 +67,7 @@ const (
 	proxySpider      string = "shardproxy"
 	proxyExternal    string = "extproxy"
 	proxyMysqlrouter string = "mysqlrouter"
+	proxySphinx      string = "sphinx"
 )
 
 type proxyList []*Proxy
@@ -86,6 +88,9 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.conf.MysqlRouterOn {
 		nbproxies += len(strings.Split(cluster.conf.MysqlRouterHosts, ","))
+	}
+	if cluster.conf.SphinxOn {
+		nbproxies += len(strings.Split(cluster.conf.SphinxHosts, ","))
 	}
 	if cluster.conf.ExtProxyOn {
 		nbproxies++
@@ -210,6 +215,29 @@ func (cluster *Cluster) newProxyList() error {
 			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.Port)
 			ctproxy++
 		}
+
+		if cluster.conf.SphinxHosts != "" && cluster.conf.SphinxOn {
+			for _, proxyHost := range strings.Split(cluster.conf.SphinxHosts, ",") {
+				cluster.LogPrintf(LvlInfo, "Loading SphinxSearch Proxy...")
+				prx := new(Proxy)
+				prx.Type = proxySphinx
+				prx.Host = proxyHost
+				prx.Port = cluster.conf.SphinxQLPort
+				prx.User = ""
+				prx.Pass = ""
+				prx.ReadPort, _ = strconv.Atoi(prx.Port)
+				prx.WritePort, _ = strconv.Atoi(prx.Port)
+				prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
+				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				}
+				cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.Port)
+				ctproxy++
+			}
+		}
+
 	}
 
 	return nil

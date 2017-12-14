@@ -281,6 +281,14 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlCopyGrants, "proxysql-copy-grants", true, "Copy grants from master")
 	}
+	if WithSphinx == "ON" {
+		monitorCmd.Flags().BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
+		monitorCmd.Flags().StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
+		monitorCmd.Flags().StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
+		monitorCmd.Flags().StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
+		monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "", "Path to sphinx config")
+
+	}
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
@@ -305,6 +313,7 @@ func init() {
 	if WithSpider == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	}
+
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")
 		monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")

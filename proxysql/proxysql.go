@@ -101,6 +101,14 @@ func (psql *ProxySQL) GetStatsForHostWrite(host string, port string) (string, st
 	return hostgroup, status, connused, byteout, bytein, latency, err
 }
 
+func (psql *ProxySQL) GetVersion() string {
+	var version string
+	sql := "SELECT @@admin-version"
+	row := psql.Connection.QueryRow(sql)
+	row.Scan(&version)
+	return version
+}
+
 func (psql *ProxySQL) GetHostsRuntime() (string, error) {
 	var h string
 	err := psql.Connection.Get(&h, "SELECT GROUP_CONCAT(host) AS hostlist FROM (SELECT hostname || ':' || port AS host FROM runtime_mysql_servers)")

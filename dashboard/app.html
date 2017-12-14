@@ -307,8 +307,8 @@
                          <md-card><md-card-content>
                         <p class="sectionheader">ERRORS</p>
                           <BR>
-                            <md-pre class="alert alert-danger">
-				 <div  ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
+                            <md-pre width="100%" class="alert alert-danger">
+				 <div  ng-repeat="element in alerts.errors"  ><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
        </md-pre>
                   </md-card-content></md-card>
                   <BR>
@@ -361,9 +361,10 @@
 													<tr valign="middle" >
 
                              <th>Id</th>
-													   <th>Host</th>
+                             <th>Host</th>
 														 <th>Port</th>
-														 <th ng-if="proxy.Type!='proxysql'">WritePort</th>
+                             <th>Version</th>
+                             <th ng-if="proxy.Type!='proxysql'">WritePort</th>
                              <th ng-if="proxy.Type=='proxysql'">WriterHG</th>
 														 <th ng-if="proxy.Type!='proxysql'">ReadPort</th>
                              <th ng-if="proxy.Type=='proxysql'">ReaderHG</th>
@@ -373,6 +374,7 @@
                               <td>{{proxy.Id}}</td>
                               <td>{{proxy.Host}}</td>
                               <td>{{proxy.Port}}</td>
+                              <td>{{proxy.Version}}</td>
 															<td>{{proxy.WritePort}}</td>
                               <td>{{proxy.ReadPort}}</td>
                               <td>{{proxy.ReadWritePort}}</td>

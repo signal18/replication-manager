@@ -77,6 +77,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		return
 	}
 	defer psql.Connection.Close()
+	proxy.Version = psql.GetVersion()
 
 	var updated bool
 	proxy.BackendsWrite = nil
