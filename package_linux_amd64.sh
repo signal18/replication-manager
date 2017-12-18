@@ -62,7 +62,7 @@ rm -rf build/usr/share/replication-manager/opensvc/*.tar.gz
 for flavor in min osc tst pro
 do
     echo "# Building packages replication-manager-$flavor"
-    cp etc/* build/etc/replication-manager/
+    cp -r etc/* build/etc/replication-manager/
     if [ "$flavor" != "pro" ]; then
       rm -f build/etc/replication-manager/config.toml.sample.opensvc.*
     else
@@ -77,7 +77,7 @@ do
     rm -f build/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
-    cp etc/* buildtar/etc/
+    cp -r etc/* buildtar/etc/
     if [ "$flavor" != "pro" ]; then
       rm -f buildtar/etc/config.toml.sample.opensvc.*
     else
