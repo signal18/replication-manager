@@ -1,0 +1,9 @@
+title = "Cluster02"
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+shardproxy = true
+shardproxy-servers = "127.0.0.1:3336"
+shardproxy-user = "root:mariadb"

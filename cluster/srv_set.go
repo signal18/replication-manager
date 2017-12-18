@@ -59,20 +59,38 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.conf.ReplicationSSL,
 	})
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) error {
-
-	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      master.Host,
-		Port:      master.Port,
-		User:      master.ClusterGroup.rplUser,
-		Password:  master.ClusterGroup.rplPass,
-		Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-		Mode:      "CURRENT_POS",
-	})
+	var err error
+	if server.DBVersion.IsMySQL57() {
+		// We can do MySQL 5.7 style failover
+		server.ClusterGroup.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      server.ClusterGroup.master.Host,
+			Port:      server.ClusterGroup.master.Port,
+			User:      server.ClusterGroup.rplUser,
+			Password:  server.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "",
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
+		})
+	} else {
+		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      master.Host,
+			Port:      master.Port,
+			User:      master.ClusterGroup.rplUser,
+			Password:  master.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "CURRENT_POS",
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
+		})
+	}
+	return err
 }
 
 func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonitor) error {

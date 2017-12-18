@@ -357,7 +357,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.Variables, err = dbhelper.GetVariables(server.Conn)
 
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not get varaibles %s", err)
+			server.ClusterGroup.LogPrintf("ERROR", "Could not get variables %s", err)
 			return err
 		}
 		server.Version = dbhelper.MariaDBVersion(server.Variables["VERSION"]) // Deprecated
@@ -371,8 +371,6 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.EventScheduler = true
 		}
-		server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
-		server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
 		server.Strict = server.Variables["GTID_STRICT_MODE"]
 		server.LogBin = server.Variables["LOG_BIN"]
 		server.ReadOnly = server.Variables["READ_ONLY"]
@@ -436,8 +434,17 @@ func (server *ServerMonitor) Refresh() error {
 		}
 
 		server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
-		server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
-		server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+
+		if server.DBVersion.IsMariaDB() {
+			server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
+			server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
+			server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+		} else {
+			server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+			server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
+			server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+		}
+
 		var sid uint64
 		sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
 		if err != nil {

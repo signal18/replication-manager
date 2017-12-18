@@ -10,6 +10,7 @@
 package config
 
 type Config struct {
+	Include                            string `mapstructure:"include"`
 	BaseDir                            string `mapstructure:"monitoring-basedir"`
 	WorkingDir                         string `mapstructure:"monitoring-datadir"`
 	ShareDir                           string `mapstructure:"monitoring-sharedir"`
@@ -229,10 +230,9 @@ type Config struct {
 	ProvProxNetIface                   string `mapstructure:"prov-proxy-net-iface"`
 	ProvProxNetmask                    string `mapstructure:"prov-proxy-net-mask"`
 	ProvProxGateway                    string `mapstructure:"prov-proxy-net-gateway"`
-	ProvMaxscaleVip                    string `mapstructure:"prov-proxy-net-maxscale-vip"`
-	ProvMdbshardproxyVip               string `mapstructure:"prov-proxy-net-mdbsproxy-vip"`
-	ProvHaproxyVip                     string `mapstructure:"prov-proxy-net-haproxy-vip"`
-	ProvWebsqlproxyVip                 string `mapstructure:"prov-proxy-net-websqlproxy-vip"`
+	ProvProxyVip                       string `mapstructure:"prov-proxy-net-vip"`
+	ProvProxyRouteAddr                 string `mapstructure:"prov-proxy-route-addr"`
+	ProvProxyRoutePort                 string `mapstructure:"prov-proxy-route-port"`
 	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-sharding-img"`
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
@@ -244,7 +244,6 @@ type Config struct {
 	ProvSphinxMem                      string `mapstructure:"prov-sphinx-memory"`
 	ProvSphinxDisk                     string `mapstructure:"prov-sphinx-disk-size"`
 	ProvSphinxCores                    string `mapstructure:"prov-sphinx-cpu-cores"`
-	ProvSphinxMaxMatches               string `mapstructure:"prov-sphinx-max-matches"`
 	ProvSphinxMaxChildren              string `mapstructure:"prov-sphinx-max-childrens"`
 	ProvSphinxDiskPool                 string `mapstructure:"prov-sphinx-disk-pool"`
 	ProvSphinxDiskFS                   string `mapstructure:"prov-sphinx-disk-fs"`

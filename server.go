@@ -287,7 +287,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
 		monitorCmd.Flags().StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
 		if GoOS == "linux" {
-			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/usr/share/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
+			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/usr/share/replication-manager/shinx/sphinx.conf", "Path to sphinx config")
 		}
 		if GoOS == "darwin" {
 			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/opt/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
@@ -381,6 +381,8 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvProxNetIface, "prov-proxy-net-iface", "eth0", "HBA Device to hold Ips")
 			monitorCmd.Flags().StringVar(&conf.ProvProxGateway, "prov-proxy-net-gateway", "192.168.0.254", "Micro Service network gateway")
 			monitorCmd.Flags().StringVar(&conf.ProvProxNetmask, "prov-proxy-net-mask", "255.255.255.0", "Micro Service network mask")
+			monitorCmd.Flags().StringVar(&conf.ProvProxyRouteAddr, "prov-proxy-route-addr", "", "Route adress to databases proxies")
+			monitorCmd.Flags().StringVar(&conf.ProvProxyRoutePort, "prov-proxy-route-port", "3306", "Route Port to databases proxies")
 			monitorCmd.Flags().StringVar(&conf.ProvProxProxysqlImg, "prov-proxy-docker-proxysql-img", "signal18/proxysql:1.4", "Docker image for proxysql")
 			monitorCmd.Flags().StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "asosso/maxscale:latest", "Docker image for maxscale proxy")
 			monitorCmd.Flags().StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxy:alpine", "Docker image for haproxy")

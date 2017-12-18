@@ -11,6 +11,7 @@ package gtid
 
 import (
 	"fmt"
+	"hash/crc64"
 	"sort"
 	"strconv"
 	"strings"
@@ -99,12 +100,36 @@ func NewList(s string) *List {
 	return gl
 }
 
+func NewMySQLList(s string) *List {
+	gl := new(List)
+	if s == "" {
+		return gl
+	}
+	l := strings.Split(s, ",")
+	for _, g := range l {
+		gtid := NewMySQLGtid(g)
+		*gl = append(*gl, *gtid)
+	}
+	return gl
+}
+
 // NewGtid returns a new Gtid from a string
 func NewGtid(s string) *Gtid {
 	g := new(Gtid)
 	e := strings.Split(s, "-")
 	g.DomainID, _ = strconv.ParseUint(e[0], 10, 32)
 	g.ServerID, _ = strconv.ParseUint(e[1], 10, 32)
+	g.SeqNo, _ = strconv.ParseUint(e[2], 10, 64)
+	return g
+}
+
+func NewMySQLGtid(s string) *Gtid {
+	g := new(Gtid)
+	f := strings.Split(s, ":")
+	crcTable := crc64.MakeTable(crc64.ECMA)
+	e := strings.Split(f[1], "-")
+	g.DomainID = 0
+	g.ServerID = crc64.Checksum([]byte(f[0]), crcTable)
 	g.SeqNo, _ = strconv.ParseUint(e[2], 10, 64)
 	return g
 }

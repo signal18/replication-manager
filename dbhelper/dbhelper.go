@@ -96,6 +96,8 @@ type SlaveStatus struct {
 	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos"`
 	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos"`
 	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period"`
+	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set"`
+	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set"`
 }
 
 type Privileges struct {

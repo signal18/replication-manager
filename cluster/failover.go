@@ -950,6 +950,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			}
+		} else if cluster.master.DBVersion.IsMySQL57() && cluster.master.HasGTIDReplication() {
+			crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
