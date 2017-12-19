@@ -612,6 +612,7 @@ sphinx_mem = ` + cluster.conf.ProvSphinxMem + `
 sphinx_max_children = ` + cluster.conf.ProvSphinxMaxChildren + `
 haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
 proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
+maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
 vip_addr = ` + cluster.conf.ProvProxyVip + `
 vip_port  = ` + strconv.Itoa(cluster.GetLocalProxy(prx).ReadPort) + `
 vip_netmask =  ` + cluster.conf.ProvSphinxNetmask + `
