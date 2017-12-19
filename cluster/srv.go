@@ -500,6 +500,9 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveMariaDBGTID = false
 		}
+		if server.DBVersion.IsMySQL57() && server.HasGTIDReplication() {
+			server.SlaveGtid = gtid.NewList(slaveStatus.ExecutedGtidSet.String)
+		}
 	}
 	server.ReplicationHealth = server.CheckReplication()
 	// if MaxScale exit at fetch variables and status part as not supported
