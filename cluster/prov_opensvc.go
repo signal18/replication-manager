@@ -584,9 +584,55 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 	return srvStatus, nil
 }
 
-func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
-
+func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) string {
+	i := 0
 	ipPods := ""
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+	`
+	ips := strings.Split(collector.ProvProxNetGateway, ".")
+	masks := strings.Split(collector.ProvProxNetMask, ".")
+	for i, mask := range masks {
+		if mask == "0" {
+			ips[i] = "0"
+		}
+	}
+	network := strings.Join(ips, ".")
+	conf := `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvDisk + `
+` + ipPods + `
+mysql_root_password = ` + cluster.dbPass + `
+mysql_root_user = ` + cluster.dbUser + `
+network = ` + network + `
+gateway =  ` + cluster.conf.ProvSphinxGateway + `
+netmask =  ` + cluster.conf.ProvSphinxNetmask + `
+sphinx_img = ` + cluster.conf.ProvSphinxImg + `
+sphinx_mem = ` + cluster.conf.ProvSphinxMem + `
+sphinx_max_children = ` + cluster.conf.ProvSphinxMaxChildren + `
+haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
+proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
+vip_addr = ` + cluster.conf.ProvProxyVip + `
+vip_port  = ` + strconv.Itoa(cluster.GetLocalProxy(prx).ReadPort) + `
+vip_netmask =  ` + cluster.conf.ProvSphinxNetmask + `
+port_rw = ` + strconv.Itoa(prx.WritePort) + `
+port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
+port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_http = 80
+base_dir = /srv/{svcname}
+backend_ips = ` + servers + `
+port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_telnet = ` + prx.Port + `
+port_admin = ` + prx.Port + `
+user_admin = ` + prx.User + `
+password_admin = ` + prx.Pass + `
+mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_cluster_name = ` + cluster.GetClusterName() + `
+`
+	return conf
+}
+
+func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	conf := `
 [DEFAULT]
@@ -605,53 +651,12 @@ show_disabled = false
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerSphinxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
-`
-	ips := strings.Split(collector.ProvProxNetGateway, ".")
-	masks := strings.Split(collector.ProvProxNetMask, ".")
-	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
-		}
-	}
-	network := strings.Join(ips, ".")
-	conf = conf + `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvDisk + `
-` + ipPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + cluster.conf.ProvSphinxGateway + `
-netmask =  ` + cluster.conf.ProvSphinxNetmask + `
-sphinx_img = ` + cluster.conf.ProvSphinxImg + `
-haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
-proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
-vip_addr = ` + cluster.conf.ProvProxyVip + `
-vip_netmask =  ` + cluster.conf.ProvSphinxNetmask + `
-port_rw = ` + strconv.Itoa(prx.WritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
-base_dir = /srv/{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-route_addr  = ` + cluster.conf.ProvProxyRouteAddr + `
-route_port  = ` + strconv.Itoa(cluster.GetLocalProxy(prx).ReadPort) + `
-`
+	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 	log.Println(conf)
 	return conf, nil
 }
 
 func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
-
-	ipPods := ""
 
 	conf := `
 [DEFAULT]
@@ -670,52 +675,12 @@ show_disabled = false
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerHaproxyTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
-`
-	ips := strings.Split(collector.ProvProxNetGateway, ".")
-	masks := strings.Split(collector.ProvProxNetMask, ".")
-	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
-		}
-	}
-	network := strings.Join(ips, ".")
-	conf = conf + `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvDisk + `
-` + ipPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + collector.ProvProxNetGateway + `
-netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
-haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
-proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
-vip_addr = ` + cluster.conf.ProvProxyVip + `
-vip_netmask =  ` + collector.ProvProxNetMask + `
-port_rw = ` + strconv.Itoa(prx.WritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
-port_http = 80
-base_dir = /srv/{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-`
+	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 	log.Println(conf)
 	return conf, nil
 }
 
 func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
-
-	ipPods := ""
 
 	conf := `
 [DEFAULT]
@@ -734,45 +699,7 @@ show_disabled = false
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerProxysqlTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
-`
-	ips := strings.Split(collector.ProvProxNetGateway, ".")
-	masks := strings.Split(collector.ProvProxNetMask, ".")
-	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
-		}
-	}
-	network := strings.Join(ips, ".")
-	conf = conf + `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvDisk + `
-` + ipPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + collector.ProvProxNetGateway + `
-netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
-haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
-proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
-vip_addr = ` + cluster.conf.ProvProxyVip + `
-vip_netmask =  ` + collector.ProvProxNetMask + `
-port_rw = ` + strconv.Itoa(prx.ReadWritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
-port_http = 80
-base_dir = /srv/{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-`
+	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 	log.Println(conf)
 	return conf, nil
 }
@@ -837,8 +764,6 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 
 func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
-	ipPods := ""
-
 	conf := `
 [DEFAULT]
 nodes = {env.nodes}
@@ -856,45 +781,7 @@ show_disabled = false
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerMaxscaleTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
-`
-	ips := strings.Split(collector.ProvProxNetGateway, ".")
-	masks := strings.Split(collector.ProvProxNetMask, ".")
-	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
-		}
-	}
-	network := strings.Join(ips, ".")
-	conf = conf + `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvDisk + `
-` + ipPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + collector.ProvProxNetGateway + `
-netmask =  ` + collector.ProvProxNetMask + `
-maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
-haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
-proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
-vip_addr = ` + cluster.conf.ProvProxyVip + `
-vip_netmask =  ` + collector.ProvProxNetMask + `
-port_rw = ` + strconv.Itoa(prx.WritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
-port_http = 80
-base_dir = /srv/{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-`
+	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 	log.Println(conf)
 	return conf, nil
 }
@@ -910,6 +797,7 @@ for _, addr := range agent.Ips {
 		ipdev = addr.Net_intf
 	}
 }*/
+
 func (server *ServerMonitor) GetSnapshot() string {
 	if !server.IsPrefered() || !server.ClusterGroup.conf.ProvDiskSnapshot {
 		return ""
