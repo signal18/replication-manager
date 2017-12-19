@@ -127,10 +127,16 @@ func NewMySQLGtid(s string) *Gtid {
 	g := new(Gtid)
 	f := strings.Split(s, ":")
 	crcTable := crc64.MakeTable(crc64.ECMA)
-	e := strings.Split(f[1], "-")
+	seq := "1"
+	if strings.Contains(f[1], "-") {
+		e := strings.Split(f[1], "-")
+		seq = e[1]
+	} else {
+		seq = f[1]
+	}
 	g.DomainID = 0
 	g.ServerID = crc64.Checksum([]byte(f[0]), crcTable)
-	g.SeqNo, _ = strconv.ParseUint(e[2], 10, 64)
+	g.SeqNo, _ = strconv.ParseUint(seq, 10, 64)
 	return g
 }
 
