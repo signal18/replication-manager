@@ -1,3 +1,4 @@
+[Cluster01]
 title = "Cluster02"
 db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
 db-servers-prefered-master = "127.0.0.1:3333"

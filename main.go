@@ -11,6 +11,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 
@@ -161,6 +162,26 @@ func initConfig() {
 	if _, ok := err.(viper.ConfigParseError); ok {
 		log.WithError(err).Fatal("Could not parse config file")
 	}
+	// Procedd include files
+	if viper.GetString("default.include") != "" {
+		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
+			log.Fatal("No include config directory " + conf.Include)
+		}
+		files, err := ioutil.ReadDir(viper.GetString("default.include"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, f := range files {
+			if !f.IsDir() {
+				viper.SetConfigName(f.Name())
+				viper.SetConfigFile(viper.GetString("default.include") + "/" + f.Name())
+				viper.MergeInConfig()
+				//fmt.Println(f.Name())
+			}
+		}
+	}
+	// Procedd include files
+
 	m := viper.AllKeys()
 	currentClusterName = cfgGroup
 	if currentClusterName == "" {
