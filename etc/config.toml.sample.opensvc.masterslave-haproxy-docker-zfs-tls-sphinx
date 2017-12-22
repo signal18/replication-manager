@@ -52,8 +52,7 @@ prov-sphinx-disk-pool = "zpool"
 prov-sphinx-disk-type = "loopback"
 prov-sphinx-disk-device = "/srv"
 prov-sphinx-net-iface = "br-prd"
-prov-sphinx-net-gateway = "192.168.100.1"
-prov-sphinx-net-mask = "255.255.255.0"
+
 
 prov-proxy-disk-size = "1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"
@@ -66,6 +65,10 @@ prov-proxy-net-iface = "br-prd"
 prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
 
+# TODO keealived here point to proxy
+prov-proxy-route-addr = "192.168.100.52"
+prov-proxy-route-port = "3302"
+prov-proxy-route-mask = "255.255.255.0"
 
 [default]
 opensvc-host = "ci.signal18.io:9443"

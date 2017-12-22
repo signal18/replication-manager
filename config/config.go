@@ -230,9 +230,10 @@ type Config struct {
 	ProvProxNetIface                   string `mapstructure:"prov-proxy-net-iface"`
 	ProvProxNetmask                    string `mapstructure:"prov-proxy-net-mask"`
 	ProvProxGateway                    string `mapstructure:"prov-proxy-net-gateway"`
-	ProvProxyVip                       string `mapstructure:"prov-proxy-net-vip"`
-	ProvProxyRouteAddr                 string `mapstructure:"prov-proxy-route-addr"`
-	ProvProxyRoutePort                 string `mapstructure:"prov-proxy-route-port"`
+	ProvProxRouteAddr                  string `mapstructure:"prov-proxy-route-addr"`
+	ProvProxRoutePort                  string `mapstructure:"prov-proxy-route-port"`
+	ProvProxRouteMask                  string `mapstructure:"prov-proxy-route-mask"`
+	ProvProxRoutePolicy                string `mapstructure:"prov-proxy-route-policy"`
 	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-sharding-img"`
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
@@ -249,9 +250,6 @@ type Config struct {
 	ProvSphinxDiskFS                   string `mapstructure:"prov-sphinx-disk-fs"`
 	ProvSphinxDiskDevice               string `mapstructure:"prov-sphinx-disk-device"`
 	ProvSphinxDiskType                 string `mapstructure:"prov-sphinx-disk-type"`
-	ProvSphinxNetIface                 string `mapstructure:"prov-sphinx-net-iface"`
-	ProvSphinxNetmask                  string `mapstructure:"prov-sphinx-net-mask"`
-	ProvSphinxGateway                  string `mapstructure:"prov-sphinx-net-gateway"`
 	ProvSphinxTags                     string `mapstructure:"prov-sphinx-tags"`
 	ProvSphinxType                     string `mapstructure:"prov-sphinx-service-type"`
 	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`

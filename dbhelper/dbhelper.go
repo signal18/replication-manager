@@ -955,7 +955,7 @@ func ResetMaster(db *sqlx.DB) error {
 func SetDefaultMasterConn(db *sqlx.DB, dmc string) error {
 	myver, _ := GetDBVersion(db)
 	if myver.IsMariaDB() {
-		stmt := "SET default_master_connection='" + dmc + "'"
+		stmt := "SET @@default_master_connection='" + dmc + "'"
 		_, err := db.Exec(stmt)
 		return err
 	}
