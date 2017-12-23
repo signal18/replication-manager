@@ -676,3 +676,11 @@ func (server *ServerMonitor) ResetSlave() error {
 func (server *ServerMonitor) FlushTables() error {
 	return dbhelper.FlushTables(server.Conn)
 }
+
+func (server *ServerMonitor) Uprovision() {
+	server.ClusterGroup.OpenSVCUnprovisionDatabaseService(server)
+}
+
+func (server *ServerMonitor) Provision() {
+	server.ClusterGroup.OpenSVCProvisionDatabaseService(server)
+}

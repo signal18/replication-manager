@@ -278,22 +278,22 @@ func apiserver() {
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/provision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
 	))
 
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
 	))
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
 	))
 
 	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
