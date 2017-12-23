@@ -1037,6 +1037,7 @@ size = 2g
 name = zp{svcname}_00
 type = zpool
 vdev  = {disk#00.file}
+standby = true
 
 `
 		}
