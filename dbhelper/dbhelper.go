@@ -1129,14 +1129,24 @@ func MasterPosWait(db *sqlx.DB, log string, pos string, timeout int) error {
 }
 
 func SetReadOnly(db *sqlx.DB, flag bool) error {
-	if flag == true {
-		_, err := db.Exec("SET GLOBAL read_only=1")
-		return err
-	} else {
-		_, err := db.Exec("SET GLOBAL read_only=0")
+	ro, err := GetVariableByName(db, "READ_ONLY")
+	if err != nil {
 		return err
 	}
+	if flag == true {
+		if ro == "0" {
+			_, err := db.Exec("SET GLOBAL read_only=1")
+			return err
+		}
+	} else {
+		if ro == "1" {
+			_, err := db.Exec("SET GLOBAL read_only=0")
+			return err
+		}
+	}
+	return nil
 }
+
 func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
 	if flag == true {
 		_, err := db.Exec("SET GLOBAL super-read-only=1")
