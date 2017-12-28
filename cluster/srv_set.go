@@ -16,10 +16,11 @@ import (
 )
 
 func (server *ServerMonitor) SetReadOnly() error {
-
-	err := dbhelper.SetReadOnly(server.Conn, true)
-	if err != nil {
-		return err
+	if !server.IsReadOnly() {
+		err := dbhelper.SetReadOnly(server.Conn, true)
+		if err != nil {
+			return err
+		}
 	}
 	if server.HasSuperReadOnly() {
 		err := dbhelper.SetSuperReadOnly(server.Conn, true)
@@ -31,10 +32,11 @@ func (server *ServerMonitor) SetReadOnly() error {
 }
 
 func (server *ServerMonitor) SetReadWrite() error {
-
-	err := dbhelper.SetReadOnly(server.Conn, false)
-	if err != nil {
-		return err
+	if server.IsReadOnly() {
+		err := dbhelper.SetReadOnly(server.Conn, false)
+		if err != nil {
+			return err
+		}
 	}
 	if server.HasSuperReadOnly() {
 		err := dbhelper.SetSuperReadOnly(server.Conn, false)
