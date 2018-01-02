@@ -84,14 +84,19 @@ func init() {
 	initRepmgrFlags(monitorCmd)
 	if WithTarball == "ON" {
 		monitorCmd.Flags().StringVar(&conf.BaseDir, "monitoring-basedir", "/usr/local/replication-manager", "Path to a basedir where data and share sub directory can be found")
+		monitorCmd.Flags().StringVar(&conf.ConfDir, "monitoring-confdir", "/usr/local/replication-manager/etc", "Path to a config directory")
+
 	} else {
 		monitorCmd.Flags().StringVar(&conf.BaseDir, "monitoring-basedir", "system", "Path to a basedir where a data and share directory can be found")
+
 	}
 	if GoOS == "linux" {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to share files")
+		monitorCmd.Flags().StringVar(&conf.ConfDir, "monitoring-confdir", "/etc/replication-manager", "Path to a config directory")
 	}
 	if GoOS == "darwin" {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
+		monitorCmd.Flags().StringVar(&conf.ConfDir, "monitoring-confdir", "/etc/replication-manager", "Path to a config directory")
 	}
 
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
@@ -336,9 +341,12 @@ func init() {
 
 			dbConfig := viper.New()
 			dbConfig.SetConfigType("yaml")
-			file, err := ioutil.ReadFile(conf.ShareDir + "/opensvc/account.yaml")
+			file, err := ioutil.ReadFile(conf.ConfDir + "/account.yaml")
 			if err != nil {
-				log.Errorf("%s", err)
+				file, err = ioutil.ReadFile(conf.ShareDir + "/opensvc/account.yaml")
+				if err != nil {
+					log.Errorf("%s", err)
+				}
 			}
 			dbConfig.ReadConfig(bytes.NewBuffer(file))
 			log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))

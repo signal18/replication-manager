@@ -14,6 +14,7 @@ type Config struct {
 	BaseDir                            string `mapstructure:"monitoring-basedir"`
 	WorkingDir                         string `mapstructure:"monitoring-datadir"`
 	ShareDir                           string `mapstructure:"monitoring-sharedir"`
+	ConfDir                            string `mapstructure:"monitoring-confdir"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker"`
 	Socket                             string `mapstructure:"monitoring-socket"`
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host"`
