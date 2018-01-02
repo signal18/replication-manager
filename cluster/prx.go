@@ -346,6 +346,9 @@ func (cluster *Cluster) refreshProxies() {
 		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.refreshHaproxy(pr)
 		}
+		if cluster.conf.SphinxOn && pr.Type == proxySphinx {
+			cluster.refreshSphinx(pr)
+		}
 		if cluster.conf.GraphiteMetrics {
 			cluster.SendProxyStats(pr)
 		}

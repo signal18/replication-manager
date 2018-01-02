@@ -653,6 +653,14 @@ show_disabled = false
 	conf = conf + cluster.GetPodDockerSphinxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
+
+	conf = conf + `[task0]
+   schedule = ` + cluster.conf.ProvSphinxCron + `
+	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/reindex.sh
+	 user = root
+
+	`
+
 	log.Println(conf)
 	return conf, nil
 }

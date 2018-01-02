@@ -251,6 +251,7 @@ type Config struct {
 	ProvSphinxDiskDevice               string `mapstructure:"prov-sphinx-disk-device"`
 	ProvSphinxDiskType                 string `mapstructure:"prov-sphinx-disk-type"`
 	ProvSphinxTags                     string `mapstructure:"prov-sphinx-tags"`
+	ProvSphinxCron                     string `mapstructure:"prov-sphinx-reindex-schedule"`
 	ProvSphinxType                     string `mapstructure:"prov-sphinx-service-type"`
 	ProvSSLCa                          string `mapstructure:"prov-tls-server-ca"`
 	ProvSSLCert                        string `mapstructure:"prov-tls-server-cert"`
