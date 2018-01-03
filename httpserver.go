@@ -292,7 +292,7 @@ func handlerStartServer(w http.ResponseWriter, r *http.Request) {
 
 func handlerMaintenanceServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
+	currentCluster.LogPrintf("INFO", "Rest API request toogle Maintenace server-id: %s", r.URL.Query().Get("server"))
 	srv := r.URL.Query().Get("server")
 	node := currentCluster.GetServerFromName(srv)
 	if node != nil {

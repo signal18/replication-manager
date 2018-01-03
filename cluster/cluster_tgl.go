@@ -8,7 +8,6 @@ package cluster
 
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint) {
 	server := cluster.GetServerFromId(serverid)
-	server.IsMaintenance = !server.IsMaintenance
 	server.SwitchMaintenance()
 	cluster.SetProxyServerMaintenance(server.ServerID)
 }
