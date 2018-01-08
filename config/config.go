@@ -267,4 +267,16 @@ type Config struct {
 	ConfigFile                         string `mapstructure:"config"`
 	GoOS                               string `mapstructure:"goos"`
 	GoArch                             string `mapstructure:"goarch"`
+	Backup                             bool   `mapstructure:"backup"`
+	BackupCron                         string `mapstructure:"backup-cron-entry"`
+	BackupType                         string `mapstructure:"backup-type"`
+	BackupKeepHourly                   int    `mapstructure:"backup-keep-hourly"`
+	BackupKeepDaily                    int    `mapstructure:"backup-keep-daily"`
+	BackupKeepWeekly                   int    `mapstructure:"backup-keep-weekly"`
+	BackupKeepMonthly                  int    `mapstructure:"backup-keep-monthly"`
+	BackupKeepYearly                   int    `mapstructure:"backup-keep-yearly"`
+	BackupRepo                         string `mapstructure:"backup-repo"`
+	BackupRepoAwsKey                   string `mapstructure:"backup-repo-aws-key"`
+	BackupRepoAwsSecret                string `mapstructure:"backup-repo-aws-secret"`
+	BackupRepoAwsURI                   string `mapstructure:"backup-repo-aws-uri"`
 }

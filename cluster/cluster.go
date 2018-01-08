@@ -19,6 +19,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/robfig/cron"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/dbhelper"
@@ -81,6 +82,7 @@ type Cluster struct {
 	haveDBTLSCert              bool
 	tlsconf                    *tls.Config
 	HaveWriteDuringCatchBinlog bool
+	scheduler                  *cron.Cron
 }
 
 type Alerts struct {
@@ -121,7 +123,13 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.runStatus = "A"
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
-
+	cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
+	cluster.scheduler = cron.New()
+	cluster.scheduler.AddFunc(conf.BackupCron, func() {
+		cluster.master.Backup()
+	})
+	cluster.LogPrintf(LvlInfo, "Schedule backup time at: %s", conf.BackupCron)
+	cluster.scheduler.Start()
 	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()
 	if err != nil {
@@ -151,6 +159,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 }
 
 func (cluster *Cluster) Stop() {
+	cluster.scheduler.Stop()
 	cluster.exit = true
 }
 func (cluster *Cluster) Run() {

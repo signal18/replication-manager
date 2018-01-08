@@ -323,6 +323,20 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	}
 
+	if WithBackup == "ON" {
+		monitorCmd.Flags().BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepHourly, "backup-keep-hourly", 1, "Keep this number of hourly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepDaily, "backup-keep-daily", 1, "Keep this number of daily backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepWeekly, "backup-keep-weekly", 1, "Keep this number of weekly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 1, "Keep this number of monthly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 1, "Keep this number of yearly backup")
+		monitorCmd.Flags().StringVar(&conf.BackupCron, "backup-cron-entry", "0 0 0 * * *", "A cron expression represents a set of times, using 6 space-separated fields.")
+		monitorCmd.Flags().StringVar(&conf.BackupType, "backup-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
+		monitorCmd.Flags().StringVar(&conf.BackupRepo, "backup-repo", "directory", "type of directory: directory|aws|rest")
+		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsURI, "backup-repo-aws-uri", "", "Repo address")
+		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsKey, "backup-repo-aws-key", "", "AWS key ")
+		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsSecret, "backup-repo-aws-key-secret", "", "AWS key secret")
+	}
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")
 		monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")

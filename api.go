@@ -132,6 +132,9 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortBackup)),
+	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
@@ -1271,6 +1274,25 @@ func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node.IsDown() == false && node.IsMaintenance == false {
+			node.Backup()
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))
+		}
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}

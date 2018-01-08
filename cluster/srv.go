@@ -105,7 +105,7 @@ type ServerMonitor struct {
 	Queries                     map[string]string
 	ReplicationHealth           string
 	TestConfig                  string
-	DictTables                  map[string]dbhelper.Table
+	DictTables                  map[string]dbhelper.Table `json:"-"`
 	Users                       map[string]dbhelper.Grant `json:"-"`
 }
 
