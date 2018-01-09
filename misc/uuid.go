@@ -7,11 +7,12 @@
 package misc
 
 import (
-	"github.com/satori/go.uuid"
 	"strings"
+
+	"github.com/satori/go.uuid"
 )
 
 func GetUUID() string {
-	myUUID := uuid.NewV4()
+	myUUID, _ := uuid.NewV4()
 	return strings.Split(myUUID.String(), "-")[0]
 }

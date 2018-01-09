@@ -10,6 +10,8 @@ import (
 	"github.com/juju/errors"
 	"github.com/siddontang/go-mysql-elasticsearch/elastic"
 	"github.com/siddontang/go-mysql/canal"
+	"github.com/siddontang/go-mysql/mysql"
+	"github.com/siddontang/go-mysql/replication"
 	"github.com/siddontang/go-mysql/schema"
 	"github.com/siddontang/go/log"
 )
@@ -22,13 +24,42 @@ const (
 
 const (
 	fieldTypeList = "list"
+	// for the mysql int type to es date type
+	// set the [rule.field] created_time = ",date"
+	fieldTypeDate = "date"
 )
 
-type rowsEventHandler struct {
+type posSaver struct {
+	pos   mysql.Position
+	force bool
+}
+
+type eventHandler struct {
 	r *River
 }
 
-func (h *rowsEventHandler) Do(e *canal.RowsEvent) error {
+func (h *eventHandler) OnRotate(e *replication.RotateEvent) error {
+	pos := mysql.Position{
+		string(e.NextLogName),
+		uint32(e.Position),
+	}
+
+	h.r.syncCh <- posSaver{pos, true}
+
+	return h.r.ctx.Err()
+}
+
+func (h *eventHandler) OnDDL(nextPos mysql.Position, _ *replication.QueryEvent) error {
+	h.r.syncCh <- posSaver{nextPos, true}
+	return h.r.ctx.Err()
+}
+
+func (h *eventHandler) OnXID(nextPos mysql.Position) error {
+	h.r.syncCh <- posSaver{nextPos, false}
+	return h.r.ctx.Err()
+}
+
+func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
 	h.r.WaitForFlush()
 
 	rule, ok := h.r.rules[ruleKey(e.Table.Schema, e.Table.Name)]
@@ -121,6 +152,18 @@ func (h *rowsEventHandler) Do(e *canal.RowsEvent) error {
 	return nil
 }
 
+func (h *eventHandler) OnGTID(gtid mysql.GTIDSet) error {
+	return nil
+}
+
+func (h *eventHandler) OnPosSynced(pos mysql.Position, force bool) error {
+	return nil
+}
+
+func (h *eventHandler) String() string {
+	return "ESRiverEventHandler"
+}
+
 func (r *River) FlushMultiRowInsertBuffer(rule *Rule) error {
 	r.flushmutex.Lock()
 	r.makeInsertRequest(rule, r.buffered_inserts)
@@ -196,10 +239,6 @@ func (r *River) FlushMicroTransaction(rule *Rule, table string) error {
 	r.bulkidx = 0
 	newFile.Close()
 	return nil
-}
-
-func (h *rowsEventHandler) String() string {
-	return "ESRiverRowsEventHandler"
 }
 
 // for insert and delete

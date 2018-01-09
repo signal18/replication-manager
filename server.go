@@ -30,7 +30,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	termbox "github.com/nsf/termbox-go"
-	uuid "github.com/satori/go.uuid"
+
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/graphite"
@@ -66,7 +66,7 @@ func getClusterByName(clname string) *cluster.Cluster {
 
 func init() {
 
-	runUUID = uuid.NewV4().String()
+	runUUID = misc.GetUUID()
 	runStatus = "A"
 	splitBrain = false
 	//conf.FailForceGtid = true

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	uuid "github.com/satori/go.uuid"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/graphite"
@@ -255,7 +254,7 @@ func (cluster *Cluster) InjectTraffic() {
 			if err != nil {
 				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
-				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + uuid.NewV4().String() + "' from dual")
+				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
 
 				if err != nil {
 					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})

@@ -3,6 +3,7 @@ package river
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -43,6 +44,8 @@ type River struct {
 	bufdestsql            []string
 	// slaveconn             *client.Conn
 	slavepool *sql.DB
+	syncCh    chan interface{}
+	ctx       context.Context
 }
 
 func NewRiver(c *Config) (*River, error) {
@@ -104,7 +107,7 @@ func (r *River) newCanal() error {
 	cfg.User = r.c.MyUser
 	cfg.Password = r.c.MyPassword
 	cfg.Flavor = r.c.MyFlavor
-	cfg.DataDir = r.c.DumpPath
+	//cfg.DataDir = r.c.DumpPath
 	cfg.ServerID = r.c.DumpServerID
 	cfg.Dump.ExecutionPath = r.c.DumpExec
 	cfg.Dump.DiscardErr = false
@@ -139,7 +142,7 @@ func (r *River) prepareCanal() error {
 
 	}
 
-	r.canal.RegRowsEventHandler(&rowsEventHandler{r})
+	r.canal.SetEventHandler(&eventHandler{r})
 
 	return nil
 }
@@ -400,7 +403,7 @@ func (r *River) Run() error {
 		}
 	}()
 
-	if err := r.canal.Start(); err != nil {
+	if err := r.canal.Run(); err != nil {
 		log.Errorf("start canal err %v", err)
 
 		return errors.Trace(err)
