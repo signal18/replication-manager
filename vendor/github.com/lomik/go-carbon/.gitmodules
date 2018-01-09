@@ -1,6 +1,3 @@
-[submodule "_vendor/src/github.com/lomik/go-whisper"]
-	path = _vendor/src/github.com/lomik/go-whisper
-	url = https://github.com/lomik/go-whisper.git
 [submodule "_vendor/src/github.com/BurntSushi/toml"]
 	path = _vendor/src/github.com/BurntSushi/toml
 	url = https://github.com/BurntSushi/toml
@@ -66,7 +63,7 @@
 	url = https://github.com/NYTimes/gziphandler
 [submodule "vendor/github.com/dgryski/carbonzipper"]
 	path = vendor/github.com/dgryski/carbonzipper
-	url = https://github.com/dgryski/carbonzipper
+	url = https://github.com/dgryski/carbonzipper.git
 [submodule "vendor/github.com/gogo/protobuf"]
 	path = vendor/github.com/gogo/protobuf
 	url = https://github.com/gogo/protobuf
@@ -79,9 +76,6 @@
 [submodule "vendor/github.com/kisielk/og-rek"]
 	path = vendor/github.com/kisielk/og-rek
 	url = https://github.com/lomik/og-rek.git
-[submodule "vendor/github.com/lomik/go-whisper"]
-	path = vendor/github.com/lomik/go-whisper
-	url = https://github.com/lomik/go-whisper
 [submodule "vendor/github.com/howeyc/fsnotify"]
 	path = vendor/github.com/howeyc/fsnotify
 	url = https://github.com/howeyc/fsnotify
@@ -115,3 +109,60 @@
 [submodule "vendor/github.com/dgryski/go-expirecache"]
 	path = vendor/github.com/dgryski/go-expirecache
 	url = https://github.com/dgryski/go-expirecache.git
+[submodule "vendor/github.com/dgryski/carbonapi"]
+	path = vendor/github.com/dgryski/carbonapi
+	url = https://github.com/dgryski/carbonapi.git
+[submodule "vendor/github.com/lomik/graphite-pickle"]
+	path = vendor/github.com/lomik/graphite-pickle
+	url = https://github.com/lomik/graphite-pickle
+[submodule "vendor/github.com/syndtr/goleveldb"]
+	path = vendor/github.com/syndtr/goleveldb
+	url = https://github.com/syndtr/goleveldb
+[submodule "vendor/github.com/golang/snappy"]
+	path = vendor/github.com/golang/snappy
+	url = https://github.com/golang/snappy
+[submodule "vendor/github.com/Shopify/sarama"]
+	path = vendor/github.com/Shopify/sarama
+	url = https://github.com/Shopify/sarama
+[submodule "vendor/github.com/rcrowley/go-metrics"]
+	path = vendor/github.com/rcrowley/go-metrics
+	url = https://github.com/rcrowley/go-metrics
+[submodule "vendor/github.com/davecgh/go-spew"]
+	path = vendor/github.com/davecgh/go-spew
+	url = https://github.com/davecgh/go-spew
+[submodule "vendor/github.com/eapache/go-resiliency"]
+	path = vendor/github.com/eapache/go-resiliency
+	url = https://github.com/eapache/go-resiliency
+[submodule "vendor/github.com/eapache/go-xerial-snappy"]
+	path = vendor/github.com/eapache/go-xerial-snappy
+	url = https://github.com/eapache/go-xerial-snappy
+[submodule "vendor/github.com/eapache/queue"]
+	path = vendor/github.com/eapache/queue
+	url = https://github.com/eapache/queue
+[submodule "vendor/github.com/pierrec/lz4"]
+	path = vendor/github.com/pierrec/lz4
+	url = https://github.com/pierrec/lz4
+[submodule "vendor/github.com/pierrec/xxHash"]
+	path = vendor/github.com/pierrec/xxHash
+	url = https://github.com/pierrec/xxHash
+[submodule "_vendor/src/google.golang.org/grpc"]
+	path = vendor/google.golang.org/grpc
+	url = https://github.com/grpc/grpc-go
+[submodule "_vendor/src/github.com/golang/protobuf"]
+	path = vendor/github.com/golang/protobuf
+	url = https://github.com/golang/protobuf
+[submodule "_vendor/src/golang.org/x/text"]
+	path = vendor/golang.org/x/text
+	url = https://github.com/golang/text
+[submodule "_vendor/src/golang.org/x/net"]
+	path = vendor/golang.org/x/net
+	url = https://github.com/golang/net
+[submodule "_vendor/src/github.com/lomik/stop"]
+	path = vendor/github.com/lomik/stop
+	url = https://github.com/lomik/stop
+[submodule "_vendor/src/google.golang.org/genproto"]
+	path = vendor/google.golang.org/genproto
+	url = https://github.com/google/go-genproto
+[submodule "vendor/github.com/go-graphite/go-whisper"]
+	path = vendor/github.com/go-graphite/go-whisper
+	url = https://github.com/go-graphite/go-whisper

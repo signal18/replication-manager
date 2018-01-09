@@ -18,12 +18,15 @@
 		ServerInfoResponse
 		ZipperInfoResponse
 		ListMetricsResponse
+		MetricDetails
+		MetricDetailsResponse
 */
 package carbonzipperpb3
 
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
+import _ "github.com/gogo/protobuf/gogoproto"
 
 import io "io"
 
@@ -95,7 +98,7 @@ func (m *FetchResponse) GetIsAbsent() []bool {
 }
 
 type MultiFetchResponse struct {
-	Metrics []*FetchResponse `protobuf:"bytes,1,rep,name=metrics" json:"metrics,omitempty"`
+	Metrics []FetchResponse `protobuf:"bytes,1,rep,name=metrics" json:"metrics"`
 }
 
 func (m *MultiFetchResponse) Reset()                    { *m = MultiFetchResponse{} }
@@ -103,7 +106,7 @@ func (m *MultiFetchResponse) String() string            { return proto.CompactTe
 func (*MultiFetchResponse) ProtoMessage()               {}
 func (*MultiFetchResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper3, []int{1} }
 
-func (m *MultiFetchResponse) GetMetrics() []*FetchResponse {
+func (m *MultiFetchResponse) GetMetrics() []FetchResponse {
 	if m != nil {
 		return m.Metrics
 	}
@@ -135,8 +138,8 @@ func (m *GlobMatch) GetIsLeaf() bool {
 }
 
 type GlobResponse struct {
-	Name    string       `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Matches []*GlobMatch `protobuf:"bytes,2,rep,name=matches" json:"matches,omitempty"`
+	Name    string      `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Matches []GlobMatch `protobuf:"bytes,2,rep,name=matches" json:"matches"`
 }
 
 func (m *GlobResponse) Reset()                    { *m = GlobResponse{} }
@@ -151,7 +154,7 @@ func (m *GlobResponse) GetName() string {
 	return ""
 }
 
-func (m *GlobResponse) GetMatches() []*GlobMatch {
+func (m *GlobResponse) GetMatches() []GlobMatch {
 	if m != nil {
 		return m.Matches
 	}
@@ -183,11 +186,11 @@ func (m *Retention) GetNumberOfPoints() int32 {
 }
 
 type InfoResponse struct {
-	Name              string       `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	AggregationMethod string       `protobuf:"bytes,2,opt,name=aggregationMethod,proto3" json:"aggregationMethod,omitempty"`
-	MaxRetention      int32        `protobuf:"varint,3,opt,name=maxRetention,proto3" json:"maxRetention,omitempty"`
-	XFilesFactor      float32      `protobuf:"fixed32,4,opt,name=xFilesFactor,proto3" json:"xFilesFactor,omitempty"`
-	Retentions        []*Retention `protobuf:"bytes,5,rep,name=retentions" json:"retentions,omitempty"`
+	Name              string      `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	AggregationMethod string      `protobuf:"bytes,2,opt,name=aggregationMethod,proto3" json:"aggregationMethod,omitempty"`
+	MaxRetention      int32       `protobuf:"varint,3,opt,name=maxRetention,proto3" json:"maxRetention,omitempty"`
+	XFilesFactor      float32     `protobuf:"fixed32,4,opt,name=xFilesFactor,proto3" json:"xFilesFactor,omitempty"`
+	Retentions        []Retention `protobuf:"bytes,5,rep,name=retentions" json:"retentions"`
 }
 
 func (m *InfoResponse) Reset()                    { *m = InfoResponse{} }
@@ -223,7 +226,7 @@ func (m *InfoResponse) GetXFilesFactor() float32 {
 	return 0
 }
 
-func (m *InfoResponse) GetRetentions() []*Retention {
+func (m *InfoResponse) GetRetentions() []Retention {
 	if m != nil {
 		return m.Retentions
 	}
@@ -255,7 +258,7 @@ func (m *ServerInfoResponse) GetInfo() *InfoResponse {
 }
 
 type ZipperInfoResponse struct {
-	Responses []*ServerInfoResponse `protobuf:"bytes,1,rep,name=responses" json:"responses,omitempty"`
+	Responses []ServerInfoResponse `protobuf:"bytes,1,rep,name=responses" json:"responses"`
 }
 
 func (m *ZipperInfoResponse) Reset()                    { *m = ZipperInfoResponse{} }
@@ -263,7 +266,7 @@ func (m *ZipperInfoResponse) String() string            { return proto.CompactTe
 func (*ZipperInfoResponse) ProtoMessage()               {}
 func (*ZipperInfoResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper3, []int{7} }
 
-func (m *ZipperInfoResponse) GetResponses() []*ServerInfoResponse {
+func (m *ZipperInfoResponse) GetResponses() []ServerInfoResponse {
 	if m != nil {
 		return m.Responses
 	}
@@ -286,6 +289,82 @@ func (m *ListMetricsResponse) GetMetrics() []string {
 	return nil
 }
 
+// MetricDetails and MetricDetailsResponse is not guaranteed to stay the same in future releases
+// But we'll do our best to make them stable and only to extend them if that's necessary
+type MetricDetails struct {
+	Size_   int64 `protobuf:"varint,2,opt,name=Size,proto3" json:"Size,omitempty"`
+	ModTime int64 `protobuf:"varint,3,opt,name=ModTime,proto3" json:"ModTime,omitempty"`
+	ATime   int64 `protobuf:"varint,4,opt,name=ATime,proto3" json:"ATime,omitempty"`
+	RdTime  int64 `protobuf:"varint,5,opt,name=RdTime,proto3" json:"RdTime,omitempty"`
+}
+
+func (m *MetricDetails) Reset()                    { *m = MetricDetails{} }
+func (m *MetricDetails) String() string            { return proto.CompactTextString(m) }
+func (*MetricDetails) ProtoMessage()               {}
+func (*MetricDetails) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper3, []int{9} }
+
+func (m *MetricDetails) GetSize_() int64 {
+	if m != nil {
+		return m.Size_
+	}
+	return 0
+}
+
+func (m *MetricDetails) GetModTime() int64 {
+	if m != nil {
+		return m.ModTime
+	}
+	return 0
+}
+
+func (m *MetricDetails) GetATime() int64 {
+	if m != nil {
+		return m.ATime
+	}
+	return 0
+}
+
+func (m *MetricDetails) GetRdTime() int64 {
+	if m != nil {
+		return m.RdTime
+	}
+	return 0
+}
+
+type MetricDetailsResponse struct {
+	Metrics    map[string]*MetricDetails `protobuf:"bytes,1,rep,name=metrics" json:"metrics,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value"`
+	FreeSpace  uint64                    `protobuf:"varint,2,opt,name=FreeSpace,proto3" json:"FreeSpace,omitempty"`
+	TotalSpace uint64                    `protobuf:"varint,3,opt,name=TotalSpace,proto3" json:"TotalSpace,omitempty"`
+}
+
+func (m *MetricDetailsResponse) Reset()         { *m = MetricDetailsResponse{} }
+func (m *MetricDetailsResponse) String() string { return proto.CompactTextString(m) }
+func (*MetricDetailsResponse) ProtoMessage()    {}
+func (*MetricDetailsResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptorCarbonzipper3, []int{10}
+}
+
+func (m *MetricDetailsResponse) GetMetrics() map[string]*MetricDetails {
+	if m != nil {
+		return m.Metrics
+	}
+	return nil
+}
+
+func (m *MetricDetailsResponse) GetFreeSpace() uint64 {
+	if m != nil {
+		return m.FreeSpace
+	}
+	return 0
+}
+
+func (m *MetricDetailsResponse) GetTotalSpace() uint64 {
+	if m != nil {
+		return m.TotalSpace
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*FetchResponse)(nil), "carbonzipperpb3.FetchResponse")
 	proto.RegisterType((*MultiFetchResponse)(nil), "carbonzipperpb3.MultiFetchResponse")
@@ -296,6 +375,8 @@ func init() {
 	proto.RegisterType((*ServerInfoResponse)(nil), "carbonzipperpb3.ServerInfoResponse")
 	proto.RegisterType((*ZipperInfoResponse)(nil), "carbonzipperpb3.ZipperInfoResponse")
 	proto.RegisterType((*ListMetricsResponse)(nil), "carbonzipperpb3.ListMetricsResponse")
+	proto.RegisterType((*MetricDetails)(nil), "carbonzipperpb3.MetricDetails")
+	proto.RegisterType((*MetricDetailsResponse)(nil), "carbonzipperpb3.MetricDetailsResponse")
 }
 func (m *FetchResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
@@ -650,6 +731,100 @@ func (m *ListMetricsResponse) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
+func (m *MetricDetails) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MetricDetails) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Size_ != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.Size_))
+	}
+	if m.ModTime != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.ModTime))
+	}
+	if m.ATime != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.ATime))
+	}
+	if m.RdTime != 0 {
+		dAtA[i] = 0x28
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.RdTime))
+	}
+	return i, nil
+}
+
+func (m *MetricDetailsResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MetricDetailsResponse) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Metrics) > 0 {
+		for k, _ := range m.Metrics {
+			dAtA[i] = 0xa
+			i++
+			v := m.Metrics[k]
+			msgSize := 0
+			if v != nil {
+				msgSize = v.Size()
+				msgSize += 1 + sovCarbonzipper3(uint64(msgSize))
+			}
+			mapSize := 1 + len(k) + sovCarbonzipper3(uint64(len(k))) + msgSize
+			i = encodeVarintCarbonzipper3(dAtA, i, uint64(mapSize))
+			dAtA[i] = 0xa
+			i++
+			i = encodeVarintCarbonzipper3(dAtA, i, uint64(len(k)))
+			i += copy(dAtA[i:], k)
+			if v != nil {
+				dAtA[i] = 0x12
+				i++
+				i = encodeVarintCarbonzipper3(dAtA, i, uint64(v.Size()))
+				n3, err := v.MarshalTo(dAtA[i:])
+				if err != nil {
+					return 0, err
+				}
+				i += n3
+			}
+		}
+	}
+	if m.FreeSpace != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.FreeSpace))
+	}
+	if m.TotalSpace != 0 {
+		dAtA[i] = 0x18
+		i++
+		i = encodeVarintCarbonzipper3(dAtA, i, uint64(m.TotalSpace))
+	}
+	return i, nil
+}
+
 func encodeFixed64Carbonzipper3(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	dAtA[offset+1] = uint8(v >> 8)
@@ -815,6 +990,49 @@ func (m *ListMetricsResponse) Size() (n int) {
 			l = len(s)
 			n += 1 + l + sovCarbonzipper3(uint64(l))
 		}
+	}
+	return n
+}
+
+func (m *MetricDetails) Size() (n int) {
+	var l int
+	_ = l
+	if m.Size_ != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.Size_))
+	}
+	if m.ModTime != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.ModTime))
+	}
+	if m.ATime != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.ATime))
+	}
+	if m.RdTime != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.RdTime))
+	}
+	return n
+}
+
+func (m *MetricDetailsResponse) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.Metrics) > 0 {
+		for k, v := range m.Metrics {
+			_ = k
+			_ = v
+			l = 0
+			if v != nil {
+				l = v.Size()
+				l += 1 + sovCarbonzipper3(uint64(l))
+			}
+			mapEntrySize := 1 + len(k) + sovCarbonzipper3(uint64(len(k))) + l
+			n += mapEntrySize + 1 + sovCarbonzipper3(uint64(mapEntrySize))
+		}
+	}
+	if m.FreeSpace != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.FreeSpace))
+	}
+	if m.TotalSpace != 0 {
+		n += 1 + sovCarbonzipper3(uint64(m.TotalSpace))
 	}
 	return n
 }
@@ -1145,7 +1363,7 @@ func (m *MultiFetchResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Metrics = append(m.Metrics, &FetchResponse{})
+			m.Metrics = append(m.Metrics, FetchResponse{})
 			if err := m.Metrics[len(m.Metrics)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1354,7 +1572,7 @@ func (m *GlobResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Matches = append(m.Matches, &GlobMatch{})
+			m.Matches = append(m.Matches, GlobMatch{})
 			if err := m.Matches[len(m.Matches)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1614,7 +1832,7 @@ func (m *InfoResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Retentions = append(m.Retentions, &Retention{})
+			m.Retentions = append(m.Retentions, Retention{})
 			if err := m.Retentions[len(m.Retentions)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1807,7 +2025,7 @@ func (m *ZipperInfoResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Responses = append(m.Responses, &ServerInfoResponse{})
+			m.Responses = append(m.Responses, ServerInfoResponse{})
 			if err := m.Responses[len(m.Responses)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1891,6 +2109,341 @@ func (m *ListMetricsResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Metrics = append(m.Metrics, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipCarbonzipper3(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthCarbonzipper3
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetricDetails) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowCarbonzipper3
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetricDetails: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetricDetails: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Size_", wireType)
+			}
+			m.Size_ = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Size_ |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ModTime", wireType)
+			}
+			m.ModTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ModTime |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ATime", wireType)
+			}
+			m.ATime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ATime |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RdTime", wireType)
+			}
+			m.RdTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RdTime |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipCarbonzipper3(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthCarbonzipper3
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MetricDetailsResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowCarbonzipper3
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MetricDetailsResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MetricDetailsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metrics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthCarbonzipper3
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var keykey uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				keykey |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			var stringLenmapkey uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLenmapkey |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLenmapkey := int(stringLenmapkey)
+			if intStringLenmapkey < 0 {
+				return ErrInvalidLengthCarbonzipper3
+			}
+			postStringIndexmapkey := iNdEx + intStringLenmapkey
+			if postStringIndexmapkey > l {
+				return io.ErrUnexpectedEOF
+			}
+			mapkey := string(dAtA[iNdEx:postStringIndexmapkey])
+			iNdEx = postStringIndexmapkey
+			if m.Metrics == nil {
+				m.Metrics = make(map[string]*MetricDetails)
+			}
+			if iNdEx < postIndex {
+				var valuekey uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowCarbonzipper3
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					valuekey |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				var mapmsglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowCarbonzipper3
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					mapmsglen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if mapmsglen < 0 {
+					return ErrInvalidLengthCarbonzipper3
+				}
+				postmsgIndex := iNdEx + mapmsglen
+				if mapmsglen < 0 {
+					return ErrInvalidLengthCarbonzipper3
+				}
+				if postmsgIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				mapvalue := &MetricDetails{}
+				if err := mapvalue.Unmarshal(dAtA[iNdEx:postmsgIndex]); err != nil {
+					return err
+				}
+				iNdEx = postmsgIndex
+				m.Metrics[mapkey] = mapvalue
+			} else {
+				var mapvalue *MetricDetails
+				m.Metrics[mapkey] = mapvalue
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FreeSpace", wireType)
+			}
+			m.FreeSpace = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FreeSpace |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalSpace", wireType)
+			}
+			m.TotalSpace = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowCarbonzipper3
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalSpace |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipCarbonzipper3(dAtA[iNdEx:])
@@ -2020,36 +2573,47 @@ var (
 func init() { proto.RegisterFile("carbonzipper3.proto", fileDescriptorCarbonzipper3) }
 
 var fileDescriptorCarbonzipper3 = []byte{
-	// 492 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x7c, 0x53, 0xdd, 0x6a, 0x13, 0x41,
-	0x18, 0x65, 0x9a, 0xdf, 0xfd, 0x1a, 0x2d, 0x4e, 0xa1, 0x2c, 0x45, 0x43, 0x18, 0x41, 0xf6, 0x42,
-	0x22, 0x36, 0x82, 0xe2, 0x5d, 0xbd, 0x88, 0x08, 0x8d, 0x96, 0x51, 0x50, 0x04, 0x91, 0xd9, 0xed,
-	0x97, 0x64, 0x20, 0x3b, 0xb3, 0xcc, 0x4c, 0x4a, 0xf1, 0x9d, 0x7c, 0x0f, 0x2f, 0xbd, 0xf0, 0x01,
-	0x24, 0x4f, 0x22, 0x3b, 0xd9, 0xdd, 0x66, 0xb3, 0xd2, 0xbb, 0x39, 0xe7, 0x7c, 0x3f, 0xe7, 0x6c,
-	0xbe, 0xc0, 0x71, 0x22, 0x4c, 0xac, 0xd5, 0x0f, 0x99, 0x65, 0x68, 0x26, 0xe3, 0xcc, 0x68, 0xa7,
-	0xe9, 0xd1, 0x2e, 0x99, 0xc5, 0x13, 0xf6, 0x93, 0xc0, 0xbd, 0x29, 0xba, 0x64, 0xc9, 0xd1, 0x66,
-	0x5a, 0x59, 0xa4, 0x14, 0xda, 0x4a, 0xa4, 0x18, 0x92, 0x11, 0x89, 0x02, 0xee, 0xdf, 0xf4, 0x21,
-	0x04, 0xd6, 0x09, 0xe3, 0x3e, 0xc9, 0x14, 0xc3, 0x83, 0x11, 0x89, 0x3a, 0xfc, 0x96, 0xa0, 0xa7,
-	0xd0, 0xb7, 0x4e, 0x67, 0x5e, 0x6c, 0x79, 0xb1, 0xc2, 0x5b, 0x0d, 0xb7, 0x5a, 0xbb, 0xd4, 0xb6,
-	0x98, 0x9e, 0x40, 0xf7, 0x5a, 0xac, 0xd6, 0x68, 0xc3, 0xce, 0xa8, 0x15, 0x11, 0x5e, 0xa0, 0xbc,
-	0x47, 0xda, 0xf3, 0xd8, 0xa2, 0x72, 0x61, 0x77, 0xd4, 0x8a, 0xfa, 0xbc, 0xc2, 0xec, 0x3d, 0xd0,
-	0xd9, 0x7a, 0xe5, 0x64, 0xdd, 0xf3, 0x2b, 0xe8, 0xa5, 0xe8, 0x8c, 0x4c, 0x6c, 0x48, 0x46, 0xad,
-	0xe8, 0xf0, 0x6c, 0x38, 0xde, 0x0b, 0x3a, 0xae, 0x35, 0xf0, 0xb2, 0x9c, 0xbd, 0x84, 0xe0, 0xed,
-	0x4a, 0xc7, 0x33, 0xe1, 0x92, 0x65, 0x1e, 0x3d, 0x13, 0x6e, 0x59, 0x46, 0xcf, 0xdf, 0xb9, 0x49,
-	0x69, 0x2f, 0x50, 0xcc, 0x7d, 0xee, 0x3e, 0x2f, 0x10, 0xfb, 0x02, 0x83, 0xbc, 0xf1, 0xce, 0xcf,
-	0xf6, 0x02, 0x7a, 0x69, 0x3e, 0x18, 0x6d, 0x78, 0xe0, 0x6d, 0x9d, 0x36, 0x6c, 0x55, 0xcb, 0x79,
-	0x59, 0xca, 0xbe, 0x41, 0xc0, 0xd1, 0xa1, 0x72, 0x52, 0x2b, 0x1a, 0xc1, 0x91, 0xc5, 0x44, 0xab,
-	0x2b, 0x7b, 0x89, 0xe6, 0x52, 0x4b, 0xe5, 0xfc, 0x86, 0x0e, 0xdf, 0xa7, 0xe9, 0x13, 0xb8, 0xaf,
-	0xd6, 0x69, 0x8c, 0xe6, 0xc3, 0xdc, 0x13, 0xb6, 0xf8, 0xa1, 0xf6, 0x58, 0xf6, 0x87, 0xc0, 0xe0,
-	0x9d, 0x9a, 0xeb, 0x3b, 0x9d, 0x3f, 0x85, 0x07, 0x62, 0xb1, 0x30, 0xb8, 0x10, 0xb9, 0x8b, 0x19,
-	0xba, 0xa5, 0xbe, 0xf2, 0xf3, 0x02, 0xde, 0x14, 0x28, 0x83, 0x41, 0x2a, 0x6e, 0x2a, 0xd3, 0xc5,
-	0x11, 0xd4, 0xb8, 0xbc, 0xe6, 0x66, 0x2a, 0x57, 0x68, 0xa7, 0x22, 0x71, 0xda, 0xf8, 0x63, 0x38,
-	0xe0, 0x35, 0x8e, 0xbe, 0x06, 0x30, 0x65, 0xc3, 0xf6, 0x28, 0xfe, 0xf7, 0xc9, 0xaa, 0x99, 0x7c,
-	0xa7, 0x9a, 0x7d, 0x07, 0xfa, 0x11, 0xcd, 0x35, 0x9a, 0x5a, 0xb6, 0x13, 0xe8, 0x5a, 0xcf, 0x16,
-	0xe9, 0x0a, 0x44, 0x9f, 0x43, 0x5b, 0xaa, 0xb9, 0xf6, 0x91, 0x0e, 0xcf, 0x1e, 0x35, 0x76, 0xec,
-	0x0e, 0xe1, 0xbe, 0x94, 0x7d, 0x06, 0xfa, 0xd5, 0xeb, 0xb5, 0x05, 0xe7, 0x10, 0x98, 0xe2, 0x5d,
-	0xde, 0xde, 0xe3, 0xc6, 0xb4, 0xa6, 0x31, 0x7e, 0xdb, 0xc5, 0x9e, 0xc1, 0xf1, 0x85, 0xb4, 0x6e,
-	0xb6, 0xbd, 0xc8, 0x6a, 0x72, 0x08, 0xbd, 0xd9, 0xce, 0x4d, 0x07, 0xbc, 0x84, 0x6f, 0x06, 0xbf,
-	0x36, 0x43, 0xf2, 0x7b, 0x33, 0x24, 0x7f, 0x37, 0x43, 0x12, 0x77, 0xfd, 0x3f, 0x7b, 0xf2, 0x2f,
-	0x00, 0x00, 0xff, 0xff, 0x7f, 0x1b, 0xd0, 0x62, 0xf0, 0x03, 0x00, 0x00,
+	// 666 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x54, 0x5f, 0x4f, 0x13, 0x4f,
+	0x14, 0xfd, 0x6d, 0xb7, 0x2d, 0xec, 0xa5, 0xfc, 0xd0, 0x41, 0xc9, 0xa6, 0xd1, 0xda, 0xac, 0x89,
+	0xe9, 0x83, 0x96, 0x48, 0x4d, 0x34, 0x3c, 0x18, 0x21, 0x5a, 0x62, 0x42, 0x23, 0x19, 0x78, 0x22,
+	0x41, 0x33, 0xbb, 0x4c, 0xdb, 0x09, 0xdd, 0x9d, 0xcd, 0xcc, 0x94, 0x00, 0x4f, 0x7e, 0x21, 0xbf,
+	0x07, 0x8f, 0x3e, 0xfb, 0x60, 0x0c, 0x9f, 0xc4, 0xec, 0xcc, 0xec, 0xd2, 0x6d, 0x09, 0xbe, 0xdd,
+	0x73, 0xee, 0x9c, 0x3b, 0xe7, 0xde, 0xf9, 0x03, 0xeb, 0x11, 0x11, 0x21, 0x4f, 0xae, 0x58, 0x9a,
+	0x52, 0xd1, 0xeb, 0xa6, 0x82, 0x2b, 0x8e, 0xd6, 0x66, 0xc9, 0x34, 0xec, 0x35, 0x5f, 0x8d, 0x98,
+	0x1a, 0x4f, 0xc3, 0x6e, 0xc4, 0xe3, 0xcd, 0x11, 0x1f, 0xf1, 0x4d, 0xbd, 0x2e, 0x9c, 0x0e, 0x35,
+	0xd2, 0x40, 0x47, 0x46, 0x1f, 0xfc, 0x70, 0x60, 0xb5, 0x4f, 0x55, 0x34, 0xc6, 0x54, 0xa6, 0x3c,
+	0x91, 0x14, 0x21, 0xa8, 0x26, 0x24, 0xa6, 0xbe, 0xd3, 0x76, 0x3a, 0x1e, 0xd6, 0x31, 0x7a, 0x02,
+	0x9e, 0x54, 0x44, 0xa8, 0x23, 0x16, 0x53, 0xbf, 0xd2, 0x76, 0x3a, 0x35, 0x7c, 0x4b, 0xa0, 0x26,
+	0x2c, 0x4b, 0xc5, 0x53, 0x9d, 0x74, 0x75, 0xb2, 0xc0, 0x26, 0x47, 0x4d, 0xae, 0x9a, 0xe7, 0x0c,
+	0x46, 0x1b, 0x50, 0x3f, 0x27, 0x93, 0x29, 0x95, 0x7e, 0xad, 0xed, 0x76, 0x1c, 0x6c, 0x51, 0xa6,
+	0x61, 0x72, 0x27, 0x94, 0x34, 0x51, 0x7e, 0xbd, 0xed, 0x76, 0x96, 0x71, 0x81, 0x83, 0x23, 0x40,
+	0x83, 0xe9, 0x44, 0xb1, 0xb2, 0xe7, 0xf7, 0xb0, 0x14, 0x53, 0x25, 0x58, 0x24, 0x7d, 0xa7, 0xed,
+	0x76, 0x56, 0xb6, 0x5a, 0xdd, 0xb9, 0xb9, 0x74, 0x4b, 0x82, 0xdd, 0xea, 0xf5, 0xef, 0x67, 0xff,
+	0xe1, 0x5c, 0x14, 0xbc, 0x05, 0x6f, 0x6f, 0xc2, 0xc3, 0x01, 0x51, 0xd1, 0x38, 0x1b, 0x40, 0x4a,
+	0xd4, 0x38, 0x1f, 0x40, 0x16, 0x67, 0x56, 0x99, 0xdc, 0xa7, 0x64, 0xa8, 0xbb, 0x5f, 0xc6, 0x16,
+	0x05, 0x5f, 0xa1, 0x91, 0x09, 0xef, 0x1d, 0xde, 0x36, 0x2c, 0xc5, 0x59, 0x61, 0x2a, 0xfd, 0x8a,
+	0x36, 0xd7, 0x5c, 0x30, 0x57, 0x6c, 0x5e, 0x18, 0x33, 0x82, 0xe0, 0x04, 0x3c, 0x4c, 0x15, 0x4d,
+	0x14, 0xe3, 0x09, 0xea, 0xc0, 0x9a, 0xa4, 0x11, 0x4f, 0x4e, 0xe5, 0x01, 0x15, 0x07, 0x9c, 0x25,
+	0x4a, 0xef, 0x53, 0xc3, 0xf3, 0x34, 0x7a, 0x01, 0xff, 0x27, 0xd3, 0x38, 0xa4, 0xe2, 0xcb, 0x50,
+	0x13, 0xd2, 0x1e, 0xda, 0x1c, 0x1b, 0xfc, 0x72, 0xa0, 0xf1, 0x39, 0x19, 0xf2, 0x7b, 0xfd, 0xbf,
+	0x84, 0x87, 0x64, 0x34, 0x12, 0x74, 0x44, 0x32, 0x17, 0x03, 0xaa, 0xc6, 0xfc, 0x54, 0xd7, 0xf3,
+	0xf0, 0x62, 0x02, 0x05, 0xd0, 0x88, 0xc9, 0x45, 0x61, 0xda, 0x5e, 0x88, 0x12, 0x97, 0xad, 0xb9,
+	0xe8, 0xb3, 0x09, 0x95, 0x7d, 0x12, 0x29, 0x2e, 0xf4, 0xc5, 0xa8, 0xe0, 0x12, 0x87, 0x3e, 0x00,
+	0x88, 0x5c, 0x60, 0x2e, 0xc8, 0x5d, 0x83, 0x2b, 0x6a, 0xda, 0xc1, 0xcd, 0x68, 0x82, 0x6f, 0x80,
+	0x0e, 0xa9, 0x38, 0xa7, 0xa2, 0xd4, 0xe1, 0x06, 0xd4, 0xa5, 0x66, 0x6d, 0x8f, 0x16, 0xa1, 0xd7,
+	0x50, 0x65, 0xc9, 0x90, 0xeb, 0xc6, 0x56, 0xb6, 0x9e, 0x2e, 0xec, 0x34, 0x5b, 0x04, 0xeb, 0xa5,
+	0xc1, 0x09, 0xa0, 0x63, 0x9d, 0x2f, 0x6d, 0xb0, 0x07, 0x9e, 0xb0, 0x71, 0x7e, 0x1b, 0x9f, 0x2f,
+	0x54, 0x5b, 0x34, 0x66, 0x1b, 0xb8, 0xd5, 0x06, 0x9b, 0xb0, 0xbe, 0xcf, 0xa4, 0x1a, 0x98, 0x3b,
+	0x5a, 0xd4, 0xf7, 0x61, 0x69, 0x30, 0x73, 0xd7, 0x3d, 0x9c, 0xc3, 0xe0, 0x0c, 0x56, 0x4d, 0xf8,
+	0x91, 0x2a, 0xc2, 0x26, 0x32, 0x3b, 0xcd, 0x43, 0x76, 0x65, 0x5e, 0xac, 0x8b, 0x75, 0xac, 0xe5,
+	0xfc, 0xb4, 0x78, 0xab, 0x2e, 0xce, 0x21, 0x7a, 0x04, 0xb5, 0x9d, 0xe2, 0x9d, 0xba, 0xd8, 0x80,
+	0x6c, 0x5e, 0xd8, 0x2c, 0xaf, 0x69, 0xda, 0xa2, 0xe0, 0x7b, 0x05, 0x1e, 0x97, 0x76, 0x2b, 0x0c,
+	0x0e, 0xe6, 0x1f, 0x63, 0x6f, 0xa1, 0xfd, 0x3b, 0x85, 0x96, 0x95, 0x9f, 0x12, 0x25, 0x2e, 0x8b,
+	0xb7, 0x99, 0xfd, 0x3d, 0x7d, 0x41, 0xe9, 0x61, 0x4a, 0x22, 0xd3, 0x49, 0x15, 0xdf, 0x12, 0xa8,
+	0x05, 0x70, 0xc4, 0x15, 0x99, 0x98, 0xb4, 0xab, 0xd3, 0x33, 0x4c, 0xf3, 0x18, 0x1a, 0xb3, 0x65,
+	0xd1, 0x03, 0x70, 0xcf, 0xe8, 0xa5, 0x3d, 0xfb, 0x2c, 0x44, 0x6f, 0xa0, 0xa6, 0xff, 0x1d, 0x7b,
+	0xf2, 0xad, 0x7f, 0x98, 0x35, 0x8b, 0xb7, 0x2b, 0xef, 0x9c, 0xdd, 0xc6, 0xf5, 0x4d, 0xcb, 0xf9,
+	0x79, 0xd3, 0x72, 0xfe, 0xdc, 0xb4, 0x9c, 0xb0, 0xae, 0x3f, 0xd4, 0xde, 0xdf, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0xec, 0xa4, 0x91, 0xdd, 0xa7, 0x05, 0x00, 0x00,
 }

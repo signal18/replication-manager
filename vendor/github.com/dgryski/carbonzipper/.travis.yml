@@ -1,0 +1,20 @@
+language: go
+dist: trusty
+
+sudo: required
+
+services:
+  - docker
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install mercurial pkg-config wget -y
+  - wget "https://raw.githubusercontent.com/go-graphite/helper-scripts/master/travis-docker-build.sh" && chmod +x ./travis-docker-build.sh && ./travis-docker-build.sh carbonzipper
+
+matrix:
+  include:
+    - go: 1.x
+      env: BUILD_PACKAGES=true
+    - go: 1.8.x
+    - go: 1.9.x
+    - go: master

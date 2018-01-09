@@ -168,20 +168,22 @@ func NewCollector(app *App) *Collector {
 		c.stats = append(c.stats, moduleCallback("carbonserver", app.Carbonserver))
 	}
 
-	if app.UDP != nil {
-		c.stats = append(c.stats, moduleCallback("udp", app.UDP))
-	}
-
-	if app.TCP != nil {
-		c.stats = append(c.stats, moduleCallback("tcp", app.TCP))
-	}
-
-	if app.Pickle != nil {
-		c.stats = append(c.stats, moduleCallback("pickle", app.Pickle))
+	if app.Receivers != nil {
+		for i := 0; i < len(app.Receivers); i++ {
+			c.stats = append(c.stats, moduleCallback(app.Receivers[i].Name, app.Receivers[i]))
+		}
 	}
 
 	if app.Persister != nil {
 		c.stats = append(c.stats, moduleCallback("persister", app.Persister))
+	}
+
+	if app.Api != nil {
+		c.stats = append(c.stats, moduleCallback("grpc", app.Api))
+	}
+
+	if app.Tags != nil {
+		c.stats = append(c.stats, moduleCallback("tags", app.Tags))
 	}
 
 	// collector worker

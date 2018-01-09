@@ -1,0 +1,10 @@
+*.[568ao]
+[568a].out
+_testmain.go
+_obj
+_test
+*.swp
+fuzz/corpus
+fuzz/crashers
+fuzz/suppressions
+fuzz/csv-fuzz.zip

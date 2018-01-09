@@ -61,7 +61,7 @@ import(
 )
   
 func main() {
-  rl, _ := rotatelogs.NewRotateLogs("/path/to/access_log.%Y%m%d%H%M")
+  rl, _ := rotatelogs.New("/path/to/access_log.%Y%m%d%H%M")
 
   log.SetOutput(rl)
 
@@ -135,7 +135,7 @@ Note: Remember to use time.Duration values.
   )
 ```
 
-## MaxAge (default: 0)
+## MaxAge (default: 7 days)
 
 Time to wait until old logs are purged. By default no logs are purged, which
 certainly isn't what you want.
@@ -146,5 +146,20 @@ Note: Remember to use time.Duration values.
   rotatelogs.New(
     "/var/log/myapp/log.%Y%m%d",
     rotatelogs.WithMaxAge(time.Hour),
+  )
+```
+
+## RotationCount (default: -1)
+
+The number of files should be kept. By default, this option is disabled.
+
+Note: MaxAge should be disabled by specifing `WithMaxAge(-1)` explicitly.
+
+```go
+  // Purge logs except latest 7 files
+  rotatelogs.New(
+    "/var/log/myapp/log.%Y%m%d",
+    rotatelogs.WithMaxAge(-1),
+    rotatelogs.WithRotationCount(7),
   )
 ```

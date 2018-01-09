@@ -135,14 +135,17 @@ func (t *TombstoneGC) PendingExpiration() bool {
 // granularity that is set. This allows us to bin expirations and avoid a ton
 // of timers.
 func (t *TombstoneGC) nextExpires() time.Time {
-	expires := time.Now().Add(t.ttl)
+	// The Round(0) call here is to shed the monotonic time so that we
+	// can safely use these as map keys. See #3670 for more details.
+	expires := time.Now().Add(t.ttl).Round(0)
 	remain := expires.UnixNano() % int64(t.granularity)
 	adj := expires.Add(t.granularity - time.Duration(remain))
 	return adj
 }
 
-// expireTime is used to expire the entries at the given time.
-func (t *TombstoneGC) expireTime(expires time.Time) {
+// purgeBin gets the index for the given bin and then deletes the bin. If there
+// is no bin then this will return 0 for the index, which is ok.
+func (t *TombstoneGC) purgeBin(expires time.Time) uint64 {
 	t.Lock()
 	defer t.Unlock()
 
@@ -152,8 +155,18 @@ func (t *TombstoneGC) expireTime(expires time.Time) {
 	// is no work to do.
 	exp, ok := t.expires[expires]
 	if !ok {
-		return
+		return 0
 	}
 	delete(t.expires, expires)
-	t.expireCh <- exp.maxIndex
+	return exp.maxIndex
+}
+
+// expireTime is used to expire the entries at the given time.
+func (t *TombstoneGC) expireTime(expires time.Time) {
+	// This is careful to take the lock only while we are fetching the index
+	// since the channel write might get blocked for reasons that could also
+	// need to hint GC (see #3700).
+	if index := t.purgeBin(expires); index > 0 {
+		t.expireCh <- index
+	}
 }

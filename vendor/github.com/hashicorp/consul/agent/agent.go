@@ -39,6 +39,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 	"github.com/shirou/gopsutil/host"
+	"golang.org/x/net/http2"
 )
 
 const (
@@ -340,17 +341,16 @@ func (a *Agent) Start() error {
 		return err
 	}
 
-	// create listeners and unstarted servers
-	// see comment on listenHTTP why we are doing this
-	httpln, err := a.listenHTTP()
+	// Create listeners and unstarted servers; see comment on listenHTTP why
+	// we are doing this.
+	servers, err := a.listenHTTP()
 	if err != nil {
 		return err
 	}
 
-	// start HTTP and HTTPS servers
-	for _, l := range httpln {
-		srv := NewHTTPServer(l.Addr(), a)
-		if err := a.serveHTTP(l, srv); err != nil {
+	// Start HTTP and HTTPS servers.
+	for _, srv := range servers {
+		if err := a.serveHTTP(srv); err != nil {
 			return err
 		}
 		a.httpServers = append(a.httpServers, srv)
@@ -418,12 +418,13 @@ func (a *Agent) listenAndServeDNS() error {
 //
 // This approach should ultimately be refactored to the point where we just
 // start the server and any error should trigger a proper shutdown of the agent.
-func (a *Agent) listenHTTP() ([]net.Listener, error) {
+func (a *Agent) listenHTTP() ([]*HTTPServer, error) {
 	var ln []net.Listener
-
+	var servers []*HTTPServer
 	start := func(proto string, addrs []net.Addr) error {
 		for _, addr := range addrs {
 			var l net.Listener
+			var tlscfg *tls.Config
 			var err error
 
 			switch x := addr.(type) {
@@ -438,11 +439,10 @@ func (a *Agent) listenHTTP() ([]net.Listener, error) {
 				if err != nil {
 					return err
 				}
-
 				l = &tcpKeepAliveListener{l.(*net.TCPListener)}
 
 				if proto == "https" {
-					tlscfg, err := a.config.IncomingHTTPSConfig()
+					tlscfg, err = a.config.IncomingHTTPSConfig()
 					if err != nil {
 						return err
 					}
@@ -453,6 +453,29 @@ func (a *Agent) listenHTTP() ([]net.Listener, error) {
 				return fmt.Errorf("unsupported address type %T", addr)
 			}
 			ln = append(ln, l)
+
+			srv := &HTTPServer{
+				Server: &http.Server{
+					Addr:      l.Addr().String(),
+					TLSConfig: tlscfg,
+				},
+				ln:        l,
+				agent:     a,
+				blacklist: NewBlacklist(a.config.HTTPBlockEndpoints),
+				proto:     proto,
+			}
+			srv.Server.Handler = srv.handler(a.config.EnableDebug)
+
+			// This will enable upgrading connections to HTTP/2 as
+			// part of TLS negotiation.
+			if proto == "https" {
+				err = http2.ConfigureServer(srv.Server, nil)
+				if err != nil {
+					return err
+				}
+			}
+
+			servers = append(servers, srv)
 		}
 		return nil
 	}
@@ -469,12 +492,11 @@ func (a *Agent) listenHTTP() ([]net.Listener, error) {
 		}
 		return nil, err
 	}
-	return ln, nil
+	return servers, nil
 }
 
 // tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
-// connections. It's used by NewHttpServer so dead TCP connections
-// eventually go away.
+// connections. It's used so dead TCP connections eventually go away.
 type tcpKeepAliveListener struct {
 	*net.TCPListener
 }
@@ -507,28 +529,19 @@ func (a *Agent) listenSocket(path string) (net.Listener, error) {
 	return l, nil
 }
 
-func (a *Agent) serveHTTP(l net.Listener, srv *HTTPServer) error {
+func (a *Agent) serveHTTP(srv *HTTPServer) error {
 	// https://github.com/golang/go/issues/20239
 	//
 	// In go.8.1 there is a race between Serve and Shutdown. If
 	// Shutdown is called before the Serve go routine was scheduled then
 	// the Serve go routine never returns. This deadlocks the agent
 	// shutdown for some tests since it will wait forever.
-	//
-	// Since we need to check for an unexported type (*tls.listener)
-	// we cannot just perform a type check since the compiler won't let
-	// us. We might be able to use reflection but the fmt.Sprintf() hack
-	// works just as well.
-	srv.proto = "http"
-	if strings.Contains("*tls.listener", fmt.Sprintf("%T", l)) {
-		srv.proto = "https"
-	}
 	notif := make(chan net.Addr)
 	a.wgServers.Add(1)
 	go func() {
 		defer a.wgServers.Done()
-		notif <- l.Addr()
-		err := srv.Serve(l)
+		notif <- srv.ln.Addr()
+		err := srv.Serve(srv.ln)
 		if err != nil && err != http.ErrServerClosed {
 			a.logger.Print(err)
 		}
@@ -754,30 +767,19 @@ func (a *Agent) consulConfig() (*consul.Config, error) {
 	if a.config.SessionTTLMin != 0 {
 		base.SessionTTLMin = a.config.SessionTTLMin
 	}
-	if a.config.AutopilotCleanupDeadServers {
-		base.AutopilotConfig.CleanupDeadServers = a.config.AutopilotCleanupDeadServers
-	}
-	if a.config.AutopilotLastContactThreshold != 0 {
-		base.AutopilotConfig.LastContactThreshold = a.config.AutopilotLastContactThreshold
-	}
-	if a.config.AutopilotMaxTrailingLogs != 0 {
-		base.AutopilotConfig.MaxTrailingLogs = uint64(a.config.AutopilotMaxTrailingLogs)
-	}
-	if a.config.AutopilotServerStabilizationTime != 0 {
-		base.AutopilotConfig.ServerStabilizationTime = a.config.AutopilotServerStabilizationTime
-	}
 	if a.config.NonVotingServer {
 		base.NonVoter = a.config.NonVotingServer
 	}
-	if a.config.AutopilotRedundancyZoneTag != "" {
-		base.AutopilotConfig.RedundancyZoneTag = a.config.AutopilotRedundancyZoneTag
-	}
-	if a.config.AutopilotDisableUpgradeMigration {
-		base.AutopilotConfig.DisableUpgradeMigration = a.config.AutopilotDisableUpgradeMigration
-	}
-	if a.config.AutopilotUpgradeVersionTag != "" {
-		base.AutopilotConfig.UpgradeVersionTag = a.config.AutopilotUpgradeVersionTag
-	}
+
+	// These are fully specified in the agent defaults, so we can simply
+	// copy them over.
+	base.AutopilotConfig.CleanupDeadServers = a.config.AutopilotCleanupDeadServers
+	base.AutopilotConfig.LastContactThreshold = a.config.AutopilotLastContactThreshold
+	base.AutopilotConfig.MaxTrailingLogs = uint64(a.config.AutopilotMaxTrailingLogs)
+	base.AutopilotConfig.ServerStabilizationTime = a.config.AutopilotServerStabilizationTime
+	base.AutopilotConfig.RedundancyZoneTag = a.config.AutopilotRedundancyZoneTag
+	base.AutopilotConfig.DisableUpgradeMigration = a.config.AutopilotDisableUpgradeMigration
+	base.AutopilotConfig.UpgradeVersionTag = a.config.AutopilotUpgradeVersionTag
 
 	// make sure the advertise address is always set
 	if base.RPCAdvertise == nil {
@@ -1210,12 +1212,12 @@ func (a *Agent) ShutdownEndpoints() {
 	a.dnsServers = nil
 
 	for _, srv := range a.httpServers {
-		a.logger.Printf("[INFO] agent: Stopping %s server %s (%s)", strings.ToUpper(srv.proto), srv.addr.String(), srv.addr.Network())
+		a.logger.Printf("[INFO] agent: Stopping %s server %s (%s)", strings.ToUpper(srv.proto), srv.ln.Addr().String(), srv.ln.Addr().Network())
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
 		if ctx.Err() == context.DeadlineExceeded {
-			a.logger.Printf("[WARN] agent: Timeout stopping %s server %s (%s)", strings.ToUpper(srv.proto), srv.addr.String(), srv.addr.Network())
+			a.logger.Printf("[WARN] agent: Timeout stopping %s server %s (%s)", strings.ToUpper(srv.proto), srv.ln.Addr().String(), srv.ln.Addr().Network())
 		}
 	}
 	a.httpServers = nil
@@ -1407,7 +1409,7 @@ func (a *Agent) reapServicesInternal() {
 }
 
 // reapServices is a long running goroutine that looks for checks that have been
-// critical too long and dregisters their associated services.
+// critical too long and deregisters their associated services.
 func (a *Agent) reapServices() {
 	for {
 		select {
@@ -1590,6 +1592,7 @@ func (a *Agent) AddService(service *structs.NodeService, chkTypes []*structs.Che
 			Notes:       chkType.Notes,
 			ServiceID:   service.ID,
 			ServiceName: service.Service,
+			ServiceTags: service.Tags,
 		}
 		if chkType.Status != "" {
 			check.Status = chkType.Status
@@ -1703,16 +1706,33 @@ func (a *Agent) AddCheck(check *structs.HealthCheck, chkType *structs.CheckType,
 				chkType.Interval = checks.MinInterval
 			}
 
+			// We re-use the API client's TLS structure since it
+			// closely aligns with Consul's internal configuration.
+			tlsConfig := &api.TLSConfig{
+				InsecureSkipVerify: chkType.TLSSkipVerify,
+			}
+			if a.config.EnableAgentTLSForChecks {
+				tlsConfig.Address = a.config.ServerName
+				tlsConfig.KeyFile = a.config.KeyFile
+				tlsConfig.CertFile = a.config.CertFile
+				tlsConfig.CAFile = a.config.CAFile
+				tlsConfig.CAPath = a.config.CAPath
+			}
+			tlsClientConfig, err := api.SetupTLSConfig(tlsConfig)
+			if err != nil {
+				return fmt.Errorf("Failed to set up TLS: %v", err)
+			}
+
 			http := &checks.CheckHTTP{
-				Notify:        a.State,
-				CheckID:       check.CheckID,
-				HTTP:          chkType.HTTP,
-				Header:        chkType.Header,
-				Method:        chkType.Method,
-				Interval:      chkType.Interval,
-				Timeout:       chkType.Timeout,
-				Logger:        a.logger,
-				TLSSkipVerify: chkType.TLSSkipVerify,
+				Notify:          a.State,
+				CheckID:         check.CheckID,
+				HTTP:            chkType.HTTP,
+				Header:          chkType.Header,
+				Method:          chkType.Method,
+				Interval:        chkType.Interval,
+				Timeout:         chkType.Timeout,
+				Logger:          a.logger,
+				TLSClientConfig: tlsClientConfig,
 			}
 			http.Start()
 			a.checkHTTPs[check.CheckID] = http

@@ -13,6 +13,7 @@ GOTAGS ?=
 GOFILES ?= $(shell go list ./... | grep -v /vendor/)
 GOOS=$(shell go env GOOS)
 GOARCH=$(shell go env GOARCH)
+GOPATH=$(shell go env GOPATH)
 
 # Get the git commit
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
@@ -73,7 +74,6 @@ test: other-consul dev-build vet
 	@grep -A1 -- '--- SKIP:' test.log || true
 	@grep -A1 -- '--- FAIL:' test.log || true
 	@grep '^FAIL' test.log || true
-	@test "$$TRAVIS" == "true" && cat test.log || true
 	@if [ "$$(cat exit-code)" == "0" ] ; then echo "PASS" ; exit 0 ; else exit 1 ; fi
 
 test-race:

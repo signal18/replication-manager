@@ -1,0 +1,78 @@
+
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+#
+# required = ["github.com/user/thing/cmd/thing"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#  name = "github.com/x/y"
+#  version = "2.4.0"
+
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/bradfitz/gomemcache"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/dgryski/go-expirecache"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/dgryski/httputil"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/facebookgo/grace"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/facebookgo/pidfile"
+
+[[constraint]]
+  name = "github.com/gogo/protobuf"
+  version = "0.4.0"
+
+[[constraint]]
+  name = "github.com/lestrrat/go-file-rotatelogs"
+  version = "2.1.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/lestrrat/go-strftime"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/lomik/og-rek"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/lomik/zapwriter"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/peterbourgon/g2g"
+
+[[constraint]]
+  name = "github.com/satori/go.uuid"
+  version = "1.1.0"
+
+[[constraint]]
+  name = "go.uber.org/zap"
+  version = "1.5.0"
+
+[[constraint]]
+  branch = "v2"
+  name = "gopkg.in/yaml.v2"

@@ -23,6 +23,7 @@ package carbonzipperpb
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
+import _ "github.com/gogo/protobuf/gogoproto"
 
 import github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
 
@@ -32,6 +33,12 @@ import io "io"
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type FetchResponse struct {
 	Name             *string   `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
@@ -43,9 +50,10 @@ type FetchResponse struct {
 	XXX_unrecognized []byte    `json:"-"`
 }
 
-func (m *FetchResponse) Reset()         { *m = FetchResponse{} }
-func (m *FetchResponse) String() string { return proto.CompactTextString(m) }
-func (*FetchResponse) ProtoMessage()    {}
+func (m *FetchResponse) Reset()                    { *m = FetchResponse{} }
+func (m *FetchResponse) String() string            { return proto.CompactTextString(m) }
+func (*FetchResponse) ProtoMessage()               {}
+func (*FetchResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{0} }
 
 func (m *FetchResponse) GetName() string {
 	if m != nil && m.Name != nil {
@@ -90,15 +98,16 @@ func (m *FetchResponse) GetIsAbsent() []bool {
 }
 
 type MultiFetchResponse struct {
-	Metrics          []*FetchResponse `protobuf:"bytes,1,rep,name=metrics" json:"metrics,omitempty"`
-	XXX_unrecognized []byte           `json:"-"`
+	Metrics          []FetchResponse `protobuf:"bytes,1,rep,name=metrics" json:"metrics"`
+	XXX_unrecognized []byte          `json:"-"`
 }
 
-func (m *MultiFetchResponse) Reset()         { *m = MultiFetchResponse{} }
-func (m *MultiFetchResponse) String() string { return proto.CompactTextString(m) }
-func (*MultiFetchResponse) ProtoMessage()    {}
+func (m *MultiFetchResponse) Reset()                    { *m = MultiFetchResponse{} }
+func (m *MultiFetchResponse) String() string            { return proto.CompactTextString(m) }
+func (*MultiFetchResponse) ProtoMessage()               {}
+func (*MultiFetchResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{1} }
 
-func (m *MultiFetchResponse) GetMetrics() []*FetchResponse {
+func (m *MultiFetchResponse) GetMetrics() []FetchResponse {
 	if m != nil {
 		return m.Metrics
 	}
@@ -111,9 +120,10 @@ type GlobMatch struct {
 	XXX_unrecognized []byte  `json:"-"`
 }
 
-func (m *GlobMatch) Reset()         { *m = GlobMatch{} }
-func (m *GlobMatch) String() string { return proto.CompactTextString(m) }
-func (*GlobMatch) ProtoMessage()    {}
+func (m *GlobMatch) Reset()                    { *m = GlobMatch{} }
+func (m *GlobMatch) String() string            { return proto.CompactTextString(m) }
+func (*GlobMatch) ProtoMessage()               {}
+func (*GlobMatch) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{2} }
 
 func (m *GlobMatch) GetPath() string {
 	if m != nil && m.Path != nil {
@@ -130,14 +140,15 @@ func (m *GlobMatch) GetIsLeaf() bool {
 }
 
 type GlobResponse struct {
-	Name             *string      `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
-	Matches          []*GlobMatch `protobuf:"bytes,2,rep,name=matches" json:"matches,omitempty"`
-	XXX_unrecognized []byte       `json:"-"`
+	Name             *string     `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
+	Matches          []GlobMatch `protobuf:"bytes,2,rep,name=matches" json:"matches"`
+	XXX_unrecognized []byte      `json:"-"`
 }
 
-func (m *GlobResponse) Reset()         { *m = GlobResponse{} }
-func (m *GlobResponse) String() string { return proto.CompactTextString(m) }
-func (*GlobResponse) ProtoMessage()    {}
+func (m *GlobResponse) Reset()                    { *m = GlobResponse{} }
+func (m *GlobResponse) String() string            { return proto.CompactTextString(m) }
+func (*GlobResponse) ProtoMessage()               {}
+func (*GlobResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{3} }
 
 func (m *GlobResponse) GetName() string {
 	if m != nil && m.Name != nil {
@@ -146,7 +157,7 @@ func (m *GlobResponse) GetName() string {
 	return ""
 }
 
-func (m *GlobResponse) GetMatches() []*GlobMatch {
+func (m *GlobResponse) GetMatches() []GlobMatch {
 	if m != nil {
 		return m.Matches
 	}
@@ -159,9 +170,10 @@ type Retention struct {
 	XXX_unrecognized []byte `json:"-"`
 }
 
-func (m *Retention) Reset()         { *m = Retention{} }
-func (m *Retention) String() string { return proto.CompactTextString(m) }
-func (*Retention) ProtoMessage()    {}
+func (m *Retention) Reset()                    { *m = Retention{} }
+func (m *Retention) String() string            { return proto.CompactTextString(m) }
+func (*Retention) ProtoMessage()               {}
+func (*Retention) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{4} }
 
 func (m *Retention) GetSecondsPerPoint() int32 {
 	if m != nil && m.SecondsPerPoint != nil {
@@ -178,17 +190,18 @@ func (m *Retention) GetNumberOfPoints() int32 {
 }
 
 type InfoResponse struct {
-	Name              *string      `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
-	AggregationMethod *string      `protobuf:"bytes,2,req,name=aggregationMethod" json:"aggregationMethod,omitempty"`
-	MaxRetention      *int32       `protobuf:"varint,3,req,name=maxRetention" json:"maxRetention,omitempty"`
-	XFilesFactor      *float32     `protobuf:"fixed32,4,req,name=xFilesFactor" json:"xFilesFactor,omitempty"`
-	Retentions        []*Retention `protobuf:"bytes,5,rep,name=retentions" json:"retentions,omitempty"`
-	XXX_unrecognized  []byte       `json:"-"`
+	Name              *string     `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
+	AggregationMethod *string     `protobuf:"bytes,2,req,name=aggregationMethod" json:"aggregationMethod,omitempty"`
+	MaxRetention      *int32      `protobuf:"varint,3,req,name=maxRetention" json:"maxRetention,omitempty"`
+	XFilesFactor      *float32    `protobuf:"fixed32,4,req,name=xFilesFactor" json:"xFilesFactor,omitempty"`
+	Retentions        []Retention `protobuf:"bytes,5,rep,name=retentions" json:"retentions"`
+	XXX_unrecognized  []byte      `json:"-"`
 }
 
-func (m *InfoResponse) Reset()         { *m = InfoResponse{} }
-func (m *InfoResponse) String() string { return proto.CompactTextString(m) }
-func (*InfoResponse) ProtoMessage()    {}
+func (m *InfoResponse) Reset()                    { *m = InfoResponse{} }
+func (m *InfoResponse) String() string            { return proto.CompactTextString(m) }
+func (*InfoResponse) ProtoMessage()               {}
+func (*InfoResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{5} }
 
 func (m *InfoResponse) GetName() string {
 	if m != nil && m.Name != nil {
@@ -218,7 +231,7 @@ func (m *InfoResponse) GetXFilesFactor() float32 {
 	return 0
 }
 
-func (m *InfoResponse) GetRetentions() []*Retention {
+func (m *InfoResponse) GetRetentions() []Retention {
 	if m != nil {
 		return m.Retentions
 	}
@@ -231,9 +244,10 @@ type ServerInfoResponse struct {
 	XXX_unrecognized []byte        `json:"-"`
 }
 
-func (m *ServerInfoResponse) Reset()         { *m = ServerInfoResponse{} }
-func (m *ServerInfoResponse) String() string { return proto.CompactTextString(m) }
-func (*ServerInfoResponse) ProtoMessage()    {}
+func (m *ServerInfoResponse) Reset()                    { *m = ServerInfoResponse{} }
+func (m *ServerInfoResponse) String() string            { return proto.CompactTextString(m) }
+func (*ServerInfoResponse) ProtoMessage()               {}
+func (*ServerInfoResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{6} }
 
 func (m *ServerInfoResponse) GetServer() string {
 	if m != nil && m.Server != nil {
@@ -250,32 +264,43 @@ func (m *ServerInfoResponse) GetInfo() *InfoResponse {
 }
 
 type ZipperInfoResponse struct {
-	Responses        []*ServerInfoResponse `protobuf:"bytes,1,rep,name=responses" json:"responses,omitempty"`
-	XXX_unrecognized []byte                `json:"-"`
+	Responses        []ServerInfoResponse `protobuf:"bytes,1,rep,name=responses" json:"responses"`
+	XXX_unrecognized []byte               `json:"-"`
 }
 
-func (m *ZipperInfoResponse) Reset()         { *m = ZipperInfoResponse{} }
-func (m *ZipperInfoResponse) String() string { return proto.CompactTextString(m) }
-func (*ZipperInfoResponse) ProtoMessage()    {}
+func (m *ZipperInfoResponse) Reset()                    { *m = ZipperInfoResponse{} }
+func (m *ZipperInfoResponse) String() string            { return proto.CompactTextString(m) }
+func (*ZipperInfoResponse) ProtoMessage()               {}
+func (*ZipperInfoResponse) Descriptor() ([]byte, []int) { return fileDescriptorCarbonzipper, []int{7} }
 
-func (m *ZipperInfoResponse) GetResponses() []*ServerInfoResponse {
+func (m *ZipperInfoResponse) GetResponses() []ServerInfoResponse {
 	if m != nil {
 		return m.Responses
 	}
 	return nil
 }
 
-func (m *FetchResponse) Marshal() (data []byte, err error) {
+func init() {
+	proto.RegisterType((*FetchResponse)(nil), "carbonzipperpb.FetchResponse")
+	proto.RegisterType((*MultiFetchResponse)(nil), "carbonzipperpb.MultiFetchResponse")
+	proto.RegisterType((*GlobMatch)(nil), "carbonzipperpb.GlobMatch")
+	proto.RegisterType((*GlobResponse)(nil), "carbonzipperpb.GlobResponse")
+	proto.RegisterType((*Retention)(nil), "carbonzipperpb.Retention")
+	proto.RegisterType((*InfoResponse)(nil), "carbonzipperpb.InfoResponse")
+	proto.RegisterType((*ServerInfoResponse)(nil), "carbonzipperpb.ServerInfoResponse")
+	proto.RegisterType((*ZipperInfoResponse)(nil), "carbonzipperpb.ZipperInfoResponse")
+}
+func (m *FetchResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *FetchResponse) MarshalTo(data []byte) (int, error) {
+func (m *FetchResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -283,94 +308,94 @@ func (m *FetchResponse) MarshalTo(data []byte) (int, error) {
 	if m.Name == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("name")
 	} else {
-		data[i] = 0xa
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.Name)))
-		i += copy(data[i:], *m.Name)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.Name)))
+		i += copy(dAtA[i:], *m.Name)
 	}
 	if m.StartTime == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("startTime")
 	} else {
-		data[i] = 0x10
+		dAtA[i] = 0x10
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.StartTime))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.StartTime))
 	}
 	if m.StopTime == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("stopTime")
 	} else {
-		data[i] = 0x18
+		dAtA[i] = 0x18
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.StopTime))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.StopTime))
 	}
 	if m.StepTime == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("stepTime")
 	} else {
-		data[i] = 0x20
+		dAtA[i] = 0x20
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.StepTime))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.StepTime))
 	}
 	if len(m.Values) > 0 {
 		for _, num := range m.Values {
-			data[i] = 0x29
+			dAtA[i] = 0x29
 			i++
-			f1 := math.Float64bits(num)
-			data[i] = uint8(f1)
+			f1 := math.Float64bits(float64(num))
+			dAtA[i] = uint8(f1)
 			i++
-			data[i] = uint8(f1 >> 8)
+			dAtA[i] = uint8(f1 >> 8)
 			i++
-			data[i] = uint8(f1 >> 16)
+			dAtA[i] = uint8(f1 >> 16)
 			i++
-			data[i] = uint8(f1 >> 24)
+			dAtA[i] = uint8(f1 >> 24)
 			i++
-			data[i] = uint8(f1 >> 32)
+			dAtA[i] = uint8(f1 >> 32)
 			i++
-			data[i] = uint8(f1 >> 40)
+			dAtA[i] = uint8(f1 >> 40)
 			i++
-			data[i] = uint8(f1 >> 48)
+			dAtA[i] = uint8(f1 >> 48)
 			i++
-			data[i] = uint8(f1 >> 56)
+			dAtA[i] = uint8(f1 >> 56)
 			i++
 		}
 	}
 	if len(m.IsAbsent) > 0 {
 		for _, b := range m.IsAbsent {
-			data[i] = 0x30
+			dAtA[i] = 0x30
 			i++
 			if b {
-				data[i] = 1
+				dAtA[i] = 1
 			} else {
-				data[i] = 0
+				dAtA[i] = 0
 			}
 			i++
 		}
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *MultiFetchResponse) Marshal() (data []byte, err error) {
+func (m *MultiFetchResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *MultiFetchResponse) MarshalTo(data []byte) (int, error) {
+func (m *MultiFetchResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
 	if len(m.Metrics) > 0 {
 		for _, msg := range m.Metrics {
-			data[i] = 0xa
+			dAtA[i] = 0xa
 			i++
-			i = encodeVarintCarbonzipper(data, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(data[i:])
+			i = encodeVarintCarbonzipper(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
 			if err != nil {
 				return 0, err
 			}
@@ -378,22 +403,22 @@ func (m *MultiFetchResponse) MarshalTo(data []byte) (int, error) {
 		}
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *GlobMatch) Marshal() (data []byte, err error) {
+func (m *GlobMatch) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *GlobMatch) MarshalTo(data []byte) (int, error) {
+func (m *GlobMatch) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -401,40 +426,40 @@ func (m *GlobMatch) MarshalTo(data []byte) (int, error) {
 	if m.Path == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("path")
 	} else {
-		data[i] = 0xa
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.Path)))
-		i += copy(data[i:], *m.Path)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.Path)))
+		i += copy(dAtA[i:], *m.Path)
 	}
 	if m.IsLeaf == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("isLeaf")
 	} else {
-		data[i] = 0x10
+		dAtA[i] = 0x10
 		i++
 		if *m.IsLeaf {
-			data[i] = 1
+			dAtA[i] = 1
 		} else {
-			data[i] = 0
+			dAtA[i] = 0
 		}
 		i++
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *GlobResponse) Marshal() (data []byte, err error) {
+func (m *GlobResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *GlobResponse) MarshalTo(data []byte) (int, error) {
+func (m *GlobResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -442,17 +467,17 @@ func (m *GlobResponse) MarshalTo(data []byte) (int, error) {
 	if m.Name == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("name")
 	} else {
-		data[i] = 0xa
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.Name)))
-		i += copy(data[i:], *m.Name)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.Name)))
+		i += copy(dAtA[i:], *m.Name)
 	}
 	if len(m.Matches) > 0 {
 		for _, msg := range m.Matches {
-			data[i] = 0x12
+			dAtA[i] = 0x12
 			i++
-			i = encodeVarintCarbonzipper(data, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(data[i:])
+			i = encodeVarintCarbonzipper(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
 			if err != nil {
 				return 0, err
 			}
@@ -460,22 +485,22 @@ func (m *GlobResponse) MarshalTo(data []byte) (int, error) {
 		}
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *Retention) Marshal() (data []byte, err error) {
+func (m *Retention) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *Retention) MarshalTo(data []byte) (int, error) {
+func (m *Retention) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -483,34 +508,34 @@ func (m *Retention) MarshalTo(data []byte) (int, error) {
 	if m.SecondsPerPoint == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("secondsPerPoint")
 	} else {
-		data[i] = 0x8
+		dAtA[i] = 0x8
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.SecondsPerPoint))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.SecondsPerPoint))
 	}
 	if m.NumberOfPoints == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("numberOfPoints")
 	} else {
-		data[i] = 0x10
+		dAtA[i] = 0x10
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.NumberOfPoints))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.NumberOfPoints))
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *InfoResponse) Marshal() (data []byte, err error) {
+func (m *InfoResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *InfoResponse) MarshalTo(data []byte) (int, error) {
+func (m *InfoResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -518,39 +543,39 @@ func (m *InfoResponse) MarshalTo(data []byte) (int, error) {
 	if m.Name == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("name")
 	} else {
-		data[i] = 0xa
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.Name)))
-		i += copy(data[i:], *m.Name)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.Name)))
+		i += copy(dAtA[i:], *m.Name)
 	}
 	if m.AggregationMethod == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("aggregationMethod")
 	} else {
-		data[i] = 0x12
+		dAtA[i] = 0x12
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.AggregationMethod)))
-		i += copy(data[i:], *m.AggregationMethod)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.AggregationMethod)))
+		i += copy(dAtA[i:], *m.AggregationMethod)
 	}
 	if m.MaxRetention == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("maxRetention")
 	} else {
-		data[i] = 0x18
+		dAtA[i] = 0x18
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(*m.MaxRetention))
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(*m.MaxRetention))
 	}
 	if m.XFilesFactor == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("xFilesFactor")
 	} else {
-		data[i] = 0x25
+		dAtA[i] = 0x25
 		i++
-		i = encodeFixed32Carbonzipper(data, i, uint32(math.Float32bits(*m.XFilesFactor)))
+		i = encodeFixed32Carbonzipper(dAtA, i, uint32(math.Float32bits(float32(*m.XFilesFactor))))
 	}
 	if len(m.Retentions) > 0 {
 		for _, msg := range m.Retentions {
-			data[i] = 0x2a
+			dAtA[i] = 0x2a
 			i++
-			i = encodeVarintCarbonzipper(data, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(data[i:])
+			i = encodeVarintCarbonzipper(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
 			if err != nil {
 				return 0, err
 			}
@@ -558,22 +583,22 @@ func (m *InfoResponse) MarshalTo(data []byte) (int, error) {
 		}
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *ServerInfoResponse) Marshal() (data []byte, err error) {
+func (m *ServerInfoResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *ServerInfoResponse) MarshalTo(data []byte) (int, error) {
+func (m *ServerInfoResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -581,50 +606,50 @@ func (m *ServerInfoResponse) MarshalTo(data []byte) (int, error) {
 	if m.Server == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("server")
 	} else {
-		data[i] = 0xa
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(len(*m.Server)))
-		i += copy(data[i:], *m.Server)
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(len(*m.Server)))
+		i += copy(dAtA[i:], *m.Server)
 	}
 	if m.Info == nil {
 		return 0, github_com_gogo_protobuf_proto.NewRequiredNotSetError("info")
 	} else {
-		data[i] = 0x12
+		dAtA[i] = 0x12
 		i++
-		i = encodeVarintCarbonzipper(data, i, uint64(m.Info.Size()))
-		n2, err := m.Info.MarshalTo(data[i:])
+		i = encodeVarintCarbonzipper(dAtA, i, uint64(m.Info.Size()))
+		n2, err := m.Info.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n2
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func (m *ZipperInfoResponse) Marshal() (data []byte, err error) {
+func (m *ZipperInfoResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
 	if err != nil {
 		return nil, err
 	}
-	return data[:n], nil
+	return dAtA[:n], nil
 }
 
-func (m *ZipperInfoResponse) MarshalTo(data []byte) (int, error) {
+func (m *ZipperInfoResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
 	if len(m.Responses) > 0 {
 		for _, msg := range m.Responses {
-			data[i] = 0xa
+			dAtA[i] = 0xa
 			i++
-			i = encodeVarintCarbonzipper(data, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(data[i:])
+			i = encodeVarintCarbonzipper(dAtA, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(dAtA[i:])
 			if err != nil {
 				return 0, err
 			}
@@ -632,36 +657,36 @@ func (m *ZipperInfoResponse) MarshalTo(data []byte) (int, error) {
 		}
 	}
 	if m.XXX_unrecognized != nil {
-		i += copy(data[i:], m.XXX_unrecognized)
+		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
 
-func encodeFixed64Carbonzipper(data []byte, offset int, v uint64) int {
-	data[offset] = uint8(v)
-	data[offset+1] = uint8(v >> 8)
-	data[offset+2] = uint8(v >> 16)
-	data[offset+3] = uint8(v >> 24)
-	data[offset+4] = uint8(v >> 32)
-	data[offset+5] = uint8(v >> 40)
-	data[offset+6] = uint8(v >> 48)
-	data[offset+7] = uint8(v >> 56)
+func encodeFixed64Carbonzipper(dAtA []byte, offset int, v uint64) int {
+	dAtA[offset] = uint8(v)
+	dAtA[offset+1] = uint8(v >> 8)
+	dAtA[offset+2] = uint8(v >> 16)
+	dAtA[offset+3] = uint8(v >> 24)
+	dAtA[offset+4] = uint8(v >> 32)
+	dAtA[offset+5] = uint8(v >> 40)
+	dAtA[offset+6] = uint8(v >> 48)
+	dAtA[offset+7] = uint8(v >> 56)
 	return offset + 8
 }
-func encodeFixed32Carbonzipper(data []byte, offset int, v uint32) int {
-	data[offset] = uint8(v)
-	data[offset+1] = uint8(v >> 8)
-	data[offset+2] = uint8(v >> 16)
-	data[offset+3] = uint8(v >> 24)
+func encodeFixed32Carbonzipper(dAtA []byte, offset int, v uint32) int {
+	dAtA[offset] = uint8(v)
+	dAtA[offset+1] = uint8(v >> 8)
+	dAtA[offset+2] = uint8(v >> 16)
+	dAtA[offset+3] = uint8(v >> 24)
 	return offset + 4
 }
-func encodeVarintCarbonzipper(data []byte, offset int, v uint64) int {
+func encodeVarintCarbonzipper(dAtA []byte, offset int, v uint64) int {
 	for v >= 1<<7 {
-		data[offset] = uint8(v&0x7f | 0x80)
+		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
-	data[offset] = uint8(v)
+	dAtA[offset] = uint8(v)
 	return offset + 1
 }
 func (m *FetchResponse) Size() (n int) {
@@ -831,9 +856,9 @@ func sovCarbonzipper(x uint64) (n int) {
 func sozCarbonzipper(x uint64) (n int) {
 	return sovCarbonzipper(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *FetchResponse) Unmarshal(data []byte) error {
+func (m *FetchResponse) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -845,7 +870,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -873,7 +898,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -888,7 +913,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.Name = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
@@ -904,7 +929,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -925,7 +950,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -946,7 +971,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -956,47 +981,130 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 			m.StepTime = &v
 			hasFields[0] |= uint64(0x00000008)
 		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += 8
-			v = uint64(data[iNdEx-8])
-			v |= uint64(data[iNdEx-7]) << 8
-			v |= uint64(data[iNdEx-6]) << 16
-			v |= uint64(data[iNdEx-5]) << 24
-			v |= uint64(data[iNdEx-4]) << 32
-			v |= uint64(data[iNdEx-3]) << 40
-			v |= uint64(data[iNdEx-2]) << 48
-			v |= uint64(data[iNdEx-1]) << 56
-			v2 := float64(math.Float64frombits(v))
-			m.Values = append(m.Values, v2)
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsAbsent", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowCarbonzipper
-				}
-				if iNdEx >= l {
+			if wireType == 1 {
+				var v uint64
+				if (iNdEx + 8) > l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
+				iNdEx += 8
+				v = uint64(dAtA[iNdEx-8])
+				v |= uint64(dAtA[iNdEx-7]) << 8
+				v |= uint64(dAtA[iNdEx-6]) << 16
+				v |= uint64(dAtA[iNdEx-5]) << 24
+				v |= uint64(dAtA[iNdEx-4]) << 32
+				v |= uint64(dAtA[iNdEx-3]) << 40
+				v |= uint64(dAtA[iNdEx-2]) << 48
+				v |= uint64(dAtA[iNdEx-1]) << 56
+				v2 := float64(math.Float64frombits(v))
+				m.Values = append(m.Values, v2)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowCarbonzipper
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
 				}
+				if packedLen < 0 {
+					return ErrInvalidLengthCarbonzipper
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v uint64
+					if (iNdEx + 8) > l {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += 8
+					v = uint64(dAtA[iNdEx-8])
+					v |= uint64(dAtA[iNdEx-7]) << 8
+					v |= uint64(dAtA[iNdEx-6]) << 16
+					v |= uint64(dAtA[iNdEx-5]) << 24
+					v |= uint64(dAtA[iNdEx-4]) << 32
+					v |= uint64(dAtA[iNdEx-3]) << 40
+					v |= uint64(dAtA[iNdEx-2]) << 48
+					v |= uint64(dAtA[iNdEx-1]) << 56
+					v2 := float64(math.Float64frombits(v))
+					m.Values = append(m.Values, v2)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
 			}
-			m.IsAbsent = append(m.IsAbsent, bool(v != 0))
+		case 6:
+			if wireType == 0 {
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowCarbonzipper
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.IsAbsent = append(m.IsAbsent, bool(v != 0))
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowCarbonzipper
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= (int(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthCarbonzipper
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				for iNdEx < postIndex {
+					var v int
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowCarbonzipper
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= (int(b) & 0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.IsAbsent = append(m.IsAbsent, bool(v != 0))
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsAbsent", wireType)
+			}
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1006,7 +1114,7 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1028,8 +1136,8 @@ func (m *FetchResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *MultiFetchResponse) Unmarshal(data []byte) error {
-	l := len(data)
+func (m *MultiFetchResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1041,7 +1149,7 @@ func (m *MultiFetchResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1069,7 +1177,7 @@ func (m *MultiFetchResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1083,14 +1191,14 @@ func (m *MultiFetchResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Metrics = append(m.Metrics, &FetchResponse{})
-			if err := m.Metrics[len(m.Metrics)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+			m.Metrics = append(m.Metrics, FetchResponse{})
+			if err := m.Metrics[len(m.Metrics)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1100,7 +1208,7 @@ func (m *MultiFetchResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1110,9 +1218,9 @@ func (m *MultiFetchResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *GlobMatch) Unmarshal(data []byte) error {
+func (m *GlobMatch) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1124,7 +1232,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1152,7 +1260,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1167,7 +1275,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.Path = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
@@ -1183,7 +1291,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1195,7 +1303,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 			hasFields[0] |= uint64(0x00000002)
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1205,7 +1313,7 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1221,9 +1329,9 @@ func (m *GlobMatch) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *GlobResponse) Unmarshal(data []byte) error {
+func (m *GlobResponse) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1235,7 +1343,7 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1263,7 +1371,7 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1278,7 +1386,7 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.Name = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
@@ -1294,7 +1402,7 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1308,14 +1416,14 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Matches = append(m.Matches, &GlobMatch{})
-			if err := m.Matches[len(m.Matches)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+			m.Matches = append(m.Matches, GlobMatch{})
+			if err := m.Matches[len(m.Matches)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1325,7 +1433,7 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1338,9 +1446,9 @@ func (m *GlobResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *Retention) Unmarshal(data []byte) error {
+func (m *Retention) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1352,7 +1460,7 @@ func (m *Retention) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1380,7 +1488,7 @@ func (m *Retention) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1401,7 +1509,7 @@ func (m *Retention) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1412,7 +1520,7 @@ func (m *Retention) Unmarshal(data []byte) error {
 			hasFields[0] |= uint64(0x00000002)
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1422,7 +1530,7 @@ func (m *Retention) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1438,9 +1546,9 @@ func (m *Retention) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *InfoResponse) Unmarshal(data []byte) error {
+func (m *InfoResponse) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1452,7 +1560,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1480,7 +1588,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1495,7 +1603,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.Name = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
@@ -1511,7 +1619,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1526,7 +1634,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.AggregationMethod = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000002)
@@ -1542,7 +1650,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				v |= (int32(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1560,10 +1668,10 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			iNdEx += 4
-			v = uint32(data[iNdEx-4])
-			v |= uint32(data[iNdEx-3]) << 8
-			v |= uint32(data[iNdEx-2]) << 16
-			v |= uint32(data[iNdEx-1]) << 24
+			v = uint32(dAtA[iNdEx-4])
+			v |= uint32(dAtA[iNdEx-3]) << 8
+			v |= uint32(dAtA[iNdEx-2]) << 16
+			v |= uint32(dAtA[iNdEx-1]) << 24
 			v2 := float32(math.Float32frombits(v))
 			m.XFilesFactor = &v2
 			hasFields[0] |= uint64(0x00000008)
@@ -1579,7 +1687,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1593,14 +1701,14 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Retentions = append(m.Retentions, &Retention{})
-			if err := m.Retentions[len(m.Retentions)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+			m.Retentions = append(m.Retentions, Retention{})
+			if err := m.Retentions[len(m.Retentions)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1610,7 +1718,7 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1632,9 +1740,9 @@ func (m *InfoResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *ServerInfoResponse) Unmarshal(data []byte) error {
+func (m *ServerInfoResponse) Unmarshal(dAtA []byte) error {
 	var hasFields [1]uint64
-	l := len(data)
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1646,7 +1754,7 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1674,7 +1782,7 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1689,7 +1797,7 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
+			s := string(dAtA[iNdEx:postIndex])
 			m.Server = &s
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000001)
@@ -1705,7 +1813,7 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1722,14 +1830,14 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 			if m.Info == nil {
 				m.Info = &InfoResponse{}
 			}
-			if err := m.Info.Unmarshal(data[iNdEx:postIndex]); err != nil {
+			if err := m.Info.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 			hasFields[0] |= uint64(0x00000002)
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1739,7 +1847,7 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1755,8 +1863,8 @@ func (m *ServerInfoResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
-	l := len(data)
+func (m *ZipperInfoResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		preIndex := iNdEx
@@ -1768,7 +1876,7 @@ func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
 			if iNdEx >= l {
 				return io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1796,7 +1904,7 @@ func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
 				if iNdEx >= l {
 					return io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1810,14 +1918,14 @@ func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Responses = append(m.Responses, &ServerInfoResponse{})
-			if err := m.Responses[len(m.Responses)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+			m.Responses = append(m.Responses, ServerInfoResponse{})
+			if err := m.Responses[len(m.Responses)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
-			skippy, err := skipCarbonzipper(data[iNdEx:])
+			skippy, err := skipCarbonzipper(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
@@ -1827,7 +1935,7 @@ func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, data[iNdEx:iNdEx+skippy]...)
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1837,8 +1945,8 @@ func (m *ZipperInfoResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func skipCarbonzipper(data []byte) (n int, err error) {
-	l := len(data)
+func skipCarbonzipper(dAtA []byte) (n int, err error) {
+	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
 		var wire uint64
@@ -1849,7 +1957,7 @@ func skipCarbonzipper(data []byte) (n int, err error) {
 			if iNdEx >= l {
 				return 0, io.ErrUnexpectedEOF
 			}
-			b := data[iNdEx]
+			b := dAtA[iNdEx]
 			iNdEx++
 			wire |= (uint64(b) & 0x7F) << shift
 			if b < 0x80 {
@@ -1867,7 +1975,7 @@ func skipCarbonzipper(data []byte) (n int, err error) {
 					return 0, io.ErrUnexpectedEOF
 				}
 				iNdEx++
-				if data[iNdEx-1] < 0x80 {
+				if dAtA[iNdEx-1] < 0x80 {
 					break
 				}
 			}
@@ -1884,7 +1992,7 @@ func skipCarbonzipper(data []byte) (n int, err error) {
 				if iNdEx >= l {
 					return 0, io.ErrUnexpectedEOF
 				}
-				b := data[iNdEx]
+				b := dAtA[iNdEx]
 				iNdEx++
 				length |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
@@ -1907,7 +2015,7 @@ func skipCarbonzipper(data []byte) (n int, err error) {
 					if iNdEx >= l {
 						return 0, io.ErrUnexpectedEOF
 					}
-					b := data[iNdEx]
+					b := dAtA[iNdEx]
 					iNdEx++
 					innerWire |= (uint64(b) & 0x7F) << shift
 					if b < 0x80 {
@@ -1918,7 +2026,7 @@ func skipCarbonzipper(data []byte) (n int, err error) {
 				if innerWireType == 4 {
 					break
 				}
-				next, err := skipCarbonzipper(data[start:])
+				next, err := skipCarbonzipper(dAtA[start:])
 				if err != nil {
 					return 0, err
 				}
@@ -1941,3 +2049,41 @@ var (
 	ErrInvalidLengthCarbonzipper = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowCarbonzipper   = fmt.Errorf("proto: integer overflow")
 )
+
+func init() { proto.RegisterFile("carbonzipper.proto", fileDescriptorCarbonzipper) }
+
+var fileDescriptorCarbonzipper = []byte{
+	// 501 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x52, 0x4d, 0x6f, 0xd3, 0x40,
+	0x10, 0xc5, 0x49, 0x9a, 0xc6, 0xd3, 0x50, 0xc4, 0x1e, 0x2a, 0x53, 0x95, 0x10, 0xed, 0x01, 0xf9,
+	0x00, 0x29, 0xea, 0x05, 0x71, 0x40, 0x88, 0x1e, 0x82, 0x90, 0x88, 0xa8, 0xb6, 0x9c, 0x10, 0x45,
+	0x5a, 0xbb, 0x13, 0x67, 0xa5, 0x78, 0xd7, 0xda, 0x5d, 0x57, 0x15, 0xff, 0x89, 0xff, 0xd1, 0x23,
+	0x57, 0x2e, 0x08, 0xe5, 0x97, 0x20, 0xaf, 0x3f, 0x1a, 0xbb, 0xa8, 0xb7, 0x79, 0x6f, 0xe6, 0xcd,
+	0xbe, 0x99, 0x1d, 0x20, 0x31, 0xd7, 0x91, 0x92, 0x3f, 0x44, 0x96, 0xa1, 0x9e, 0x65, 0x5a, 0x59,
+	0x45, 0xf6, 0xb7, 0xb9, 0x2c, 0x3a, 0x7c, 0x99, 0x08, 0xbb, 0xca, 0xa3, 0x59, 0xac, 0xd2, 0xe3,
+	0x44, 0x25, 0xea, 0xd8, 0x95, 0x45, 0xf9, 0xd2, 0x21, 0x07, 0x5c, 0x54, 0xca, 0xe9, 0x4f, 0x0f,
+	0x1e, 0xce, 0xd1, 0xc6, 0x2b, 0x86, 0x26, 0x53, 0xd2, 0x20, 0x21, 0x30, 0x90, 0x3c, 0xc5, 0xc0,
+	0x9b, 0xf6, 0x42, 0x9f, 0xb9, 0x98, 0x1c, 0x81, 0x6f, 0x2c, 0xd7, 0xf6, 0x8b, 0x48, 0x31, 0xe8,
+	0x4d, 0x7b, 0xe1, 0x0e, 0xbb, 0x25, 0xc8, 0x21, 0x8c, 0x8c, 0x55, 0x99, 0x4b, 0xf6, 0x5d, 0xb2,
+	0xc1, 0x65, 0x0e, 0xcb, 0xdc, 0xa0, 0xce, 0x95, 0x98, 0x1c, 0xc0, 0xf0, 0x8a, 0xaf, 0x73, 0x34,
+	0xc1, 0xce, 0xb4, 0x1f, 0x7a, 0xac, 0x42, 0x85, 0x46, 0x98, 0xf7, 0x91, 0x41, 0x69, 0x83, 0xe1,
+	0xb4, 0x1f, 0x8e, 0x58, 0x83, 0xe9, 0x39, 0x90, 0x45, 0xbe, 0xb6, 0xa2, 0xed, 0xf9, 0x2d, 0xec,
+	0xa6, 0x68, 0xb5, 0x88, 0x4d, 0xe0, 0x4d, 0xfb, 0xe1, 0xde, 0xc9, 0xd3, 0x59, 0x7b, 0x2d, 0xb3,
+	0x56, 0xfd, 0xe9, 0xe0, 0xe6, 0xcf, 0xb3, 0x07, 0xac, 0xd6, 0xd0, 0xd7, 0xe0, 0x7f, 0x58, 0xab,
+	0x68, 0xc1, 0x6d, 0xbc, 0x2a, 0xe6, 0xcf, 0xb8, 0x5d, 0xd5, 0xf3, 0x17, 0x71, 0xe1, 0x54, 0x98,
+	0x4f, 0xc8, 0x97, 0x6e, 0xf8, 0x11, 0xab, 0x10, 0xbd, 0x80, 0x71, 0x21, 0xbc, 0x77, 0x77, 0x6f,
+	0x60, 0x37, 0x2d, 0x1a, 0xa3, 0x09, 0x7a, 0xce, 0xdb, 0x93, 0xae, 0xb7, 0xe6, 0xed, 0xc6, 0x57,
+	0x59, 0x4f, 0x2f, 0xc0, 0x67, 0x68, 0x51, 0x5a, 0xa1, 0x24, 0x09, 0xe1, 0x91, 0xc1, 0x58, 0xc9,
+	0x4b, 0x73, 0x86, 0xfa, 0x4c, 0x09, 0x69, 0xdd, 0x33, 0x3b, 0xac, 0x4b, 0x93, 0xe7, 0xb0, 0x2f,
+	0xf3, 0x34, 0x42, 0xfd, 0x79, 0xe9, 0x08, 0x53, 0x7d, 0x59, 0x87, 0xa5, 0xbf, 0x3d, 0x18, 0x7f,
+	0x94, 0x4b, 0x75, 0xaf, 0xfd, 0x17, 0xf0, 0x98, 0x27, 0x89, 0xc6, 0x84, 0x17, 0x2e, 0x16, 0x68,
+	0x57, 0xea, 0xd2, 0xf5, 0xf3, 0xd9, 0xdd, 0x04, 0xa1, 0x30, 0x4e, 0xf9, 0x75, 0x63, 0xba, 0x3a,
+	0x87, 0x16, 0x57, 0xd4, 0x5c, 0xcf, 0xc5, 0x1a, 0xcd, 0x9c, 0xc7, 0x56, 0x69, 0x77, 0x16, 0x3d,
+	0xd6, 0xe2, 0xc8, 0x3b, 0x00, 0x5d, 0x0b, 0xca, 0xf3, 0xf8, 0xcf, 0xde, 0x9a, 0x96, 0xd5, 0xde,
+	0xb6, 0x24, 0xf4, 0x3b, 0x90, 0x73, 0xd4, 0x57, 0xa8, 0x5b, 0x03, 0x1e, 0xc0, 0xd0, 0x38, 0xb6,
+	0x1a, 0xb1, 0x42, 0xe4, 0x15, 0x0c, 0x84, 0x5c, 0x2a, 0x37, 0xd7, 0xde, 0xc9, 0x51, 0xf7, 0xa1,
+	0xed, 0x1e, 0xcc, 0x55, 0xd2, 0x6f, 0x40, 0xbe, 0xba, 0x74, 0xab, 0xff, 0x1c, 0x7c, 0x5d, 0xc5,
+	0xf5, 0x25, 0xd2, 0x6e, 0xb3, 0xbb, 0xb6, 0x2a, 0xfb, 0xb7, 0xd2, 0xd3, 0xf1, 0xcd, 0x66, 0xe2,
+	0xfd, 0xda, 0x4c, 0xbc, 0xbf, 0x9b, 0x89, 0xf7, 0x2f, 0x00, 0x00, 0xff, 0xff, 0x8a, 0x67, 0x29,
+	0xee, 0xf7, 0x03, 0x00, 0x00,
+}

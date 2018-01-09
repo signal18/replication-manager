@@ -9,7 +9,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
-func assertSubTree(t *testing.T, path []string, tree *TomlTree, err error, ref map[string]interface{}) {
+func assertSubTree(t *testing.T, path []string, tree *Tree, err error, ref map[string]interface{}) {
 	if err != nil {
 		t.Error("Non-nil error:", err.Error())
 		return
@@ -20,12 +20,12 @@ func assertSubTree(t *testing.T, path []string, tree *TomlTree, err error, ref m
 		// NOTE: directly access key instead of resolve by path
 		// NOTE: see TestSpecialKV
 		switch node := tree.GetPath([]string{k}).(type) {
-		case []*TomlTree:
+		case []*Tree:
 			t.Log("\tcomparing key", nextPath, "by array iteration")
 			for idx, item := range node {
 				assertSubTree(t, nextPath, item, err, v.([]map[string]interface{})[idx])
 			}
-		case *TomlTree:
+		case *Tree:
 			t.Log("\tcomparing key", nextPath, "by subtree assestion")
 			assertSubTree(t, nextPath, node, err, v.(map[string]interface{}))
 		default:
@@ -37,16 +37,16 @@ func assertSubTree(t *testing.T, path []string, tree *TomlTree, err error, ref m
 	}
 }
 
-func assertTree(t *testing.T, tree *TomlTree, err error, ref map[string]interface{}) {
+func assertTree(t *testing.T, tree *Tree, err error, ref map[string]interface{}) {
 	t.Log("Asserting tree:\n", spew.Sdump(tree))
 	assertSubTree(t, []string{}, tree, err, ref)
 	t.Log("Finished tree assertion.")
 }
 
 func TestCreateSubTree(t *testing.T) {
-	tree := newTomlTree()
+	tree := newTree()
 	tree.createSubTree([]string{"a", "b", "c"}, Position{})
-	tree.Set("a.b.c", 42)
+	tree.Set("a.b.c", "", false, 42)
 	if tree.Get("a.b.c") != 42 {
 		t.Fail()
 	}
@@ -80,6 +80,59 @@ func TestSimpleNumbers(t *testing.T) {
 		"c": float64(4.2),
 		"d": float64(-2.1),
 	})
+}
+
+func TestHexIntegers(t *testing.T) {
+	tree, err := Load(`a = 0xDEADBEEF`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(3735928559)})
+
+	tree, err = Load(`a = 0xdeadbeef`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(3735928559)})
+
+	tree, err = Load(`a = 0xdead_beef`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(3735928559)})
+
+	_, err = Load(`a = 0x_1`)
+	if err.Error() != "(1, 5): invalid use of _ in hex number" {
+		t.Error("Bad error message:", err.Error())
+	}
+}
+
+func TestOctIntegers(t *testing.T) {
+	tree, err := Load(`a = 0o01234567`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(342391)})
+
+	tree, err = Load(`a = 0o755`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(493)})
+
+	_, err = Load(`a = 0o_1`)
+	if err.Error() != "(1, 5): invalid use of _ in number" {
+		t.Error("Bad error message:", err.Error())
+	}
+}
+
+func TestBinIntegers(t *testing.T) {
+	tree, err := Load(`a = 0b11010110`)
+	assertTree(t, tree, err, map[string]interface{}{"a": int64(214)})
+
+	_, err = Load(`a = 0b_1`)
+	if err.Error() != "(1, 5): invalid use of _ in number" {
+		t.Error("Bad error message:", err.Error())
+	}
+}
+
+func TestBadIntegerBase(t *testing.T) {
+	_, err := Load(`a = 0k1`)
+	if err.Error() != "(1, 5): unknown number base: k. possible options are x (hex) o (octal) b (binary)" {
+		t.Error("Error should have been returned.")
+	}
+}
+
+func TestIntegerNoDigit(t *testing.T) {
+	_, err := Load(`a = 0b`)
+	if err.Error() != "(1, 5): number needs at least one digit" {
+		t.Error("Bad error message:", err.Error())
+	}
 }
 
 func TestNumbersWithUnderscores(t *testing.T) {
@@ -642,7 +695,7 @@ func TestTomlValueStringRepresentation(t *testing.T) {
 		{int64(12345), "12345"},
 		{uint64(50), "50"},
 		{float64(123.45), "123.45"},
-		{bool(true), "true"},
+		{true, "true"},
 		{"hello world", "\"hello world\""},
 		{"\b\t\n\f\r\"\\", "\"\\b\\t\\n\\f\\r\\\"\\\\\""},
 		{"\x05", "\"\\u0005\""},
@@ -652,7 +705,7 @@ func TestTomlValueStringRepresentation(t *testing.T) {
 			"[\"gamma\",\"delta\"]"},
 		{nil, ""},
 	} {
-		result, err := tomlValueStringRepresentation(item.Value)
+		result, err := tomlValueStringRepresentation(item.Value, "", false)
 		if err != nil {
 			t.Errorf("Test %d - unexpected error: %s", idx, err)
 		}

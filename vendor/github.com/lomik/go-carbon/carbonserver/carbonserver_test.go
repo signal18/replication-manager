@@ -11,10 +11,10 @@ import (
 	"time"
 
 	trigram "github.com/dgryski/go-trigram"
+	whisper "github.com/go-graphite/go-whisper"
 	"github.com/lomik/go-carbon/cache"
-	pb "github.com/lomik/go-carbon/carbonzipperpb3"
+	pb "github.com/lomik/go-carbon/helper/carbonzipperpb"
 	"github.com/lomik/go-carbon/points"
-	whisper "github.com/lomik/go-whisper"
 	"go.uber.org/zap"
 )
 
@@ -259,6 +259,7 @@ func testFetchSingleMetricCommon(t *testing.T, test *FetchTest) {
 		whisperData: path,
 		cacheGet:    cache.Get,
 		logger:      zap.NewNop(),
+		metrics:     &metricStruct{},
 	}
 	precision := 0.000001
 
@@ -355,11 +356,12 @@ func TestGetMetricsListEmpty(t *testing.T) {
 	carbonserver := CarbonserverListener{
 		whisperData: path,
 		cacheGet:    cache.Get,
+		metrics:     &metricStruct{},
 	}
 
 	metrics, err := carbonserver.getMetricsList()
-	if err != metricsListEmptyError {
-		t.Errorf("err: '%v', expected: '%v'", err, metricsListEmptyError)
+	if err != errMetricsListEmpty {
+		t.Errorf("err: '%v', expected: '%v'", err, errMetricsListEmpty)
 	}
 	if metrics != nil {
 		t.Errorf("metrics: '%v', expected: 'nil'", err)
@@ -377,6 +379,7 @@ func TestGetMetricsListWithData(t *testing.T) {
 	carbonserver := CarbonserverListener{
 		whisperData: path,
 		cacheGet:    cache.Get,
+		metrics:     &metricStruct{},
 	}
 
 	fidx := fileIndex{}
@@ -418,6 +421,7 @@ func benchmarkFetchSingleMetricCommon(b *testing.B, test *FetchTest) {
 	carbonserver := CarbonserverListener{
 		whisperData: test.path,
 		cacheGet:    cache.Get,
+		metrics:     &metricStruct{},
 	}
 	// common
 

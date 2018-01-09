@@ -178,6 +178,50 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 			},
 		},
 		{
+			desc: "-config-dir",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-dir`, filepath.Join(dataDir, "conf.d"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "a"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf.d/conf.json"), []byte(`{"datacenter":"a"}`))
+			},
+		},
+		{
+			desc: "-config-file json",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-file`, filepath.Join(dataDir, "conf.json"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "a"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf.json"), []byte(`{"datacenter":"a"}`))
+			},
+		},
+		{
+			desc: "-config-file hcl and json",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-file`, filepath.Join(dataDir, "conf.hcl"),
+				`-config-file`, filepath.Join(dataDir, "conf.json"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "b"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf.hcl"), []byte(`datacenter = "a"`))
+				writeFile(filepath.Join(dataDir, "conf.json"), []byte(`{"datacenter":"b"}`))
+			},
+		},
+		{
 			desc: "-data-dir empty",
 			args: []string{
 				`-data-dir=`,
@@ -316,6 +360,58 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				rt.EncryptKey = "i0P+gFTkLPg0h53eNYjydg=="
 				rt.DataDir = dataDir
 			},
+		},
+		{
+			desc: "-config-format disabled, skip unknown files",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-dir`, filepath.Join(dataDir, "conf"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "a"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf", "valid.json"), []byte(`{"datacenter":"a"}`))
+				writeFile(filepath.Join(dataDir, "conf", "invalid.skip"), []byte(`NOPE`))
+			},
+		},
+		{
+			desc: "-config-format=json",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-format=json`,
+				`-config-file`, filepath.Join(dataDir, "conf"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "a"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf"), []byte(`{"datacenter":"a"}`))
+			},
+		},
+		{
+			desc: "-config-format=hcl",
+			args: []string{
+				`-data-dir=` + dataDir,
+				`-config-format=hcl`,
+				`-config-file`, filepath.Join(dataDir, "conf"),
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.Datacenter = "a"
+				rt.DataDir = dataDir
+			},
+			pre: func() {
+				writeFile(filepath.Join(dataDir, "conf"), []byte(`datacenter = "a"`))
+			},
+		},
+		{
+			desc: "-config-format invalid",
+			args: []string{
+				`-config-format=foobar`,
+			},
+			err: "-config-format must be either 'hcl' or 'json'",
 		},
 		{
 			desc: "-http-port",
@@ -1019,7 +1115,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 						"bootstrap_expect": 0,
 						"datacenter":"b",
 						"start_join": ["c", "d"],
-						"node_meta": {"c":"d"}
+						"node_meta": {"a":"c"}
 					}`,
 			},
 			hcl: []string{
@@ -1035,7 +1131,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 					bootstrap_expect = 0
 					datacenter = "b"
 					start_join = ["c", "d"]
-					node_meta = { "c" = "d" }
+					node_meta = { "a" = "c" }
 					`,
 			},
 			patch: func(rt *RuntimeConfig) {
@@ -1043,7 +1139,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				rt.BootstrapExpect = 0
 				rt.Datacenter = "b"
 				rt.StartJoinAddrsLAN = []string{"a", "b", "c", "d"}
-				rt.NodeMeta = map[string]string{"c": "d"}
+				rt.NodeMeta = map[string]string{"a": "c"}
 				rt.DataDir = dataDir
 			},
 		},
@@ -1085,7 +1181,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				`-datacenter=b`,
 				`-data-dir=` + dataDir,
 				`-join`, `c`, `-join=d`,
-				`-node-meta=c:d`,
+				`-node-meta=a:c`,
 				`-recursor`, `1.2.3.6`, `-recursor=5.6.7.10`,
 				`-serf-lan-bind=3.3.3.3`,
 				`-serf-wan-bind=4.4.4.4`,
@@ -1098,7 +1194,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				rt.SerfAdvertiseAddrWAN = tcpAddr("2.2.2.2:8302")
 				rt.Datacenter = "b"
 				rt.DNSRecursors = []string{"1.2.3.6", "5.6.7.10", "1.2.3.5", "5.6.7.9"}
-				rt.NodeMeta = map[string]string{"c": "d"}
+				rt.NodeMeta = map[string]string{"a": "c"}
 				rt.SerfBindAddrLAN = tcpAddr("3.3.3.3:8301")
 				rt.SerfBindAddrWAN = tcpAddr("4.4.4.4:8302")
 				rt.StartJoinAddrsLAN = []string{"c", "d", "a", "b"}
@@ -1113,6 +1209,7 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 		// ------------------------------------------------------------
 		// transformations
 		//
+
 		{
 			desc: "raft performance scaling",
 			args: []string{`-data-dir=` + dataDir},
@@ -1723,9 +1820,6 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 			pre: func() {
 				writeFile(filepath.Join(dataDir, SerfLANKeyring), []byte("i0P+gFTkLPg0h53eNYjydg=="))
 			},
-			post: func() {
-				os.Remove(filepath.Join(filepath.Join(dataDir, SerfLANKeyring)))
-			},
 			warns: []string{`WARNING: LAN keyring exists but -encrypt given, using keyring`},
 		},
 		{
@@ -1744,9 +1838,6 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 			},
 			pre: func() {
 				writeFile(filepath.Join(dataDir, SerfWANKeyring), []byte("i0P+gFTkLPg0h53eNYjydg=="))
-			},
-			post: func() {
-				os.Remove(filepath.Join(filepath.Join(dataDir, SerfWANKeyring)))
 			},
 			warns: []string{`WARNING: WAN keyring exists but -encrypt given, using keyring`},
 		},
@@ -1847,6 +1938,21 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 				rt.DataDir = dataDir
 			},
 		},
+		{
+			desc: "ignore snapshot_agent sub-object",
+			args: []string{
+				`-data-dir=` + dataDir,
+			},
+			json: []string{
+				`{ "snapshot_agent": { "dont": "care" } }`,
+			},
+			hcl: []string{
+				`snapshot_agent = { dont = "care" }`,
+			},
+			patch: func(rt *RuntimeConfig) {
+				rt.DataDir = dataDir
+			},
+		},
 	}
 
 	testConfig(t, tests, dataDir)
@@ -1855,6 +1961,9 @@ func TestConfigFlagsAndEdgecases(t *testing.T) {
 func testConfig(t *testing.T, tests []configTest, dataDir string) {
 	for _, tt := range tests {
 		for pass, format := range []string{"json", "hcl"} {
+			// clean data dir before every test
+			cleanDir(dataDir)
+
 			// when we test only flags then there are no JSON or HCL
 			// sources and we need to make only one pass over the
 			// tests.
@@ -1895,6 +2004,15 @@ func testConfig(t *testing.T, tests []configTest, dataDir string) {
 				}
 				flags.Args = fs.Args()
 
+				if tt.pre != nil {
+					tt.pre()
+				}
+				defer func() {
+					if tt.post != nil {
+						tt.post()
+					}
+				}()
+
 				// Then create a builder with the flags.
 				b, err := NewBuilder(flags)
 				if err != nil {
@@ -1926,28 +2044,20 @@ func testConfig(t *testing.T, tests []configTest, dataDir string) {
 				// read the source fragements
 				for i, data := range srcs {
 					b.Sources = append(b.Sources, Source{
-						Name:   fmt.Sprintf("%s-%d", format, i),
+						Name:   fmt.Sprintf("src-%d.%s", i, format),
 						Format: format,
 						Data:   data,
 					})
 				}
 				for i, data := range tails {
 					b.Tail = append(b.Tail, Source{
-						Name:   fmt.Sprintf("%s-%d", format, i),
+						Name:   fmt.Sprintf("tail-%d.%s", i, format),
 						Format: format,
 						Data:   data,
 					})
 				}
 
 				// build/merge the config fragments
-				if tt.pre != nil {
-					tt.pre()
-				}
-				defer func() {
-					if tt.post != nil {
-						tt.post()
-					}
-				}()
 				rt, err := b.BuildAndValidate()
 				if err == nil && tt.err != "" {
 					t.Fatalf("got no error want %q", tt.err)
@@ -2155,6 +2265,7 @@ func TestFullConfig(t *testing.T) {
 				"udp_answer_limit": 29909
 			},
 			"enable_acl_replication": true,
+			"enable_agent_tls_for_checks": true,
 			"enable_debug": true,
 			"enable_script_checks": true,
 			"enable_syslog": true,
@@ -2589,6 +2700,7 @@ func TestFullConfig(t *testing.T) {
 				udp_answer_limit = 29909
 			}
 			enable_acl_replication = true
+			enable_agent_tls_for_checks = true
 			enable_debug = true
 			enable_script_checks = true
 			enable_syslog = true
@@ -3159,6 +3271,7 @@ func TestFullConfig(t *testing.T) {
 		DisableUpdateCheck:        true,
 		DiscardCheckOutput:        true,
 		EnableACLReplication:      true,
+		EnableAgentTLSForChecks:   true,
 		EnableDebug:               true,
 		EnableScriptChecks:        true,
 		EnableSyslog:              true,
@@ -3484,7 +3597,7 @@ func TestFullConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewBuilder: %s", err)
 			}
-			b.Sources = append(b.Sources, Source{Name: "full", Format: format, Data: data})
+			b.Sources = append(b.Sources, Source{Name: "full." + format, Data: data})
 			b.Tail = append(b.Tail, tail[format]...)
 			b.Tail = append(b.Tail, VersionSource("JNtPSav3", "R909Hblt", "ZT1JOQLn"))
 
@@ -3836,6 +3949,7 @@ func TestSanitize(t *testing.T) {
     "DisableUpdateCheck": false,
     "DiscardCheckOutput": false,
     "EnableACLReplication": false,
+    "EnableAgentTLSForChecks": false,
     "EnableDebug": false,
     "EnableScriptChecks": false,
     "EnableSyslog": false,
@@ -4023,6 +4137,19 @@ func writeFile(path string, data []byte) {
 		panic(err)
 	}
 	if err := ioutil.WriteFile(path, data, 0640); err != nil {
+		panic(err)
+	}
+}
+
+func cleanDir(path string) {
+	root := path
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if path == root {
+			return nil
+		}
+		return os.RemoveAll(path)
+	})
+	if err != nil {
 		panic(err)
 	}
 }

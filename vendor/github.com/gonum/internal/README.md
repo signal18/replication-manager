@@ -1,4 +1,6 @@
-# Gonum Internal [![Build Status](https://travis-ci.org/gonum/internal.svg?branch=master)](https://travis-ci.org/gonum/internal) [![Coverage Status](https://coveralls.io/repos/gonum/internal/badge.svg?branch=master&service=github)](https://coveralls.io/github/gonum/internal?branch=master)
+# Gonum Internal [![Build Status](https://travis-ci.org/gonum/internal.svg?branch=master)](https://travis-ci.org/gonum/internal) [![Coverage Status](https://coveralls.io/repos/gonum/internal/badge.svg?branch=master&service=github)](https://coveralls.io/github/gonum/internal?branch=master) [![GoDoc](https://godoc.org/github.com/gonum/internal?status.svg)](https://godoc.org/github.com/gonum/internal)
+
+# This repository is no longer maintained. Development has moved to https://github.com/gonum/gonum.
 
 This is the set of internal packages for the Gonum project.
 

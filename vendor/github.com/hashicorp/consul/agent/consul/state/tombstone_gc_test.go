@@ -38,11 +38,6 @@ func TestTombstoneGC(t *testing.T) {
 	start := time.Now()
 	gc.Hint(100)
 
-	time.Sleep(2 * gran)
-	start2 := time.Now()
-	gc.Hint(120)
-	gc.Hint(125)
-
 	if !gc.PendingExpiration() {
 		t.Fatalf("should be pending")
 	}
@@ -59,6 +54,22 @@ func TestTombstoneGC(t *testing.T) {
 
 	case <-time.After(ttl * 2):
 		t.Fatalf("should get expiration")
+	}
+
+	start2 := time.Now()
+	gc.Hint(120)
+	gc.Hint(125)
+
+	// Check that we only have a single bin (this cross-checks #3670).
+	gc.Lock()
+	bins := len(gc.expires)
+	gc.Unlock()
+	if got, want := bins, 1; got != want {
+		t.Fatalf("got %d want %d", got, want)
+	}
+
+	if !gc.PendingExpiration() {
+		t.Fatalf("should be pending")
 	}
 
 	select {
@@ -99,6 +110,6 @@ func TestTombstoneGC_Expire(t *testing.T) {
 	select {
 	case <-gc.ExpireCh():
 		t.Fatalf("should be reset")
-	case <-time.After(20 * time.Millisecond):
+	case <-time.After(ttl * 2):
 	}
 }

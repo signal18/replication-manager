@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/hashicorp/consul/agent/consul/autopilot"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	multierror "github.com/hashicorp/go-multierror"
@@ -195,7 +195,7 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 			return nil, nil
 		}
 
-		var reply structs.AutopilotConfig
+		var reply autopilot.Config
 		if err := s.agent.RPC("Operator.AutopilotGetConfiguration", &args, &reply); err != nil {
 			return nil, err
 		}
@@ -220,13 +220,14 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 		s.parseToken(req, &args.Token)
 
 		var conf api.AutopilotConfiguration
-		if err := decodeBody(req, &conf, FixupConfigDurations); err != nil {
+		durations := NewDurationFixer("lastcontactthreshold", "serverstabilizationtime")
+		if err := decodeBody(req, &conf, durations.FixupDurations); err != nil {
 			resp.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(resp, "Error parsing autopilot config: %v", err)
 			return nil, nil
 		}
 
-		args.Config = structs.AutopilotConfig{
+		args.Config = autopilot.Config{
 			CleanupDeadServers:      conf.CleanupDeadServers,
 			LastContactThreshold:    conf.LastContactThreshold.Duration(),
 			MaxTrailingLogs:         conf.MaxTrailingLogs,
@@ -265,29 +266,6 @@ func (s *HTTPServer) OperatorAutopilotConfiguration(resp http.ResponseWriter, re
 	}
 }
 
-// FixupConfigDurations is used to handle parsing the duration fields in
-// the Autopilot config struct
-func FixupConfigDurations(raw interface{}) error {
-	rawMap, ok := raw.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	for key, val := range rawMap {
-		if strings.ToLower(key) == "lastcontactthreshold" ||
-			strings.ToLower(key) == "serverstabilizationtime" {
-			// Convert a string value into an integer
-			if vStr, ok := val.(string); ok {
-				dur, err := time.ParseDuration(vStr)
-				if err != nil {
-					return err
-				}
-				rawMap[key] = dur
-			}
-		}
-	}
-	return nil
-}
-
 // OperatorServerHealth is used to get the health of the servers in the local DC
 func (s *HTTPServer) OperatorServerHealth(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
 	if req.Method != "GET" {
@@ -299,7 +277,7 @@ func (s *HTTPServer) OperatorServerHealth(resp http.ResponseWriter, req *http.Re
 		return nil, nil
 	}
 
-	var reply structs.OperatorHealthReply
+	var reply autopilot.OperatorHealthReply
 	if err := s.agent.RPC("Operator.ServerHealth", &args, &reply); err != nil {
 		return nil, err
 	}

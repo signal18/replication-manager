@@ -11,6 +11,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/lomik/go-carbon/persister"
+	"github.com/lomik/go-carbon/receiver/tcp"
+	"github.com/lomik/go-carbon/receiver/udp"
 	"github.com/lomik/zapwriter"
 )
 
@@ -57,6 +59,7 @@ type whisperConfig struct {
 	Workers             int    `toml:"workers"`
 	MaxUpdatesPerSecond int    `toml:"max-updates-per-second"`
 	Sparse              bool   `toml:"sparse-create"`
+	FLock               bool   `toml:"flock"`
 	Enabled             bool   `toml:"enabled"`
 	Schemas             persister.WhisperSchemas
 	Aggregation         *persister.WhisperAggregation
@@ -67,45 +70,47 @@ type cacheConfig struct {
 	WriteStrategy string `toml:"write-strategy"`
 }
 
-type udpConfig struct {
-	Listen        string `toml:"listen"`
-	Enabled       bool   `toml:"enabled"`
-	LogIncomplete bool   `toml:"log-incomplete"`
-	BufferSize    int    `toml:"buffer-size"`
-}
-
-type tcpConfig struct {
-	Listen     string `toml:"listen"`
-	Enabled    bool   `toml:"enabled"`
-	BufferSize int    `toml:"buffer-size"`
-}
-
-type pickleConfig struct {
-	Listen         string `toml:"listen"`
-	MaxMessageSize int    `toml:"max-message-size"`
-	Enabled        bool   `toml:"enabled"`
-	BufferSize     int    `toml:"buffer-size"`
-}
-
 type carbonlinkConfig struct {
 	Listen      string    `toml:"listen"`
 	Enabled     bool      `toml:"enabled"`
 	ReadTimeout *Duration `toml:"read-timeout"`
 }
 
+type grpcConfig struct {
+	Listen  string `toml:"listen"`
+	Enabled bool   `toml:"enabled"`
+}
+
+type receiverConfig struct {
+	DSN string `toml:"dsn"`
+}
+
+type tagsConfig struct {
+	Enabled        bool      `toml:"enabled"`
+	TagDB          string    `toml:"tagdb-url"`
+	TagDBTimeout   *Duration `toml:"tagdb-timeout"`
+	TagDBChunkSize int       `toml:"tagdb-chunk-size"`
+	LocalDir       string    `toml:"local-dir"`
+}
+
 type carbonserverConfig struct {
-	Listen            string    `toml:"listen"`
-	Enabled           bool      `toml:"enabled"`
-	ReadTimeout       *Duration `toml:"read-timeout"`
-	IdleTimeout       *Duration `toml:"idle-timeout"`
-	WriteTimeout      *Duration `toml:"write-timeout"`
-	ScanFrequency     *Duration `toml:"scan-frequency"`
-	QueryCacheEnabled bool      `toml:"query-cache-enabled"`
-	QueryCacheSizeMB  int       `toml:"query-cache-size-mb"`
-	FindCacheEnabled  bool      `toml:"find-cache-enabled"`
-	Buckets           int       `toml:"buckets"`
-	MaxGlobs          int       `toml:"max-globs"`
-	MetricsAsCounters bool      `toml:"metrics-as-counters"`
+	Listen                  string    `toml:"listen"`
+	Enabled                 bool      `toml:"enabled"`
+	ReadTimeout             *Duration `toml:"read-timeout"`
+	IdleTimeout             *Duration `toml:"idle-timeout"`
+	WriteTimeout            *Duration `toml:"write-timeout"`
+	ScanFrequency           *Duration `toml:"scan-frequency"`
+	QueryCacheEnabled       bool      `toml:"query-cache-enabled"`
+	QueryCacheSizeMB        int       `toml:"query-cache-size-mb"`
+	FindCacheEnabled        bool      `toml:"find-cache-enabled"`
+	Buckets                 int       `toml:"buckets"`
+	MaxGlobs                int       `toml:"max-globs"`
+	FailOnMaxGlobs          bool      `toml:"fail-on-max-globs"`
+	MetricsAsCounters       bool      `toml:"metrics-as-counters"`
+	TrigramIndex            bool      `toml:"trigram-index"`
+	GraphiteWeb10StrictMode bool      `toml:"graphite-web-10-strict-mode"`
+	InternalStatsDir        string    `toml:"internal-stats-dir"`
+	Percentiles             []int     `toml:"stats-percentiles"`
 }
 
 type pprofConfig struct {
@@ -121,17 +126,20 @@ type dumpConfig struct {
 
 // Config ...
 type Config struct {
-	Common       commonConfig       `toml:"common"`
-	Whisper      whisperConfig      `toml:"whisper"`
-	Cache        cacheConfig        `toml:"cache"`
-	Udp          udpConfig          `toml:"udp"`
-	Tcp          tcpConfig          `toml:"tcp"`
-	Pickle       pickleConfig       `toml:"pickle"`
-	Carbonlink   carbonlinkConfig   `toml:"carbonlink"`
-	Carbonserver carbonserverConfig `toml:"carbonserver"`
-	Dump         dumpConfig         `toml:"dump"`
-	Pprof        pprofConfig        `toml:"pprof"`
-	Logging      []zapwriter.Config `toml:"logging"`
+	Common       commonConfig                        `toml:"common"`
+	Whisper      whisperConfig                       `toml:"whisper"`
+	Cache        cacheConfig                         `toml:"cache"`
+	Udp          *udp.Options                        `toml:"udp"`
+	Tcp          *tcp.Options                        `toml:"tcp"`
+	Pickle       *tcp.FramingOptions                 `toml:"pickle"`
+	Receiver     map[string](map[string]interface{}) `toml:"receiver"`
+	Carbonlink   carbonlinkConfig                    `toml:"carbonlink"`
+	Grpc         grpcConfig                          `toml:"grpc"`
+	Tags         tagsConfig                          `toml:"tags"`
+	Carbonserver carbonserverConfig                  `toml:"carbonserver"`
+	Dump         dumpConfig                          `toml:"dump"`
+	Pprof        pprofConfig                         `toml:"pprof"`
+	Logging      []zapwriter.Config                  `toml:"logging"`
 }
 
 func NewLoggingConfig() zapwriter.Config {
@@ -150,40 +158,31 @@ func NewConfig() *Config {
 			},
 			MetricEndpoint: MetricEndpointLocal,
 			MaxCPU:         1,
-			User:           "",
+			User:           "carbon",
 		},
 		Whisper: whisperConfig{
-			DataDir:             "/data/graphite/whisper/",
-			SchemasFilename:     "/data/graphite/schemas",
+			DataDir:             "/var/lib/graphite/whisper/",
+			SchemasFilename:     "/etc/go-carbon/storage-schemas.conf",
 			AggregationFilename: "",
 			MaxUpdatesPerSecond: 0,
 			Enabled:             true,
 			Workers:             1,
 			Sparse:              false,
+			FLock:               false,
 		},
 		Cache: cacheConfig{
 			MaxSize:       1000000,
 			WriteStrategy: "max",
 		},
-		Udp: udpConfig{
-			Listen:        ":2003",
-			Enabled:       true,
-			LogIncomplete: false,
-		},
-		Tcp: tcpConfig{
-			Listen:  ":2003",
-			Enabled: true,
-		},
-		Pickle: pickleConfig{
-			Listen:         ":2004",
-			Enabled:        true,
-			MaxMessageSize: 67108864, // 64 Mb
-		},
+		Udp:    udp.NewOptions(),
+		Tcp:    tcp.NewOptions(),
+		Pickle: tcp.NewFramingOptions(),
 		Carbonserver: carbonserverConfig{
 			Listen:            "127.0.0.1:8080",
 			Enabled:           false,
 			Buckets:           10,
 			MaxGlobs:          100,
+			FailOnMaxGlobs:    false,
 			MetricsAsCounters: false,
 			ScanFrequency: &Duration{
 				Duration: 300 * time.Second,
@@ -197,9 +196,11 @@ func NewConfig() *Config {
 			WriteTimeout: &Duration{
 				Duration: 60 * time.Second,
 			},
-			QueryCacheEnabled: true,
-			QueryCacheSizeMB:  0,
-			FindCacheEnabled:  true,
+			QueryCacheEnabled:       true,
+			QueryCacheSizeMB:        0,
+			FindCacheEnabled:        true,
+			TrigramIndex:            true,
+			GraphiteWeb10StrictMode: true,
 		},
 		Carbonlink: carbonlinkConfig{
 			Listen:  "127.0.0.1:7002",
@@ -208,11 +209,26 @@ func NewConfig() *Config {
 				Duration: 30 * time.Second,
 			},
 		},
+		Grpc: grpcConfig{
+			Listen:  "127.0.0.1:7003",
+			Enabled: true,
+		},
+		Tags: tagsConfig{
+			Enabled: false,
+			TagDB:   "http://127.0.0.1:8000",
+			TagDBTimeout: &Duration{
+				Duration: time.Second,
+			},
+			TagDBChunkSize: 32,
+			LocalDir:       "/var/lib/graphite/tagging/",
+		},
 		Pprof: pprofConfig{
-			Listen:  "localhost:7007",
+			Listen:  "127.0.0.1:7007",
 			Enabled: false,
 		},
-		Dump:    dumpConfig{},
+		Dump: dumpConfig{
+			Path: "/var/lib/graphite/dump/",
+		},
 		Logging: nil,
 	}
 
@@ -294,9 +310,6 @@ func ReadConfig(filename string) (*Config, error) {
 // TestConfig creates config with all files in root directory
 func TestConfig(rootDir string) string {
 	cfg := NewConfig()
-
-	p := filepath.Join(rootDir, "go-carbon.log")
-	cfg.Common.Logfile = &p
 
 	cfg.Whisper.DataDir = rootDir
 	cfg.Whisper.SchemasFilename = filepath.Join(rootDir, "schemas.conf")

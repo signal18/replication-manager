@@ -8,11 +8,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	whisper "github.com/lomik/go-whisper"
+	whisper "github.com/go-graphite/go-whisper"
 	"go.uber.org/zap"
 
 	"github.com/lomik/go-carbon/helper"
 	"github.com/lomik/go-carbon/points"
+	"github.com/lomik/go-carbon/tags"
 	"github.com/lomik/zapwriter"
 )
 
@@ -27,17 +28,21 @@ type Whisper struct {
 	committedPoints     uint32
 	recv                func(chan bool) *points.Points
 	confirm             func(*points.Points)
+	onCreateTagged      func(string)
+	tagsEnabled         bool
 	schemas             WhisperSchemas
 	aggregation         *WhisperAggregation
 	workersCount        int
 	rootPath            string
 	created             uint32 // counter
 	sparse              bool
+	flock               bool
 	maxUpdatesPerSecond int
 	throttleTicker      *ThrottleTicker
 	storeMutex          [storeMutexCount]sync.Mutex
 	mockStore           func() (StoreFunc, func())
 	logger              *zap.Logger
+	createLogger        *zap.Logger
 	// blockThrottleNs        uint64 // sum ns counter
 	// blockQueueGetNs        uint64 // sum ns counter
 	// blockAvoidConcurrentNs uint64 // sum ns counter
@@ -61,6 +66,7 @@ func NewWhisper(
 		rootPath:            rootPath,
 		maxUpdatesPerSecond: 0,
 		logger:              zapwriter.Logger("persister"),
+		createLogger:        zapwriter.Logger("whisper:new"),
 	}
 }
 
@@ -88,8 +94,21 @@ func (p *Whisper) SetSparse(sparse bool) {
 	p.sparse = sparse
 }
 
+// SetFLock on create and open
+func (p *Whisper) SetFLock(flock bool) {
+	p.flock = flock
+}
+
 func (p *Whisper) SetMockStore(fn func() (StoreFunc, func())) {
 	p.mockStore = fn
+}
+
+func (p *Whisper) SetTagsEnabled(v bool) {
+	p.tagsEnabled = v
+}
+
+func (p *Whisper) SetOnCreateTagged(fn func(string)) {
+	p.onCreateTagged = fn
 }
 
 func fnv32(key string) uint32 {
@@ -111,9 +130,16 @@ func store(p *Whisper, values *points.Points) {
 	// atomic.AddUint64(&p.blockAvoidConcurrentNs, uint64(time.Since(start).Nanoseconds()))
 	defer p.storeMutex[mutexIndex].Unlock()
 
-	path := filepath.Join(p.rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
+	var path string
+	if p.tagsEnabled && strings.IndexByte(values.Metric, ';') >= 0 {
+		path = tags.FilePath(p.rootPath, values.Metric) + ".wsp"
+	} else {
+		path = filepath.Join(p.rootPath, strings.Replace(values.Metric, ".", "/", -1)+".wsp")
+	}
 
-	w, err := whisper.Open(path)
+	w, err := whisper.OpenWithOptions(path, &whisper.Options{
+		FLock: p.flock,
+	})
 	if err != nil {
 		// create new whisper if file not exists
 		if !os.IsNotExist(err) {
@@ -133,7 +159,37 @@ func store(p *Whisper, values *points.Points) {
 			return
 		}
 
-		p.logger.Debug("create whisper",
+		if err = os.MkdirAll(filepath.Dir(path), os.ModeDir|os.ModePerm); err != nil {
+			p.logger.Error("mkdir failed",
+				zap.String("dir", filepath.Dir(path)),
+				zap.Error(err),
+				zap.String("path", path),
+			)
+			return
+		}
+
+		w, err = whisper.CreateWithOptions(path, schema.Retentions, aggr.aggregationMethod, float32(aggr.xFilesFactor), &whisper.Options{
+			Sparse: p.sparse,
+			FLock:  p.flock,
+		})
+		if err != nil {
+			p.logger.Error("create new whisper file failed",
+				zap.String("path", path),
+				zap.Error(err),
+				zap.String("retention", schema.RetentionStr),
+				zap.String("schema", schema.Name),
+				zap.String("aggregation", aggr.name),
+				zap.Float64("xFilesFactor", aggr.xFilesFactor),
+				zap.String("method", aggr.aggregationMethodStr),
+			)
+			return
+		}
+
+		if p.tagsEnabled && p.onCreateTagged != nil && strings.IndexByte(values.Metric, ';') >= 0 {
+			p.onCreateTagged(values.Metric)
+		}
+
+		p.createLogger.Debug("created",
 			zap.String("path", path),
 			zap.String("retention", schema.RetentionStr),
 			zap.String("schema", schema.Name),
@@ -141,19 +197,6 @@ func store(p *Whisper, values *points.Points) {
 			zap.Float64("xFilesFactor", aggr.xFilesFactor),
 			zap.String("method", aggr.aggregationMethodStr),
 		)
-
-		if err = os.MkdirAll(filepath.Dir(path), os.ModeDir|os.ModePerm); err != nil {
-			p.logger.Error("mkdir failed", zap.String("dir", filepath.Dir(path)), zap.Error(err))
-			return
-		}
-
-		w, err = whisper.CreateWithOptions(path, schema.Retentions, aggr.aggregationMethod, float32(aggr.xFilesFactor), &whisper.Options{
-			Sparse: p.sparse,
-		})
-		if err != nil {
-			p.logger.Error("create new whisper file failed", zap.String("path", path), zap.Error(err))
-			return
-		}
 
 		atomic.AddUint32(&p.created, 1)
 	}

@@ -9,24 +9,39 @@ import (
 	"strings"
 	"sync"
 
+	"go.uber.org/zap"
+
+	"github.com/lomik/go-carbon/api"
 	"github.com/lomik/go-carbon/cache"
 	"github.com/lomik/go-carbon/carbonserver"
 	"github.com/lomik/go-carbon/persister"
 	"github.com/lomik/go-carbon/receiver"
+	"github.com/lomik/go-carbon/tags"
 	"github.com/lomik/zapwriter"
+
+	// register receivers
+	_ "github.com/lomik/go-carbon/receiver/http"
+	_ "github.com/lomik/go-carbon/receiver/kafka"
+	_ "github.com/lomik/go-carbon/receiver/tcp"
+	_ "github.com/lomik/go-carbon/receiver/udp"
 )
+
+type NamedReceiver struct {
+	receiver.Receiver
+	Name string
+}
 
 type App struct {
 	sync.RWMutex
 	ConfigFilename string
 	Config         *Config
+	Api            *api.Api
 	Cache          *cache.Cache
-	UDP            receiver.Receiver
-	TCP            receiver.Receiver
-	Pickle         receiver.Receiver
+	Receivers      []*NamedReceiver
 	CarbonLink     *cache.CarbonlinkListener
 	Persister      *persister.Whisper
 	Carbonserver   *carbonserver.CarbonserverListener
+	Tags           *tags.Tags
 	Collector      *Collector // (!!!) Should be re-created on every change config/modules
 	exit           chan bool
 }
@@ -120,10 +135,20 @@ func (app *App) ReloadConfig() error {
 
 	runtime.GOMAXPROCS(app.Config.Common.MaxCPU)
 
+	app.Cache.SetMaxSize(app.Config.Cache.MaxSize)
+	app.Cache.SetWriteStrategy(app.Config.Cache.WriteStrategy)
+	app.Cache.SetTagsEnabled(app.Config.Tags.Enabled)
+
 	if app.Persister != nil {
 		app.Persister.Stop()
 		app.Persister = nil
 	}
+
+	if app.Tags != nil {
+		app.Tags.Stop()
+		app.Tags = nil
+	}
+
 	app.startPersister()
 
 	if app.Collector != nil {
@@ -140,22 +165,10 @@ func (app *App) ReloadConfig() error {
 func (app *App) stopListeners() {
 	logger := zapwriter.Logger("app")
 
-	if app.TCP != nil {
-		app.TCP.Stop()
-		app.TCP = nil
-		logger.Debug("tcp stopped")
-	}
-
-	if app.Pickle != nil {
-		app.Pickle.Stop()
-		app.Pickle = nil
-		logger.Debug("pickle stopped")
-	}
-
-	if app.UDP != nil {
-		app.UDP.Stop()
-		app.UDP = nil
-		logger.Debug("udp stopped")
+	if app.Api != nil {
+		app.Api.Stop()
+		app.Api = nil
+		logger.Debug("api stopped")
 	}
 
 	if app.CarbonLink != nil {
@@ -165,9 +178,20 @@ func (app *App) stopListeners() {
 	}
 
 	if app.Carbonserver != nil {
-		app.Carbonserver.Stop()
+		carbonserver := app.Carbonserver
+		go func() {
+			carbonserver.Stop()
+			logger.Debug("carbonserver stopped")
+		}()
 		app.Carbonserver = nil
-		logger.Debug("carbonserver stopped")
+	}
+
+	if app.Receivers != nil {
+		for i := 0; i < len(app.Receivers); i++ {
+			app.Receivers[i].Stop()
+			logger.Debug("receiver stopped", zap.String("name", app.Receivers[i].Name))
+		}
+		app.Receivers = nil
 	}
 }
 
@@ -180,6 +204,12 @@ func (app *App) stopAll() {
 		app.Persister.Stop()
 		app.Persister = nil
 		logger.Debug("persister stopped")
+	}
+
+	if app.Tags != nil {
+		app.Tags.Stop()
+		app.Tags = nil
+		logger.Debug("tags stopped")
 	}
 
 	if app.Cache != nil {
@@ -209,6 +239,15 @@ func (app *App) Stop() {
 }
 
 func (app *App) startPersister() {
+	if app.Config.Tags.Enabled {
+		app.Tags = tags.New(&tags.Options{
+			LocalPath:      app.Config.Tags.LocalDir,
+			TagDB:          app.Config.Tags.TagDB,
+			TagDBTimeout:   app.Config.Tags.TagDBTimeout.Value(),
+			TagDBChunkSize: app.Config.Tags.TagDBChunkSize,
+		})
+	}
+
 	if app.Config.Whisper.Enabled {
 		p := persister.NewWhisper(
 			app.Config.Whisper.DataDir,
@@ -219,7 +258,13 @@ func (app *App) startPersister() {
 		)
 		p.SetMaxUpdatesPerSecond(app.Config.Whisper.MaxUpdatesPerSecond)
 		p.SetSparse(app.Config.Whisper.Sparse)
+		p.SetFLock(app.Config.Whisper.FLock)
 		p.SetWorkers(app.Config.Whisper.Workers)
+
+		if app.Tags != nil {
+			p.SetTagsEnabled(true)
+			p.SetOnCreateTagged(app.Tags.Add)
+		}
 
 		p.Start()
 
@@ -245,58 +290,101 @@ func (app *App) Start() (err error) {
 	core := cache.New()
 	core.SetMaxSize(conf.Cache.MaxSize)
 	core.SetWriteStrategy(conf.Cache.WriteStrategy)
+	core.SetTagsEnabled(conf.Tags.Enabled)
 
 	app.Cache = core
 
-	/* WHISPER start */
-	app.startPersister()
-	/* WHISPER end */
-
-	/* UDP start */
-	if conf.Udp.Enabled {
-		app.UDP, err = receiver.New(
-			"udp://"+conf.Udp.Listen,
-			receiver.OutFunc(core.Add),
-			receiver.UDPLogIncomplete(conf.Udp.LogIncomplete),
-			receiver.BufferSize(conf.Udp.BufferSize),
-		)
-
+	/* API start */
+	if conf.Grpc.Enabled {
+		var grpcAddr *net.TCPAddr
+		grpcAddr, err = net.ResolveTCPAddr("tcp", conf.Grpc.Listen)
 		if err != nil {
 			return
 		}
+
+		grpcApi := api.New(core)
+
+		if err = grpcApi.Listen(grpcAddr); err != nil {
+			return
+		}
+
+		app.Api = grpcApi
+	}
+	/* API end */
+
+	/* WHISPER and TAGS start */
+	app.startPersister()
+	/* WHISPER and TAGS end */
+
+	app.Receivers = make([]*NamedReceiver, 0)
+	var rcv receiver.Receiver
+	var rcvOptions map[string]interface{}
+
+	/* UDP start */
+	if conf.Udp.Enabled {
+		if rcvOptions, err = receiver.WithProtocol(conf.Udp, "udp"); err != nil {
+			return
+		}
+
+		if rcv, err = receiver.New("udp", rcvOptions, core.Add); err != nil {
+			return
+		}
+
+		app.Receivers = append(app.Receivers, &NamedReceiver{
+			Receiver: rcv,
+			Name:     "udp",
+		})
 	}
 	/* UDP end */
 
 	/* TCP start */
 	if conf.Tcp.Enabled {
-		app.TCP, err = receiver.New(
-			"tcp://"+conf.Tcp.Listen,
-			receiver.OutFunc(core.Add),
-			receiver.BufferSize(conf.Tcp.BufferSize),
-		)
-
-		if err != nil {
+		if rcvOptions, err = receiver.WithProtocol(conf.Tcp, "tcp"); err != nil {
 			return
 		}
+
+		if rcv, err = receiver.New("tcp", rcvOptions, core.Add); err != nil {
+			return
+		}
+
+		app.Receivers = append(app.Receivers, &NamedReceiver{
+			Receiver: rcv,
+			Name:     "tcp",
+		})
 	}
 	/* TCP end */
 
 	/* PICKLE start */
 	if conf.Pickle.Enabled {
-		app.Pickle, err = receiver.New(
-			"pickle://"+conf.Pickle.Listen,
-			receiver.OutFunc(core.Add),
-			receiver.PickleMaxMessageSize(uint32(conf.Pickle.MaxMessageSize)),
-			receiver.BufferSize(conf.Pickle.BufferSize),
-		)
-
-		if err != nil {
+		if rcvOptions, err = receiver.WithProtocol(conf.Pickle, "pickle"); err != nil {
 			return
 		}
+
+		if rcv, err = receiver.New("pickle", rcvOptions, core.Add); err != nil {
+			return
+		}
+
+		app.Receivers = append(app.Receivers, &NamedReceiver{
+			Receiver: rcv,
+			Name:     "pickle",
+		})
 	}
 	/* PICKLE end */
 
-	/* CARBONLINK start */
+	/* CUSTOM RECEIVERS start */
+	for receiverName, receiverOptions := range conf.Receiver {
+		if rcv, err = receiver.New(receiverName, receiverOptions, core.Add); err != nil {
+			return
+		}
+
+		app.Receivers = append(app.Receivers, &NamedReceiver{
+			Receiver: rcv,
+			Name:     receiverName,
+		})
+	}
+	/* CUSTOM RECEIVERS end */
+
+	/* CARBONSERVER start */
 	if conf.Carbonserver.Enabled {
 		if err != nil {
 			return
@@ -305,6 +393,8 @@ func (app *App) Start() (err error) {
 		carbonserver := carbonserver.NewCarbonserverListener(core.Get)
 		carbonserver.SetWhisperData(conf.Whisper.DataDir)
 		carbonserver.SetMaxGlobs(conf.Carbonserver.MaxGlobs)
+		carbonserver.SetFLock(app.Config.Whisper.FLock)
+		carbonserver.SetFailOnMaxGlobs(conf.Carbonserver.FailOnMaxGlobs)
 		carbonserver.SetBuckets(conf.Carbonserver.Buckets)
 		carbonserver.SetMetricsAsCounters(conf.Carbonserver.MetricsAsCounters)
 		carbonserver.SetScanFrequency(conf.Carbonserver.ScanFrequency.Value())
@@ -314,6 +404,10 @@ func (app *App) Start() (err error) {
 		carbonserver.SetQueryCacheEnabled(conf.Carbonserver.QueryCacheEnabled)
 		carbonserver.SetFindCacheEnabled(conf.Carbonserver.FindCacheEnabled)
 		carbonserver.SetQueryCacheSizeMB(conf.Carbonserver.QueryCacheSizeMB)
+		carbonserver.SetTrigramIndex(conf.Carbonserver.TrigramIndex)
+		carbonserver.SetGraphiteWeb10(conf.Carbonserver.GraphiteWeb10StrictMode)
+		carbonserver.SetInternalStatsDir(conf.Carbonserver.InternalStatsDir)
+		carbonserver.SetPercentiles(conf.Carbonserver.Percentiles)
 		// carbonserver.SetQueryTimeout(conf.Carbonserver.QueryTimeout.Value())
 
 		if err = carbonserver.Listen(conf.Carbonserver.Listen); err != nil {
@@ -322,7 +416,7 @@ func (app *App) Start() (err error) {
 
 		app.Carbonserver = carbonserver
 	}
-	/* CARBONLINK end */
+	/* CARBONSERVER end */
 
 	/* CARBONLINK start */
 	if conf.Carbonlink.Enabled {
