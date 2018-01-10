@@ -29,8 +29,8 @@ func (server *ServerMonitor) Backup() error {
 		cfg.MyPassword = server.Pass
 		cfg.MyFlavor = "mariadb"
 
-		//cfg.ESAddr = *es_addr
-
+		//	cfg.ESAddr = *es_addr
+		cfg.StatAddr = "127.0.0.1:12800"
 		cfg.DumpServerID = 1001
 
 		cfg.DumpPath = server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
@@ -40,9 +40,12 @@ func (server *ServerMonitor) Backup() error {
 		cfg.BatchMode = "CSV"
 		cfg.BatchSize = 100000
 		cfg.BatchTimeOut = 1
+		cfg.DataDir = server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
+
 		os.RemoveAll(cfg.DumpPath)
 
-		cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"test", "[*]"}}}
+		//cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"test", "[*]"}}}
+		cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"City"}}}
 
 		river.NewRiver(cfg)
 	}

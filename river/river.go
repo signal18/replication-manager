@@ -18,7 +18,7 @@ import (
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/schema"
-	"github.com/siddontang/go/log"
+	log "github.com/sirupsen/logrus"
 )
 
 type River struct {
@@ -60,6 +60,9 @@ func NewRiver(c *Config) (*River, error) {
 	r.rules = make(map[string]*Rule)
 	r.micro_transactions = make(map[string][][]interface{})
 	r.micro_transactions_id = 0
+
+	r.syncCh = make(chan interface{}, 4096)
+	r.rules = make(map[string]*Rule)
 
 	var err error
 
@@ -111,8 +114,11 @@ func (r *River) newCanal() error {
 	cfg.ServerID = r.c.DumpServerID
 	cfg.Dump.ExecutionPath = r.c.DumpExec
 	cfg.Dump.DiscardErr = false
+	cfg.Dump.SkipMasterData = false
 
-	// .eturn errors.Errorf("%s,%s,%s", cfg.Addr, cfg.User, cfg.Password)
+	//	cfg. StatAddr = "127.0.0.1:12800"
+
+	// return errors.Errorf("%s,%s,%s", cfg.Addr, cfg.User, cfg.Password)
 	var err error
 	r.canal, err = canal.NewCanal(cfg)
 	return errors.Trace(err)
@@ -234,6 +240,7 @@ func (r *River) DumpIndexes(idx *Index) error {
 func (r *River) prepareRule() error {
 	wildtables, err := r.parseSource()
 	if err != nil {
+		log.Infof("Erreur in parseSource %s ", err)
 		return errors.Trace(err)
 	}
 

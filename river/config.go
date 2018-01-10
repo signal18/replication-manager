@@ -28,18 +28,18 @@ type Config struct {
 
 	MyFlavor string `toml:"master_flavor"`
 
-	DumpPath     string `toml:"dump_path"`
-	DumpServerID uint32 `toml:"dump_server_id"`
-	DumpExec     string `toml:"dump_exec"`
-	DumpThreads  uint32 `toml:"dump_threads"`
-	DumpInit     bool   `toml:"init"`
-	DumpOnly     bool   `toml:"dump_only"`
-	BatchMode    string `toml:"batch_mode"`
-	BatchSize    int64  `toml:"batch_size"`
-	BatchTimeOut int64  `toml:"batch_timeout"`
-	StatAddr     string `toml:"stat_addr"`
-
-	Sources []SourceConfig `toml:"source"`
+	DumpPath     string         `toml:"dump_path"`
+	DumpServerID uint32         `toml:"dump_server_id"`
+	DumpExec     string         `toml:"dump_exec"`
+	DumpThreads  uint32         `toml:"dump_threads"`
+	DumpInit     bool           `toml:"init"`
+	DumpOnly     bool           `toml:"dump_only"`
+	BatchMode    string         `toml:"batch_mode"`
+	BatchSize    int64          `toml:"batch_size"`
+	BatchTimeOut int64          `toml:"batch_timeout"`
+	StatAddr     string         `toml:"stat_addr"`
+	DataDir      string         `toml:"data_dir"`
+	Sources      []SourceConfig `toml:"source"`
 
 	Rules []*Rule  `toml:"rule"`
 	index []*Index `toml:"index"`

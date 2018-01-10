@@ -301,7 +301,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Arbitrator says invalid JSON")
+		cluster.LogPrintf(LvlErr, "Arbitrator sent invalid JSON")
 		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
