@@ -208,7 +208,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	switch server.ClusterGroup.conf.CheckType {
 	case "tcp":
 		conn, err = sqlx.Connect("mysql", server.DSN)
-		defer conn.Close()
 	case "agent":
 		var resp *http.Response
 		resp, err = http.Get("http://" + server.Host + ":10001/check/")
@@ -273,6 +272,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
+	} else {
+		defer conn.Close()
 	}
 	// from here we have connection
 	server.Refresh()
