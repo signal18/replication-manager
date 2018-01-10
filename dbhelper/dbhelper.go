@@ -135,9 +135,9 @@ func MySQLConnect(user string, password string, address string, parameters ...st
 	return db, err
 }
 
-// MemDBConnect returns a SQLite memory connection
-func MemDBConnect() (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlite3", "/usr/share/replication-manager/arbitrator.db")
+// SQLiteConnect returns a SQLite connection
+func SQLiteConnect(path string) (*sqlx.DB, error) {
+	db, err := sqlx.Connect("sqlite3", path + "/arbitrator.db")
 	return db, err
 }
 

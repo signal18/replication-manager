@@ -90,26 +90,33 @@ var arbitratorCmd = &cobra.Command{
 	Short: "Arbitrator environment",
 	Long:  `The arbitrator is used for false positive detection`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var err error
-		var db *sqlx.DB
+
+		if _, ok := confs["arbitrator"]; !ok {
+			log.Fatal("Could not find arbitrator configuration section")
+		}
 
 		if confs["arbitrator"].ArbitratorDriver == "mysql" {
 			arbitratorCluster = new(cluster.Cluster)
-			db, err = arbitratorCluster.InitAgent(confs["arbitrator"])
-			if err != nil {
-				panic(err)
-			}
+			arbitratorCluster.InitAgent(confs["arbitrator"])
 			arbitratorCluster.SetLogStdout()
 		}
 
-		db, err = getArbitratorBackendStorageConnection()
+		db, err := getArbitratorBackendStorageConnection()
+		if err != nil {
+			log.Fatal("Error opening arbitrator database: ", err)
+		}
+
+		err = db.Ping()
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		err = dbhelper.SetHeartbeatTable(db)
 		if err != nil {
 			log.WithError(err).Error("Error creating tables")
 		}
 		router := newRouter()
-		log.Infof("Arbitrator listening  %s", confs["arbitrator"].ArbitratorAddress)
+		log.Infof("Arbitrator listening on %s", confs["arbitrator"].ArbitratorAddress)
 		log.Fatal(http.ListenAndServe(confs["arbitrator"].ArbitratorAddress, router))
 	},
 }
@@ -119,7 +126,7 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 	var err error
 	var db *sqlx.DB
 	if confs["arbitrator"].ArbitratorDriver == "sqlite" {
-		db, err = dbhelper.MemDBConnect()
+		db, err = dbhelper.SQLiteConnect(conf.WorkingDir)
 	}
 	if confs["arbitrator"].ArbitratorDriver == "mysql" {
 		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", confs["arbitrator"].Timeout))
@@ -131,22 +138,31 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var h heartbeat
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
-		panic(err)
+		log.Errorln(err)
+		w.WriteHeader(500)
+		return
 	}
 	if err := r.Body.Close(); err != nil {
-		panic(err)
+		log.Errorln(err)
+		w.WriteHeader(500)
+		return
 	}
 	log.Info("Arbitration request received: ", string(body))
 	if err := json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
 		if err = json.NewEncoder(w).Encode(err); err != nil {
-			panic(err)
+			log.Errorln(err)
+			w.WriteHeader(500)
 		}
 	}
 	var send response
 
 	db, err := getArbitratorBackendStorageConnection()
+	if err != nil {
+		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		return
+	}
 	defer db.Close()
 	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
@@ -173,14 +189,18 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	//log.Printf("INFO: Hearbeat receive:%s", string(body))
-	if err := r.Body.Close(); err != nil {
-		panic(err)
+	if err = r.Body.Close(); err != nil {
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
-	if err := json.Unmarshal(body, &h); err != nil {
+	if err = json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
 		if err = json.NewEncoder(w).Encode(err); err != nil {
-			panic(err)
+			w.WriteHeader(500)
+			log.Errorln(err)
+			return
 		}
 		return
 	}
@@ -189,6 +209,9 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	db, err := getArbitratorBackendStorageConnection()
 	if err != nil {
 		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
 	defer db.Close()
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
@@ -201,7 +224,9 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 	if err := json.NewEncoder(w).Encode(send); err != nil {
-		panic(err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
 
 }
@@ -211,17 +236,23 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {
-		panic(err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
 	//log.Printf("INFO: Hearbeat receive:%s", string(body))
 	if err = r.Body.Close(); err != nil {
-		panic(err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
 	if err = json.Unmarshal(body, &h); err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(422) // unprocessable entity
 		if err = json.NewEncoder(w).Encode(err); err != nil {
-			panic(err)
+			w.WriteHeader(500)
+			log.Errorln(err)
+			return
 		}
 		return
 	}
@@ -229,6 +260,12 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	//	currentCluster := new(cluster.Cluster)
 	var send string
 	db, err := getArbitratorBackendStorageConnection()
+	if err != nil {
+		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
+	}
 	defer db.Close()
 	res := dbhelper.ForgetArbitration(db, h.Secret)
 	if res == nil {
@@ -239,7 +276,9 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 	if err := json.NewEncoder(w).Encode(send); err != nil {
-		panic(err)
+		w.WriteHeader(500)
+		log.Errorln(err)
+		return
 	}
 
 }

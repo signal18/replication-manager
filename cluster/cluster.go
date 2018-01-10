@@ -16,13 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/robfig/cron"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/misc"
@@ -279,7 +277,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 	return nil
 }
 
-func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
+func (cluster *Cluster) InitAgent(conf config.Config) {
 	cluster.conf = conf
 	cluster.agentFlagCheck()
 	if conf.LogFile != "" {
@@ -290,13 +288,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) (*sqlx.DB, error) {
 			conf.LogFile = ""
 		}
 	}
-	db, err := dbhelper.MemDBConnect()
-	if err != nil {
-		log.WithError(err).Error("Error opening database connection")
-		return nil, err
-	}
-
-	return db, nil
+	return
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {

@@ -62,6 +62,20 @@ rm -rf build/usr/share/replication-manager/opensvc/*.tar.gz
 for flavor in min osc tst pro
 do
     echo "# Building packages replication-manager-$flavor"
+    case $flavor in
+        min)
+            extra_desc="Minimal version"
+            ;;
+        osc)
+            extra_desc="Open source version"
+            ;;
+        pro)
+            extra_desc="Professional version"
+            ;;
+        tst)
+            extra_desc="Testing version"
+            ;;
+    esac
     cp -r etc/* build/etc/replication-manager/
     if [ "$flavor" != "pro" ]; then
       rm -f build/etc/replication-manager/config.toml.sample.opensvc.*
@@ -71,9 +85,9 @@ do
     cp replication-manager-$flavor build/usr/bin/
     cp service/replication-manager-$flavor.service build/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 build/etc/init.d/replication-manager
-    fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-$flavor --epoch $epoch --description "$description" .
+    fpm ${cflags[@]} --rpm-os linux -C build -s dir -t rpm -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" .
     cp service/replication-manager-$flavor.init.deb7 build/etc/init.d/replication-manager
-    fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-$flavor --description "$description" .
+    fpm ${cflags[@]} -C build -s dir -t deb -n replication-manager-$flavor --description "$description - $extra_desc" .
     rm -f build/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
@@ -97,6 +111,7 @@ rm -rf build/usr/share
 mkdir -p build/etc/replication-manager
 mkdir -p build/etc/systemd/system
 mkdir -p build/etc/init.d
+mkdir -p build/var/lib/replication-manager
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
