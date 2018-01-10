@@ -90,8 +90,10 @@ var arbitratorCmd = &cobra.Command{
 	Short: "Arbitrator environment",
 	Long:  `The arbitrator is used for false positive detection`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var err error
-		var db *sqlx.DB
+
+		if _, ok := confs["arbitrator"]; !ok {
+			log.Fatal("Could not find arbitrator configuration section")
+		}
 
 		if confs["arbitrator"].ArbitratorDriver == "mysql" {
 			arbitratorCluster = new(cluster.Cluster)
@@ -99,9 +101,14 @@ var arbitratorCmd = &cobra.Command{
 			arbitratorCluster.SetLogStdout()
 		}
 
-		db, err = getArbitratorBackendStorageConnection()
+		db, err := getArbitratorBackendStorageConnection()
 		if err != nil {
-			log.Fatal("ERROR", "Error opening arbitrator database: ", err)
+			log.Fatal("Error opening arbitrator database: ", err)
+		}
+
+		err = db.Ping()
+		if err != nil {
+			log.Fatal(err)
 		}
 
 		err = dbhelper.SetHeartbeatTable(db)
@@ -109,7 +116,7 @@ var arbitratorCmd = &cobra.Command{
 			log.WithError(err).Error("Error creating tables")
 		}
 		router := newRouter()
-		log.Infof("Arbitrator listening  %s", confs["arbitrator"].ArbitratorAddress)
+		log.Infof("Arbitrator listening on %s", confs["arbitrator"].ArbitratorAddress)
 		log.Fatal(http.ListenAndServe(confs["arbitrator"].ArbitratorAddress, router))
 	},
 }
