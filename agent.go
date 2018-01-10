@@ -19,8 +19,8 @@ import (
 	//	"os"
 	//	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/spf13/cobra"
 	//	"github.com/signal18/replication-manager/misc"
 )
 
@@ -43,7 +43,7 @@ take consensus decisions`,
 func handlerAgent(w http.ResponseWriter, r *http.Request) {
 
 	currentCluster = new(cluster.Cluster)
-	db, err := currentCluster.InitAgent(conf)
+	err := currentCluster.InitAgent(conf)
 	e := json.NewEncoder(w)
 	err = e.Encode(db)
 	if err != nil {

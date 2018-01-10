@@ -111,6 +111,7 @@ rm -rf build/usr/share
 mkdir -p build/etc/replication-manager
 mkdir -p build/etc/systemd/system
 mkdir -p build/etc/init.d
+mkdir -p build/var/lib/replication-manager
 cp service/replication-manager-arb.service build/etc/systemd/system
 cp service/replication-manager-arb.init.el6 build/etc/init.d/replication-manager-arb
 cp replication-manager-arb build/usr/bin/
