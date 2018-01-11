@@ -27,6 +27,7 @@ var (
 	cfgGroupList  []string
 	cfgGroupIndex int
 	conf          config.Config
+	includePath   string
 	memprofile    string
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
@@ -136,7 +137,9 @@ func initConfig() {
 	if conf.ConfigFile != "" {
 		viper.SetConfigFile(conf.ConfigFile)
 		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
-			log.Fatal("No config file " + conf.ConfigFile)
+			//	log.Fatal("No config file " + conf.ConfigFile)
+			log.Error("No config file " + conf.ConfigFile)
+
 		}
 	} else {
 		viper.SetConfigName("config")
@@ -144,12 +147,16 @@ func initConfig() {
 		viper.AddConfigPath(".")
 		if WithTarball == "ON" {
 			viper.AddConfigPath("/usr/local/replication-manager/etc")
+			includePath = "/usr/local/replication-manager/data/cluster.d"
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
-				log.Fatal("No config file /usr/local/replication-manager/etc/config.toml ")
+				//log.Fatal("No config file /usr/local/replication-manager/etc/config.toml")
+				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		} else {
+			includePath = "/var/lib/replication-manager/cluster.d"
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-				log.Fatal("No config file /etc/replication-manager/config.toml ")
+				//log.Fatal("No config file /etc/replication-manager/config.toml")
+				log.Warning("No config file /etc/replication-manager/config.toml ")
 			}
 		}
 	}
@@ -161,26 +168,32 @@ func initConfig() {
 		}).Debug("Using config file")
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
-		log.WithError(err).Fatal("Could not parse config file")
+		//log.WithError(err).Fatal("Could not parse config file")
+		log.Warningf("Could not parse config file: %s", err)
 	}
+
 	// Procedd include files
 	if viper.GetString("default.include") != "" {
 		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
-			log.Fatal("No include config directory " + conf.Include)
-		}
-		files, err := ioutil.ReadDir(viper.GetString("default.include"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, f := range files {
-			if !f.IsDir() {
-				viper.SetConfigName(f.Name())
-				viper.SetConfigFile(viper.GetString("default.include") + "/" + f.Name())
-				viper.MergeInConfig()
-				//fmt.Println(f.Name())
-			}
+			//	log.Fatal("No include config directory " + conf.Include)
+			log.Warning("No include config directory " + conf.Include)
+		} else {
+			includePath = viper.GetString("default.include")
 		}
 	}
+	files, err := ioutil.ReadDir(includePath)
+	if err != nil {
+		log.Warningf("Can't found include path %s %s", includePath, err)
+	}
+	for _, f := range files {
+		if !f.IsDir() {
+			viper.SetConfigName(f.Name())
+			viper.SetConfigFile(includePath + "/" + f.Name())
+			viper.MergeInConfig()
+			//fmt.Println(f.Name())
+		}
+	}
+
 	// Procedd include files
 
 	m := viper.AllKeys()
@@ -212,11 +225,12 @@ func initConfig() {
 
 	cf1 := viper.Sub("Default")
 	if cf1 == nil {
-		log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
+		//log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
+		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
+	} else {
+
+		cf1.Unmarshal(&conf)
 	}
-
-	cf1.Unmarshal(&conf)
-
 	if currentClusterName != "" {
 		cfgGroupList = strings.Split(currentClusterName, ",")
 
@@ -225,9 +239,10 @@ func initConfig() {
 			if gl != "" {
 				clusterconf := conf
 				cf2 := viper.Sub("Default")
-				initAlias(cf2)
-
-				cf2.Unmarshal(&clusterconf)
+				if cf2 != nil {
+					initAlias(cf2)
+					cf2.Unmarshal(&clusterconf)
+				}
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
 				cf2 = viper.Sub(gl)

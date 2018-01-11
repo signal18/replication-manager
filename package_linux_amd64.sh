@@ -46,10 +46,12 @@ mkdir -p build/etc/replication-manager
 mkdir -p build/etc/systemd/system
 mkdir -p build/etc/init.d
 mkdir -p build/var/lib/replication-manager
+mkdir -p build/var/lib/replication-manager/cluster.d
 mkdir -p buildtar/bin
 mkdir -p buildtar/etc
 mkdir -p buildtar/share
 mkdir -p buildtar/data
+mkdir -p buildtar/data/cluster.d
 
 echo "# Copying files to build dir"
 cp -r dashboard/* build/usr/share/replication-manager/dashboard/
