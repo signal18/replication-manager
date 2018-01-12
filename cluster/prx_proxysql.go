@@ -40,20 +40,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	defer psql.Connection.Close()
 
 	for _, s := range cluster.servers {
-		switch s.State {
-		case stateMaster:
-			err = psql.SetWriter(s.Host, s.Port)
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as writer (%s)", s.URL, err)
-			}
-		case stateSlave:
-			err = psql.SetReader(s.Host, s.Port)
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
-			}
-		case stateFailed:
-			// Let ProxySQL handle that case
-		case stateUnconn:
+		if s.State == stateUnconn {
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as offline (%s)", s.URL, err)
