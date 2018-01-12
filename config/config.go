@@ -279,4 +279,5 @@ type Config struct {
 	BackupRepoAwsKey                   string `mapstructure:"backup-repo-aws-key"`
 	BackupRepoAwsSecret                string `mapstructure:"backup-repo-aws-secret"`
 	BackupRepoAwsURI                   string `mapstructure:"backup-repo-aws-uri"`
+	ClusterConfigPath                  string `mapstructure:"cluster-config-file"`
 }

@@ -214,12 +214,13 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxStopTraffic)),
-	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
+
+	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterAdd)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
@@ -256,6 +257,11 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
 	))
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
@@ -1073,6 +1079,14 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No cluster", 500)
 		return
 	}
+
+}
+
+func handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	MonitorAddCluster(vars["clusterName"])
 
 }
 

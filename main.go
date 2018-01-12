@@ -15,6 +15,8 @@ import (
 	"os"
 	"strings"
 
+	//toml "github.com/pelletier/go-toml"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/signal18/replication-manager/config"
@@ -27,7 +29,6 @@ var (
 	cfgGroupList  []string
 	cfgGroupIndex int
 	conf          config.Config
-	includePath   string
 	memprofile    string
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
@@ -147,13 +148,14 @@ func initConfig() {
 		viper.AddConfigPath(".")
 		if WithTarball == "ON" {
 			viper.AddConfigPath("/usr/local/replication-manager/etc")
-			includePath = "/usr/local/replication-manager/data/cluster.d"
+			conf.ClusterConfigPath = "/usr/local/replication-manager/data/cluster.d"
+
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
 				//log.Fatal("No config file /usr/local/replication-manager/etc/config.toml")
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		} else {
-			includePath = "/var/lib/replication-manager/cluster.d"
+			conf.ClusterConfigPath = "/var/lib/replication-manager/cluster.d"
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
 				//log.Fatal("No config file /etc/replication-manager/config.toml")
 				log.Warning("No config file /etc/replication-manager/config.toml ")
@@ -178,17 +180,17 @@ func initConfig() {
 			//	log.Fatal("No include config directory " + conf.Include)
 			log.Warning("No include config directory " + conf.Include)
 		} else {
-			includePath = viper.GetString("default.include")
+			conf.ClusterConfigPath = viper.GetString("default.include")
 		}
 	}
-	files, err := ioutil.ReadDir(includePath)
+	files, err := ioutil.ReadDir(conf.ClusterConfigPath)
 	if err != nil {
-		log.Warningf("Can't found include path %s %s", includePath, err)
+		log.Warningf("Can't found include path %s %s", conf.ClusterConfigPath, err)
 	}
 	for _, f := range files {
 		if !f.IsDir() {
 			viper.SetConfigName(f.Name())
-			viper.SetConfigFile(includePath + "/" + f.Name())
+			viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 			viper.MergeInConfig()
 			//fmt.Println(f.Name())
 		}
@@ -251,7 +253,9 @@ func initConfig() {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
 				cf2.Unmarshal(&clusterconf)
+
 				confs[gl] = clusterconf
+
 				cfgGroupIndex++
 			}
 		}

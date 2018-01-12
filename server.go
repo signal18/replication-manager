@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 
@@ -32,6 +33,7 @@ import (
 	termbox "github.com/nsf/termbox-go"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/httplog"
@@ -58,6 +60,7 @@ var (
 	clusters       = map[string]*cluster.Cluster{}
 	agents         []opensvc.Host
 	isStarted      bool
+	OpenSVC        opensvc.Collector
 )
 
 func getClusterByName(clname string) *cluster.Cluster {
@@ -573,20 +576,19 @@ For interacting with this daemon use,
 
 		go apiserver()
 
-		var svc opensvc.Collector
 		if conf.Enterprise {
-			svc.Host, svc.Port = misc.SplitHostPort(conf.ProvHost)
-			svc.User, svc.Pass = misc.SplitPair(conf.ProvAdminUser)
-			svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(conf.ProvUser)
+			OpenSVC.Host, OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
+			OpenSVC.User, OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
+			OpenSVC.RplMgrUser, OpenSVC.RplMgrPassword = misc.SplitPair(conf.ProvUser)
 			//don't Bootstrap opensvc to speedup test
 			if conf.ProvRegister {
-				err := svc.Bootstrap(conf.ShareDir + "/opensvc/")
+				err := OpenSVC.Bootstrap(conf.ShareDir + "/opensvc/")
 				if err != nil {
 					log.Fatalf("%s", err)
 				}
 				log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
 			}
-			agents = svc.GetNodes()
+			agents = OpenSVC.GetNodes()
 			if agents == nil {
 				log.Fatalf("Can't connect or agents not registered")
 			}
@@ -605,40 +607,12 @@ For interacting with this daemon use,
 		}
 
 		// If there's an existing encryption key, decrypt the passwords
-		k, err := readKey()
-		if err != nil {
-			log.WithError(err).Info("No existing password encryption scheme")
-			k = nil
-		}
-		apiUser, apiPass = misc.SplitPair(conf.APIUser)
-		if k != nil {
-			p := crypto.Password{Key: k}
-			p.CipherText = apiPass
-			p.Decrypt()
-			apiPass = p.PlainText
-		}
-		for _, gl := range cfgGroupList {
-			currentCluster = new(cluster.Cluster)
 
-			myClusterConf := confs[gl]
-			myClusterConf.MonitorAddress = resolveHostIp()
-			if myClusterConf.FailMode == "manual" {
-				myClusterConf.Interactive = true
-			} else {
-				myClusterConf.Interactive = false
-			}
-			if myClusterConf.BaseDir != "system" {
-				myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
-				myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
-			}
-			currentCluster.Init(myClusterConf, gl, &tlog, &htlog, termlength, runUUID, Version, repmgrHostname, k)
-			clusters[gl] = currentCluster
-			currentCluster.SetCertificate(svc)
-			go currentCluster.Run()
-			currentClusterName = gl
+		for _, gl := range cfgGroupList {
+			MonitorStartCluster(gl)
 		}
-		for _, gl := range clusters {
-			gl.SetClusterList(clusters)
+		for _, cluster := range clusters {
+			cluster.SetClusterList(clusters)
 		}
 		currentCluster.SetCfgGroupDisplay(currentClusterName)
 
@@ -689,6 +663,66 @@ func newTbChan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
+}
+
+func MonitorStartCluster(clusterName string) (*cluster.Cluster, error) {
+
+	k, err := readKey()
+	if err != nil {
+		log.WithError(err).Info("No existing password encryption scheme")
+		k = nil
+	}
+	apiUser, apiPass = misc.SplitPair(conf.APIUser)
+	if k != nil {
+		p := crypto.Password{Key: k}
+		p.CipherText = apiPass
+		p.Decrypt()
+		apiPass = p.PlainText
+	}
+	currentCluster = new(cluster.Cluster)
+
+	myClusterConf := confs[clusterName]
+	myClusterConf.MonitorAddress = resolveHostIp()
+	if myClusterConf.FailMode == "manual" {
+		myClusterConf.Interactive = true
+	} else {
+		myClusterConf.Interactive = false
+	}
+	if myClusterConf.BaseDir != "system" {
+		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
+		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
+	}
+	currentCluster.Init(myClusterConf, clusterName, &tlog, &htlog, termlength, runUUID, Version, repmgrHostname, k)
+	clusters[clusterName] = currentCluster
+	currentCluster.SetCertificate(OpenSVC)
+	go currentCluster.Run()
+	currentClusterName = clusterName
+	return currentCluster, nil
+}
+
+func MonitorAddCluster(clusterName string) error {
+	var myconf = make(map[string]config.Config)
+
+	myconf[clusterName] = conf
+	cfgGroupList = append(cfgGroupList, clusterName)
+	confs[clusterName] = conf
+
+	file, err := os.OpenFile(conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			log.Errorf("Read file permission denied: %s", conf.ClusterConfigPath+"/"+clusterName+".toml")
+		}
+		return err
+	}
+	defer file.Close()
+	err = toml.NewEncoder(file).Encode(myconf)
+	if err != nil {
+		return err
+	}
+	cluster, _ := MonitorStartCluster(clusterName)
+	cluster.SetClusterList(clusters)
+	return nil
+
 }
 
 func fHeartbeat() {
