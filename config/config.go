@@ -75,7 +75,7 @@ type Config struct {
 	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port"`
 	Autorejoin                         bool   `mapstructure:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback"`
-	RejoinScript                       string `mapstructure:"autrejoin-script"`
+	RejoinScript                       string `mapstructure:"autorejoin-script"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync"`
@@ -235,7 +235,7 @@ type Config struct {
 	ProvProxRoutePort                  string `mapstructure:"prov-proxy-route-port"`
 	ProvProxRouteMask                  string `mapstructure:"prov-proxy-route-mask"`
 	ProvProxRoutePolicy                string `mapstructure:"prov-proxy-route-policy"`
-	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-sharding-img"`
+	ProvProxShardingImg                string `mapstructure:"prov-proxy-docker-shardproxy-img"`
 	ProvProxMaxscaleImg                string `mapstructure:"prov-proxy-docker-maxscale-img"`
 	ProvProxHaproxyImg                 string `mapstructure:"prov-proxy-docker-haproxy-img"`
 	ProvProxProxysqlImg                string `mapstructure:"prov-proxy-docker-proxysql-img"`
