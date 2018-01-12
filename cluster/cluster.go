@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/robfig/cron"
@@ -247,6 +248,26 @@ func (cluster *Cluster) Save() error {
 	if err != nil {
 		return err
 	}
+
+	if strings.Contains(cluster.conf.ClusterConfigPath, "cluster.d") {
+		var myconf = make(map[string]config.Config)
+
+		myconf[cluster.cfgGroup] = cluster.conf
+
+		file, err := os.OpenFile(cluster.conf.ClusterConfigPath+"/"+cluster.cfgGroup+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.conf.ClusterConfigPath+"/"+cluster.cfgGroup+".toml")
+			}
+			return err
+		}
+		defer file.Close()
+		err = toml.NewEncoder(file).Encode(myconf)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
