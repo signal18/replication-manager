@@ -136,11 +136,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
 				continue
 			}
-			if n == 0 {
+			if n == 0 && sv.State != stateMaster {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.conf.LogLevel > 2 {
-					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected", sv.URL)
+					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
 				}
 			} else {
 				if cluster.conf.LogLevel > 2 {
