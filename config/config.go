@@ -138,6 +138,8 @@ type Config struct {
 	MxsDisableMonitor                  bool   `mapstructure:"maxscale-disable-monitor" toml:"maxscale-disable-monitor"`
 	MxsGetInfoMethod                   string `mapstructure:"maxscale-get-info-method" toml:"maxscale-get-info-method"`
 	MxsServerMatchPort                 bool   `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port"`
+	MyproxyOn                          bool   `mapstructure:"myproxy" toml:"myproxy"`
+	MyproxyPort                        int    `mapstructure:"myproxy-port" toml:"myproxy-port"`
 	HaproxyOn                          bool   `mapstructure:"haproxy" toml:"haproxy"`
 	HaproxyHosts                       string `mapstructure:"haproxy-servers" toml:"haproxy-servers"`
 	HaproxyWritePort                   int    `mapstructure:"haproxy-write-port" toml:"haproxy-write-port"`

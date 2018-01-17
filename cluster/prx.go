@@ -21,6 +21,7 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/myproxy"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -43,6 +44,7 @@ type Proxy struct {
 	BackendsWrite   []Backend
 	BackendsRead    []Backend
 	Version         string
+	InternalProxy   *myproxy.Server
 }
 
 type Backend struct {
@@ -67,6 +69,7 @@ const (
 	proxyExternal    string = "extproxy"
 	proxyMysqlrouter string = "mysqlrouter"
 	proxySphinx      string = "sphinx"
+	proxyMyProxy     string = "myproxy"
 )
 
 type proxyList []*Proxy
@@ -94,7 +97,10 @@ func (cluster *Cluster) newProxyList() error {
 	if cluster.conf.ExtProxyOn {
 		nbproxies++
 	}
-
+	// internal myproxy
+	if cluster.conf.MyproxyOn {
+		nbproxies++
+	}
 	cluster.proxies = make([]*Proxy, nbproxies)
 
 	cluster.LogPrintf(LvlInfo, "Loading %d proxies", nbproxies)
@@ -194,6 +200,7 @@ func (cluster *Cluster) newProxyList() error {
 
 			ctproxy++
 		}
+
 	}
 
 	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
@@ -235,6 +242,21 @@ func (cluster *Cluster) newProxyList() error {
 			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.Port)
 			ctproxy++
 		}
+	}
+	if cluster.conf.MyproxyOn {
+		cluster.LogPrintf(LvlInfo, "Loading MyProxy...")
+
+		prx := new(Proxy)
+		prx.Type = proxyMyProxy
+		prx.Port = strconv.Itoa(cluster.conf.MyproxyPort)
+		prx.Host = "0.0.0.0"
+		prx.ReadPort = cluster.conf.MyproxyPort
+		prx.WritePort = cluster.conf.MyproxyPort
+		prx.ReadWritePort = cluster.conf.MyproxyPort
+		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+
+		ctproxy++
 	}
 
 	return nil
@@ -355,6 +377,7 @@ func (cluster *Cluster) refreshProxies() {
 
 }
 func (cluster *Cluster) failoverProxies() {
+
 	cluster.initProxies()
 }
 
@@ -373,7 +396,11 @@ func (cluster *Cluster) initProxies() {
 		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.initProxysql(pr)
 		}
+		if cluster.conf.MyproxyOn && pr.Type == proxyMyProxy {
+			cluster.initMyProxy(pr)
+		}
 	}
+
 	cluster.initConsul()
 }
 
