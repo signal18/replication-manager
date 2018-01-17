@@ -26,6 +26,8 @@ func NewProxyServer(host string, user string, password string, db *sql.DB) (*Ser
 	s := new(Server)
 	s.db = db
 	s.addr = host
+	s.password = password
+	s.user = user
 	return s, nil
 }
 
