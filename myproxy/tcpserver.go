@@ -77,7 +77,7 @@ func (s *Server) proxyHandle(conn net.Conn, db *sql.DB) {
 	// Create a connection with user root and an empty passowrd
 	// We only an empty handler to handle command too
 	siddonconn, _ := siddon.NewConn(conn, s.user, s.password, MysqlHandler{db: db})
-	defer siddonconn.Close()
+	//defer siddonconn.Close()
 	for s.running {
 		err := siddonconn.HandleCommand()
 		if err != nil {
