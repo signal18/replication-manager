@@ -12,11 +12,12 @@ import (
 )
 
 type MysqlHandler struct {
-	db *sql.DB
+	db      *sql.DB
+	verbose bool
 }
 
 func (h MysqlHandler) UseDB(dbName string) error {
-	log.Printf("use %s \n", dbName)
+	//log.Printf("use %s \n", dbName)
 	_, err := h.SelectDB("use " + dbName)
 	if err != nil {
 		log.Printf("Error in use %s \n", err)

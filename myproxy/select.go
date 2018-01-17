@@ -11,8 +11,9 @@ import (
 func (h MysqlHandler) handleSelect(selectStatement *sqlparser.Select) (*mysql.Result, error) {
 
 	newSelect := sqlparser.String(selectStatement)
-	log.Println(selectStatement, "->", newSelect)
-
+	if h.verbose {
+		log.Println(selectStatement, "->", newSelect)
+	}
 	result, err := h.SelectDB(newSelect)
 	if err != nil {
 		log.Println(err)
@@ -57,8 +58,6 @@ func (h MysqlHandler) SelectDB(selectStatement string) (*mysql.Result, error) {
 		valueList = append(valueList, values)
 
 	}
-
-	// 处理结果
 	result, err := mysql.BuildSimpleResultset(
 		columns,
 		valueList,

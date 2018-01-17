@@ -17,6 +17,7 @@ type Server struct {
 	password string
 
 	running bool
+	verbose bool
 
 	listener net.Listener
 }
@@ -72,16 +73,19 @@ func (s *Server) proxyHandle(conn net.Conn, db *sql.DB) {
 	// close connection before exit
 	defer conn.Close()
 
-	log.Println("recv client", conn.RemoteAddr().String())
-
+	if s.verbose {
+		log.Println("recv client", conn.RemoteAddr().String())
+	}
 	// Create a connection with user root and an empty passowrd
 	// We only an empty handler to handle command too
-	siddonconn, _ := siddon.NewConn(conn, s.user, s.password, MysqlHandler{db: db})
+	siddonconn, _ := siddon.NewConn(conn, s.user, s.password, MysqlHandler{db: db, verbose: s.verbose})
 	//defer siddonconn.Close()
 	for s.running {
 		err := siddonconn.HandleCommand()
 		if err != nil {
-			log.Println(err)
+			if s.verbose {
+				log.Println(err)
+			}
 			return
 		}
 	}
