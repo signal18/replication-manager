@@ -22,7 +22,7 @@ type Server struct {
 }
 
 // StartProxyServer start tcp proxy server for Mysql.
-func StartProxyServer(host string, db *sql.DB) (*Server, error) {
+func NewProxyServer(host string, user string, password string, db *sql.DB) (*Server, error) {
 	s := new(Server)
 	s.db = db
 	s.addr = host
@@ -74,7 +74,7 @@ func (s *Server) proxyHandle(conn net.Conn, db *sql.DB) {
 
 	// Create a connection with user root and an empty passowrd
 	// We only an empty handler to handle command too
-	siddonconn, _ := siddon.NewConn(conn, "root", "", MysqlHandler{db: db})
+	siddonconn, _ := siddon.NewConn(conn, s.user, s.password, MysqlHandler{db: db})
 	defer siddonconn.Close()
 	for s.running {
 		err := siddonconn.HandleCommand()

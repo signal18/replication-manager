@@ -253,6 +253,8 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadPort = cluster.conf.MyproxyPort
 		prx.WritePort = cluster.conf.MyproxyPort
 		prx.ReadWritePort = cluster.conf.MyproxyPort
+		prx.User = cluster.conf.MyproxyUser
+		prx.Pass = cluster.conf.MyproxyPassword
 		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
 

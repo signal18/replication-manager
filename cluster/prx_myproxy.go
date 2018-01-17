@@ -16,6 +16,6 @@ func (cluster *Cluster) initMyProxy(proxy *Proxy) {
 		cluster.LogPrintf(LvlErr, "Could not connect to Master for MyProxy %s", err)
 		return
 	}
-	proxy.InternalProxy, _ = myproxy.StartProxyServer("0.0.0.0:4000", db)
+	proxy.InternalProxy, _ = myproxy.NewProxyServer("0.0.0.0:"+proxy.Port, proxy.User, proxy.Pass, db)
 	go proxy.InternalProxy.Run()
 }

@@ -278,8 +278,10 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
 		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
 	}
-	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", true, "Use Internal Proxy")
+	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
 	monitorCmd.Flags().IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
+	monitorCmd.Flags().StringVar(&conf.MyproxyUser, "myproxy-user", "admin", "Myproxy user")
+	monitorCmd.Flags().StringVar(&conf.MyproxyPassword, "myproxy-password", "repman", "Myproxy password")
 
 	if WithProxysql == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
