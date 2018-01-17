@@ -635,7 +635,7 @@ func main() {
 	Metrics.SearchCacheItems = expvar.Func(func() interface{} { return zipperConfig.SearchCache.ECItems() })
 	expvar.Publish("searchCacheItems", Metrics.SearchCacheItems)
 
-	config.zipper = zipper.NewZipper(sendStats, zipperConfig)
+	config.zipper = zipper.NewZipper(sendStats, zipperConfig, zapwriter.Logger("zipper"))
 
 	http.HandleFunc("/metrics/find/", httputil.TrackConnections(httputil.TimeHandler(cu.ParseCtx(findHandler), bucketRequestTimes)))
 	http.HandleFunc("/render/", httputil.TrackConnections(httputil.TimeHandler(cu.ParseCtx(renderHandler), bucketRequestTimes)))

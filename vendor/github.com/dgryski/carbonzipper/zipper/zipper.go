@@ -3,6 +3,7 @@ package zipper
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -20,7 +21,6 @@ import (
 
 	"strings"
 
-	"github.com/lomik/zapwriter"
 	"github.com/satori/go.uuid"
 	"go.uber.org/zap"
 )
@@ -79,6 +79,8 @@ type Zipper struct {
 	maxIdleConnsPerHost       int
 
 	sendStats func(*Stats)
+
+	logger *zap.Logger
 }
 
 // Stats provides zipper-related statistics
@@ -103,8 +105,7 @@ type nameLeaf struct {
 }
 
 // NewZipper allows to create new Zipper
-func NewZipper(sender func(*Stats), config *Config) *Zipper {
-	logger := zapwriter.Logger("new_zipper")
+func NewZipper(sender func(*Stats), config *Config, logger *zap.Logger) *Zipper {
 	z := &Zipper{
 		probeTicker: time.NewTicker(10 * time.Minute),
 		ProbeQuit:   make(chan struct{}),
@@ -126,6 +127,8 @@ func NewZipper(sender func(*Stats), config *Config) *Zipper {
 		timeoutAfterAllStarted:    config.Timeouts.AfterStarted,
 		timeout:                   config.Timeouts.Global,
 		timeoutConnect:            config.Timeouts.Connect,
+
+		logger: logger,
 	}
 
 	logger.Info("zipper config",
@@ -160,13 +163,14 @@ func NewZipper(sender func(*Stats), config *Config) *Zipper {
 type ServerResponse struct {
 	server   string
 	response []byte
+	err      error
 }
 
 var errNoResponses = fmt.Errorf("No responses fetched from upstream")
 var errNoMetricsFetched = fmt.Errorf("No metrics in the response")
 
-func mergeResponses(responses []ServerResponse, stats *Stats) ([]string, *pb3.MultiFetchResponse) {
-	logger := zapwriter.Logger("zipper_render")
+func (z *Zipper) mergeResponses(responses []ServerResponse, stats *Stats) ([]string, *pb3.MultiFetchResponse) {
+	logger := z.logger.With(zap.String("function", "mergeResponses"))
 
 	servers := make([]string, 0, len(responses))
 	metrics := make(map[string][]pb3.FetchResponse)
@@ -224,7 +228,7 @@ func mergeResponses(responses []ServerResponse, stats *Stats) ([]string, *pb3.Mu
 
 		metric := decoded[0]
 
-		mergeValues(&metric, decoded, stats)
+		z.mergeValues(&metric, decoded, stats)
 		multi.Metrics = append(multi.Metrics, metric)
 	}
 
@@ -233,8 +237,8 @@ func mergeResponses(responses []ServerResponse, stats *Stats) ([]string, *pb3.Mu
 	return servers, &multi
 }
 
-func mergeValues(metric *pb3.FetchResponse, decoded []pb3.FetchResponse, stats *Stats) {
-	logger := zapwriter.Logger("zipper_render")
+func (z *Zipper) mergeValues(metric *pb3.FetchResponse, decoded []pb3.FetchResponse, stats *Stats) {
+	logger := z.logger.With(zap.String("function", "mergeValues"))
 
 	var responseLengthMismatch bool
 	for i := range metric.Values {
@@ -273,8 +277,8 @@ func mergeValues(metric *pb3.FetchResponse, decoded []pb3.FetchResponse, stats *
 	}
 }
 
-func infoUnpackPB(responses []ServerResponse, stats *Stats) map[string]pb3.InfoResponse {
-	logger := zapwriter.Logger("zipper_info").With(zap.String("handler", "info"))
+func (z *Zipper) infoUnpackPB(responses []ServerResponse, stats *Stats) map[string]pb3.InfoResponse {
+	logger := z.logger.With(zap.String("function", "infoUnpackPB"))
 
 	decoded := make(map[string]pb3.InfoResponse)
 	for _, r := range responses {
@@ -304,8 +308,8 @@ func infoUnpackPB(responses []ServerResponse, stats *Stats) map[string]pb3.InfoR
 	return decoded
 }
 
-func findUnpackPB(responses []ServerResponse, stats *Stats) ([]pb3.GlobMatch, map[string][]string) {
-	logger := zapwriter.Logger("zipper_find").With(zap.String("handler", "findUnpackPB"))
+func (z *Zipper) findUnpackPB(responses []ServerResponse, stats *Stats) ([]pb3.GlobMatch, map[string][]string) {
+	logger := z.logger.With(zap.String("handler", "findUnpackPB"))
 
 	// metric -> [server1, ... ]
 	paths := make(map[string][]string)
@@ -348,7 +352,7 @@ func findUnpackPB(responses []ServerResponse, stats *Stats) ([]pb3.GlobMatch, ma
 
 func (z *Zipper) doProbe() {
 	stats := &Stats{}
-	logger := zapwriter.Logger("probe")
+	logger := z.logger.With(zap.String("function", "probe"))
 	// Generate unique ID on every restart
 	uuid := uuid.NewV4()
 	ctx := util.SetUUID(context.Background(), uuid.String())
@@ -361,7 +365,7 @@ func (z *Zipper) doProbe() {
 		return
 	}
 
-	_, paths := findUnpackPB(responses, stats)
+	_, paths := z.findUnpackPB(responses, stats)
 
 	z.sendStats(stats)
 
@@ -403,23 +407,28 @@ func (z *Zipper) probeTlds() {
 	}
 }
 
+var errBadResponseCode = errors.New("bad response code")
+
 func (z *Zipper) singleGet(ctx context.Context, logger *zap.Logger, uri, server string, ch chan<- ServerResponse, started chan<- struct{}) {
 	logger = logger.With(zap.String("handler", "singleGet"))
 
 	u, err := url.Parse(server + uri)
 	if err != nil {
-		logger.Error("error parsing uri",
+		logger.Debug("error parsing uri",
 			zap.String("uri", server+uri),
 			zap.Error(err),
 		)
-		ch <- ServerResponse{server, nil}
+		ch <- ServerResponse{server: server, response: nil, err: err}
 		return
 	}
+
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		logger.Error("failed to create new request",
+		logger.Debug("failed to create new request",
 			zap.Error(err),
 		)
+		ch <- ServerResponse{server: server, response: nil, err: err}
+		return
 	}
 	req = cu.MarshalCtx(ctx, util.MarshalCtx(ctx, req))
 
@@ -429,10 +438,10 @@ func (z *Zipper) singleGet(ctx context.Context, logger *zap.Logger, uri, server 
 	defer z.limiter.Leave(server)
 	resp, err := z.storageClient.Do(req.WithContext(ctx))
 	if err != nil {
-		logger.Error("query error",
+		logger.Debug("query error",
 			zap.Error(err),
 		)
-		ch <- ServerResponse{server, nil}
+		ch <- ServerResponse{server: server, response: nil, err: err}
 		return
 	}
 	defer resp.Body.Close()
@@ -440,28 +449,28 @@ func (z *Zipper) singleGet(ctx context.Context, logger *zap.Logger, uri, server 
 	if resp.StatusCode == http.StatusNotFound {
 		// carbonsserver replies with Not Found if we request a
 		// metric that it doesn't have -- makes sense
-		ch <- ServerResponse{server, nil}
+		ch <- ServerResponse{server: server, response: nil, err: nil}
 		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Error("bad response code",
+		logger.Debug("bad response code",
 			zap.Int("response_code", resp.StatusCode),
 		)
-		ch <- ServerResponse{server, nil}
+		ch <- ServerResponse{server: server, response: nil, err: errBadResponseCode}
 		return
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("error reading body",
+		logger.Debug("error reading body",
 			zap.Error(err),
 		)
-		ch <- ServerResponse{server, nil}
+		ch <- ServerResponse{server: server, response: nil, err: err}
 		return
 	}
 
-	ch <- ServerResponse{server, body}
+	ch <- ServerResponse{server: server, response: body, err: nil}
 }
 
 func (z *Zipper) multiGet(ctx context.Context, logger *zap.Logger, servers []string, uri string, stats *Stats) []ServerResponse {
@@ -470,6 +479,9 @@ func (z *Zipper) multiGet(ctx context.Context, logger *zap.Logger, servers []str
 		zap.Strings("servers", servers),
 		zap.String("uri", uri),
 	)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// buffered channel so the goroutines don't block on send
 	ch := make(chan ServerResponse, len(servers))
@@ -486,6 +498,8 @@ func (z *Zipper) multiGet(ctx context.Context, logger *zap.Logger, servers []str
 	var responses int
 	var started int
 
+	erroredServerList := make(map[string][]string)
+
 GATHER:
 	for {
 		select {
@@ -499,6 +513,12 @@ GATHER:
 			responses++
 			if r.response != nil {
 				response = append(response, r)
+			} else {
+				if r.err != nil {
+					list := erroredServerList[r.err.Error()]
+					list = append(list, r.server)
+					erroredServerList[r.err.Error()] = list
+				}
 			}
 
 			if responses == len(servers) {
@@ -535,13 +555,20 @@ GATHER:
 		}
 	}
 
+	if len(erroredServerList) != 0 {
+		logger.Debug("non fatal errors happened while querying servers",
+			zap.Int("", len(erroredServerList)),
+			zap.Any("list_of_errors", erroredServerList),
+		)
+	}
+
 	return response
 }
 
 func (z *Zipper) fetchCarbonsearchResponse(ctx context.Context, logger *zap.Logger, url string, stats *Stats) []string {
 	// Send query to SearchBackend. The result is []queries for StorageBackends
 	searchResponse := z.multiGet(ctx, logger, []string{z.searchBackend}, url, stats)
-	m, _ := findUnpackPB(searchResponse, stats)
+	m, _ := z.findUnpackPB(searchResponse, stats)
 
 	queries := make([]string, 0, len(m))
 	for _, v := range m {
@@ -621,7 +648,7 @@ func (z *Zipper) Render(ctx context.Context, logger *zap.Logger, target string, 
 		return nil, stats, errNoResponses
 	}
 
-	servers, metrics := mergeResponses(responses, stats)
+	servers, metrics := z.mergeResponses(responses, stats)
 
 	if metrics == nil {
 		return nil, stats, errNoMetricsFetched
@@ -660,7 +687,7 @@ func (z *Zipper) Info(ctx context.Context, logger *zap.Logger, target string) (m
 		return nil, stats, errNoResponses
 	}
 
-	infos := infoUnpackPB(responses, stats)
+	infos := z.infoUnpackPB(responses, stats)
 	return infos, stats, nil
 }
 
@@ -682,7 +709,7 @@ func (z *Zipper) Find(ctx context.Context, logger *zap.Logger, query string) ([]
 		// a trailing '*' by graphite-web
 		if strings.HasSuffix(query, "*") {
 			searchCompleterResponse := z.multiGet(ctx, logger, []string{z.searchBackend}, rewrite.RequestURI(), stats)
-			matches, _ := findUnpackPB(searchCompleterResponse, stats)
+			matches, _ := z.findUnpackPB(searchCompleterResponse, stats)
 			// this is a completer request, and so we should return the set of
 			// virtual metrics returned by carbonsearch verbatim, rather than trying
 			// to find them on the stores
@@ -729,7 +756,7 @@ func (z *Zipper) Find(ctx context.Context, logger *zap.Logger, query string) ([]
 			return nil, stats, errNoResponses
 		}
 
-		m, paths := findUnpackPB(responses, stats)
+		m, paths := z.findUnpackPB(responses, stats)
 		metrics = append(metrics, m...)
 
 		// update our cache of which servers have which metrics
