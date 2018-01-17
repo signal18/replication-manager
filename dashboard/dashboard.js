@@ -1,9 +1,10 @@
-var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute']).config(function($routeProvider){
+var routeProvider,app = angular.module('dashboard', ['ngResource','ngMaterial','ngRoute','ng-token-auth']).config(function($routeProvider){
         routeProvider = $routeProvider;
         $routeProvider
             .when('/:timeFrame', {templateUrl: '/', controller: 'DashboardController'})
 
         .otherwise({redirectTo: '/login'});
+        
 
 });
 

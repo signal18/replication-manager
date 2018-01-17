@@ -164,6 +164,9 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 func (cluster *Cluster) mdbsCreateTables(proxy *Proxy) {
 }
 
+func (cluster *Cluster) mdbsReshardTable(proxy *Proxy, table string) {
+}
+
 func (cluster *Cluster) mdbsBootstrap(proxy *Proxy) error {
 
 	params := fmt.Sprintf("?timeout=60s")
