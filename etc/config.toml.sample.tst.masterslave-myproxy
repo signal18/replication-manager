@@ -17,7 +17,7 @@ replication-credential = "root:test"
 myproxy = true
 myproxy-port = 4000
 myproxy-user = "admin"
-myproxy-paswword = "repman"
+myproxy-password = "repman"
 
 [Default]
 # monitoring-datadir = "/var/lib/replication-manager"
