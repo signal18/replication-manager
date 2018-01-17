@@ -141,7 +141,7 @@ type Config struct {
 	MyproxyOn                          bool   `mapstructure:"myproxy" toml:"myproxy"`
 	MyproxyPort                        int    `mapstructure:"myproxy-port" toml:"myproxy-port"`
 	MyproxyUser                        string `mapstructure:"myproxy-user" toml:"myproxy-user"`
-	MyproxyPassword                    string `mapstructure:"myproxy-user" toml:"myproxy-password"`
+	MyproxyPassword                    string `mapstructure:"myproxy-password" toml:"myproxy-password"`
 	HaproxyOn                          bool   `mapstructure:"haproxy" toml:"haproxy"`
 	HaproxyHosts                       string `mapstructure:"haproxy-servers" toml:"haproxy-servers"`
 	HaproxyWritePort                   int    `mapstructure:"haproxy-write-port" toml:"haproxy-write-port"`
