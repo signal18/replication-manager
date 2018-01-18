@@ -246,7 +246,7 @@ for _, addr := range agent.Ips {
 	}
 }*/
 
-func (server *ServerMonitor) GetSnapshot() string {
+func (server *ServerMonitor) GetSnapshot(collector opensvc.Collector) string {
 	if !server.IsPrefered() || !server.ClusterGroup.conf.ProvDiskSnapshot {
 		return ""
 	}
@@ -261,6 +261,13 @@ name = daily
 schedule = 00:01-02:00@120
 keep =  ` + strconv.Itoa(server.ClusterGroup.conf.ProvDiskSnapshotKeep) + `
 sync_max_delay = 1440
+
+`
+		conf = conf + `[task2]
+ schedule = @1
+ command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/snapback
+ user = root
+
 `
 	}
 	return conf

@@ -185,7 +185,7 @@ show_disabled = false
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod)
 		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 	`
-		conf = conf + server.GetSnapshot()
+		conf = conf + server.GetSnapshot(collector)
 		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)
 		conf = conf + server.GetPodDockerDBTemplate(collector, pod, i)
 		conf = conf + server.ClusterGroup.GetPodPackageTemplate(collector, pod)
