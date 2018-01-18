@@ -108,7 +108,11 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "", "Credential Access to bastion host topology via SSH tunnel")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
 	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
-
+	monitorCmd.Flags().BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
+	monitorCmd.Flags().StringVar(&MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	monitorCmd.Flags().BoolVar(&conf.MonitorQueries, "monitoring-queries", true, "Monitor long queries")
+	monitorCmd.Flags().Int64Var(&MonitorLongQueryTime, "monitoring-long-query-time", 1000, "Long query time")
+	monitorCmd.Flags().StringVar(&MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")

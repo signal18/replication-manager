@@ -22,6 +22,11 @@ type Config struct {
 	MonitorAddress                     string `mapstructure:"monitoring-address" toml:"monitoring-address"`
 	MonitorWriteHeartbeat              bool   `mapstructure:"monitoring-write-heartbeat" toml:"monitoring-write-heartbeat"`
 	MonitorWriteHeartbeatCredential    string `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential"`
+	MonitorSchemaChange                bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change"`
+	MonitorSchemaChangeScript          string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script"`
+	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries"`
+	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time"`
+	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose"`
 	LogFile                            string `mapstructure:"log-file" toml:"log-file"`

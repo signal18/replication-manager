@@ -94,6 +94,17 @@ func (server *ServerMonitor) RejoinMaster() error {
 	return nil
 }
 
+func (server *ServerMonitor) RejoinPreviousSnapshot() error {
+	server.ClusterGroup.LogPrintf(LvlInfo, "Creating table replication_manager_schema.snapback")
+	server.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+	_, err := server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.snapback(state int)")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.snapback")
+		return err
+	}
+	return nil
+}
+
 func (server *ServerMonitor) RejoinMasterSST() error {
 	if server.ClusterGroup.conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
@@ -103,7 +114,11 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 		}
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "No mysqldump rejoin: binlog capture failed or wrong version %t , autorejoin-mysqldump %t", server.ClusterGroup.canFlashBack, server.ClusterGroup.conf.AutorejoinMysqldump)
-		server.ClusterGroup.LogPrintf("INFO", "No rejoin method found, old master says: leave me alone, I'm ahead")
+		if server.ClusterGroup.conf.AutorejoinZFSFlashback == true {
+			server.RejoinPreviousSnapshot()
+		} else {
+			server.ClusterGroup.LogPrintf("INFO", "No rejoin method found, old master says: leave me alone, I'm ahead")
+		}
 	}
 	if server.ClusterGroup.conf.RejoinScript != "" {
 		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
