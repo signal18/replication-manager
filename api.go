@@ -120,6 +120,13 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/sst-start", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSSTStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/sst-stop/{port}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSSTStop)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
 	))
@@ -1332,6 +1339,34 @@ func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"alive": "running"}`)
 	} else {
 		io.WriteString(w, `{"alive": "errors"}`)
+	}
+}
+
+func handlerMuxClusterSSTStart(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		port := mycluster.SSTGetPort()
+		go mycluster.SSTRunReceiver(port)
+		io.WriteString(w, port)
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
+	}
+}
+
+func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	port := vars["port"]
+	w.WriteHeader(http.StatusOK)
+
+	if mycluster != nil {
+		mycluster.SSTCloseReceiver(port)
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
 
