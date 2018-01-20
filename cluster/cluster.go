@@ -124,10 +124,14 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.sme.Init()
 	cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
 	cluster.scheduler = cron.New()
-	cluster.scheduler.AddFunc(conf.BackupCron, func() {
-		cluster.master.Backup()
+	cluster.scheduler.AddFunc(conf.BackupLogicalCron, func() {
+		cluster.master.BackupLogical()
 	})
-	cluster.LogPrintf(LvlInfo, "Schedule backup time at: %s", conf.BackupCron)
+	cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
+		cluster.master.BackupPhysical()
+	})
+	cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
+	cluster.LogPrintf(LvlInfo, "Schedule phisical backup time at: %s", conf.BackupPhysicalCron)
 	cluster.scheduler.Start()
 	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()

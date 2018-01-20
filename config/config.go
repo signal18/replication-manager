@@ -277,7 +277,8 @@ type Config struct {
 	GoOS                               string `mapstructure:"goos" toml:"-"`
 	GoArch                             string `mapstructure:"goarch" toml:"-"`
 	Backup                             bool   `mapstructure:"backup" toml:"backup"`
-	BackupCron                         string `mapstructure:"backup-cron-entry" toml:"backup-cron-entry"`
+	BackupLogicalCron                  string `mapstructure:"backup-logical-cron-entry" toml:"backup-logical-cron-entry"`
+	BackupPhysicalCron                 string `mapstructure:"backup-physical-cron-entry" toml:"backup-physical-cron-entry"`
 	BackupType                         string `mapstructure:"backup-type" toml:"backup-type"`
 	BackupKeepHourly                   int    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly"`
 	BackupKeepDaily                    int    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily"`

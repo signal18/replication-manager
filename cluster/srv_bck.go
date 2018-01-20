@@ -19,7 +19,13 @@ import (
 	river "github.com/signal18/replication-manager/river"
 )
 
-func (server *ServerMonitor) Backup() error {
+func (server *ServerMonitor) BackupPhysical() error {
+	server.Conn.Exec("set sql_log_bin=0")
+	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.backup(state int)")
+	return nil
+}
+
+func (server *ServerMonitor) BackupLogical() error {
 	server.ClusterGroup.LogPrintf(LvlInfo, "Receive backup request: %s", server.ClusterGroup.conf.BackupType)
 
 	if server.ClusterGroup.conf.BackupType == "river" {

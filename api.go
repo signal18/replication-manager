@@ -301,6 +301,11 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupPhysical)),
+	))
+
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
@@ -1111,6 +1116,20 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		node.BackupPhysical()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1307,7 +1326,7 @@ func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
-			node.Backup()
+			node.BackupPhysical()
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
