@@ -336,4 +336,6 @@ func initAlias(v *viper.Viper) {
 	v.RegisterAlias("wait-trx", "switchover-wait-trx")
 	v.RegisterAlias("gtidcheck", "switchover-at-equal-gtid")
 	v.RegisterAlias("maxdelay", "failover-max-slave-delay")
+	v.RegisterAlias("maxscale-host", "maxscale-servers")
+	v.RegisterAlias("maxscale-pass", "maxscale-password")
 }
