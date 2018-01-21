@@ -38,7 +38,7 @@ func (cluster *Cluster) initSphinx(proxy *Proxy) {
 
 	sphinx, err := connectSphinx(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return
 	}
 	defer sphinx.Connection.Close()
@@ -52,7 +52,7 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
 
 	sphinx, err := connectSphinx(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return
 	}
 	defer sphinx.Connection.Close()
