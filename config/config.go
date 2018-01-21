@@ -155,6 +155,7 @@ type Config struct {
 	ProxysqlWriterHostgroup            string `mapstructure:"proxysql-writer-hostgroup"`
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup"`
 	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants"`
+	ProxysqlBootstrap                  bool   `mapstructure:"proxysql-bootstrap"`
 	MysqlRouterOn                      bool   `mapstructure:"mysqlrouter"`
 	MysqlRouterHosts                   string `mapstructure:"mysqlrouter-servers"`
 	MysqlRouterPort                    string `mapstructure:"mysqlrouter-port"`
