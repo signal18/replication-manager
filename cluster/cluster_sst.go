@@ -32,7 +32,7 @@ func (cluster *Cluster) SSTRunReceiver(destinationPort string) {
 	writers = append(writers, file)
 	defer file.Close()
 	dest := io.MultiWriter(writers...)
-	listener, err := net.Listen("tcp", destinationPort)
+	listener, err := net.Listen("tcp", "0.0.0.0:"+destinationPort)
 	if err != nil {
 		log.Fatalln(err)
 	}
