@@ -131,7 +131,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		cluster.master.BackupPhysical()
 	})
 	cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
-	cluster.LogPrintf(LvlInfo, "Schedule phisical backup time at: %s", conf.BackupPhysicalCron)
+	cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
 	cluster.scheduler.Start()
 	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()

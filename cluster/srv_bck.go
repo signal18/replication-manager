@@ -21,7 +21,10 @@ import (
 
 func (server *ServerMonitor) BackupPhysical() error {
 	server.Conn.Exec("set sql_log_bin=0")
-	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.backup(state int)")
+	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.backups(port int, server varchar(255), done tinyint default 0, result varchar(1000), start datetime, end datetime)")
+	port := server.ClusterGroup.SSTGetPort()
+	server.Conn.Exec("INSERT INTO replication_manager_schema.backups(port,server,start) VALUES(" + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
+	go server.ClusterGroup.SSTRunReceiver(port)
 	return nil
 }
 
