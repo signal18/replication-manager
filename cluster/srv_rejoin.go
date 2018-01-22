@@ -359,7 +359,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			if server.HasGTIDReplication() {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
-					server.ClusterGroup.LogPrintf("ERROR", "No crash found on current master %s", server.ClusterGroup.master.URL)
+					server.ClusterGroup.LogPrintf(LvlWarn, "No crash found on current master %s", server.ClusterGroup.master.URL)
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
