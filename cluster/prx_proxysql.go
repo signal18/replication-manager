@@ -189,7 +189,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, host string, port string) {
+func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
 	if cluster.conf.ProxysqlOn == false {
 		return
 	}
@@ -201,8 +201,12 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, host string, port s
 	}
 	defer psql.Connection.Close()
 
-	err = psql.SetOfflineSoft(host, port)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", host, port, err)
+	if s.IsMaintenance {
+		err = psql.SetOfflineSoft(s.Host, s.Port)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", s.Host, s.Port, err)
+		}
+	} else {
+		err = psql.SetOnline(s.Host, s.Port)
 	}
 }

@@ -323,7 +323,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			if cluster.GetMaster() != nil {
 				server := cluster.GetServerFromId(serverid)
-				cluster.setMaintenanceProxysql(pr, server.Host, server.Port)
+				cluster.setMaintenanceProxysql(pr, server)
 			}
 		}
 	}
