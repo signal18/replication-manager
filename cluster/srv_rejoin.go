@@ -423,9 +423,6 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				}
 			}
 		}
-
-	} else {
-		server.ClusterGroup.LogPrintf(LvlWarn, "Slave wants to rejoin non discovered master")
 	}
 
 	// In case of state change, reintroduce the server in the slave list
