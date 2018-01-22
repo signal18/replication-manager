@@ -681,7 +681,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
 		if sl.URL == cluster.conf.PrefMaster && cluster.master.State != stateFailed {
-			if cluster.conf.LogLevel > 1 || forcingLog {
+			if (cluster.conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
