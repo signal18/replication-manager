@@ -2,7 +2,6 @@
 
 performance_schema
 performance_schema_instrument="events_statements_history_long=ON"
-ssl
 
 sync_binlog                     = 1
 thread_handling=pool-of-threads
@@ -18,11 +17,11 @@ slave-parallel-mode=optimistic
 log_slave_updates
 sync_binlog=1
 
-log_bin
+log_bin=log-bin
 binlog_format=ROW
 binlog_cache_size = 1M
 expire_logs_days=7
-skip_name_resolve
+skip_name_resolve=1
 
 net_write_timeout = 300
 net_read_timeout = 300
@@ -43,12 +42,10 @@ innodb_adaptive_hash_index = 0
 innodb_write_io_threads = 4
 innodb_flush_neighbors = 0
 innodb_thread_concurrency = 0
-innodb_defragment = 0
 innodb_purge_threads =4
-innodb_change_buffering=none
 innodb_concurrency_tickets =5000
-innodb_io_capacity=1000
-innodb_io_capacity_max=200
+innodb_io_capacity=200
+innodb_io_capacity_max=400
 
 back_log=128
 max_connections = 1024
@@ -60,7 +57,6 @@ thread_cache_size = 128
 query_cache_size = 0
 query_cache_limit = 2M
 ft_min_word_len = 4
-thread_stack = 192K
 tmp_table_size = 512K
 sort_buffer_size =  512K
 join_buffer_size =  2M
