@@ -40,10 +40,41 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	defer psql.Connection.Close()
 
 	for _, s := range cluster.servers {
+		if cluster.conf.ProxysqlBootstrap {
+			err = psql.AddServer(s.Host, s.Port)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s (%s)", s.URL, err)
+			}
+		}
+		if s.State == stateUnconn {
+			err = psql.AddOfflineServer(s.Host, s.Port)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s as offline (%s)", s.URL, err)
+			}
+		}
+	}
+	err = psql.LoadServersToRuntime()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+	}
+}
+
+func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
+	psql, err := connectProxysql(proxy)
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	defer psql.Connection.Close()
+	for _, s := range cluster.servers {
 		if s.State == stateUnconn {
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s offline (%s)", s.URL, err)
 			}
 		}
 	}

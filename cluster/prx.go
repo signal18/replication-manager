@@ -355,8 +355,24 @@ func (cluster *Cluster) refreshProxies() {
 	}
 
 }
+
 func (cluster *Cluster) failoverProxies() {
-	cluster.initProxies()
+	for _, pr := range cluster.proxies {
+		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
+		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+			cluster.initHaproxy(nil, pr)
+		}
+		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+			cluster.initMaxscale(nil, pr)
+		}
+		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
+			cluster.initMdbsproxy(nil, pr)
+		}
+		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+			cluster.failoverProxysql(pr)
+		}
+	}
+	cluster.initConsul()
 }
 
 func (cluster *Cluster) initProxies() {
