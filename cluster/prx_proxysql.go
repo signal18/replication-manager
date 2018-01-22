@@ -239,5 +239,12 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
 		}
 	} else {
 		err = psql.SetOnline(s.Host, s.Port)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as online (%s)", s.Host, s.Port, err)
+		}
+	}
+	err = psql.LoadServersToRuntime()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
 }
