@@ -91,6 +91,7 @@ type ServerMonitor struct {
 	IsSlave                     bool
 	IsVirtualMaster             bool
 	IsMaintenance               bool
+	IsIgnore                    bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
