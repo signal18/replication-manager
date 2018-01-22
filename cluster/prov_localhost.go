@@ -108,22 +108,31 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 }
 
 func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor) error {
-
+	out := &bytes.Buffer{}
 	path := cluster.conf.WorkingDir + "/" + server.Id
 	//os.RemoveAll(path)
 
-	out, err := exec.Command("rm", "-rf", path).CombinedOutput()
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
-	}
-	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", string(out))
+	cmd := exec.Command("rm", "-rf", path)
 
-	out, err = exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data"+cluster.conf.ProvDatadirVersion, path).CombinedOutput()
+	cmd.Stdout = out
+	err := cmd.Run()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err)
+		return err
 	}
-	cluster.LogPrintf(LvlInfo, "Copy fresh datadir done: %s", string(out))
-	time.Sleep(time.Millisecond * 2000)
+	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
+
+	cmd = exec.Command("cp", "-rp", cluster.conf.ShareDir+"/tests/data"+cluster.conf.ProvDatadirVersion, path)
+
+	// Attach buffer to command
+	cmd.Stdout = out
+	err = cmd.Run()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "%s", err)
+		return err
+	}
+	cluster.LogPrintf(LvlInfo, "Copy fresh datadir done: %s", out.Bytes())
+
 	err = cluster.LocalhostStartDatabaseService(server)
 	if err != nil {
 		return err
@@ -168,7 +177,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 	mariadbdCmd.Start()
 	server.Process = mariadbdCmd.Process
-
+	mariadbdCmd.Process.Release()
 	exitloop := 0
 	for exitloop < 30 {
 		time.Sleep(time.Millisecond * 2000)
@@ -178,12 +187,13 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		if err2 == nil {
 			defer conn.Close()
 			conn.Exec("set sql_log_bin=0")
-			grants := "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
-			conn.Exec("grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'")
+			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
+			conn.Exec(grants)
 			cluster.LogPrintf(LvlInfo, "%s", grants)
-			grants2 := "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
-			conn.Exec(grants2)
-
+			grants = "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
+			conn.Exec(grants)
+			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
+			conn.Exec(grants)
 			exitloop = 100
 		}
 		exitloop++
