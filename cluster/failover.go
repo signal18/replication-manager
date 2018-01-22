@@ -86,7 +86,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.sme.RemoveFailoverState()
 		return false
 	}
-	cluster.LogPrintf(LvlInfo, "Slave %s [%d] has been elected as a new master", cluster.slaves[key].URL, key)
+	cluster.LogPrintf(LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
 	// Shuffle the server list
 	oldMaster := cluster.master
 	var skey int
@@ -865,7 +865,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.sme.RemoveFailoverState()
 		return false
 	}
-	cluster.LogPrintf(LvlInfo, "Server %s [%d] has been elected as a new master", cluster.slaves[key].URL, key)
+	cluster.LogPrintf(LvlInfo, "Server %s has been elected as a new master", cluster.slaves[key].URL)
 	// Shuffle the server list
 
 	var skey int
