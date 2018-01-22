@@ -1,6 +1,6 @@
-## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=develop)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=2.0)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
 
-![replication-manager](https://github.com/signal18/replication-manager/raw/develop/dashboard/static/logo.png)
+![replication-manager](https://github.com/signal18/replication-manager/raw/2.0/dashboard/static/logo.png)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
@@ -18,7 +18,7 @@ The main features are:
 
 ### License
 
-__replication-manager__ is released under the GPLv3 license. ([complete licence text](https://github.com/github/orchestrator/blob/master/LICENSE))
+__replication-manager__ is released under the GPLv3 license. ([complete licence text](https://github.com/signal18/replication-manager/blob/master/LICENSE))
 
 It includes third-party libraries released under their own licences. Please refer to the `vendor` directory for more information.
 

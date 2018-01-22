@@ -36,6 +36,18 @@ func (psql *ProxySQL) Connect() error {
 	return nil
 }
 
+func (psql *ProxySQL) AddServer(host string, port string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port) VALUES('%s','%s')", host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+func (psql *ProxySQL) AddOfflineServer(host string, port string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id, hostname, port) VALUES('666', '%s','%s')", host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) SetOffline(host string, port string) error {
 	sql := fmt.Sprintf("UPDATE mysql_servers SET hostgroup_id='666' WHERE hostname='%s' AND port='%s'", host, port)
 	_, err := psql.Connection.Exec(sql)
