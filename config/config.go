@@ -33,7 +33,7 @@ type Config struct {
 	HostsTLSKEY                        string `mapstructure:"db-servers-tls-client-key"`
 	HostsTLSCLI                        string `mapstructure:"db-servers-tls-client-cert"`
 	PrefMaster                         string `mapstructure:"db-servers-prefered-master"`
-	IgnoreSrv                          string `mapstructure:"db-servers-ignore-hosts"`
+	IgnoreSrv                          string `mapstructure:"db-servers-ignored-hosts"`
 	Timeout                            int    `mapstructure:"db-servers-connect-timeout"`
 	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
