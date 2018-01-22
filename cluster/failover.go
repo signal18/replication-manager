@@ -164,14 +164,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate: %s", err)
 	}
-	cluster.LogPrintf("INFO ", "Save replication status before electing")
+	cluster.LogPrintf(LvlDbg, "Save replication status before electing")
 	ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Faiover can not fetch replication info on new master: %s", err)
+		cluster.LogPrintf(LvlErr, "Failover can not fetch replication info on new master: %s", err)
 	}
-	cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile.String)
-	cluster.LogPrintf(LvlInfo, "master_log_pos=%s", ms.ReadMasterLogPos.String)
-	cluster.LogPrintf(LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+	cluster.LogPrintf(LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
+	cluster.LogPrintf(LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
+	cluster.LogPrintf(LvlDbg, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 	//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 	//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
@@ -201,7 +201,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if relaymaster != nil {
 			rs, err := relaymaster.GetSlaveStatus(relaymaster.ReplicationSourceName)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't found slave status on relay server %s", relaymaster.URL)
+				cluster.LogPrintf(LvlErr, "Can't find slave status on relay server %s", relaymaster.URL)
 			}
 			relaymaster.Refresh()
 
