@@ -268,7 +268,9 @@
                                  <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
                                     <md-option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
                                  </md-select><BR><BR>
-                                 <button ng-if="settings.test=='true'"  type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                 <button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+                                 <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
+                                 <BR><BR>
                                  <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
                                  <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
                                  <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
