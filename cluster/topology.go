@@ -123,6 +123,10 @@ func (cluster *Cluster) TopologyDiscover() error {
 	cluster.slaves = nil
 	for k, sv := range cluster.servers {
 
+		if sv.IsDown() {
+			continue
+		}
+
 		if sv.IsSlave {
 			if cluster.conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
