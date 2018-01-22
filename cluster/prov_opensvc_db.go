@@ -202,6 +202,21 @@ show_disabled = false
 		}
 	}
 	network := strings.Join(ips, ".")
+
+	conf = conf + `[task#01]
+	 schedule = @1
+	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/snapback
+	 user = root
+
+	`
+
+	conf = conf + `[task#02]
+	 schedule = @1
+	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/trigger-physicalbackup
+	 user = root
+
+	`
+
 	conf = conf + `
 [env]
 nodes = ` + agent + `
@@ -253,7 +268,7 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
- 
+
 `
 
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() && server.ClusterGroup.GetMaster().Id == server.Id {

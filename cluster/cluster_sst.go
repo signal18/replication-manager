@@ -28,7 +28,11 @@ func (cluster *Cluster) SSTCloseReceiver(destinationPort string) {
 func (cluster *Cluster) SSTRunReceiver(destinationPort string) {
 
 	var writers []io.Writer
-	file, err := os.Create(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/xtrabackup.tar.gz")
+	filename := cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/xtrabackup.xbstream"
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Open file failed in backup physical %s", err)
+	}
 	writers = append(writers, file)
 	defer file.Close()
 	dest := io.MultiWriter(writers...)
@@ -36,7 +40,7 @@ func (cluster *Cluster) SSTRunReceiver(destinationPort string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	cluster.LogPrintf(LvlErr, "Listening for SST on port %s", destinationPort)
+	cluster.LogPrintf(LvlInfo, "Listening for SST on port %s", destinationPort)
 	con, err := listener.Accept()
 	SSTconnections[destinationPort] = con
 	cluster.tcp_con_handle(con, dest)
