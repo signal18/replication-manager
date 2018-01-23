@@ -152,13 +152,11 @@
                         <table ng-if="servers" class="table">
 
                            <tr>
-                             <th></th>
-                             <th></th>
                               <th>Host</th>
                               <th>Port</th>
-
                               <th>Version</th>
                               <th>Status</th>
+                              <th>Priority</th>
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true ">Using GTID</th>
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Current GTID</th>
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Slave GTID Pos</th>
@@ -178,10 +176,7 @@
 
                            <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-                             <td  ng-if="server.Ignored==true"><i class="fa fa-2x fa-thumbs-down text-success"></td>
-                             <td  ng-if="server.Prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"></td>
-                             <td  ng-if="server.Ignored==false"><div style="width:24px"/></td>
-                             <td  ng-if="server.Prefered==false"><div style="width:24px"/></td>
+
 
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>
@@ -194,6 +189,9 @@
                                 <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
                                 <span ng-switch-default class="label label-default">{{server.State}}<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
                               </td>
+                              <td ng-if="server.Ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"></td>
+                              <td ng-if="server.Prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"></td>
+                              <td ng-if="server.Prefered==false && server.Ignored==false"></td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{server.Replications[0].UsingGtid.String}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.CurrentGtid)}}</td>
                               <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
