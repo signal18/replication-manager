@@ -19,7 +19,6 @@ import (
 
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -636,7 +635,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 	for i, sl := range l {
 
 		/* If server is in the ignore list, do not elect it */
-		if misc.Contains(cluster.ignoreList, sl.URL) {
+		if sl.IsIgnored() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
@@ -1051,7 +1050,7 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 
 	for i, sl := range cluster.servers {
 		/* If server is in the ignore list, do not elect it */
-		if misc.Contains(cluster.ignoreList, sl.URL) {
+		if sl.IsIgnored() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			if cluster.conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)

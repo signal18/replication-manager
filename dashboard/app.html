@@ -152,8 +152,11 @@
                         <table ng-if="servers" class="table">
 
                            <tr>
+                             <th></th>
+                             <th></th>
                               <th>Host</th>
                               <th>Port</th>
+
                               <th>Version</th>
                               <th>Status</th>
                               <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true ">Using GTID</th>
@@ -175,6 +178,11 @@
 
                            <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                             <td  ng-if="server.IsIgnore==true"><img width=24 height=24 src="/static/unlike.png"></td>
+                             <td  ng-if="server.IsPrefere==true"><img width=24 height=24 src="/static/like.png"></td>
+                             <td  ng-if="server.IsIgnore==false"><div style="width:24px"/></td>
+                             <td  ng-if="server.IsPrefere==false"><div style="width:24px"/></td>
+
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>
                               <td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>

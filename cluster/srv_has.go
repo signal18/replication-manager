@@ -11,7 +11,6 @@ package cluster
 
 import (
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/misc"
 )
 
 // check if node see same master as the passed list
@@ -41,7 +40,7 @@ func (sl serverList) checkAllSlavesRunning() bool {
 		if sserr != nil {
 			return false
 		}
-		if ss.SlaveSQLRunning.String != "Yes" || ss.SlaveSQLRunning.String != "Yes" {
+		if ss.SlaveSQLRunning.String != "Yes" || ss.SlaveIORunning.String != "Yes" {
 			return false
 		}
 	}
@@ -123,24 +122,15 @@ func (server *ServerMonitor) HasReplicationIssue() bool {
 }
 
 func (server *ServerMonitor) IsIgnored() bool {
-	if misc.Contains(server.ClusterGroup.ignoreList, server.URL) {
-		return true
-	}
-	return false
+	return server.IsIgnore
 }
 
 func (server *ServerMonitor) IsReadOnly() bool {
-	if server.HaveReadOnly {
-		return true
-	}
-	return false
+	return server.HaveReadOnly
 }
 
 func (server *ServerMonitor) IsReadWrite() bool {
-	if server.HaveReadOnly {
-		return false
-	}
-	return true
+	return server.HaveReadOnly
 }
 
 func (server *ServerMonitor) IsIOThreadRunning() bool {
@@ -166,12 +156,7 @@ func (server *ServerMonitor) IsSQLThreadRunning() bool {
 }
 
 func (server *ServerMonitor) IsPrefered() bool {
-	for _, v := range server.ClusterGroup.hostList {
-		if v == server.URL {
-			return true
-		}
-	}
-	return false
+	return server.IsPrefere
 }
 
 func (server *ServerMonitor) IsMaster() bool {
