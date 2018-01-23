@@ -637,24 +637,15 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		/* If server is in the ignore list, do not elect it */
 		if sl.IsIgnored() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
-			}
 			continue
 		}
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "Slave %s is Relay . Skipping", sl.URL)
-			}
 			continue
 		}
 		if cluster.conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "Slave %s has state Master. Skipping", sl.URL)
-			}
 			continue
 		}
 
@@ -662,9 +653,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		if !cluster.master.IsDown() {
 			if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
 				cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ErrFrom: "CHECK"})
-				if cluster.conf.LogLevel > 1 || forcingLog {
-					cluster.LogPrintf(LvlDbg, "Slave %s has isSlaveElectableForSwitchover false. Skipping", sl.URL)
-				}
 				continue
 			}
 		}
@@ -672,9 +660,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl, forcingLog) == false {
 			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "Slave %s has isSlaveElectable false. Skipping", sl.URL)
-			}
 			continue
 		}
 
@@ -688,9 +673,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		//old style replication
 		if errss != nil && cluster.conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "Election %s have no master log file, may be failed slave", sl.URL)
-			}
 			continue
 		}
 		// Fake position if none as new slave
