@@ -707,7 +707,7 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mycluster.LogPrintf(cluster.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
 		}
-		mycluster.SwitchoverWaitTest()
+		mycluster.MasterFailover(false)
 		mycluster.SetPrefMaster(savedPrefMaster)
 	} else {
 		http.Error(w, "No cluster", 500)
