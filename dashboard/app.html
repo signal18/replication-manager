@@ -176,8 +176,8 @@
 
                            <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-                             <td  ng-if="server.Ignored==true"><img width=24 height=24 src="/static/unlike.png"></td>
-                             <td  ng-if="server.Prefered==true"><img width=24 height=24 src="/static/like.png"></td>
+                             <td  ng-if="server.Ignored==true"><i class="fa fa-2x fa-thumbs-down text-success"></td>
+                             <td  ng-if="server.Prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"></td>
                              <td  ng-if="server.Ignored==false"><div style="width:24px"/></td>
                              <td  ng-if="server.Prefered==false"><div style="width:24px"/></td>
 
