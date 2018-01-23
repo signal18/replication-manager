@@ -456,6 +456,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
 	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
+	s.GraphiteMetrics = fmt.Sprintf("%v", currentCluster.GetConf().GraphiteMetrics)
 	s.Clusters = cfgGroupList
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
