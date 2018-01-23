@@ -122,7 +122,7 @@ func (server *ServerMonitor) HasReplicationIssue() bool {
 }
 
 func (server *ServerMonitor) IsIgnored() bool {
-	return server.IsIgnore
+	return server.Ignored
 }
 
 func (server *ServerMonitor) IsReadOnly() bool {
@@ -156,7 +156,7 @@ func (server *ServerMonitor) IsSQLThreadRunning() bool {
 }
 
 func (server *ServerMonitor) IsPrefered() bool {
-	return server.IsPrefere
+	return server.Prefered
 }
 
 func (server *ServerMonitor) IsMaster() bool {

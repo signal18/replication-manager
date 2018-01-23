@@ -176,10 +176,10 @@
 
                            <tbody>
                            <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-                             <td  ng-if="server.IsIgnore==true"><img width=24 height=24 src="/static/unlike.png"></td>
-                             <td  ng-if="server.IsPrefere==true"><img width=24 height=24 src="/static/like.png"></td>
-                             <td  ng-if="server.IsIgnore==false"><div style="width:24px"/></td>
-                             <td  ng-if="server.IsPrefere==false"><div style="width:24px"/></td>
+                             <td  ng-if="server.Ignored==true"><img width=24 height=24 src="/static/unlike.png"></td>
+                             <td  ng-if="server.Prefered==true"><img width=24 height=24 src="/static/like.png"></td>
+                             <td  ng-if="server.Ignored==false"><div style="width:24px"/></td>
+                             <td  ng-if="server.Prefered==false"><div style="width:24px"/></td>
 
                               <td>{{server.Host}}</td>
                               <td>{{server.Port}}</td>

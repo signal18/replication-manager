@@ -16,11 +16,11 @@ import (
 )
 
 func (server *ServerMonitor) SetIgnored(ignored bool) {
-	server.IsIgnore = ignored
+	server.Ignored = ignored
 }
 
 func (server *ServerMonitor) SetPrefered(pref bool) {
-	server.IsPrefere = pref
+	server.Prefered = pref
 }
 
 func (server *ServerMonitor) SetReadOnly() error {
