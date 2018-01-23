@@ -352,7 +352,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 // Check that mandatory flags have correct values. This is not part of the state machine and mandatory flags
 // must lead to Fatal errors if initialized with wrong values.
 
-func (cluster *Cluster) repmgrFlagCheck() error {
+func (cluster *Cluster) isValidConfig() error {
 	if cluster.conf.LogFile != "" {
 		var err error
 		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -392,8 +392,14 @@ func (cluster *Cluster) repmgrFlagCheck() error {
 		cluster.rplPass = p.PlainText
 	}
 
+	// Check if ingnored  servers are included in Host List
 	if cluster.conf.IgnoreSrv != "" {
-		cluster.ignoreList = strings.Split(cluster.conf.IgnoreSrv, ",")
+		ihosts := strings.Split(cluster.conf.IgnoreSrv, ",")
+		for _, host := range ihosts {
+			if !strings.Contains(cluster.conf.Hosts, host) {
+				cluster.LogPrintf(LvlErr, clusterError["ERR00059"], host)
+			}
+		}
 	}
 
 	// Check if preferred master is included in Host List

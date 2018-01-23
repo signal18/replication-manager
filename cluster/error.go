@@ -65,6 +65,8 @@ var clusterError = map[string]string{
 	"ERR00055": "Arbitrator unreachable (%s)",
 	"ERR00056": "Master user %s is not defined on replication candidate %s",
 	"ERR00057": "Database duplicate users not allowed in proxysql %s",
+	"ERR00058": "Sphinx connection error: %s",
+	"ERR00059": "Ignored server %s not found in configured server list",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is working",

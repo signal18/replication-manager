@@ -17,7 +17,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -40,7 +39,7 @@ func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
 	var err error
-	err = cluster.repmgrFlagCheck()
+	err = cluster.isValidConfig()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
@@ -61,7 +60,6 @@ func (cluster *Cluster) newServerList() error {
 }
 
 func (cluster *Cluster) pingServerList() {
-
 	wg := new(sync.WaitGroup)
 	for _, sv := range cluster.servers {
 		wg.Add(1)
@@ -327,20 +325,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
 
-	// Fecth service Status
-	/*	if cluster.conf.Enterprise {
-		status, err := cluster.GetOpenSVCSeviceStatus()
-		cluster.openSVCServiceStatus = status
-		if err != nil {
-			cluster.SetState("ERR00044", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00044"], cluster.conf.ProvHost), ErrFrom: "TOPO"})
-		}
-	}*/
 	if cluster.IsProvision() {
 		if len(cluster.crashes) > 0 {
 			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.crashes = nil
 			cluster.Save()
-
 		}
 	}
 	if cluster.sme.CanMonitor() {
@@ -356,7 +345,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 		//	if cluster.conf.Interactive == false {
 		allslavefailed := true
 		for _, s := range cluster.slaves {
-			if s.State != stateFailed && misc.Contains(cluster.ignoreList, s.URL) == false {
+			if s.State != stateFailed && s.IsIgnored() == false {
 				allslavefailed = false
 			}
 		}

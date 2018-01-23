@@ -47,7 +47,6 @@ type Cluster struct {
 	sme                        *state.StateMachine
 	runStatus                  string
 	runOnceAfterTopology       bool
-	ignoreList                 []string
 	conf                       config.Config
 	tlog                       *termlog.TermLog
 	htlog                      *httplog.HttpLog

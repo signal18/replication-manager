@@ -6,6 +6,28 @@
 
 package cluster
 
+import "strings"
+
+func (cluster *Cluster) IsInIgnoredHosts(host string) bool {
+	ihosts := strings.Split(cluster.conf.IgnoreSrv, ",")
+	for _, ihost := range ihosts {
+		if host == ihost {
+			return true
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) IsInPreferedHosts(host string) bool {
+	ihosts := strings.Split(cluster.conf.PrefMaster, ",")
+	for _, ihost := range ihosts {
+		if host == ihost {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsProvision() bool {
 	for _, s := range cluster.servers {
 		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
@@ -13,7 +35,6 @@ func (cluster *Cluster) IsProvision() bool {
 		}
 	}
 	return true
-
 }
 
 func (cluster *Cluster) IsInHostList(host string) bool {

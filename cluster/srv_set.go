@@ -15,6 +15,14 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
+func (server *ServerMonitor) SetIgnored(ignored bool) {
+	server.IsIgnore = ignored
+}
+
+func (server *ServerMonitor) SetPrefered(pref bool) {
+	server.IsPrefere = pref
+}
+
 func (server *ServerMonitor) SetReadOnly() error {
 	if !server.IsReadOnly() {
 		err := dbhelper.SetReadOnly(server.Conn, true)

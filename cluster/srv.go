@@ -92,6 +92,7 @@ type ServerMonitor struct {
 	IsVirtualMaster             bool
 	IsMaintenance               bool
 	IsIgnore                    bool
+	IsPrefere                   bool
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
@@ -161,7 +162,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
-
+	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
+	server.SetPrefered(cluster.IsInPreferedHosts(server.URL))
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
