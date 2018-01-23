@@ -94,6 +94,7 @@ type Settings struct {
 	ToSessionEnd        string   `json:"tosessionend"`
 	HttpAuth            string   `json:"httpauth"`
 	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
+	GraphiteMetrics     string   `json:"graphitemetrics"`
 	Clusters            []string `json:"clusters"`
 	RegTests            []string `json:"regtests"`
 	Topology            string   `json:"topology"`
