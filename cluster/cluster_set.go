@@ -63,6 +63,13 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
+	for _, srv := range cluster.servers {
+		if srv.URL == PrefMaster {
+			srv.SetPrefered(true)
+		} else {
+			srv.SetPrefered(false)
+		}
+	}
 	cluster.conf.PrefMaster = PrefMaster
 }
 
