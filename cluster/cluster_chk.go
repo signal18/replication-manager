@@ -392,7 +392,7 @@ func (cluster *Cluster) isValidConfig() error {
 		cluster.rplPass = p.PlainText
 	}
 
-	// Check if ingnored  servers are included in Host List
+	// Check if ignored servers are included in Host List
 	if cluster.conf.IgnoreSrv != "" {
 		ihosts := strings.Split(cluster.conf.IgnoreSrv, ",")
 		for _, host := range ihosts {
