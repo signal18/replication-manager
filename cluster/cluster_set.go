@@ -193,6 +193,11 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 
 func (cluster *Cluster) SetActiveStatus(status string) {
 	cluster.runStatus = status
+	if cluster.runStatus == ConstMonitorActif {
+		cluster.scheduler.Start()
+	} else {
+		cluster.scheduler.Stop()
+	}
 }
 
 func (cluster *Cluster) SetTestStartCluster(check bool) {

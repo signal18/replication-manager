@@ -25,13 +25,18 @@ func (cluster *Cluster) SSTCloseReceiver(destinationPort string) {
 	SSTconnections[destinationPort].Close()
 }
 
-func (cluster *Cluster) SSTRunReceiver(destinationPort string) {
+func (cluster *Cluster) SSTRunReceiver(destinationPort string, filename string, openfile string) {
 
 	var writers []io.Writer
-	filename := cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/xtrabackup.xbstream"
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	var file *os.File
+	var err error
+	if openfile == ConstJobCreateFile {
+		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	} else {
+		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND, 0777)
+	}
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Open file failed in backup physical %s", err)
+		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
 	}
 	writers = append(writers, file)
 	defer file.Close()

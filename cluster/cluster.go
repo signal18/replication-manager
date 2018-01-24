@@ -95,6 +95,14 @@ const (
 	stateClusterWarn  string = "Running with warnings"
 	stateClusterRun   string = "Running"
 )
+const (
+	ConstJobCreateFile string = "JOB_O_CREATE_FILE"
+	ConstJobAppendFile string = "JOB_O_APPEND_FILE"
+)
+const (
+	ConstMonitorActif   string = "A"
+	ConstMonitorStandby string = "S"
+)
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
@@ -118,7 +126,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
 	cluster.sme = new(state.StateMachine)
-	cluster.runStatus = "A"
+	cluster.runStatus = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
 	cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
@@ -129,8 +137,12 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
 		cluster.master.BackupPhysical()
 	})
+	cluster.scheduler.AddFunc(conf.BackupDatabaseLogCron, func() {
+		cluster.BackupLogs()
+	})
 	cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
 	cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
+	cluster.LogPrintf(LvlInfo, "Schedule database log backup time at: %s", conf.BackupDatabaseLogCron)
 	cluster.scheduler.Start()
 	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()
@@ -450,4 +462,11 @@ func (cluster *Cluster) agentFlagCheck() {
 		log.Fatal("No master user/pair specified")
 	}
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
+}
+
+func (cluster *Cluster) BackupLogs() {
+	for _, s := range cluster.servers {
+		s.BackupErrorLog()
+		s.BackupSlowQueryLog()
+	}
 }

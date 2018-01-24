@@ -204,18 +204,11 @@ show_disabled = false
 	network := strings.Join(ips, ".")
 
 	conf = conf + `[task#01]
-	 schedule = @1
-	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/snapback
-	 user = root
+schedule = @1
+command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/trigger-dbjobs
+user = root
 
-	`
-
-	conf = conf + `[task#02]
-	 schedule = @1
-	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/trigger-physicalbackup
-	 user = root
-
-	`
+`
 
 	conf = conf + `
 [env]

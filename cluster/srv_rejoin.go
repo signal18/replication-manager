@@ -95,14 +95,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 }
 
 func (server *ServerMonitor) RejoinPreviousSnapshot() error {
-	server.ClusterGroup.LogPrintf(LvlInfo, "Creating table replication_manager_schema.snapback")
-	server.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-	_, err := server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.snapback(state int)")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.snapback")
-		return err
-	}
-	return nil
+	return server.ZFSSnapBack()
 }
 
 func (server *ServerMonitor) RejoinMasterSST() error {

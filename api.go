@@ -120,11 +120,8 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/sst-start", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSSTStart)),
-	))
-	router.Handle("/api/clusters/{clusterName}/actions/sst-stop/{port}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSSTStop)),
+	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterMasterPhysicalBackup)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
@@ -304,6 +301,16 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupPhysical)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-error-log", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupErrorLog)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-slowquery-log", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
 	))
 
 	//PROTECTED ENDPOINTS FOR PROXIES
@@ -1132,6 +1139,32 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		node.BackupErrorLog()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		node.BackupSlowQueryLog()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1363,14 +1396,12 @@ func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxClusterSSTStart(w http.ResponseWriter, r *http.Request) {
+func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		w.WriteHeader(http.StatusOK)
-		port := mycluster.SSTGetPort()
-		go mycluster.SSTRunReceiver(port)
-		io.WriteString(w, port)
+		mycluster.GetMaster().BackupPhysical()
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
