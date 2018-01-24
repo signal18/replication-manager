@@ -41,21 +41,21 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
-
-	con, err := listener.Accept()
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Exiting SST on socket accept %s", err)
-		return "", err
-	}
 	destinationPort := listener.Addr().(*net.TCPAddr).Port
 	cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
-	SSTconnections[destinationPort] = con
-	go cluster.tcp_con_handle(con, dest)
+
+	go cluster.tcp_con_handle(dest, listener, destinationPort)
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) tcp_con_handle(con net.Conn, out io.Writer) {
+func (cluster *Cluster) tcp_con_handle(out io.Writer, listener net.Listener, destinationPort int) {
+	con, err := listener.Accept()
+	SSTconnections[destinationPort] = con
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Exiting SST on socket accept %s", err)
+		return
+	}
 
 	chan_to_stdout := cluster.stream_copy(con, out)
 
