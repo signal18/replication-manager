@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"io"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -43,7 +42,8 @@ func (cluster *Cluster) SSTRunReceiver(destinationPort string, filename string, 
 	dest := io.MultiWriter(writers...)
 	listener, err := net.Listen("tcp", "0.0.0.0:"+destinationPort)
 	if err != nil {
-		log.Fatalln(err)
+		cluster.LogPrintf(LvlErr, "Exiting SST %s", err)
+		return
 	}
 	cluster.LogPrintf(LvlInfo, "Listening for SST on port %s", destinationPort)
 	con, err := listener.Accept()
