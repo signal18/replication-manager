@@ -479,7 +479,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 	}
 	// SHOW SLAVE STATUS
-	server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
+	err = server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not set replication channel")
 	}
