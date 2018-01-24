@@ -22,29 +22,25 @@ import (
 func (server *ServerMonitor) BackupPhysical() error {
 	server.Conn.Exec("set sql_log_bin=0")
 	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id int not null auto_increment primary key, task varchar(20),  port int, server varchar(255), done tinyint not null default 0, result varchar(1000), start datetime, end datetime, idx1 key(task,done)) engine=innodb")
-	port := server.ClusterGroup.SSTGetPort()
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
 	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('xtrabackup'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
-	go server.ClusterGroup.SSTRunReceiver(port, server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
-	return nil
+	return err
 }
 
 func (server *ServerMonitor) BackupErrorLog() error {
 	server.Conn.Exec("set sql_log_bin=0")
 	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id int not null auto_increment primary key, task varchar(20),  port int, server varchar(255), done tinyint not null default 0, result varchar(1000), start datetime, end datetime, idx1 key(task,done)) engine=innodb")
-	port := server.ClusterGroup.SSTGetPort()
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
 	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('log_error'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
-	go server.ClusterGroup.SSTRunReceiver(port, server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
-
-	return nil
+	return err
 }
 
 func (server *ServerMonitor) BackupSlowQueryLog() error {
 	server.Conn.Exec("set sql_log_bin=0")
 	server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id int not null auto_increment primary key, task varchar(20),  port int, server varchar(255), done tinyint not null default 0, result varchar(1000), start datetime, end datetime, idx1 key(task,done)) engine=innodb")
-	port := server.ClusterGroup.SSTGetPort()
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_slow_query_log_file.log", ConstJobAppendFile)
 	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('slow_query_log_file'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
-	go server.ClusterGroup.SSTRunReceiver(port, server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_slow_query_log_file.log", ConstJobAppendFile)
-	return nil
+	return err
 }
 
 func (server *ServerMonitor) ZFSSnapBack() error {

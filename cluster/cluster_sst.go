@@ -13,18 +13,13 @@ import (
 	"strconv"
 )
 
-var SSTconnections = make(map[string]net.Conn)
+var SSTconnections = make(map[int]net.Conn)
 
-func (cluster *Cluster) SSTGetPort() string {
-	startport := 4000
-	return strconv.Itoa(startport + len(SSTconnections))
-}
-
-func (cluster *Cluster) SSTCloseReceiver(destinationPort string) {
+func (cluster *Cluster) SSTCloseReceiver(destinationPort int) {
 	SSTconnections[destinationPort].Close()
 }
 
-func (cluster *Cluster) SSTRunReceiver(destinationPort string, filename string, openfile string) {
+func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string, error) {
 
 	var writers []io.Writer
 	var file *os.File
@@ -32,24 +27,32 @@ func (cluster *Cluster) SSTRunReceiver(destinationPort string, filename string, 
 	if openfile == ConstJobCreateFile {
 		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	} else {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_APPEND, 0777)
+		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
 	}
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
+		return "", err
 	}
 	writers = append(writers, file)
 	defer file.Close()
 	dest := io.MultiWriter(writers...)
-	listener, err := net.Listen("tcp", "0.0.0.0:"+destinationPort)
+	listener, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Exiting SST %s", err)
-		return
+		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
+		return "", err
 	}
-	cluster.LogPrintf(LvlInfo, "Listening for SST on port %s", destinationPort)
-	con, err := listener.Accept()
-	SSTconnections[destinationPort] = con
-	cluster.tcp_con_handle(con, dest)
 
+	con, err := listener.Accept()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Exiting SST on socket accept %s", err)
+		return "", err
+	}
+	destinationPort := listener.Addr().(*net.TCPAddr).Port
+	cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
+	SSTconnections[destinationPort] = con
+	go cluster.tcp_con_handle(con, dest)
+
+	return strconv.Itoa(destinationPort), nil
 }
 
 func (cluster *Cluster) tcp_con_handle(con net.Conn, out io.Writer) {

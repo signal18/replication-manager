@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1411,9 +1412,12 @@ func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Reques
 func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
-	port := vars["port"]
+	port, err := strconv.Atoi(vars["port"])
 	w.WriteHeader(http.StatusOK)
-
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	if mycluster != nil {
 		mycluster.SSTCloseReceiver(port)
 	} else {
