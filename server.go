@@ -345,7 +345,7 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 1, "Keep this number of yearly backup")
 		monitorCmd.Flags().StringVar(&conf.BackupLogicalCron, "backup-logical-cron-entry", "0 1 * * 0", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 		monitorCmd.Flags().StringVar(&conf.BackupPhysicalCron, "backup-physical-cron-entry", "0 0 0 * * *", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
-		monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "backup-db-servers-log-cron-entry", "10 * * * * *", "Cron scheduler cheduler   scheduler cron expression represents a set of times, using 6 space-separated fields.")
+		monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "backup-db-servers-log-cron-entry", "*/10 * * * * *", "Cron scheduler cheduler   scheduler cron expression represents a set of times, using 6 space-separated fields.")
 		monitorCmd.Flags().StringVar(&conf.BackupLogicalType, "backup-logical-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
 		monitorCmd.Flags().StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
 		monitorCmd.Flags().StringVar(&conf.BackupRepo, "backup-repo", "directory", "type of directory: directory|aws|rest")
