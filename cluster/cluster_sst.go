@@ -11,86 +11,112 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"time"
 )
 
-var SSTconnections = make(map[int]net.Conn)
+type SST struct {
+	in          io.Reader
+	file        *os.File
+	listener    net.Listener
+	tcplistener *net.TCPListener
+	out         io.Writer
+	cluster     *Cluster
+}
+
+var SSTconnections = make(map[int]*SST)
 
 func (cluster *Cluster) SSTCloseReceiver(destinationPort int) {
-	SSTconnections[destinationPort].Close()
+	SSTconnections[destinationPort].in.(net.Conn).Close()
 }
 
 func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string, error) {
-
+	sst := new(SST)
+	sst.cluster = cluster
 	var writers []io.Writer
-	var file *os.File
+
 	var err error
 	if openfile == ConstJobCreateFile {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	} else {
-		file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
 	}
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
 		return "", err
 	}
-	writers = append(writers, file)
-	defer file.Close()
-	dest := io.MultiWriter(writers...)
-	listener, err := net.Listen("tcp", "0.0.0.0:0")
+	writers = append(writers, sst.file)
+
+	sst.out = io.MultiWriter(writers...)
+
+	sst.listener, err = net.Listen("tcp", "0.0.0.0:0")
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
-	destinationPort := listener.Addr().(*net.TCPAddr).Port
+	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
-
-	go cluster.tcp_con_handle(dest, listener, destinationPort)
+	SSTconnections[destinationPort] = sst
+	go sst.tcp_con_handle()
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) tcp_con_handle(out io.Writer, listener net.Listener, destinationPort int) {
-	con, err := listener.Accept()
-	SSTconnections[destinationPort] = con
+func (sst *SST) tcp_con_handle() {
+
+	var err error
+
+	defer func() {
+		sst.cluster.LogPrintf(LvlInfo, "SST closed connection is closed %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		sst.file.Close()
+		delete(SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
+	}()
+
+	sst.in, err = sst.listener.Accept()
+
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Exiting SST on socket accept %s", err)
+
 		return
 	}
 
-	chan_to_stdout := cluster.stream_copy(con, out)
+	chan_to_stdout := sst.stream_copy()
 
 	select {
+
 	case <-chan_to_stdout:
-		cluster.LogPrintf(LvlErr, "Remote connection is closed")
+		sst.cluster.LogPrintf(LvlErr, "Remote connection is closed ")
 
 	}
+	sst.cluster.LogPrintf(LvlErr, "after select ")
 }
 
 // Performs copy operation between streams: os and tcp streams
-func (cluster *Cluster) stream_copy(src io.Reader, dst io.Writer) <-chan int {
+func (sst *SST) stream_copy() <-chan int {
 	buf := make([]byte, 1024)
 	sync_channel := make(chan int)
 	go func() {
 		defer func() {
-			if con, ok := dst.(net.Conn); ok {
+			if con, ok := sst.in.(net.Conn); ok {
 				con.Close()
-				cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
+				sst.cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
 			}
 			sync_channel <- 0 // Notify that processing is finished
 		}()
 		for {
 			var nBytes int
 			var err error
-			nBytes, err = src.Read(buf)
+
+			nBytes, err = sst.in.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					cluster.LogPrintf(LvlErr, "Read error: %s", err)
+					sst.cluster.LogPrintf(LvlErr, "Read error: %s", err)
 				}
 				break
 			}
-			_, err = dst.Write(buf[0:nBytes])
+			_, err = sst.out.Write(buf[0:nBytes])
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Write error: %s", err)
+				sst.cluster.LogPrintf(LvlErr, "Write error: %s", err)
 			}
 		}
 	}()
