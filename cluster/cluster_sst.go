@@ -103,7 +103,9 @@ func (sst *SST) stream_copy() <-chan int {
 		defer func() {
 			if con, ok := sst.in.(net.Conn); ok {
 				con.Close()
-				sst.cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
+				if sst.cluster.conf.LogLevel > 2 {
+					sst.cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
+				}
 			}
 			sync_channel <- 0 // Notify that processing is finished
 		}()
