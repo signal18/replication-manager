@@ -36,7 +36,7 @@ show_disabled = false
 
 	conf = conf + `[task0]
    schedule = ` + cluster.conf.ProvSphinxCron + `
-	 command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/reindex.sh
+	 command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/reindex.sh
 	 user = root
 
 	`

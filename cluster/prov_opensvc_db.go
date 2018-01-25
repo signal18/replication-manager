@@ -205,7 +205,7 @@ show_disabled = false
 
 	conf = conf + `[task#01]
 schedule = @1
-command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/trigger-dbjobs
+command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/trigger-dbjobs
 user = root
 
 `
