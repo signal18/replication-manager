@@ -22,7 +22,9 @@ import (
 func (server *ServerMonitor) CreateOrReplaceSystemTable() error {
 	_, err := server.Conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't disable binlog for session")
+		if server.ClusterGroup.conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf(LvlErr, "Can't disable binlog for session")
+		}
 		return err
 	}
 	_, err = server.Conn.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
@@ -31,7 +33,9 @@ func (server *ServerMonitor) CreateOrReplaceSystemTable() error {
 	}
 	_, err = server.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done)) engine=innodb")
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.jobs")
+		if server.ClusterGroup.conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.jobs")
+		}
 		return err
 	}
 	return nil

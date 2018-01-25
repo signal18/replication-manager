@@ -56,7 +56,9 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 		return "", err
 	}
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
-	cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
+	if sst.cluster.conf.LogLevel > 2 {
+		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
+	}
 	SSTconnections[destinationPort] = sst
 	go sst.tcp_con_handle()
 

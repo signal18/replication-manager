@@ -1,6 +1,21 @@
 {
     "modulesets": [
         {
+            "modules": [],
+            "rulesets": [],
+            "modset_name": "mariadb.svc.mrm.db",
+            "modulesets": [
+                "mariadb.svc.mrm.db.cnf"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 344,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "modules": [
                 {
                     "autofix": false,
@@ -1341,9 +1356,9 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/physicalbackup\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n\\nADDRESS=($(echo \\\"select concat(server,':',port) from replication_manager_schema.backups where done=0\\\" | /usr/bin/mysql -p%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%% -uroot -N))\\n\\n/usr/bin/mysql -uroot -p%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%% -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.backups set done=1;\\\"\\n\\nif [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n  echo \\\"No backup needed\\\"\\nelse\\n  cd /docker-entrypoint-initdb.d\\n  ./wsrep_sst_xtrabackup-v2 --role 'donor' --address \\\"$ADDRESS/xtrabackup_sst//1\\\" --auth 'root:mariadb' —-socket '/var/run/mysqld/mysqld.sock' --datadir '/var/lib/mysql/' --defaults-file '/etc/mysql/my.cnf' --gtid '7cac0fcf-b83b-11e4-a754-ba12038dc0d4:2' --gtid-domain-id 0\\nfi\"}",
-                    "var_updated": "2018-01-21 16:56:35",
-                    "var_name": "db_cnf_script_physicalbackup",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nUSER=root\\nPASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%  \\nERROLOG=/var/lib/mysql/.system/logs/errors.log\\nSLOWLOG=/var/lib/mysql/.system/logs/sql-slow\\n\\n\\njobs=( \\\"xtrabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" )\\n\\nfor job in \\\"${jobs[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"select concat(id,'@',server,':',port) from replication_manager_schema.jobs WHERE task='$job' and done=0 order by task desc limit 1\\\" | /usr/bin/mysql -p$PASSWORD -uroot -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n /usr/bin/mysql -uroot -p$PASSWORD -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE task='$job';\\\"\\n\\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n  else\\n    echo \\\"Processing $job\\\"\\n    case \\\"$job\\\" in\\n      xtrabackup)\\n      cd /docker-entrypoint-initdb.d\\n      /usr/bin/innobackupex  --defaults-file=/etc/mysql/my.cnf --socket='/var/run/mysqld/mysqld.sock' --slave-info --no-version-check  --user=$USER --password=$PASSWORD --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n     ;;\\n     error)\\n     cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n     > $ERROLOG\\n     ;;\\n     slowquery)\\n     cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n     > $SLOWLOG\\n     ;;\\n     zfssnapback)\\n     LASTSNAP=`zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1`\\n   %%ENV:SERVICES_SVCNAME%% stop\\n   zfs rollback $LASTSNAP\\n   %%ENV:SERVICES_SVCNAME%% start\\n   ;;\\n  esac\\n /usr/bin/mysql -uroot -p$PASSWORD -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\"\\n  fi\\n  \\ndone\"}",
+                    "var_updated": "2018-01-25 16:19:05",
+                    "var_name": "db_cnf_script_dbjobs",
                     "id": 6011
                 },
                 {
@@ -1365,9 +1380,9 @@
                 {
                     "var_author": " Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/trigger-physicalbackup\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash -ue\\n\\n%%ENV:SERVICES_SVCNAME%% docker exec -ti %%ENV:SERVICES_SVCNAME%%.container.2001 /bin/sh -c \\\"/docker-entrypoint-initdb.d/physicalbackup\\\"\"}",
-                    "var_updated": "2018-01-21 15:13:34",
-                    "var_name": "db_cnf_script_trigger_physicalbackup",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/trigger-dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash -ue\\n\\nsvcmgr -s %%ENV:SERVICES_SVCNAME%% docker exec -i %%ENV:SERVICES_SVCNAME%%.container.2001 /bin/bash -c \\\"/docker-entrypoint-initdb.d/dbjobs\\\"\"}",
+                    "var_updated": "2018-01-25 17:36:09",
+                    "var_name": "db_cnf_script_trigger_dbjobs",
                     "id": 6014
                 }
             ],

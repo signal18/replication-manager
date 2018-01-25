@@ -163,6 +163,25 @@
                 }
             ],
             "fset_name": "mariadb.svc.prov.multimaster"
+        },
+        {
+            "fset_stats": false,
+            "id": 279,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "sphinx",
+                        "f_table": "v_tags",
+                        "id": 230
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.sphinx"
         }
     ],
     "rulesets": [
@@ -467,14 +486,6 @@
                     "var_updated": "2017-10-27 10:23:15",
                     "var_name": "proxy_cnf_proxysql",
                     "id": 5953
-                },
-                {
-                    "var_author": " Manager",
-                    "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/sphinx.conf\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\ncat <<EOF\\n\\nsource base\\n{\\n\\t# data source type. mandatory, no default value\\n\\t# known types are mysql, pgsql, mssql, xmlpipe, xmlpipe2, odbc\\n\\ttype\\t\\t\\t= mysql \\n\\n\\t#####################################################################\\n\\t## SQL settings (for 'mysql' and 'pgsql' types)\\n\\t#####################################################################\\n\\n\\t# some straightforward parameters for SQL source types\\n\\tsql_host = %%ENV:SVC_CONF_ENV_LB_ADDR%%\\n        sql_port = %%ENV:SVC_CONF_ENV_LB_PORT%%\\n       \\tsql_user = %%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\n\\tsql_pass = %%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\n}\\n#############################################################################\\n## indexer settings\\n#############################################################################\\n\\nindexer\\n{\\n\\t# memory limit, in bytes, kiloytes (16384K) or megabytes (256M)\\n\\t# optional, default is 32M, max is 2047M, recommended is 256M to 1024M\\n\\tmem_limit\\t\\t= 256M\\n\\n}\\n\\n#############################################################################\\n## searchd settings\\n#############################################################################\\n\\nsearchd\\n{\\n\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:9312\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%:mysql41\\n\\n\\t# log file, searchd run info is logged here\\n\\t# optional, default is 'searchd.log'\\n\\tlog\\t\\t\\t= /var/log/sphinx/searchd.log\\n\\n\\t# query log file, all search queries are logged here\\n\\t# optional, default is empty (do not log queries)\\n\\tquery_log\\t\\t= /var/log/sphinx/query.log\\n\\n\\t# client read timeout, seconds\\n\\t# optional, default is 5\\n\\tread_timeout\\t\\t= 5\\n\\n\\t# request timeout, seconds\\n\\t# optional, default is 5 minutes\\n\\tclient_timeout\\t\\t= 300\\n\\n\\t# maximum amount of children to fork (concurrent searches to run)\\n\\t# optional, default is 0 (unlimited)\\n\\tmax_children\\t\\t= 30\\n\\n\\t# PID file, searchd process ID file name\\n\\t# mandatory\\n\\tpid_file\\t\\t= /var/run/searchd.pid\\n\\n\\t# max amount of matches the daemon ever keeps in RAM, per-index\\n\\t# WARNING, THERE'S ALSO PER-QUERY LIMIT, SEE SetLimits() API CALL\\n\\t\\n\\t# seamless rotate, prevents rotate stalls if precaching huge datasets\\n\\t# optional, default is 1\\n\\tseamless_rotate\\t\\t= 1\\n\\n\\t# whether to forcibly preopen all indexes on startup\\n\\t# optional, default is 1 (preopen everything)\\n\\tpreopen_indexes\\t\\t= 1\\n\\n\\t# whether to unlink .old index copies on succesful rotation.\\n\\t# optional, default is 1 (do unlink)\\n\\tunlink_old\\t\\t= 1\\n\\n\\t# MVA updates pool size\\n\\t# shared between all instances of searchd, disables attr flushes!\\n\\t# optional, default size is 1M\\n\\tmva_updates_pool\\t= 1M\\n\\n\\t# max allowed network packet size\\n\\t# limits both query packets from clients, and responses from agents\\n\\t# optional, default size is 8M\\n\\tmax_packet_size\\t\\t= 8M\\n\\n\\t# max allowed per-query filter count\\n\\t# optional, default is 256\\n\\tmax_filters\\t\\t= 256\\n\\n\\t# max allowed per-filter values count\\n\\t# optional, default is 4096\\n\\tmax_filter_values\\t= 4096\\n\\n\\t# max allowed per-batch query count (aka multi-query count)\\n\\t# optional, default is 32\\n\\tmax_batch_queries\\t= 32\\n\\n\\t# multi-processing mode (MPM)\\n\\t# known values are none, fork, prefork, and threads\\n\\t# optional, default is fork\\n\\t#\\n\\tworkers\\t\\t\\t= threads # for RT to work\\n}\\nEOF\\n\\nwget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/sphinx-indexes\\n\"}",
-                    "var_updated": "2017-12-22 17:12:22",
-                    "var_name": "proxy_cnf_sphinx",
-                    "id": 5988
                 }
             ],
             "ruleset_public": false,
@@ -485,7 +496,8 @@
                 "mariadb.svc.mrm.proxy.cnf.haproxy",
                 "mariadb.svc.mrm.proxy.cnf.masterslave",
                 "mariadb.svc.mrm.proxy.cnf.wsrep",
-                "mariadb.svc.mrm.proxy.cnf.multimaster"
+                "mariadb.svc.mrm.proxy.cnf.multimaster",
+                "mariadb.svc.mrm.proxy.cnf.sphinx"
             ],
             "publications": [
                 "replication-manager"
@@ -603,6 +615,64 @@
                 "replication-maanger"
             ],
             "id": 1021,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.sphinx",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/sphinx.conf\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\ncat <<EOF\\n\\nsource base\\n{\\n\\t# data source type. mandatory, no default value\\n\\t# known types are mysql, pgsql, mssql, xmlpipe, xmlpipe2, odbc\\n\\ttype\\t\\t\\t= mysql \\n\\n\\t#####################################################################\\n\\t## SQL settings (for 'mysql' and 'pgsql' types)\\n\\t#####################################################################\\n\\n\\t# some straightforward parameters for SQL source types\\n\\tsql_host = %%ENV:SVC_CONF_ENV_LB_ADDR%%\\n        sql_port = %%ENV:SVC_CONF_ENV_LB_PORT%%\\n       \\tsql_user = %%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\n\\tsql_pass = %%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\n}\\n#############################################################################\\n## indexer settings\\n#############################################################################\\n\\nindexer\\n{\\n\\t# memory limit, in bytes, kiloytes (16384K) or megabytes (256M)\\n\\t# optional, default is 32M, max is 2047M, recommended is 256M to 1024M\\n\\tmem_limit\\t\\t= 256M\\n\\n}\\n\\n#############################################################################\\n## searchd settings\\n#############################################################################\\n\\nsearchd\\n{\\n\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:9312\\n\\tlisten\\t\\t\\t= %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%:mysql41\\n\\n\\t# log file, searchd run info is logged here\\n\\t# optional, default is 'searchd.log'\\n\\tlog\\t\\t\\t= /var/log/sphinx/searchd.log\\n\\n\\t# query log file, all search queries are logged here\\n\\t# optional, default is empty (do not log queries)\\n\\tquery_log\\t\\t= /var/log/sphinx/query.log\\n\\n\\t# client read timeout, seconds\\n\\t# optional, default is 5\\n\\tread_timeout\\t\\t= 5\\n\\n\\t# request timeout, seconds\\n\\t# optional, default is 5 minutes\\n\\tclient_timeout\\t\\t= 300\\n\\n\\t# maximum amount of children to fork (concurrent searches to run)\\n\\t# optional, default is 0 (unlimited)\\n\\tmax_children\\t\\t= 30\\n\\n\\t# PID file, searchd process ID file name\\n\\t# mandatory\\n\\tpid_file\\t\\t= /var/run/searchd.pid\\n\\n\\t# max amount of matches the daemon ever keeps in RAM, per-index\\n\\t# WARNING, THERE'S ALSO PER-QUERY LIMIT, SEE SetLimits() API CALL\\n\\t\\n\\t# seamless rotate, prevents rotate stalls if precaching huge datasets\\n\\t# optional, default is 1\\n\\tseamless_rotate\\t\\t= 1\\n\\n\\t# whether to forcibly preopen all indexes on startup\\n\\t# optional, default is 1 (preopen everything)\\n\\tpreopen_indexes\\t\\t= 1\\n\\n\\t# whether to unlink .old index copies on succesful rotation.\\n\\t# optional, default is 1 (do unlink)\\n\\tunlink_old\\t\\t= 1\\n\\n\\t# MVA updates pool size\\n\\t# shared between all instances of searchd, disables attr flushes!\\n\\t# optional, default size is 1M\\n\\tmva_updates_pool\\t= 1M\\n\\n\\t# max allowed network packet size\\n\\t# limits both query packets from clients, and responses from agents\\n\\t# optional, default size is 8M\\n\\tmax_packet_size\\t\\t= 8M\\n\\n\\t# max allowed per-query filter count\\n\\t# optional, default is 256\\n\\tmax_filters\\t\\t= 256\\n\\n\\t# max allowed per-filter values count\\n\\t# optional, default is 4096\\n\\tmax_filter_values\\t= 4096\\n\\n\\t# max allowed per-batch query count (aka multi-query count)\\n\\t# optional, default is 32\\n\\tmax_batch_queries\\t= 32\\n\\n\\t# multi-processing mode (MPM)\\n\\t# known values are none, fork, prefork, and threads\\n\\t# optional, default is fork\\n\\t#\\n\\tworkers\\t\\t\\t= threads # for RT to work\\n}\\nEOF\\n\\nwget -O - -q http://%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/sphinx-indexes\\n\"}",
+                    "var_updated": "2017-12-28 12:32:55",
+                    "var_name": "proxy_cnf_sphinx",
+                    "id": 6002
+                },
+                {
+                    "var_author": " Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/reindex.sh\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"svcmgr -s %%ENV:SERVICES_SVCNAME%% docker exec -i %%ENV:SERVICES_SVCNAME%%.container.2001 /bin/sh -c \\\"indexer --all --rotate\\\"\"}",
+                    "var_updated": "2018-01-25 17:37:21",
+                    "var_name": "proxy_cnf_sphinx_reindex",
+                    "id": 6003
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [
+                "mariadb.svc.mrm.proxy.cnf.sphinx.cron"
+            ],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1036,
+            "responsibles": [
+                "replication-maanger"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.sphinx",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.sphinx.cron",
+            "variables": [
+                {
+                    "var_author": " Manager",
+                    "var_class": "crontabentry",
+                    "var_value": "{\"user\":\"root\",\"check\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/reindex.sh\",\"entry\":\"5     *     *     *     * \\troot /%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/reindex.sh\",\"ref\":\"/etc/cron.d/%%ENV:SERVICES_SVCNAME%%_sphinx_reindex\"}",
+                    "var_updated": "2017-12-28 16:17:07",
+                    "var_name": "proxy_cnf_sphinx_cron",
+                    "id": 6007
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-maanger"
+            ],
+            "id": 1038,
             "responsibles": [
                 "replication-maanger"
             ]
