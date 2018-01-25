@@ -47,14 +47,14 @@ func (server *ServerMonitor) BackupPhysical() error {
 func (server *ServerMonitor) BackupErrorLog() error {
 	server.CreateOrReplaceSystemTable()
 	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
-	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('log_error'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
+	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('error'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
 	return err
 }
 
 func (server *ServerMonitor) BackupSlowQueryLog() error {
 	server.CreateOrReplaceSystemTable()
 	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_slow_query_log_file.log", ConstJobAppendFile)
-	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('slow_query_log_file'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
+	server.Conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('slowquery'," + port + ",'" + server.ClusterGroup.conf.BindAddr + "', NOW())")
 	return err
 }
 
