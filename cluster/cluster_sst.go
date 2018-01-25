@@ -36,9 +36,9 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 
 	var err error
 	if openfile == ConstJobCreateFile {
-		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	} else {
-		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	}
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
@@ -68,7 +68,9 @@ func (sst *SST) tcp_con_handle() {
 	var err error
 
 	defer func() {
-		sst.cluster.LogPrintf(LvlInfo, "SST closed connection is closed %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		if sst.cluster.conf.LogLevel > 2 {
+			sst.cluster.LogPrintf(LvlInfo, "SST closed connection is closed %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		}
 		sst.file.Close()
 		delete(SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
 	}()
@@ -85,10 +87,10 @@ func (sst *SST) tcp_con_handle() {
 	select {
 
 	case <-chan_to_stdout:
-		sst.cluster.LogPrintf(LvlErr, "Remote connection is closed ")
-
+		if sst.cluster.conf.LogLevel > 2 {
+			sst.cluster.LogPrintf(LvlErr, "Remote SST done for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		}
 	}
-	sst.cluster.LogPrintf(LvlErr, "after select ")
 }
 
 // Performs copy operation between streams: os and tcp streams
@@ -108,6 +110,7 @@ func (sst *SST) stream_copy() <-chan int {
 			var err error
 
 			nBytes, err = sst.in.Read(buf)
+
 			if err != nil {
 				if err != io.EOF {
 					sst.cluster.LogPrintf(LvlErr, "Read error: %s", err)
