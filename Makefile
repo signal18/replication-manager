@@ -52,4 +52,4 @@ package: all
 	nobuild=0 ./package_$(OS)_amd64.sh
 
 clean:
-	rm -f $(BINDIR)/binaries/*
+	find $(BINDIR) -type f | xargs rm

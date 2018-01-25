@@ -1,30 +1,28 @@
-FROM alpine:3.4
-
-# set env from golang container
-ENV \
-    GOPATH="/go" \
-    PATH="/go/bin:/usr/local/go/bin:$PATH"
+FROM golang:1.9-alpine3.7
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
-COPY . /go/src/github.com/signal18/replication-manager/
 
 RUN mkdir -p \
-        /go/bin \
         /etc/replication-manager \
-        /usr/share/replication-manager/dashboard
+        /usr/share/replication-manager/dashboard \
+        /var/lib/replication-manager 
 
 RUN \
-    apk --no-cache --update add git go haproxy && \
-    go install github.com/signal18/replication-manager && \
-    apk --no-cache del git go && \
-    rm -rf /go/src /go/pkg && \
+    apk --no-cache --update add make git musl-dev && \ 
     rm -rf /var/cache/apk/*
 
-COPY etc/config.toml.sample /etc/replication-manager/
+COPY . .
+
+RUN make osc
+
 COPY dashboard /usr/share/replication-manager/dashboard/
 
+COPY build/binaries/replication-manager-osc /go/bin/replication-manager
 WORKDIR /go/bin
-ENTRYPOINT ["replication-manager"]
-CMD ["monitor", "--daemon", "--http-server"]
+
+RUN rm -rf /go/src /go/pkg && apk --no-cache del make git musl-dev
+RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+
+CMD ["replication-manager","monitor","--http-server"]
 EXPOSE 10001
