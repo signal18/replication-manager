@@ -14,7 +14,7 @@ RUN \
 
 COPY . .
 
-RUN make osc && make cli
+RUN make osc cli
 
 COPY dashboard /usr/share/replication-manager/dashboard/
 
