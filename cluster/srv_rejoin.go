@@ -95,7 +95,8 @@ func (server *ServerMonitor) RejoinMaster() error {
 }
 
 func (server *ServerMonitor) RejoinPreviousSnapshot() error {
-	return server.ZFSSnapBack()
+	_, err := server.JobZFSSnapBack()
+	return err
 }
 
 func (server *ServerMonitor) RejoinMasterSST() error {

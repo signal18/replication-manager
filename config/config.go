@@ -27,6 +27,7 @@ type Config struct {
 	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries"`
 	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time"`
 	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script"`
+	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose"`
 	LogFile                            string `mapstructure:"log-file" toml:"log-file"`
@@ -278,9 +279,14 @@ type Config struct {
 	GoOS                               string `mapstructure:"goos" toml:"-"`
 	GoArch                             string `mapstructure:"goarch" toml:"-"`
 	Backup                             bool   `mapstructure:"backup" toml:"backup"`
+	SchedulerBackupLogical             bool   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup"`
+	SchedulerBackupPhysical            bool   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup"`
+	SchedulerDatabaseLogs              bool   `mapstructure:"scheduler-db-servers-logs" toml:"scheduler-db-servers-logs"`
+	SchedulerDatabaseOptimize          bool   `mapstructure:"scheduler-db-servers-optimize" toml:"scheduler-db-servers-optimize"`
 	BackupLogicalCron                  string `mapstructure:"scheduler-db-servers-logical-backup-cron" toml:"scheduler-db-servers-logical-backup-cron"`
 	BackupPhysicalCron                 string `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron"`
-	BackupDatabaseLogCron              string `mapstructure:"scheduler-db-servers-logs-export-cron" toml:"scheduler-db-servers-logs-export-cron"`
+	BackupDatabaseLogCron              string `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron"`
+	BackupDatabaseOptimizeCron         string `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron"`
 	BackupLogicalType                  string `mapstructure:"backup-logical-type" toml:"backup-logical-type"`
 	BackupPhysicalType                 string `mapstructure:"backup-physical-type" toml:"backup-physical-type"`
 	BackupKeepHourly                   int    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly"`

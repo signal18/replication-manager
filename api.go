@@ -220,6 +220,11 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/optimize", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterOptimize)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
 
 	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
@@ -1132,7 +1137,7 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.BackupPhysical()
+		node.JobBackupPhysical()
 	} else {
 
 		http.Error(w, "No cluster", 500)
@@ -1146,7 +1151,7 @@ func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.BackupErrorLog()
+		node.JobBackupErrorLog()
 	} else {
 
 		http.Error(w, "No cluster", 500)
@@ -1159,7 +1164,7 @@ func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) 
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.BackupSlowQueryLog()
+		node.JobBackupSlowQueryLog()
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1362,7 +1367,7 @@ func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
-			node.BackupPhysical()
+			node.JobBackupPhysical()
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1402,7 +1407,19 @@ func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Reques
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		w.WriteHeader(http.StatusOK)
-		mycluster.GetMaster().BackupPhysical()
+		mycluster.GetMaster().JobBackupPhysical()
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
+	}
+}
+
+func handlerMuxClusterOptimize(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		mycluster.Optimize()
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])

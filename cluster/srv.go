@@ -462,6 +462,9 @@ func (server *ServerMonitor) Refresh() error {
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
+		if server.ClusterGroup.conf.MonitorScheduler {
+			server.JobsCheckRunning()
+		}
 	}
 
 	// SHOW MASTER STATUS

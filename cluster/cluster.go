@@ -129,21 +129,37 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.runStatus = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
-	cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
-	cluster.scheduler = cron.New()
-	cluster.scheduler.AddFunc(conf.BackupLogicalCron, func() {
-		cluster.master.BackupLogical()
-	})
-	cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
-		cluster.master.BackupPhysical()
-	})
-	cluster.scheduler.AddFunc(conf.BackupDatabaseLogCron, func() {
-		cluster.BackupLogs()
-	})
-	cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
-	cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
-	cluster.LogPrintf(LvlInfo, "Schedule database log backup time at: %s", conf.BackupDatabaseLogCron)
-	cluster.scheduler.Start()
+	if cluster.conf.MonitorScheduler {
+		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
+		cluster.scheduler = cron.New()
+
+		if cluster.conf.SchedulerBackupLogical {
+			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
+			cluster.scheduler.AddFunc(conf.BackupLogicalCron, func() {
+				cluster.master.JobBackupLogical()
+			})
+		}
+		if cluster.conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
+			cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
+				cluster.master.JobBackupPhysical()
+			})
+		}
+		if cluster.conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", conf.BackupDatabaseLogCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(conf.BackupDatabaseLogCron, func() {
+				cluster.BackupLogs()
+			})
+		}
+		if cluster.conf.SchedulerDatabaseOptimize {
+			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", conf.BackupDatabaseOptimizeCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(conf.BackupDatabaseOptimizeCron, func() {
+				cluster.Optimize()
+			})
+		}
+	}
 	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
 	err := cluster.loadDBCertificate()
 	if err != nil {
@@ -466,7 +482,14 @@ func (cluster *Cluster) agentFlagCheck() {
 
 func (cluster *Cluster) BackupLogs() {
 	for _, s := range cluster.servers {
-		s.BackupErrorLog()
-		s.BackupSlowQueryLog()
+		s.JobBackupErrorLog()
+		s.JobBackupSlowQueryLog()
+	}
+}
+
+func (cluster *Cluster) Optimize() {
+	for _, s := range cluster.slaves {
+		jobid, _ := s.JobOptimize()
+		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
 }

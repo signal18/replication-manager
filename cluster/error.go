@@ -94,4 +94,6 @@ var clusterError = map[string]string{
 	"WARN0069": "No log-slave-updates on master %s",
 	"WARN0070": "No GTID strict mode on master %s",
 	"WARN0071": "No replication crash-safe settings on master %s",
+	"WARN0072": "Optimize task running on server %s",
+	"WARN0073": "Xtrabackup task running on server %s",
 }

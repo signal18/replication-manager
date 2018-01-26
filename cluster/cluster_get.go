@@ -21,6 +21,9 @@ func (cluster *Cluster) GetMaster() *ServerMonitor {
 	}
 }
 
+func (cluster *Cluster) GetErrorList() map[string]string {
+	return clusterError
+}
 func (cluster *Cluster) GetTraffic() bool {
 	return cluster.conf.TestInjectTraffic
 }
