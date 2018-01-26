@@ -334,7 +334,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 
-	if server.ClusterGroup.master != nil {
+	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
 
 		if server.ClusterGroup.conf.Verbose {
 			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.URL)
