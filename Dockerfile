@@ -18,11 +18,11 @@ RUN make osc
 
 COPY dashboard /usr/share/replication-manager/dashboard/
 
-COPY ./build/binaries/replication-manager-osc /go/bin/replication-manager
+RUN mv build/binaries/replication-manager-osc /go/bin/replication-manager
 WORKDIR /go/bin
 
 RUN rm -rf /go/src /go/pkg && apk --no-cache del make git musl-dev
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-CMD ["replication-manager","monitor","--http-server"]
+ENTRYPOINT ["replication-manager","monitor","--http-server"]
 EXPOSE 10001
