@@ -18,7 +18,7 @@ RUN make osc
 
 COPY dashboard /usr/share/replication-manager/dashboard/
 
-COPY build/binaries/replication-manager-osc /go/bin/replication-manager
+COPY ./build/binaries/replication-manager-osc /go/bin/replication-manager
 WORKDIR /go/bin
 
 RUN rm -rf /go/src /go/pkg && apk --no-cache del make git musl-dev
