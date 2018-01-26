@@ -14,15 +14,17 @@ RUN \
 
 COPY . .
 
-RUN make osc
+RUN make osc && make cli
 
 COPY dashboard /usr/share/replication-manager/dashboard/
 
-RUN mv build/binaries/replication-manager-osc /go/bin/replication-manager
+RUN mv build/binaries/replication-manager-osc /go/bin/replication-manager \
+    && mv build/binaries/replication-manager-cli /go/bin/
+
 WORKDIR /go/bin
 
 RUN rm -rf /go/src /go/pkg && apk --no-cache del make git musl-dev
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-ENTRYPOINT ["replication-manager","monitor","--http-server"]
+CMD ["replication-manager","monitor","--http-server"]
 EXPOSE 10001
