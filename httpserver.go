@@ -460,6 +460,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
 	s.GraphiteMetrics = fmt.Sprintf("%v", currentCluster.GetConf().GraphiteMetrics)
 	s.Clusters = cfgGroupList
+	s.Scheduler = currentCluster.GetCron()
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
 	if currentCluster.GetLogLevel() > 0 {
@@ -485,6 +486,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+
 }
 
 func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -291,4 +292,18 @@ func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
 		}
 	}
 	return prx
+}
+
+func (cluster *Cluster) GetCron() []CronEntry {
+	var entries []CronEntry
+
+	for _, e := range cluster.scheduler.Entries() {
+		var entry CronEntry
+		entry.Next = e.Next
+		entry.Prev = e.Prev
+		entry.Id = strconv.Itoa(int(e.ID))
+		entry.Schedule = e.Spec
+		entries = append(entries, entry)
+	}
+	return entries
 }

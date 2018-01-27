@@ -271,14 +271,24 @@ func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 }
 
 func (cluster *Cluster) InjectTraffic() {
+	var definer string
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.proxies {
+			if pr.Type == proxySphinx || pr.Type == proxyMyProxy {
+				// Does not yet understand CREATE OR REPLACE VIEW
+				continue
+			}
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
 				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
-				_, err := db.Exec("create or replace view replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
+				if pr.Type == proxyMyProxy {
+					definer = "DEFINER = root@localhost"
+				} else {
+					definer = ""
+				}
+				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
 
 				if err != nil {
 					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})

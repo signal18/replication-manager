@@ -17,70 +17,77 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	log "github.com/sirupsen/logrus"
+	//"github.com/robfig/cron"
 
-	"github.com/robfig/cron"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/cron"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 	"github.com/signal18/replication-manager/termlog"
+	log "github.com/sirupsen/logrus"
 )
 
 type Cluster struct {
-	hostList                   []string
-	proxyList                  []string
-	clusterList                map[string]*Cluster
-	servers                    serverList
-	slaves                     serverList
-	proxies                    proxyList
-	crashes                    crashList
-	master                     *ServerMonitor
-	vmaster                    *ServerMonitor
-	mxs                        *maxscale.MaxScale
-	dbUser                     string
-	dbPass                     string
-	rplUser                    string
-	rplPass                    string
-	failoverCtr                int
-	failoverTs                 int64
-	sme                        *state.StateMachine
-	runStatus                  string
-	runOnceAfterTopology       bool
-	conf                       config.Config
-	tlog                       *termlog.TermLog
-	htlog                      *httplog.HttpLog
-	logPtr                     *os.File
-	termlength                 int
-	runUUID                    string
-	cfgGroup                   string
-	cfgGroupDisplay            string
-	repmgrVersion              string
-	repmgrHostname             string
-	key                        []byte
-	exitMsg                    string
-	exit                       bool
-	CleanAll                   bool
-	canFlashBack               bool
-	failoverCond               *nbc.NonBlockingChan
-	switchoverCond             *nbc.NonBlockingChan
-	rejoinCond                 *nbc.NonBlockingChan
-	bootstrapCond              *nbc.NonBlockingChan
-	switchoverChan             chan bool
-	errorChan                  chan error
-	testStopCluster            bool
-	testStartCluster           bool
-	clusterDown                bool
-	isProvisionned             bool
-	lastmaster                 *ServerMonitor //saved when all cluster down
-	benchmarkType              string
-	openSVCServiceStatus       int
-	haveDBTLSCert              bool
-	tlsconf                    *tls.Config
-	HaveWriteDuringCatchBinlog bool
-	scheduler                  *cron.Cron
+	hostList             []string             `mapstructure:"db-servers-list"`
+	proxyList            []string             `mapstructure:"proxy-list"`
+	clusterList          map[string]*Cluster  `mapstructure:"-"`
+	servers              serverList           `mapstructure:"-"`
+	slaves               serverList           `mapstructure:"db-servers-slaves"`
+	proxies              proxyList            `mapstructure:"proxies"`
+	crashes              crashList            `mapstructure:"db-servers-crashes"`
+	master               *ServerMonitor       `mapstructure:"db-servers-master"`
+	vmaster              *ServerMonitor       `mapstructure:"db-servers-master-virtual"`
+	mxs                  *maxscale.MaxScale   `mapstructure:"-"`
+	dbUser               string               `mapstructure:"db-servers-user"`
+	dbPass               string               `mapstructure:"-"`
+	rplUser              string               `mapstructure:"db-servers-replication-user"`
+	rplPass              string               `mapstructure:"-"`
+	failoverCtr          int                  `mapstructure:"failover-counter"`
+	failoverTs           int64                `mapstructure:"failover-last-time"`
+	sme                  *state.StateMachine  `mapstructure:"-"`
+	runStatus            string               `mapstructure:"active-passive-status"`
+	runOnceAfterTopology bool                 `mapstructure:"passed-fist-detection"`
+	conf                 config.Config        `mapstructure:"config"`
+	tlog                 *termlog.TermLog     `mapstructure:"-"`
+	htlog                *httplog.HttpLog     `mapstructure:"-"`
+	logPtr               *os.File             `mapstructure:"-"`
+	termlength           int                  `mapstructure:"-"`
+	runUUID              string               `mapstructure:"running-uuid"`
+	cfgGroup             string               `mapstructure:"config-group"`
+	cfgGroupDisplay      string               `mapstructure:"config-group-display"`
+	repmgrVersion        string               `mapstructure:"replication-manager-version"`
+	repmgrHostname       string               `mapstructure:"replication-manager-hostname"`
+	key                  []byte               `mapstructure:"-"`
+	exitMsg              string               `mapstructure:"-"`
+	exit                 bool                 `mapstructure:"-"`
+	CleanAll             bool                 `mapstructure:"clean-all"` //used in testing
+	canFlashBack         bool                 `mapstructure:"can-flashback"`
+	failoverCond         *nbc.NonBlockingChan `mapstructure:"-"`
+	switchoverCond       *nbc.NonBlockingChan `mapstructure:"-"`
+	rejoinCond           *nbc.NonBlockingChan `mapstructure:"-"`
+	bootstrapCond        *nbc.NonBlockingChan `mapstructure:"-"`
+	switchoverChan       chan bool            `mapstructure:"-"`
+	errorChan            chan error           `mapstructure:"-"`
+	testStopCluster      bool                 `mapstructure:"test-stop-cluster"`
+	testStartCluster     bool                 `mapstructure:"test-start-cluster"`
+	isDown               bool                 `mapstructure:"is-down"`
+	isProvisionned       bool                 `mapstructure:"is-provision"`
+	lastmaster           *ServerMonitor       `mapstructure:"last-master"` //saved when all cluster down
+	benchmarkType        string               `mapstructure:"benchmark-type"`
+	haveDBTLSCert        bool                 `mapstructure:"have-db-tls-cert"`
+	tlsconf              *tls.Config          `mapstructure:"-"`
+	scheduler            *cron.Cron           `mapstructure:"-"`
+	schedule             []CronEntry          `mapstructure:"replication-manager-schedule"`
+}
+
+type CronEntry struct {
+	Schedule string
+	Next     time.Time
+	Prev     time.Time
+	Id       string
 }
 
 type Alerts struct {

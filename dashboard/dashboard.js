@@ -582,9 +582,20 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         });
     };
 
-    $scope.Optimize = function() {
+    $scope.optimize = function() {
 
         var response = $http.get('/clusters/' + $scope.clusters + '/optimize');
+        response.success(function(data, status, headers, config) {
+            console.log("Ok.");
+        });
+        response.error(function(data, status, headers, config) {
+            console.log("Error.");
+        });
+    };
+
+    $scope.backupphysical = function() {
+
+        var response = $http.get('/clusters/' + $scope.clusters + '/backupphysical');
         response.success(function(data, status, headers, config) {
             console.log("Ok.");
         });
