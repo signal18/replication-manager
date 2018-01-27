@@ -46,10 +46,10 @@ services:
       nw1:
         ipv4_address: 172.16.1.4
 
-  mrm:
-    build: ../../../
+  replication-manager:
+    image: signal18/replication-manager:2.0
     volumes:
-      - ./config.toml:/etc/replication-manager/config.toml
+      - /etc/replication-manager/config.toml:/etc/replication-manager/config.toml
     ports:
       - "10001:10001"
     networks:
