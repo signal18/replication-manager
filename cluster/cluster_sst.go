@@ -73,7 +73,10 @@ func (sst *SST) tcp_con_handle() {
 		if sst.cluster.conf.LogLevel > 2 {
 			sst.cluster.LogPrintf(LvlInfo, "SST cloing connection  %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
-		sst.in.(net.Conn).Close()
+		if sst.in.(net.Conn) != nil {
+			sst.in.(net.Conn).Close()
+		}
+		sst.tcplistener.Close()
 		sst.file.Close()
 		sst.listener.Close()
 
