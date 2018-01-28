@@ -31,6 +31,7 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		}
 		return 0, err
 	}
+	defer conn.Close()
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
 		if server.ClusterGroup.conf.LogLevel > 2 {
