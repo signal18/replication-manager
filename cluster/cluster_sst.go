@@ -49,12 +49,12 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	sst.out = io.MultiWriter(writers...)
 
 	sst.listener, err = net.Listen("tcp", "0.0.0.0:0")
-	sst.tcplistener = sst.listener.(*net.TCPListener)
-	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
