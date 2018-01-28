@@ -71,9 +71,12 @@ func (sst *SST) tcp_con_handle() {
 
 	defer func() {
 		if sst.cluster.conf.LogLevel > 2 {
-			sst.cluster.LogPrintf(LvlInfo, "SST closed connection is closed %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogPrintf(LvlInfo, "SST cloing connection  %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
+		sst.in.(net.Conn).Close()
 		sst.file.Close()
+		sst.listener.Close()
+
 		delete(SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
 	}()
 
@@ -102,7 +105,7 @@ func (sst *SST) stream_copy() <-chan int {
 	go func() {
 		defer func() {
 			if con, ok := sst.in.(net.Conn); ok {
-				con.Close()
+
 				if sst.cluster.conf.LogLevel > 2 {
 					sst.cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
 				}

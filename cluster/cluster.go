@@ -74,7 +74,7 @@ type Cluster struct {
 	testStopCluster      bool                 `mapstructure:"test-stop-cluster"`
 	testStartCluster     bool                 `mapstructure:"test-start-cluster"`
 	isDown               bool                 `mapstructure:"is-down"`
-	isProvisionned       bool                 `mapstructure:"is-provision"`
+	isProvisionned       bool                 `mapstructure:"is-provisionned"`
 	lastmaster           *ServerMonitor       `mapstructure:"last-master"` //saved when all cluster down
 	benchmarkType        string               `mapstructure:"benchmark-type"`
 	haveDBTLSCert        bool                 `mapstructure:"have-db-tls-cert"`
