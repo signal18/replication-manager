@@ -21,27 +21,31 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
+	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id       string //Unique name given by cluster & crc64(URL) used by test to provision
-	Conn     *sqlx.DB
-	User     string
-	Pass     string `json:"-"`
-	URL      string
-	DSN      string `json:"-"`
-	Host     string
-	Port     string
-	IP       string
-	Strict   string
-	ServerID uint
-
+	Id                          string //Unique name given by cluster & crc64(URL) used by test to provision
+	Conn                        *sqlx.DB
+	User                        string
+	Pass                        string `json:"-"`
+	URL                         string
+	DSN                         string `json:"-"`
+	Host                        string
+	Port                        string
+	IP                          string
+	Strict                      string
+	ServerID                    uint
+	ErrorLogTailer              *tail.Tail `json:"-"`
+	ErrorLog                    httplog.HttpLog
+	SlowLogTailer               *tail.Tail `json:"-"`
 	LogBin                      string
 	GTIDBinlogPos               *gtid.List
 	CurrentGtid                 *gtid.List
@@ -159,9 +163,18 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.State = stateSuspect
 	server.PrevState = stateSuspect
 	server.Host, server.Port = misc.SplitHostPort(url)
-
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
+	errLogFile := server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_error.log"
+
+	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
+		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile.Close()
+	}
+	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
+	//server.ErrorLogLogQueue = cluster.NewLogQueue(20)
+	server.ErrorLog = httplog.NewHttpLog(20)
+	go server.ErrorLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
 	server.SetPrefered(cluster.IsInPreferedHosts(server.URL))
 	var err error
@@ -465,6 +478,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.ClusterGroup.conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
+
 	}
 
 	// SHOW MASTER STATUS

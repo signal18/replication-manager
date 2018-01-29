@@ -189,7 +189,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	}
 
 	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
-		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARNING", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 	}
 
 }
@@ -245,7 +245,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 		server.ClusterGroup.sme.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO"})
 	}
 	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
-		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARN", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
+		server.ClusterGroup.SetState("WARN0007", state.State{ErrType: "WARNING", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF"})
 	}
 }
 

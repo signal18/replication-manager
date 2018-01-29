@@ -16,9 +16,11 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/httplog"
 	river "github.com/signal18/replication-manager/river"
 	"github.com/signal18/replication-manager/state"
 )
@@ -82,6 +84,32 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 		return 0, nil
 	}
 	return server.JobInsertTaks("error", port, server.ClusterGroup.conf.BindAddr)
+}
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) ErrorLogWatcher() {
+
+	for line := range server.ErrorLogTailer.Lines {
+		var log httplog.Message
+		itext := strings.Index(line.Text, "]")
+		if itext != -1 {
+			log.Text = line.Text[itext+2:]
+		} else {
+			log.Text = line.Text
+		}
+		itime := strings.Index(line.Text, "[")
+		if itime != -1 {
+			log.Timestamp = line.Text[0 : itime-1]
+			if itext != -1 {
+				log.Level = line.Text[itime+1 : itext]
+			}
+		} else {
+			log.Timestamp = fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+		}
+		log.Group = server.ClusterGroup.GetClusterName()
+
+		server.ErrorLog.Add(log)
+	}
 
 }
 
@@ -131,9 +159,9 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				server.ClusterGroup.sme.AddState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB"})
 			} else {
 				if task.task == "optimized" {
-					server.ClusterGroup.sme.AddState("WARN00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN00072"], server.URL), ErrFrom: "JOB"})
+					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB"})
 				} else if task.task == "xtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN00073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN00073"], server.URL), ErrFrom: "JOB"})
+					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB"})
 				}
 			}
 		}

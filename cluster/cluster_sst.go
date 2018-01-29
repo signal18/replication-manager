@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type SST struct {
 	tcplistener *net.TCPListener
 	out         io.Writer
 	cluster     *Cluster
+	sync.Mutex
 }
 
 var SSTconnections = make(map[int]*SST)
@@ -59,8 +61,10 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	if sst.cluster.conf.LogLevel > 2 {
 		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
 	}
+	sst.Lock()
 	SSTconnections[destinationPort] = sst
-	go sst.tcp_con_handle()
+	sst.Unlock()
+	sst.tcp_con_handle()
 
 	return strconv.Itoa(destinationPort), nil
 }
@@ -77,8 +81,9 @@ func (sst *SST) tcp_con_handle() {
 		sst.tcplistener.Close()
 		sst.file.Close()
 		sst.listener.Close()
-
+		sst.Lock()
 		delete(SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
+		sst.Unlock()
 	}()
 
 	sst.in, err = sst.listener.Accept()
