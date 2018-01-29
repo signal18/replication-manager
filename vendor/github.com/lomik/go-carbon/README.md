@@ -204,6 +204,42 @@ buffer-size = 0
 # # Initial offset, if there is no saved state. Can be relative time or "newest" or "oldest".
 # # In case offset is unavailable (in future, etc) fallback is "oldest"
 # initial-offset = "-30m"
+#
+# # Specify kafka feature level (default: 0.11.0.0).
+# # Please note that some features (consuming lz4 compressed streams) requires kafka >0.11
+# # You must specify version in full. E.x. '0.11.0.0' - ok, but '0.11' is not.
+# # Supported version (as of 22 Jan 2018):
+# #   0.8.2.0
+# #   0.8.2.1
+# #   0.8.2.2
+# #   0.9.0.0
+# #   0.9.0.1
+# #   0.10.0.0
+# #   0.10.0.1
+# #   0.10.1.0
+# #   0.10.2.0
+# #   0.11.0.0
+# #   1.0.0
+# kafka-version = "0.11.0.0"
+#
+# [receiver.pubsub]
+# # This receiver receives data from Google PubSub
+# # - Authentication is managed through APPLICATION_DEFAULT_CREDENTIALS:
+# #   - https://cloud.google.com/docs/authentication/production#providing_credentials_to_your_application
+# # - Currently the subscription must exist before running go-carbon.
+# # - The "receiver_*" settings are optional and directly map to the google pubsub
+# #   libraries ReceiveSettings (https://godoc.org/cloud.google.com/go/pubsub#ReceiveSettings)
+# #   - How to think about the "receiver_*" settings: In an attempt to maximize throughput the
+# #     pubsub library will spawn 'receiver_go_routines' to fetch messages from the server.
+# #     These goroutines simply buffer them into memory until 'receiver_max_messages' or 'receiver_max_bytes'
+# #     have been read. This does not affect the actual handling of these messages which are processed by other goroutines.
+# protocol = "pubsub"
+# project = "project-name"
+# subscription = "subscription-name"
+# receiver_go_routines = 4
+# receiver_max_messages = 1000
+# receiver_max_bytes = 500000000 # default 500MB
+
 
 [carbonlink]
 listen = "127.0.0.1:7002"
@@ -380,6 +416,20 @@ With settings above applied, best write-strategy to use is "noop"
 * carbonserver: support multiple targets in /render queries (graphite-web 1.1.x compatibility)
 * flock support for persister and carbonserver
 * `cache.max-size` and `cache.write-strategy` can be changed without restart (HUP signal)
+* Google PubSub protocol was added. It receives data from PubSub Subscriptions and can decode protobuf, plain, or pickle messages.
+  * The default format is plain. Specify protobuf or pickle by adding an attribute named 'content-type' to the PubSub messsages:
+    * application/protobuf
+    * application/python-pickle
+  * Sample configuration:
+```
+[receiver.pubsub]
+protocol = "pubsub"
+project = "project-name"
+subscription = "subscription-name"
+# receiver_go_routines = 4
+# receiver_max_messages = 1000
+# receiver_max_bytes = 500000000 # default 500MB
+```
 
 ##### version 0.11.0
 * GRPC api for query cache was added

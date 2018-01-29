@@ -761,9 +761,21 @@ func (z *Zipper) Find(ctx context.Context, logger *zap.Logger, query string) ([]
 
 		// update our cache of which servers have which metrics
 		allServers := make([]string, 0)
+		allServersSeen := make(map[string]struct{})
 		for k, v := range paths {
-			z.pathCache.Set(k, v)
-			allServers = append(allServers, v...)
+			servers := make([]string, 0)
+			serversSeen := make(map[string]struct{})
+			for _, s := range v {
+				if _, ok := serversSeen[s]; !ok {
+					serversSeen[s] = struct{}{}
+					servers = append(servers, s)
+				}
+				if _, ok := allServersSeen[s]; !ok {
+					allServersSeen[s] = struct{}{}
+					allServers = append(allServers, s)
+				}
+			}
+			z.pathCache.Set(k, servers)
 		}
 		z.pathCache.Set(query, allServers)
 	}

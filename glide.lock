@@ -1,5 +1,5 @@
-hash: b3c5d5eaaf8af2cd52b738299bfa7ab43024f6b339388758a022a565f811b484
-updated: 2018-01-09T11:08:54.593915212+01:00
+hash: 8683ab9ea9258736f13f1a1af8a33a1be7bd14a168a5d7c4b015ab719d055c38
+updated: 2018-01-29T21:42:38.775699242+01:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
@@ -9,8 +9,10 @@ imports:
   - mathx
 - name: github.com/alyu/configparser
   version: 26b2fe18bee125de2a3090d6fadb7e280e63eba6
+- name: github.com/armon/go-metrics
+  version: 7aa49fde808223f8dadfdbfd3a20ff6c19e5f9ec
 - name: github.com/asaskevich/govalidator
-  version: 852d82c746b23d9b357b210ea470d99f4e023b72
+  version: 4b3d68f87f176641ffc147420296013aff66ea32
 - name: github.com/bradfitz/gomemcache
   version: 1952afaa557dc08e8e0d89eafab110fb501c1a2b
   subpackages:
@@ -26,7 +28,7 @@ imports:
   subpackages:
   - request
 - name: github.com/dgryski/carbonzipper
-  version: 2fac22996a68150be17a60d364402dabc99a2c1d
+  version: 1b4e46a0d06e35266dbaaa9092425aa69db7240d
   subpackages:
   - carbonzipperpb
   - mlog
@@ -61,35 +63,35 @@ imports:
 - name: github.com/facebookgo/stats
   version: 1b76add642e42c6ffba7211ad7b3939ce654526e
 - name: github.com/fsnotify/fsnotify
-  version: 4da3e2cfbabc9f751898f250b49f2439785783a1
+  version: c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9
 - name: github.com/go-sql-driver/mysql
   version: a0583e0143b1624142adab07e0e97fe106d99561
 - name: github.com/gogo/protobuf
-  version: 160de10b2537169b5ae3e7e221d28269ef40d311
+  version: 26de2f9a7d3b1826f275e7a97c8cad5080589426
   subpackages:
   - gogoproto
   - proto
   - protoc-gen-gogo/descriptor
 - name: github.com/gonum/blas
-  version: 37e82626499e1df7c54aeaba0959fd6e7e8dc1e4
+  version: e7c5890b24cf6f3bb173f76e1bd71e80e887e3f9
   subpackages:
   - blas64
   - native
   - native/internal/math32
 - name: github.com/gonum/floats
-  version: f74b330d45c56584a6ea7a27f5c64ea2900631e9
+  version: 7de1f4ea7ab57890bfd427af68c7994cd67975d4
 - name: github.com/gonum/internal
-  version: e57e4534cf9b3b00ef6c0175f59d8d2d34f60914
+  version: fda53f8d25717c07e2dac25758075a182bd74235
   subpackages:
   - asm/f32
   - asm/f64
 - name: github.com/gonum/lapack
-  version: 5ed4b826becd1807e09377508f51756586d1a98c
+  version: f0b8b25edeceafb3a2752941c7bf0cda962df112
   subpackages:
   - lapack64
   - native
 - name: github.com/gonum/matrix
-  version: dd6034299e4242c9f0ea36735e6d4264dfcb3f9f
+  version: a41cc49d4c29f7451775f4379a5cc6ec6239dfab
   subpackages:
   - mat64
 - name: github.com/gorilla/context
@@ -97,22 +99,28 @@ imports:
 - name: github.com/gorilla/handlers
   version: 90663712d74cb411cbef281bc1e08c19d1a76145
 - name: github.com/gorilla/mux
-  version: 5bbbb5b2b5729b132181cc7f4aa3b3c973e9a0ed
+  version: c0091a029979286890368b4c7b301261e448e242
 - name: github.com/gorilla/securecookie
   version: e59506cc896acb7f7bf732d4fdf5e25f7ccd8983
 - name: github.com/gorilla/sessions
-  version: a3acf13e802c358d65f249324d14ed24aac11370
+  version: fe21b6a095cd8a9d41cc7f412e13d35c130383f3
 - name: github.com/gwenn/yacr
   version: 7e83aeb0c27f6243b500812de9857c6448aef72b
 - name: github.com/hashicorp/consul
-  version: 6c3cce19fa4ff65a0feda178ff6b7feba27ff987
+  version: 842ae5a248a48a7216998ee8d7c5f271356c9fcf
   subpackages:
   - api
   - watch
 - name: github.com/hashicorp/go-cleanhttp
   version: d5fe4b57a186c716b0e00b8c301cbd9b4182694d
+- name: github.com/hashicorp/go-immutable-radix
+  version: 7f3cd4390caab3250a57f30efdb2a65dd7649ecf
 - name: github.com/hashicorp/go-rootcerts
   version: 6bb64b370b90e7ef1fa532be9e591a81c3493e00
+- name: github.com/hashicorp/golang-lru
+  version: 0a025b7e63adc15a622f29b0b2c4c3848243bbf6
+  subpackages:
+  - simplelru
 - name: github.com/hashicorp/hcl
   version: 23c074d0eceb2b8a5bfdbb271ab780cde70f05a8
   subpackages:
@@ -126,11 +134,18 @@ imports:
   - json/scanner
   - json/token
 - name: github.com/hashicorp/serf
-  version: 7da7fe5ea9876f0b178f6462f9ae3f4cfee054c3
+  version: b6017ae61f4420ed0c02d5eeeb9ff3fc02953f14
   subpackages:
   - coordinate
 - name: github.com/howeyc/fsnotify
   version: f0c08ee9c60704c1879025f2ae0ff3e000082c13
+- name: github.com/hpcloud/tail
+  version: a30252cb686a21eb2d0b98132633053ec2f7f1e5
+  subpackages:
+  - ratelimiter
+  - util
+  - watch
+  - winfile
 - name: github.com/hydrogen18/stalecucumber
   version: 0a94983f3e27967c69ba6bb92f9d5f0a68a97bc0
 - name: github.com/inconshreveable/mousetrap
@@ -142,7 +157,7 @@ imports:
 - name: github.com/JaderDias/movingmedian
   version: de8c410559fa1fc13a278ae774bd2ab251e8b8c1
 - name: github.com/jmoiron/sqlx
-  version: de8647470aafe4854c976707c431dbe1eb2822c6
+  version: 05cef0741ade10ca668982355b3f3f0bcf0ff0a8
   subpackages:
   - reflectx
 - name: github.com/jordan-wright/email
@@ -160,7 +175,7 @@ imports:
 - name: github.com/mattn/go-runewidth
   version: 97311d9f7767e3d6f422ea06661bc2c7a19e8a5d
 - name: github.com/mattn/go-sqlite3
-  version: ed69081a91fd053f17672236b0dd52ba7485e1a3
+  version: 6c771bb9887719704b210e87e934f08be014bdb1
 - name: github.com/micro/go-micro
   version: d29b5e2fab07d53e5067562809cc7fe0b43b67c2
   subpackages:
@@ -170,24 +185,22 @@ imports:
 - name: github.com/mitchellh/hashstructure
   version: 2bca23e0e452137f789efbc8610126fd8b94f73b
 - name: github.com/mitchellh/mapstructure
-  version: 06020f85339e21b2478f756a78e295255ffa4d6a
+  version: b4575eea38cca1123ec2dc90c26529b5c5acfcff
 - name: github.com/mjibson/go-dsp
   version: 49dba83727078f13a0e99553e0f8140990115ac9
   subpackages:
   - dsputils
   - fft
 - name: github.com/nsf/termbox-go
-  version: aa4a75b1c20a2b03751b1a9f7e41d58bd6f71c43
+  version: 88b7b944be8bc8d8ec6195fca97c5869ba20f99d
 - name: github.com/NYTimes/gziphandler
-  version: 47ca22a0aeea4c9ceddfb935d818d636d934c312
+  version: 289a3b81f5aedc99f8d6eb0f67827c142f1310d8
 - name: github.com/pelletier/go-toml
-  version: 0131db6d737cfbbfb678f8b7d92e55e27ce46224
+  version: acdc4509485b587f5e675510c4f2c63e90ff68a8
 - name: github.com/peterbourgon/g2g
   version: 0c2bab2b173d2cd9385ea6da5cec7b14b5019f11
 - name: github.com/pkg/errors
-  version: e881fd58d78e04cf6d0de1217f8707c8cc2249bc
-- name: github.com/robfig/cron
-  version: 2315d5715e36303a941d907f038da7f7c44c773b
+  version: 30136e27e2ac8d167177e8a583aa4c3fea5be833
 - name: github.com/satori/go.uuid
   version: 36e9d2ebbde5e3f13ab2e25625fd453271d6522e
 - name: github.com/siddontang/go
@@ -197,7 +210,7 @@ imports:
   - log
   - sync2
 - name: github.com/siddontang/go-mysql
-  version: 249187df06fcd3dea2ebb499c61687a81fff679c
+  version: 57996920bec3b45d80c7ba0f415c1e27868c9d17
   subpackages:
   - canal
   - client
@@ -206,44 +219,54 @@ imports:
   - packet
   - replication
   - schema
+  - server
 - name: github.com/siddontang/go-mysql-elasticsearch
   version: cb4e2b1d8005d4ed4458beb8b32ee360341440bd
   subpackages:
   - elastic
 - name: github.com/sirupsen/logrus
-  version: d682213848ed68c0a260ca37d6dd5ace8423f5ba
+  version: 768a92a02685ee7535069fc1581341b41bab9b72
   subpackages:
   - hooks/syslog
 - name: github.com/spf13/afero
-  version: 57afd63c68602b63ed976de00dd066ccb3c319db
+  version: bb8f1927f2a9d3ab41c9340aa034f6b803f4359c
   subpackages:
   - mem
 - name: github.com/spf13/cast
   version: acbeb36b902d72a7a4c18e8f3241075e7ab763e4
 - name: github.com/spf13/cobra
-  version: b95ab734e27d33e0d8fbabf71ca990568d4e2020
+  version: f91529fc609202eededff4de2dc0ba2f662240a3
 - name: github.com/spf13/jwalterweatherman
-  version: 12bd96e66386c1960ab0f74ced1362f66f552f7b
+  version: 7c0cea34c8ece3fbeb2b27ab9b59511d360fb394
 - name: github.com/spf13/pflag
   version: 4c012f6dcd9546820e378d0bdda4d8fc772cdfea
 - name: github.com/spf13/viper
   version: aafc9e6bc7b7bb53ddaa75a5ef49a17d6e654be5
 - name: github.com/wangjohn/quickselect
   version: ed8402a42d5f52ff8d3369f179e12243906f298a
+- name: github.com/xwb1989/sqlparser
+  version: da747e0c62c4e145ebd7484cf69f92c0dd192305
+  subpackages:
+  - dependency/bytes2
+  - dependency/hack
+  - dependency/querypb
+  - dependency/sqltypes
 - name: golang.org/x/crypto
-  version: 0fcca4842a8d74bfddc2c96a073bd2a4d2a7a2e8
+  version: 1875d0a70c90e57f11972aefd42276df65e895b9
   subpackages:
   - curve25519
   - ed25519
   - ed25519/internal/edwards25519
+  - internal/chacha20
+  - poly1305
   - ssh
   - ssh/terminal
 - name: golang.org/x/net
-  version: 434ec0c7fe3742c984919a691b2018a6e9694425
+  version: 0ed95abb35c445290478a5348a7b38bb154135fd
   subpackages:
   - context
 - name: golang.org/x/sys
-  version: d38bf781f16e180a1b2ad82697d2f81d7b7ecfac
+  version: ff2a66f350cefa5c93a634eadb5d25bb60c85a9c
   subpackages:
   - unix
   - windows
@@ -252,15 +275,19 @@ imports:
   subpackages:
   - transform
   - unicode/norm
+- name: gopkg.in/fsnotify.v1
+  version: 7be54206639f256967dd82fa767397ba5f8f48f5
+- name: gopkg.in/tomb.v1
+  version: c131134a1947e9afd9cecfe11f4c6dff0732ae58
 - name: gopkg.in/yaml.v2
-  version: 1244d3ce02e3e1c16820ada0bae506b6c479f106
+  version: d670f9405373e636a5a2765eea47fac0c9bc91a4
 testImports:
 - name: github.com/davecgh/go-spew
-  version: ecdeabc65495df2dec95d7c4a4c3e021903035e5
+  version: db69d09d2c587e9b9677f991dfcab1fc24d9086e
   subpackages:
   - spew
 - name: github.com/lomik/go-carbon
-  version: e290c340e7f091734cd9c59ee6d2e12d120788c2
+  version: fc40add972f2ad8f939c281830a3dad4efa19fd8
   subpackages:
   - points
 - name: github.com/magneticio/vamp-router
@@ -275,5 +302,3 @@ testImports:
   version: 87b1dfb5b2fa649f52695dd9eae19abe404a4308
   subpackages:
   - assert
-- name: gopkg.in/check.v1
-  version: 20d25e2804050c1cd24a7eea1e7a6447dd0e74ec
