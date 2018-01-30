@@ -50,7 +50,7 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 
 	sst.out = io.MultiWriter(writers...)
 
-	sst.listener, err = net.Listen("tcp", ":0")
+	sst.listener, err = net.Listen("tcp", cluster.conf.BindAddr+":0")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
