@@ -33,6 +33,7 @@ type Config struct {
 	LogFile                            string `mapstructure:"log-file" toml:"log-file"`
 	LogSyslog                          bool   `mapstructure:"log-syslog" toml:"log-syslog"`
 	LogLevel                           int    `mapstructure:"log-level" toml:"log-level"`
+	LogSST                             bool   `mapstructure:"log-sst" toml:"log-sst"`
 	User                               string `mapstructure:"db-servers-credential" toml:"db-servers-credential"`
 	Hosts                              string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert"`

@@ -58,7 +58,7 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	sst.tcplistener = sst.listener.(*net.TCPListener)
 	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
-	if sst.cluster.conf.LogLevel > 2 {
+	if sst.cluster.conf.LogSST {
 		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
 	}
 	sst.Lock()
@@ -74,8 +74,8 @@ func (sst *SST) tcp_con_handle() {
 	var err error
 
 	defer func() {
-		if sst.cluster.conf.LogLevel > 2 {
-			sst.cluster.LogPrintf(LvlInfo, "SST cloing connection  %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		if sst.cluster.conf.LogSST {
+			sst.cluster.LogPrintf(LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 
 		sst.tcplistener.Close()
@@ -98,8 +98,8 @@ func (sst *SST) tcp_con_handle() {
 	select {
 
 	case <-chan_to_stdout:
-		if sst.cluster.conf.LogLevel > 2 {
-			sst.cluster.LogPrintf(LvlErr, "Remote SST done for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		if sst.cluster.conf.LogSST {
+			sst.cluster.LogPrintf(LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 	}
 }
@@ -112,8 +112,8 @@ func (sst *SST) stream_copy() <-chan int {
 		defer func() {
 			if con, ok := sst.in.(net.Conn); ok {
 
-				if sst.cluster.conf.LogLevel > 2 {
-					sst.cluster.LogPrintf(LvlErr, "Connection from %v is closed", con.RemoteAddr())
+				if sst.cluster.conf.LogSST {
+					sst.cluster.LogPrintf(LvlErr, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}
