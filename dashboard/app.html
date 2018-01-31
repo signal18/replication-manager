@@ -233,14 +233,20 @@
                                             <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
                                             </td>
                                             <td>
-                                                <button width=15 height=15 type="button" ng-click="maintenance(server.Id)">
-                                                    <img width=15 height=15 src="/static/maintenance.png">
+                                                <button width=18 height=18 type="button" ng-click="maintenance(server.Id)">
+                                                    <img width=18 height=18 src="/static/maintenance.png">
                                                 </button>
-                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15 type="button" ng-click="stop(server.Id)">
-                                                    <img width=15 height=15 src="/static/stop.png">
+                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="stop(server.Id)">
+                                                    <img width=18 height=18 src="/static/stop.png">
                                                 </button>
-                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=15 height=15 type="button" ng-click="start(server.Id)">
-                                                    <img width=15 height=15 src="/static/start.png">
+                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="start(server.Id)">
+                                                    <img width=18 height=18 src="/static/start.png">
+                                                </button>
+                                                <button width=18 height=18 type="button" ng-click="optimize(server.Id)">
+                                                    <img width=18 height=18 src="/static/defrag.png">
+                                                </button>
+                                                <button  ng-if="server.Id==master.Id"  width=18 height=18 type="button" ng-click="physicalbackup(server.Id)">
+                                                    <img width=18 height=18 src="/static/backup.png">
                                                 </button>
                                             </td>
                                         </tr>
@@ -670,7 +676,7 @@
                     </md-tab>
                     <md-tab label="DB LOGS">
                         <md-content  ng-repeat="server in servers" class="md-padding">
-                          
+
                             <BR>
                             <md-card >
 

@@ -69,7 +69,7 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
 	SSTs.Unlock()
-	sst.tcp_con_handle()
+	go sst.tcp_con_handle()
 
 	return strconv.Itoa(destinationPort), nil
 }

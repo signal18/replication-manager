@@ -280,6 +280,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     };
 
 
+
+
     $scope.toggletraffic = function() {
         var r = confirm("Confirm toggle traffic");
         if (r == true) {
@@ -593,7 +595,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         });
     };
 
-    $scope.backupphysical = function() {
+    $scope.backupphysical = function(server) {
 
         var response = $http.get('/clusters/' + $scope.clusters + '/backupphysical');
         response.success(function(data, status, headers, config) {
@@ -603,4 +605,18 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             console.log("Error.");
         });
     };
+
+    $scope.optimize = function(server) {
+        var r = confirm("Confirm optimize for server-id: " + server);
+        if (r == true) {
+            var response = $http.get('/clusters/' + $scope.clusters + '/servers/' + server + '/optimize');
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+        }
+    };
+
 }]);
