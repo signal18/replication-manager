@@ -137,7 +137,7 @@ func MySQLConnect(user string, password string, address string, parameters ...st
 
 // SQLiteConnect returns a SQLite connection
 func SQLiteConnect(path string) (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlite3", path + "/arbitrator.db")
+	db, err := sqlx.Connect("sqlite3", path+"/arbitrator.db")
 	return db, err
 }
 
@@ -675,11 +675,15 @@ func GetEventStatus(db *sqlx.DB) ([]Event, error) {
 }
 
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
-	stmt := "ALTER DEFINER='" + ev.Definer + "' EVENT "
+	definer := strings.Split(ev.Definer, "@")
+	if len(definer) != 2 {
+		return errors.New("Incorrect definer format")
+	}
+	stmt := fmt.Sprintf("ALTER DEFINER='%s'@'%s' EVENT ", definer[0], definer[1])
 	if status == 3 {
-		stmt = stmt + ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
+		stmt += ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
 	} else {
-		stmt = stmt + ev.Db + "." + ev.Name + " ENABLE"
+		stmt += ev.Db + "." + ev.Name + " ENABLE"
 	}
 	_, err := db.Exec(stmt)
 	if err != nil {
