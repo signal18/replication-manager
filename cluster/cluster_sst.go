@@ -22,13 +22,18 @@ type SST struct {
 	tcplistener *net.TCPListener
 	out         io.Writer
 	cluster     *Cluster
+	port        int
+}
+
+type ProtectedSSTconnections struct {
+	SSTconnections map[int]*SST
 	sync.Mutex
 }
 
-var SSTconnections = make(map[int]*SST)
+var SSTs = ProtectedSSTconnections{SSTconnections: make(map[int]*SST)}
 
 func (cluster *Cluster) SSTCloseReceiver(destinationPort int) {
-	SSTconnections[destinationPort].in.(net.Conn).Close()
+	SSTs.SSTconnections[destinationPort].in.(net.Conn).Close()
 }
 
 func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string, error) {
@@ -61,9 +66,9 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	if sst.cluster.conf.LogSST {
 		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
 	}
-	sst.Lock()
-	SSTconnections[destinationPort] = sst
-	sst.Unlock()
+	SSTs.Lock()
+	SSTs.SSTconnections[destinationPort] = sst
+	SSTs.Unlock()
 	sst.tcp_con_handle()
 
 	return strconv.Itoa(destinationPort), nil
@@ -81,9 +86,9 @@ func (sst *SST) tcp_con_handle() {
 		sst.tcplistener.Close()
 		sst.file.Close()
 		sst.listener.Close()
-		sst.Lock()
-		delete(SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
-		sst.Unlock()
+		SSTs.Lock()
+		delete(SSTs.SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
+		SSTs.Unlock()
 	}()
 
 	sst.in, err = sst.listener.Accept()
