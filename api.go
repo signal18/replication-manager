@@ -1145,6 +1145,20 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		node.JobOptimize()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1158,6 +1172,7 @@ func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

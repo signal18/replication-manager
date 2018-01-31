@@ -234,19 +234,19 @@
                                             </td>
                                             <td>
                                                 <button width=18 height=18 type="button" ng-click="maintenance(server.Id)">
-                                                    <img width=18 height=18 src="/static/maintenance.png">
+                                                    <md-tooltip md-direction="down">Toggle Maintenance Mode</md-tooltip><img width=18 height=18 src="/static/maintenance.png">
                                                 </button>
                                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="stop(server.Id)">
-                                                    <img width=18 height=18 src="/static/stop.png">
+                                                    <md-tooltip md-direction="down">Stop Database</md-tooltip><img width=18 height=18 src="/static/stop.png">
                                                 </button>
                                                 <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="start(server.Id)">
-                                                    <img width=18 height=18 src="/static/start.png">
+                                                <md-tooltip md-direction="down">Start Database</md-tooltip><img width=18 height=18 src="/static/start.png">
                                                 </button>
                                                 <button width=18 height=18 type="button" ng-click="optimize(server.Id)">
-                                                    <img width=18 height=18 src="/static/defrag.png">
+                                                    <md-tooltip md-direction="down">Optimize Database</md-tooltip> <img width=18 height=18 src="/static/defrag.png">
                                                 </button>
-                                                <button  ng-if="server.Id==master.Id"  width=18 height=18 type="button" ng-click="physicalbackup(server.Id)">
-                                                    <img width=18 height=18 src="/static/backup.png">
+                                                <button  ng-if="server.Id==master.Id"  width=18 height=18 type="button" ng-click="backupphysical(server.Id)">
+                                                    <md-tooltip md-direction="down">Physcical Backup</md-tooltip><img width=18 height=18 src="/static/backup.png">
                                                 </button>
                                             </td>
                                         </tr>
