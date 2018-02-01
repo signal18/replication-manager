@@ -151,7 +151,7 @@ func cliClusterInServerList() bool {
 func initCliCommonFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
-	cmd.Flags().StringVar(&cliPort, "port", "3000", "TLS port of  replication-manager")
+	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
