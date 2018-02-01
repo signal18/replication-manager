@@ -46,6 +46,7 @@ type ServerMonitor struct {
 	ErrorLogTailer              *tail.Tail `json:"-"`
 	ErrorLog                    httplog.HttpLog
 	SlowLogTailer               *tail.Tail `json:"-"`
+	SlowLog                     httplog.HttpLog
 	LogBin                      string
 	GTIDBinlogPos               *gtid.List
 	CurrentGtid                 *gtid.List
@@ -166,15 +167,21 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 	errLogFile := server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_error.log"
-
+	slowLogFile := server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}
+	if _, err := os.Stat(slowLogFile); os.IsNotExist(err) {
+		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile.Close()
+	}
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
-	//server.ErrorLogLogQueue = cluster.NewLogQueue(20)
+	server.SlowLogTailer, _ = tail.TailFile(slowLogFile, tail.Config{Follow: true, ReOpen: true})
 	server.ErrorLog = httplog.NewHttpLog(20)
+	server.SlowLog = httplog.NewHttpLog(20)
 	go server.ErrorLogWatcher()
+	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
 	server.SetPrefered(cluster.IsInPreferedHosts(server.URL))
 	var err error

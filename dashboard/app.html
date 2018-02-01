@@ -680,7 +680,7 @@
                             <BR>
                             <md-card >
 
-                                <md-card-content  ><p class="sectionheader">LOGS {{server.Host}}:{{server.Port}}</p>  </md-card-content>
+                                <md-card-content  ><p class="sectionheader">ERROR LOG {{server.Host}}:{{server.Port}}</p>  </md-card-content>
                                 <md-card-content style="height: 400px; overflow-y: auto">
                                 <md-pre>
                                 <table class="log">
@@ -698,7 +698,24 @@
                                                 </table>
                                                 </md-pre>
                                                 </md-card-content>
-
+                                                <md-card-content  ><p class="sectionheader">SLOW LOG {{server.Host}}:{{server.Port}}</p>  </md-card-content>
+                                                <md-card-content style="height: 400px; overflow-y: auto">
+                                                <md-pre>
+                                                <table class="log">
+                                                <tr ng-repeat="logline in server.SlowLog.Buffer" ng-if="logline.Timestamp">
+                                                <td class="stamp">{{ logline.Timestamp }}</td>
+                                                <td ng-switch="logline.Level">
+                                                <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
+                                                                                <span ng-switch-when="WARN" class="label label-warning">{{ logline.Level }}</span>
+                                                                                <span ng-switch-when="ERROR" class="label label-danger">{{ logline.Level }}</span>
+                                                                                <span ng-switch-when="DEBUG" class="label label-primary">{{ logline.Level }}</span>
+                                                                                <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
+                                                                                <td class="text">{{ logline.Text }}
+                                                                                    <td>
+                                                                    </tr>
+                                                                </table>
+                                                                </md-pre>
+                                                                </md-card-content>
 
                             </md-card>
                         </md-content>

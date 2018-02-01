@@ -113,11 +113,37 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 
 }
 
+func (server *ServerMonitor) SlowLogWatcher() {
+
+	for line := range server.ErrorLogTailer.Lines {
+		var log httplog.Message
+		itext := strings.Index(line.Text, "]")
+		if itext != -1 {
+			log.Text = line.Text[itext+2:]
+		} else {
+			log.Text = line.Text
+		}
+		itime := strings.Index(line.Text, "[")
+		if itime != -1 {
+			log.Timestamp = line.Text[0 : itime-1]
+			if itext != -1 {
+				log.Level = line.Text[itime+1 : itext]
+			}
+		} else {
+			log.Timestamp = fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+		}
+		log.Group = server.ClusterGroup.GetClusterName()
+
+		server.SlowLog.Add(log)
+	}
+
+}
+
 func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_slow_query_log_file.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
