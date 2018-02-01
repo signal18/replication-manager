@@ -187,7 +187,7 @@ func init() {
 	serverCmd.Flags().BoolVar(&cliServerStop, "stop", false, "Start server")
 	serverCmd.Flags().BoolVar(&cliServerStart, "start", false, "Stop server")
 
-	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:3000/api/clusters", "Url to rest API")
+	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:10005/api/clusters", "Url to rest API")
 
 	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 
