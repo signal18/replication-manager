@@ -16,12 +16,14 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/httplog"
 	river "github.com/signal18/replication-manager/river"
+	"github.com/signal18/replication-manager/slowlog"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -114,27 +116,22 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 }
 
 func (server *ServerMonitor) SlowLogWatcher() {
-
-	for line := range server.ErrorLogTailer.Lines {
-		var log httplog.Message
-		itext := strings.Index(line.Text, "]")
-		if itext != -1 {
-			log.Text = line.Text[itext+2:]
-		} else {
-			log.Text = line.Text
-		}
-		itime := strings.Index(line.Text, "[")
-		if itime != -1 {
-			log.Timestamp = line.Text[0 : itime-1]
-			if itext != -1 {
-				log.Level = line.Text[itime+1 : itext]
-			}
-		} else {
-			log.Timestamp = fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
-		}
+	log := slowlog.NewMessage()
+	preline := ""
+	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
+	for line := range server.SlowLogTailer.Lines {
+		newlog := slowlog.NewMessage()
+		server.ClusterGroup.LogPrintf(LvlInfo, "New line %s", line.Text)
 		log.Group = server.ClusterGroup.GetClusterName()
-
-		server.SlowLog.Add(log)
+		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
+			// new querySelector
+			server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
+			server.SlowLog.Add(log)
+			log = newlog
+		} else {
+			server.SlowLog.ParseLine(line.Text, log)
+		}
+		preline = line.Text
 	}
 
 }

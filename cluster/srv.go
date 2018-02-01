@@ -27,6 +27,7 @@ import (
 	"github.com/signal18/replication-manager/gtid"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/slowlog"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -46,7 +47,7 @@ type ServerMonitor struct {
 	ErrorLogTailer              *tail.Tail `json:"-"`
 	ErrorLog                    httplog.HttpLog
 	SlowLogTailer               *tail.Tail `json:"-"`
-	SlowLog                     httplog.HttpLog
+	SlowLog                     slowlog.SlowLog
 	LogBin                      string
 	GTIDBinlogPos               *gtid.List
 	CurrentGtid                 *gtid.List
@@ -179,7 +180,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
 	server.SlowLogTailer, _ = tail.TailFile(slowLogFile, tail.Config{Follow: true, ReOpen: true})
 	server.ErrorLog = httplog.NewHttpLog(20)
-	server.SlowLog = httplog.NewHttpLog(20)
+	server.SlowLog = slowlog.NewSlowLog(20)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
