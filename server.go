@@ -177,12 +177,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that possible master have equal binlog filters")
 	monitorCmd.Flags().BoolVar(&conf.CheckGrants, "check-grants", true, "Check that possible master have equal grants")
 	monitorCmd.Flags().BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
-<<<<<<< HEAD
-	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "3000", "Rest API listen port")
-=======
 
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
->>>>>>> ada07274... Change API port from 3000 to 10005
 	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:repman", "Rest API user:password")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 
