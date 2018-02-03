@@ -121,11 +121,15 @@ func (server *ServerMonitor) SlowLogWatcher() {
 	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
 	for line := range server.SlowLogTailer.Lines {
 		newlog := slowlog.NewMessage()
-		server.ClusterGroup.LogPrintf(LvlInfo, "New line %s", line.Text)
+		if server.ClusterGroup.conf.LogSST {
+			server.ClusterGroup.LogPrintf(LvlInfo, "New line %s", line.Text)
+		}
 		log.Group = server.ClusterGroup.GetClusterName()
 		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
 			// new querySelector
-			server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
+			if server.ClusterGroup.conf.LogSST {
+				server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
+			}
 			if log.Query == "" {
 				server.SlowLog.Add(log)
 			}
