@@ -131,7 +131,7 @@
                   <md-tab label="Jobs">
                      <div ng-include src="'static/job.html'"></div>
                   </md-tab>
-                  <md-tab label="Graphs" ng-if="settings.graphitemetrics==true">
+                  <md-tab label="Graphs" ng-if="settings.graphitemetrics=='true'">
                     <div ng-include src="'static/graph.html'"></div>
                   </md-tab>
                   <md-tab label="Agents" ng-if="settings.enterprise=='true'" >
