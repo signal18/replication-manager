@@ -594,6 +594,7 @@ For interacting with this daemon use,
 
 		go apiserver()
 
+		agents = []opensvc.Host{}
 		if conf.Enterprise {
 			OpenSVC.Host, OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
 			OpenSVC.User, OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
@@ -610,8 +611,8 @@ For interacting with this daemon use,
 			if agents == nil {
 				log.Fatalf("Can't connect or agents not registered")
 			}
-
 		}
+
 		// Initialize go-carbon
 		if conf.GraphiteEmbedded {
 			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
