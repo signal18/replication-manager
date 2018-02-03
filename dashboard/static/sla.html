@@ -1,0 +1,21 @@
+<md-content class="md-padding">
+    <md-card>
+        <md-card-content>
+            <p class="sectionheader">SLA</p>
+        </md-card-content>
+        <table ng-if="settings" class="table">
+            <tr>
+                <th>Monitor Tickers</th>
+                <th>Master Available</th>
+                <th>Can Failover Acceptable Data Loss</th>
+                <th>Can Failover No Data Loss</th>
+            </tr>
+            <tr>
+                <td>{{settings.monheartbeats}}</td>
+                <td>{{settings.uptime}}</td>
+                <td>{{settings.uptimefailable}}</td>
+                <td>{{settings.uptimesemisync}}</td>
+            </tr>
+        </table>
+    </md-card>
+</md-content>

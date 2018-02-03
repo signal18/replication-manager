@@ -1,0 +1,86 @@
+
+                        <md-content class="md-padding">
+                            <md-card ng-repeat="proxy in proxies">
+                                <md-card-content>
+                                    <p class="sectionheader">{{proxy.Type}}</p>
+                                </md-card-content>
+                                <table ng-if="proxies" class="table">
+                                    <tbody>
+
+
+                                        <tr valign="middle">
+
+                                            <th>Id</th>
+                                            <th>Host</th>
+                                            <th>Port</th>
+                                            <th>Version</th>
+                                            <th ng-if="proxy.Type!='proxysql'">WritePort</th>
+                                            <th ng-if="proxy.Type=='proxysql'">WriterHG</th>
+                                            <th ng-if="proxy.Type!='proxysql'">ReadPort</th>
+                                            <th ng-if="proxy.Type=='proxysql'">ReaderHG</th>
+                                            <th>ReadWritePort</th>
+                                        </tr>
+                                        <tr>
+                                            <td>{{proxy.Id}}</td>
+                                            <td>{{proxy.Host}}</td>
+                                            <td>{{proxy.Port}}</td>
+                                            <td>{{proxy.Version}}</td>
+                                            <td>{{proxy.WritePort}}</td>
+                                            <td>{{proxy.ReadPort}}</td>
+                                            <td>{{proxy.ReadWritePort}}</td>
+
+                                        </tr>
+                                        <tr>
+
+                                            <td colspan="7">
+
+                                                <table ng-if="servers" class="table" ng-style="width:400">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Role</th>
+                                                            <th>Host</th>
+                                                            <th>Port</th>
+                                                            <th>Status</th>
+                                                            <th>Proxy Name</th>
+                                                            <th>Proxy Status</th>
+                                                            <th>Proxy Connections</th>
+                                                            <th>Proxy Bytes Out</th>
+                                                            <th>Proxy Bytes In</th>
+                                                            <th>Proxy Session Avg Time</th>
+                                                            <th ng-if="proxy.Type=='proxysql'">Proxy Hostgroup</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tr ng-repeat="server in proxy.BackendsWrite" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                                                        <th>Write</th>
+                                                        <td>{{server.Host}}</td>
+                                                        <td>{{server.Port}}</td>
+                                                        <td>{{server.Status}}</td>
+                                                        <td>{{server.PrxName}}</td>
+                                                        <td>{{server.PrxStatus}}</td>
+                                                        <td>{{server.PrxConnections}}</td>
+                                                        <td>{{server.PrxByteOut}}</td>
+                                                        <td>{{server.PrxByteIn}}</td>
+                                                        <td>{{server.PrxLatency}}</td>
+                                                        <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
+                                                    </tr>
+                                                    <tr ng-repeat="server in proxy.BackendsRead" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
+                                                        <th>Read</th>
+                                                        <td>{{server.Host}}</td>
+                                                        <td>{{server.Port}}</td>
+                                                        <td>{{server.Status}}</td>
+                                                        <td>{{server.PrxName}}</td>
+                                                        <td>{{server.PrxStatus}}</td>
+                                                        <td>{{server.PrxConnections}}</td>
+                                                        <td>{{server.PrxByteOut}}</td>
+                                                        <td>{{server.PrxByteIn}}</td>
+                                                        <td>{{server.PrxLatency}}</td>
+                                                        <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </md-card>
+
+                        </md-content>

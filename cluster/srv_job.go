@@ -126,7 +126,9 @@ func (server *ServerMonitor) SlowLogWatcher() {
 		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
 			// new querySelector
 			server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
-			server.SlowLog.Add(log)
+			if log.Query == "" {
+				server.SlowLog.Add(log)
+			}
 			log = newlog
 		} else {
 			server.SlowLog.ParseLine(line.Text, log)

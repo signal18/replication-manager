@@ -1,0 +1,21 @@
+    <md-content class="md-padding">
+        <md-card>
+            <md-card-content>
+                <p class="sectionheader">ERRORS</p>
+                <BR>
+                <md-pre width="100%" class="alert alert-danger">
+                    <div ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
+                </md-pre>
+            </md-card-content>
+        </md-card>
+        <BR>
+        <md-card>
+            <md-card-content>
+                <p class="sectionheader">WARNINGS</p>
+                <BR>
+                <md-pre>
+                    <div ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
+                </md-pre>
+            </md-card-content>
+        </md-card>
+    </md-content>

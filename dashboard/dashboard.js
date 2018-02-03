@@ -204,6 +204,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             $scope.reserror = true;
         });
     }, 1000);
+
+    $scope.selectedUserIndex = undefined;
     $scope.switch = function(fail) {
         if (fail == false) {
             var r = confirm("Confirm switchover");
@@ -617,6 +619,16 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 console.log("Error.");
             });
         }
+    };
+
+    $scope.selectUserIndex = function(index) {
+      var r = confirm("Confirm select Index  " + index);
+      if ($scope.selectedUserIndex !== index) {
+        $scope.selectedUserIndex = index;
+      }
+      else {
+        $scope.selectedUserIndex = undefined;
+      }
     };
 
 }]);

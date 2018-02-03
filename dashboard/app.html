@@ -1,834 +1,150 @@
 <!DOCTYPE html>
 <html>
-
-<head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-    <title></title>
-    <meta name="description" content="">
-    <meta name="viewport" content="width=device-width">
-    <link href="favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
-    <script src="/static/vendor/jquery-2.1.1.min.js"></script>
-    <script src="/static/vendor/jquery-ui.min.js"></script>
-    <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
-    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/css/bootstrap-theme.min.css">
-    <link rel="stylesheet" href="/static/css/graph.css">
-    <link rel="stylesheet" href="/static/css/detail.css">
-    <link rel="stylesheet" href="/static/css/legend.css">
-    <link rel="stylesheet" href="/static/css/main.css">
-    <script src="/static/vendor/underscore-min.js"></script>
-    <script src="/static/vendor/mustache.js"></script>
-    <script src="/static/vendor/jquery.ba-bbq.min.js"></script>
-    <script src="/static/vendor/d3.v3.min.js"></script>
-    <script src="/static/vendor/rickshaw.min.js"></script>
-    <script src="/static/vendor/Markdown.Converter.js"></script>
-    <script src="/static/giraffe-annotator.js"></script>
-    <script src="/static/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
-    <script src="/static/angular.min.js"></script>
-    <script src="/static/angular-resource.min.js"></script>
-    <script src="/static/svg-assets-cache.js"></script>
-    <script src="/static/angular-animate.min.js"></script>
-    <script src="/static/angular-aria.min.js"></script>
-    <script src="/static/angular-messages.min.js"></script>
-    <script src="/static/angular-material.min.js"></script>
-    <script src="/static/angular-route.js"></script>
-    <script src="/static/angular-cookie.js"></script>
-    <script src="/static/ng-token-auth.js"></script>
-    <script src="dashboard.js"></script>
-    <link rel="stylesheet" href="/static/angular-material.min.css">
-    <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
-    <style>
-        td {
-            white-space: nowrap;
-        }
-        .menudemoBasicUsage .md-menu-demo {
-            padding: 24px;
-        }
-        .menudemoBasicUsage .menu-demo-container {
-            min-height: 200px;
-        }
-        .sectionheader {
-            font-size: 12px;
-            font-weight: 700;
-            margin-bottom: 0;
-            padding-left: 0;
-            border: none;
-            background-color: transparent;
-            letter-spacing: 0.02em;
-            text-transform: uppercase;
-        }
-        .tabsdemoDynamicHeight md-content {
-            background-color: transparent !important;
-        }
-        .tabsdemoDynamicHeight md-content md-tabs {
-            background: #ffffff;
-            border: 1px solid #dcdcdc;
-        }
-        .tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
-            background: white;
-        }
-        .tabsdemoDynamicHeight md-content h1:first-child {
-            margin-top: 0;
-        }
-        .title {
-            font-size: 24px;
-            color: #282828;
-            padding-left: 20px;
-            padding-top: 20px;
-            padding-bottom: 20px;
-        }
-    </style>
-    <link href="data:image/x-icon;base64,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" rel="icon" type="image/x-icon" />
-</head>
-
-<body ng-app="dashboard" ng-cloak>
-    <div ng-controller="DashboardController" class="col-lg-12">
-        <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
+   <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+      <title></title>
+      <meta name="description" content="">
+      <meta name="viewport" content="width=device-width">
+      <link href="favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
+      <script src="/static/vendor/jquery-2.1.1.min.js"></script>
+      <script src="/static/vendor/jquery-ui.min.js"></script>
+      <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
+      <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+      <link rel="stylesheet" href="/static/css/bootstrap-theme.min.css">
+      <link rel="stylesheet" href="/static/css/graph.css">
+      <link rel="stylesheet" href="/static/css/detail.css">
+      <link rel="stylesheet" href="/static/css/legend.css">
+      <link rel="stylesheet" href="/static/css/main.css">
+      <script src="/static/vendor/underscore-min.js"></script>
+      <script src="/static/vendor/mustache.js"></script>
+      <script src="/static/vendor/jquery.ba-bbq.min.js"></script>
+      <script src="/static/vendor/d3.v3.min.js"></script>
+      <script src="/static/vendor/rickshaw.min.js"></script>
+      <script src="/static/vendor/Markdown.Converter.js"></script>
+      <script src="/static/giraffe-annotator.js"></script>
+      <script src="/static/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
+      <script src="/static/angular.min.js"></script>
+      <script src="/static/angular-resource.min.js"></script>
+      <script src="/static/svg-assets-cache.js"></script>
+      <script src="/static/angular-animate.min.js"></script>
+      <script src="/static/angular-aria.min.js"></script>
+      <script src="/static/angular-messages.min.js"></script>
+      <script src="/static/angular-material.min.js"></script>
+      <script src="/static/angular-route.js"></script>
+      <script src="/static/angular-cookie.js"></script>
+      <script src="/static/ng-token-auth.js"></script>
+      <script src="/static/hammer.js"></script>
+      <script src="dashboard.js"></script>
+      <link rel="stylesheet" href="/static/angular-material.min.css">
+      <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
+      <style>
+         td {
+         white-space: nowrap;
+         }
+         .menudemoBasicUsage .md-menu-demo {
+         padding: 24px;
+         }
+         .menudemoBasicUsage .menu-demo-container {
+         min-height: 200px;
+         }
+         .sectionheader {
+         font-size: 12px;
+         font-weight: 700;
+         margin-bottom: 0;
+         padding-left: 0;
+         border: none;
+         background-color: transparent;
+         letter-spacing: 0.02em;
+         text-transform: uppercase;
+         }
+         .tabsdemoDynamicHeight md-content {
+         background-color: transparent !important;
+         }
+         .tabsdemoDynamicHeight md-content md-tabs {
+         background: #ffffff;
+         border: 1px solid #dcdcdc;
+         }
+         .tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
+         background: white;
+         }
+         .tabsdemoDynamicHeight md-content h1:first-child {
+         margin-top: 0;
+         }
+         .title {
+         font-size: 24px;
+         color: #282828;
+         padding-left: 20px;
+         padding-top: 20px;
+         padding-bottom: 20px;
+         }
+      </style>
+      <link href="data:image/x-icon;base64,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" rel="icon" type="image/x-icon" />
+   </head>
+   <body ng-app="dashboard" ng-cloak>
+      <div ng-controller="DashboardController" class="col-lg-12">
+         <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
             <table width="100%">
-                <tr>
-                    <td>
-                        <h1>
-                            <span class="title"><img src="/static/logo.png" alt="Replication Manager"/></span>
-                        </h1>
+               <tr>
+                  <td>
+                     <h1>
+                        <span class="title"><img src="/static/logo.png" alt="Replication Manager"/></span>
+                     </h1>
+                  </td>
+                  <td>
+                     <form ng-if="settings.httpauth=='true'" align=right action="/logout" method="post">
+                        <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
+                     </form>
+                     <form name="myForm">
+                        <md-panel>
+                           <md-card-content>
+                              <p class="sectionheader">CLUSTERS</p>
+                              <label for="cluster" action="/setcluster">
+                                 <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()">
+                                    <md-option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters" value="{{element}}">
+                                    {{element}}</option>
+                                 </md-select>
+                              </label>
+                           </md-card-content>
+                        </md-panel>
+                  </form>
                     </td>
-                    <td>
-
-                        <form ng-if="settings.httpauth=='true'" align=right action="/logout" method="post">
-                            <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
-                        </form>
-                        <form name="myForm">
-                            <md-panel>
-                                <md-card-content>
-                                    <p class="sectionheader">CLUSTERS</p>
-                                    <label for="cluster" action="/setcluster">
-                                        <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()">
-                                            <md-option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters" value="{{element}}">{{element}}</option>
-                                        </md-select>
-                                    </label>
-                                </md-card-content>
-                            </md-panel>
-                    </td>
-                    </form>
-
-                </tr>
+               </tr>
             </table>
             <md-content layout="column">
-                <md-tabs md-dynamic-height="" md-border-bottom="">
-                    <md-tab label="DASHBOARD">
-                        <md-content class="md-padding">
-                            <md-card>
-                                <div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
-                            </md-card>
-                            <div layout="column" layout-gt-xs="row">
-                                <div flex-gt-xs="30" class="col-lg-33">
-                                    <md-card>
-                                        <table class="table">
-
-                                            <tr>
-                                                <th>Group Name</th>
-                                                <th>Topology</th>
-                                            </tr>
-                                            <tr>
-                                                <td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-info">{{settings.confgroup}}</span>
-                                                </td>
-                                                <td><span class="label label-info">{{settings.topology}}</span>
-                                                </td>
-                                            </tr>
-                                        </table>
-
-                                    </md-card>
-                                </div>
-                                <div flex-gt-xs="10"></div>
-                                <div flex-gt-xs="60" class="col-lg-66">
-                                    <md-card>
-
-                                        <table ng-if="settings" class="table">
-                                            <tr>
-                                                <th>Manager Status</th>
-                                                <th>Failover Count</th>
-                                                <th>Last Failover Time</th>
-                                            </tr>
-                                            <tr>
-                                                <td><span ng-if="settings.runstatus=='A'" class="label label-success">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span>
-                                                </td>
-                                                <td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
-                                                <td>{{settings.lastfailover}}</td>
-                                            </tr>
-                                        </table>
-                                    </md-card>
-                                </div>
-                            </div>
-                            <md-card>
-                                <md-card-content>
-                                    <p class="sectionheader">SERVERS</p>
-                                </md-card-content>
-                                <table ng-if="servers" class="table">
-
-                                    <tr>
-                                        <th>Host</th>
-                                        <th>Port</th>
-                                        <th>Version</th>
-                                        <th>Status</th>
-                                        <th>Priority</th>
-                                        <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true ">Using GTID</th>
-                                        <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Current GTID</th>
-                                        <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Slave GTID Pos</th>
-                                        <th ng-if="servers[0].DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true">Executed GTID Set</th>
-                                        <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">File</th>
-                                        <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">Pos</th>
-                                        <th>IO Thread</th>
-                                        <th>SQL Thread</th>
-                                        <th>Delay</th>
-                                        <th>Read Only</th>
-                                        <th>Fail Count</th>
-                                        <th>Scheduler</th>
-                                        <th>Master Sync</th>
-                                        <th>Slave Sync</th>
-                                        <th>Actions</th>
-                                    </tr>
-
-                                    <tbody>
-                                        <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-
-
-                                            <td>{{server.Host}}</td>
-                                            <td>{{server.Port}}</td>
-                                            <td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
-                                            <td ng-switch="server.State">
-                                                <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                                <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                                <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                                <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                                <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                                <span ng-switch-default class="label label-default">{{server.State}}<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                                            </td>
-                                            <td ng-if="server.Ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"></td>
-                              <td ng-if="server.Prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"></td>
-                              <td ng-if="server.Prefered==false && server.Ignored==false"></td>
-                              <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{server.Replications[0].UsingGtid.String}}</td>
-                              <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.CurrentGtid)}}</td>
-                              <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
-                              <td ng-if="server.DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true ">{{server.GTIDExecuted}}</td>
-                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}</th>
-                              <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].ExecMasterLogPos.String}}</th>
-                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}</th>
-                              <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogPos}}</th>
-
-                              <td>{{server.Replications[0].SlaveIORunning.String}}</td>
-                              <td>{{server.Replications[0].SlaveSQLRunning.String}}</td>
-                              <td>{{server.Replications[0].SecondsBehindMaster.Int64}}</td>
-                              <td>{{server.ReadOnly}}</td>
-                              <td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
-                              <td ng-if="server.EventScheduler==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                                            </td>
-                                            <td ng-if="server.EventScheduler==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                                            </td>
-                                            <td ng-if="server.SemiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                                            </td>
-                                            <td ng-if="server.SemiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                                            </td>
-                                            <td ng-if="server.SemiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                                            </td>
-                                            <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                                            </td>
-                                            <td>
-                                                <button width=18 height=18 type="button" ng-click="maintenance(server.Id)">
-                                                    <md-tooltip md-direction="down">Toggle Maintenance Mode</md-tooltip><img width=18 height=18 src="/static/maintenance.png">
-                                                </button>
-                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="stop(server.Id)">
-                                                    <md-tooltip md-direction="down">Stop Database</md-tooltip><img width=18 height=18 src="/static/stop.png">
-                                                </button>
-                                                <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="start(server.Id)">
-                                                <md-tooltip md-direction="down">Start Database</md-tooltip><img width=18 height=18 src="/static/start.png">
-                                                </button>
-                                                <button width=18 height=18 type="button" ng-click="optimize(server.Id)">
-                                                    <md-tooltip md-direction="down">Optimize Database</md-tooltip> <img width=18 height=18 src="/static/defrag.png">
-                                                </button>
-                                                <button  ng-if="server.Id==master.Id"  width=18 height=18 type="button" ng-click="backupphysical(server.Id)">
-                                                    <md-tooltip md-direction="down">Physcical Backup</md-tooltip><img width=18 height=18 src="/static/backup.png">
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </md-card>
-
-                            <div layout="column" layout-gt-xs="row">
-                                <div flex-gt-xs="30" class="col-lg-33">
-                                    <md-card>
-                                        <md-card-content>
-                                            <p class="sectionheader">ACTIONS</p>
-                                        </md-card-content>
-
-                                        <table class="table">
-                                            <tr>
-                                                <td>
-                                                    <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
-                                                    <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
-                                                    <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="optimize()">Rolling Optimize</button>
-                                                    <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="backupphysical()">Physical Backup</button>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </md-card>
-                                    <BR>
-                                    <md-card ng-if="settings.enterprise=='true'">
-                                        <md-card-content ng-if="settings.enterprise=='true'">
-                                            <p class="sectionheader">PRO</p>
-                                        </md-card-content>
-
-                                        <table class="table" ng-if="settings.enterprise=='true'">
-                                            <tr>
-                                                <td>
-                                                    <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-                                                    <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
-                                                    <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="rolling()">Rolling Upgrade</button>
-                                                    <BR>
-                                                    <BR>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <div ng-repeat="tag in settings.databasetags"> <span class="label label-success">{{ tag }}<span></div>
-                                  </td>
-                               </tr>
-                              </table>
-                              </md-card>
-                              <BR>
-
-                             <md-card ng-if="settings.test=='true'">
-                                   <table class="table">
-                                      <tr>
-                                         <td>
-                                 <labelfor="test" action="/runonetest" >
-                                    <p class="sectionheader">Tests</p>
-                                 </label><BR>
-                                 <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
-                                    <md-option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
-                                 </md-select><BR><BR>
-                                 <button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-                                 <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
-                                 <BR><BR>
-                                 <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-                                 <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
-                                 <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
-
-                              </td>
-                              <td>
-                              </td>
-                           </tr>
-                        </table>
-                        </md-card>
-                      </div>
-                      <div  flex-gt-xs="5" ></div>
-                      <div  flex-gt-xs="65" class="col-lg-66">
-                        <md-card>
-                        <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
-                        <md-card-content style="height: 400px; overflow-y: auto">
-                        <md-pre>
-         <table class="log">
-			   <tr ng-repeat="logline in log" ng-if="logline.Timestamp">
-                   <td class="stamp">{{ logline.Timestamp }}</td>
-                   <td ng-switch="logline.Level">
-                     <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
-                                                        <span ng-switch-when="WARN" class="label label-warning">{{ logline.Level }}</span>
-                                                        <span ng-switch-when="ERROR" class="label label-danger">{{ logline.Level }}</span>
-                                                        <span ng-switch-when="DEBUG" class="label label-primary">{{ logline.Level }}</span>
-                                                        <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
-                                                        <td class="text">{{ logline.Text }}      </td>
-                                            </tr>
-                                        </table>
-                                        </md-pre>
-                                        </md-card-content>
-
-                                    </md-card>
-                                    </div>
-                                </div>
-                        </md-content>
-
-                    </md-tab>
-                    <md-tab label="ALERTS ^{{alerts.errors.length}}">
-                        <md-content class="md-padding">
-                            <md-card>
-                                <md-card-content>
-                                    <p class="sectionheader">ERRORS</p>
-                                    <BR>
-                                    <md-pre width="100%" class="alert alert-danger">
-                                        <div ng-repeat="element in alerts.errors"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
-                                    </md-pre>
-                                </md-card-content>
-                            </md-card>
-                            <BR>
-                            <md-card>
-                                <md-card-content>
-                                    <p class="sectionheader">WARNINGS</p>
-                                    <BR>
-                                    <md-pre>
-                                        <div ng-repeat="element in alerts.warnings"><img width=20 src="/static/Error.png"> {{ element.desc }}</div>
-                                    </md-pre>
-                                </md-card-content>
-                            </md-card>
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="SLA">
-                        <md-content class="md-padding">
-                            <md-card>
-                                <md-card-content>
-                                    <p class="sectionheader">SLA</p>
-                                </md-card-content>
-                                <table ng-if="settings" class="table">
-                                    <tr>
-                                        <th>Monitor Tickers</th>
-                                        <th>Master Available</th>
-                                        <th>Can Failover Acceptable Data Loss</th>
-                                        <th>Can Failover No Data Loss</th>
-                                    </tr>
-
-                                    <tr>
-                                        <td>{{settings.monheartbeats}}</td>
-                                        <td>{{settings.uptime}}</td>
-                                        <td>{{settings.uptimefailable}}</td>
-                                        <td>{{settings.uptimesemisync}}</td>
-                                    </tr>
-                                </table>
-                            </md-card>
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="Proxies">
-                        <md-content class="md-padding">
-                            <md-card ng-repeat="proxy in proxies">
-                                <md-card-content>
-                                    <p class="sectionheader">{{proxy.Type}}</p>
-                                </md-card-content>
-                                <table ng-if="proxies" class="table">
-                                    <tbody>
-
-
-                                        <tr valign="middle">
-
-                                            <th>Id</th>
-                                            <th>Host</th>
-                                            <th>Port</th>
-                                            <th>Version</th>
-                                            <th ng-if="proxy.Type!='proxysql'">WritePort</th>
-                                            <th ng-if="proxy.Type=='proxysql'">WriterHG</th>
-                                            <th ng-if="proxy.Type!='proxysql'">ReadPort</th>
-                                            <th ng-if="proxy.Type=='proxysql'">ReaderHG</th>
-                                            <th>ReadWritePort</th>
-                                        </tr>
-                                        <tr>
-                                            <td>{{proxy.Id}}</td>
-                                            <td>{{proxy.Host}}</td>
-                                            <td>{{proxy.Port}}</td>
-                                            <td>{{proxy.Version}}</td>
-                                            <td>{{proxy.WritePort}}</td>
-                                            <td>{{proxy.ReadPort}}</td>
-                                            <td>{{proxy.ReadWritePort}}</td>
-
-                                        </tr>
-                                        <tr>
-
-                                            <td colspan="7">
-
-                                                <table ng-if="servers" class="table" ng-style="width:400">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Role</th>
-                                                            <th>Host</th>
-                                                            <th>Port</th>
-                                                            <th>Status</th>
-                                                            <th>Proxy Name</th>
-                                                            <th>Proxy Status</th>
-                                                            <th>Proxy Connections</th>
-                                                            <th>Proxy Bytes Out</th>
-                                                            <th>Proxy Bytes In</th>
-                                                            <th>Proxy Session Avg Time</th>
-                                                            <th ng-if="proxy.Type=='proxysql'">Proxy Hostgroup</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tr ng-repeat="server in proxy.BackendsWrite" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-                                                        <th>Write</th>
-                                                        <td>{{server.Host}}</td>
-                                                        <td>{{server.Port}}</td>
-                                                        <td>{{server.Status}}</td>
-                                                        <td>{{server.PrxName}}</td>
-                                                        <td>{{server.PrxStatus}}</td>
-                                                        <td>{{server.PrxConnections}}</td>
-                                                        <td>{{server.PrxByteOut}}</td>
-                                                        <td>{{server.PrxByteIn}}</td>
-                                                        <td>{{server.PrxLatency}}</td>
-                                                        <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
-                                                    </tr>
-                                                    <tr ng-repeat="server in proxy.BackendsRead" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-                                                        <th>Read</th>
-                                                        <td>{{server.Host}}</td>
-                                                        <td>{{server.Port}}</td>
-                                                        <td>{{server.Status}}</td>
-                                                        <td>{{server.PrxName}}</td>
-                                                        <td>{{server.PrxStatus}}</td>
-                                                        <td>{{server.PrxConnections}}</td>
-                                                        <td>{{server.PrxByteOut}}</td>
-                                                        <td>{{server.PrxByteIn}}</td>
-                                                        <td>{{server.PrxLatency}}</td>
-                                                        <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
-                                                    </tr>
-                                                </table>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </md-card>
-
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="Settings">
-                        <md-content class="md-padding">
-                            <div layout="column" layout-gt-xs="row">
-                                <div flex-gt-xs="30" class="col-lg-33">
-                                    <md-card>
-
-                                        <table ng-if="settings" class="table">
-
-                                            <tr>
-                                                <th>Failover Mode (interactive)</th>
-                                            </tr>
-
-
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.interactive=='true'" ng-click="inttoggle()" aria-label="Mode Change">
-                                                        <span ng-if="settings.interactive=='true'" class="label label-primary">On-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">On-leave (auto)</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-
-                                        </table>
-                                    </md-card>
-                                    <BR>
-                                    <md-card>
-                                        <table ng-if="settings" class="table">
-                                            <tr>
-                                                <th>Test Mode</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.test=='true'" ng-click="settest()" aria-label="Test Mode Change">
-                                                        <span ng-if="settings.test=='true'" class="label label-primary">On</span><span ng-if="settings.test=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>Verbose</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.verbose=='true'" ng-click="verbose()" aria-label="Verbosity Change">
-                                                        <span ng-if="settings.verbose=='true'" class="label label-primary">On</span><span ng-if="settings.verbose=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-                                        </table>
-
-                                </div>
-                                </md-card>
-
-
-                                <div flex-gt-xs="30" class="col-lg-33">
-                                    <md-card>
-                                        <table ng-if="settings" class="table">
-                                            <tr>
-                                                <th>Checks All Replication Constraint</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rplchecks=='true'" ng-click="rplchecks()" aria-label="Failover in Sync">
-                                                        <span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">Off</span>
-                                                    </md-switch>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>SemiSync Failover Only On State Sync</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.failsync=='true'" ng-click="failsync()" aria-label="Failover in Sync">
-                                                        <span ng-if="settings.failsync=='true'" ng-click="failsync()" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" ng-click="failsync()" class="label label-warning">Off</span>
-                                                    </md-switch>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>SemiSync Switchover Only On State Sync</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.switchsync=='true'" ng-click="switchsync()" aria-label="Switchover in Sync">
-                                                        <span ng-if="settings.switchsync=='true'" ng-click="switchsync()" class="label label-primary">On</span><span ng-if="settings.switchsync=='false'" ng-click="switchsync()" class="label label-warning">Off</span>
-                                                    </md-switch>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>Replication Max Delay</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-slider class="md-primary" flex ng-model="settings.maxdelay" min="10" max="1000" aria-label="delay"></md-slider>
-
-                                                    <span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">{{settings.maxdelay}}</span>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </md-card>
-                                </div>
-
-
-
-                                <div flex-gt-xs="30" class="col-lg-33">
-                                    <md-card>
-                                        <table ng-if="settings" class="table">
-                                            <tr>
-                                                <th>Auto Rejoin</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoin=='true'" ng-click="setrejoin()" aria-label="Auto Rejoin">
-                                                        <span ng-if="settings.rejoin=='true'" class="label label-primary">On</span><span ng-if="settings.rejoin=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <th>Auto Rejoin Backup ahead events</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoinbackupbinlog=='true'" ng-click="setrejoinbackupbinlog()" aria-label="Auto Rejoin">
-                                                        <span ng-if="settings.rejoinbackupbinlog=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinbackupbinlog=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <th>Auto Rejoin Semisync SYNC state</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoinsemisync=='true'" ng-click="setrejoinsemisync()" aria-label="Auto Rejoin">
-                                                        <span ng-if="settings.rejoinsemisync=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinsemisync=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <th>Auto Rejoin Flashback</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoinflashback=='true'" ng-click="setrejoinflashback()" aria-label="Auto Rejoin">
-                                                        <span ng-if="settings.rejoinflashback=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinflashback=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-
-                                            <tr>
-                                                <th>Auto Rejoin Dump</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoindump=='true'" ng-click="setrejoindump()" aria-label="Auto Rejoin">
-                                                        <span ng-if="settings.rejoindump=='true'" class="label label-primary">On</span><span ng-if="settings.rejoindump=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <th>Auto Rejoin Pseudo GTID</th>
-                                            </tr>
-                                            <tr>
-                                                <td>
-                                                    <md-switch ng-model="settings.rejoinpseudogtid=='true'" ng-click="setrejoinpseudogtid()" aria-label="Auto Rejoin Pseudo GTID">
-                                                        <span ng-if="settings.rejoinpseudogtid=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinpseudogtid=='false'" class="label label-warning">Off</span>
-                                                </td>
-                                                </md-switch>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </md-card>
-                                </div>
-                            </div>
-
-
-
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="DB LOGS">
-                        <md-content  ng-repeat="server in servers" class="md-padding">
-
-                            <BR>
-                            <md-card >
-
-                                <md-card-content  ><p class="sectionheader">ERROR LOG {{server.Host}}:{{server.Port}}</p>  </md-card-content>
-                                <md-card-content style="height: 400px; overflow-y: auto">
-                                <md-pre>
-                                <table class="log">
-                                <tr ng-repeat="logline in server.ErrorLog.Buffer" ng-if="logline.Timestamp">
-                                <td class="stamp">{{ logline.Timestamp }}</td>
-                                <td ng-switch="logline.Level">
-                                <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
-                                                                <span ng-switch-when="Warning" class="label label-warning">{{ logline.Level }}</span>
-                                                                <span ng-switch-when="Error" class="label label-danger">{{ logline.Level }}</span>
-                                                                <span ng-switch-when="Note" class="label label-primary">{{ logline.Level }}</span>
-                                                                <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
-                                                                <td class="text">{{ logline.Text }}</td>
-
-                                                    </tr>
-                                                </table>
-                                                </md-pre>
-                                                </md-card-content>
-                                                <md-card-content  ><p class="sectionheader">SLOW LOG {{server.Host}}:{{server.Port}}</p>  </md-card-content>
-                                                <md-card-content style="height: 400px; overflow-y: auto">
-                                                <md-pre>
-                                                <table class="table">
-
-                                                  <tr>
-                                                      <th rowspan=2>At</th>
-                                                      <th width="30%" rowspan=2>Query</th>
-                                                      <th rowspan=2>User</th>
-                                                      <th rowspan=2>Time</th>
-                                                      <th rowspan=2>Lock</th>
-                                                      <th rowspan=2>Cache</th>
-                                                      <th rowspan=2>Thread</th>
-                                                      <th colspan=3>Rows</th>
-                                                    </tr>
-<tr>
-
-
-<th>Examined</th>
-<th>Send</th>
-<th>affected</th>
-
-                                                    </tr>
-                                                <tr ng-repeat="logline in server.SlowLog.Buffer" ng-if="logline.Timestamp">
-                                                <td class="stamp">{{ logline.Timestamp }}</td>
-
-                                                                                <td class="text">{{ logline.Query }}    </td>
-                                                                                            <td class="text">{{ logline.User }}@{{ logline.Host }}</td>
-
-                                                                                      <td class="text">{{ logline.TimeMetrics.Query_time }}</td>
-                                                                                        <td class="text">{{ logline.TimeMetrics.Lock_time }}</td>
-                                                                                          <td class="text">{{ logline.BoolMetrics.QC_hit }}</td>
-                                                                                          <td class="text">{{ logline.NumberMetrics.Thread_id }}</td>
-                                                                                          <td class="text">{{ logline.NumberMetrics.Rows_examined }}</td>
-                                                                                            <td class="text">{{ logline.NumberMetrics.Rows_sent }}</td>
-                                                                                            <td class="text">{{ logline.NumberMetrics.Rows_affected }}</td>
-
-
-
-                                                                    </tr>
-                                                                </table>
-                                                                </md-pre>
-                                                                </md-card-content>
-
-                            </md-card>
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="Graphs" ng-if="settings.graphitemetrics==true">
-                        <md-content class="md-padding">
-                            <div layout="column" layout-gt-xs="row">
-
-                                <md-card>
-                                    <div class="navbar">
-                                        <div id="giraffe-navbar-inner" class="navbar-inner">
-                                            <div class="container">
-                                                <div class="nav-collapse collapse">
-                                                    <div class="btn-toolbar">
-                                                        <div class="btn-group timepanel">
-                                                            <a class="btn btn-small range" data-timeframe="10" href="#10m">10m</a>
-                                                            <a class="btn btn-small range" data-timeframe="60" href="#1h">1h</a>
-                                                            <a class="btn btn-small range" data-timeframe="180" href="#3h">3h</a>
-                                                            <a class="btn btn-small range" data-timeframe="1440" href="#1d">1d</a>
-                                                            <a class="btn btn-small range" data-timeframe="10080" href="#1w">1w</a>
-                                                            <a class="btn btn-small range" data-timeframe="20160" href="#2w">2w</a>
-                                                            <a class="btn btn-small range" data-timeframe="70560" href="#7w">7w</a>
-                                                        </div>
-                                                        <a id="legend-toggle" class="btn btn-small toggle" title="legend" href="#"><i class="icon-list-alt"></i></a>
-                                                        <a id="axis-toggle" class="btn btn-small toggle active" title="grid" href="#"><i class="icon-th"></i></a>
-                                                        <a id="x-label-toggle" class="btn btn-small toggle active" title="x labels" href="#"><i class="icon-comment"></i></a>
-                                                        <a id="x-item-toggle" class="btn btn-small toggle active" title="x tooltip" href="#"><i class="icon-remove-circle"></i></a>
-                                                    </div>
-                                                </div>
-                                                <!--/.nav-collapse -->
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="container" style="padding-top: 60px;padding-bottom: 40px;">
-                                        <script src="/static/graph.js"></script>
-                                        <script src="/static/giraffe.js"></script>
-                                        <div class="dashboard-content">
-                                            <div id="graphs"></div>
-                                        </div>
-                                    </div>
-                                    <!-- /container -->
-
-                                </md-card>
-
-                            </div>
-                        </md-content>
-                    </md-tab>
-                    <md-tab ng-if="settings.enterprise=='true'" label="Agents">
-                        <md-content class="md-padding">
-                            <md-card>
-                                <md-card-content>
-                                    <p class="sectionheader">Hypervisors</p>
-                                </md-card-content>
-                                <table ng-if="agents" class="table">
-
-
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>CPU Cores</th>
-                                        <th>CPU Freq</th>
-                                        <th>Memory</th>
-                                        <th>OS Name</th>
-                                        <th>Kernel</th>
-                                    </tr>
-
-                                    <tr ng-repeat="agent in agents" ng-class="">
-                                        <td>{{agent.nodename}}</td>
-                                        <td>{{agent.cpu_cores}}</td>
-                                        <td>{{agent.cpu_freq}}</td>
-                                        <td>{{agent.mem_bytes}}</td>
-                                        <td>{{agent.os_name}}</td>
-                                        <td>{{agent.os_kernel}}</td>
-                                    </tr>
-                                </table>
-                            </md-card>
-                        </md-content>
-                    </md-tab>
-                </md-tabs>
+               <md-tabs md-dynamic-height="" md-border-bottom="">
+                  <md-tab label="Dashboard">
+                     <div ng-include src="'static/dash.html'"></div>
+                  </md-tab>
+                  <md-tab label="Alerts ^{{alerts.errors.length}}">
+                     <div ng-include src="'static/alert.html'"></div>
+                  </md-tab>
+                  <md-tab label="Sla">
+                     <div ng-include src="'static/sla.html'"></div>
+                  </md-tab>
+                  <md-tab label="Proxies">
+                     <div ng-include src="'static/proxy.html'"></div>
+                  </md-tab>
+                  <md-tab label="Settings">
+                     <div ng-include src="'static/setting.html'"></div>
+                  </md-tab>
+                  <md-tab label="Jobs">
+                     <div ng-include src="'static/job.html'"></div>
+                  </md-tab>
+                  <md-tab label="Graphs" ng-if="settings.graphitemetrics==true">
+                    <div ng-include src="'static/graph.html'"></div>
+                  </md-tab>
+                  <md-tab label="Agents" ng-if="settings.enterprise=='true'" >
+                    <div ng-include src="'static/agent.html'"></div>
+                  </md-tab>
+               </md-tabs>
             </md-content>
+         </div>
+         <footer class="footer">
+            <div class="container">
+               <span class="text-muted">Replication-Manager {{settings.version}} © 2017 SIGNAL 18 SARL</span>
             </div>
-            <footer class="footer">
-                <div class="container">
-                    <span class="text-muted">Replication-Manager {{settings.version}} © 2017 SIGNAL 18 SARL</span>
-                </div>
-            </footer>
-        </div>
-
-
-
-</body>
-
+         </footer>
+      </div>
+   </body>
 </html>
