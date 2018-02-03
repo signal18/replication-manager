@@ -130,7 +130,7 @@ func (server *ServerMonitor) SlowLogWatcher() {
 			if server.ClusterGroup.conf.LogSST {
 				server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
 			}
-			if log.Query == "" {
+			if log.Query != "" {
 				server.SlowLog.Add(log)
 			}
 			log = newlog
