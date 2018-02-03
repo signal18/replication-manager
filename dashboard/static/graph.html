@@ -1,3 +1,38 @@
-bonjour2
-
-<script>alert('bonjour');</script>
+<md-content class="md-padding">
+   <div layout="column" layout-gt-xs="row">
+      <md-card>
+         <div class="navbar">
+            <div id="giraffe-navbar-inner" class="navbar-inner">
+               <div class="container">
+                  <div class="nav-collapse collapse">
+                     <div class="btn-toolbar">
+                        <div class="btn-group timepanel">
+                           <a class="btn btn-small range" data-timeframe="10" href="#10m">10m</a>
+                           <a class="btn btn-small range" data-timeframe="60" href="#1h">1h</a>
+                           <a class="btn btn-small range" data-timeframe="180" href="#3h">3h</a>
+                           <a class="btn btn-small range" data-timeframe="1440" href="#1d">1d</a>
+                           <a class="btn btn-small range" data-timeframe="10080" href="#1w">1w</a>
+                           <a class="btn btn-small range" data-timeframe="20160" href="#2w">2w</a>
+                           <a class="btn btn-small range" data-timeframe="70560" href="#7w">7w</a>
+                        </div>
+                        <a id="legend-toggle" class="btn btn-small toggle" title="legend" href="#"><i class="icon-list-alt"></i></a>
+                        <a id="axis-toggle" class="btn btn-small toggle active" title="grid" href="#"><i class="icon-th"></i></a>
+                        <a id="x-label-toggle" class="btn btn-small toggle active" title="x labels" href="#"><i class="icon-comment"></i></a>
+                        <a id="x-item-toggle" class="btn btn-small toggle active" title="x tooltip" href="#"><i class="icon-remove-circle"></i></a>
+                     </div>
+                  </div>
+                  <!--/.nav-collapse -->
+               </div>
+            </div>
+         </div>
+         <div class="container" style="padding-top: 60px;padding-bottom: 40px;">
+            <script src="/static/vendor/graph.js"></script>
+            <script src="/static/vendor/giraffe.js"></script>
+            <div class="dashboard-content">
+               <div id="graphs"></div>
+            </div>
+         </div>
+         <!-- /container -->
+      </md-card>
+   </div>
+</md-content>

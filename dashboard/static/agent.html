@@ -1,0 +1,26 @@
+
+<md-content class="md-padding">
+<md-card>
+   <md-card-content>
+      <p class="sectionheader">Hypervisors</p>
+   </md-card-content>
+   <table ng-if="agents" class="table">
+      <tr>
+         <th>Name</th>
+         <th>CPU Cores</th>
+         <th>CPU Freq</th>
+         <th>Memory</th>
+         <th>OS Name</th>
+         <th>Kernel</th>
+      </tr>
+      <tr ng-repeat="agent in agents" ng-class="">
+         <td>{{agent.nodename}}</td>
+         <td>{{agent.cpu_cores}}</td>
+         <td>{{agent.cpu_freq}}</td>
+         <td>{{agent.mem_bytes}}</td>
+         <td>{{agent.os_name}}</td>
+         <td>{{agent.os_kernel}}</td>
+      </tr>
+   </table>
+</md-card>
+</md-content>

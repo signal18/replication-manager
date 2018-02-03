@@ -1,0 +1,17 @@
+    <md-content class="md-padding">
+        <md-card>
+            <md-card-content>
+                <p class="sectionheader">ERRORS</p>
+                <BR>
+                <div class="alert alert-danger" ng-repeat="element in alerts.errors"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
+            </md-card-content>
+        </md-card>
+        <BR>
+        <md-card>
+            <md-card-content>
+                <p class="sectionheader">WARNINGS</p>
+                <BR>
+                    <div class="alert alert-warning" ng-repeat="element in alerts.warnings"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
+            </md-card-content>
+        </md-card>
+    </md-content>
