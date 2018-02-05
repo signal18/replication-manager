@@ -407,7 +407,7 @@ func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
 func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetServers())
 		var srvs []*cluster.ServerMonitor
@@ -440,7 +440,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetSlaves())
 		var srvs []*cluster.ServerMonitor
@@ -472,7 +472,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetProxies())
 		var prxs []*cluster.Proxy
@@ -500,7 +500,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 	a := new(cluster.Alerts)
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
 		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
@@ -522,7 +522,7 @@ func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
 func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.MasterFailover(true)
 	} else {
@@ -536,7 +536,7 @@ func handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
 func handlerMuxStartTraffic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.SetTraffic(true)
 	} else {
@@ -550,7 +550,7 @@ func handlerMuxStartTraffic(w http.ResponseWriter, r *http.Request) {
 func handlerMuxStopTraffic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.SetTraffic(false)
 	} else {
@@ -564,7 +564,7 @@ func handlerMuxStopTraffic(w http.ResponseWriter, r *http.Request) {
 func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		err := mycluster.BootstrapReplicationCleanup()
 		if err != nil {
@@ -582,7 +582,7 @@ func handlerMuxBootstrapReplicationCleanup(w http.ResponseWriter, r *http.Reques
 func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 
 		switch vars["topology"] {
@@ -647,7 +647,7 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		err := mycluster.ProvisionServices()
 		if err != nil {
@@ -665,7 +665,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		err := mycluster.Bootstrap()
 		if err != nil {
@@ -683,7 +683,7 @@ func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.ResetFailoverCtr()
 	} else {
@@ -696,7 +696,7 @@ func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
 		savedPrefMaster := mycluster.GetConf().PrefMaster
@@ -725,7 +725,7 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		m := mycluster.GetMaster()
 		var srvs *cluster.ServerMonitor
@@ -758,7 +758,7 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
@@ -834,7 +834,7 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 
 	} else {
@@ -846,7 +846,7 @@ func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.SwitchReadOnly()
 	} else {
@@ -859,7 +859,7 @@ func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 	var clusterlogs []string
 	vars := mux.Vars(r)
-	for _, slog := range tlog.Buffer {
+	for _, slog := range RepMan.tlog.Buffer {
 		if strings.Contains(slog, vars["clusterName"]) {
 			clusterlogs = append(clusterlogs, slog)
 		}
@@ -876,7 +876,7 @@ func handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
@@ -896,7 +896,7 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		r.ParseForm() // Parses the request body
 		if r.Form.Get("provision") == "true" {
@@ -948,7 +948,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		regtest := new(regtest.RegTest)
 
@@ -971,7 +971,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		s := new(Settings)
 		s.Enterprise = fmt.Sprintf("%v", mycluster.GetConf().Enterprise)
@@ -994,7 +994,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 		s.UptimeSemiSync = mycluster.GetStateMachine().GetUptimeSemiSync()
 		s.Test = fmt.Sprintf("%v", mycluster.GetConf().Test)
 		s.Heartbeat = fmt.Sprintf("%v", mycluster.GetConf().Heartbeat)
-		s.Status = fmt.Sprintf("%v", runStatus)
+		s.Status = fmt.Sprintf("%v", RepMan.runStatus)
 		s.ConfGroup = fmt.Sprintf("%s", mycluster.GetName())
 		s.MonitoringTicker = fmt.Sprintf("%d", mycluster.GetConf().MonitoringTicker)
 		s.FailResetTime = fmt.Sprintf("%d", mycluster.GetConf().FailResetTime)
@@ -1009,7 +1009,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.Verbose = fmt.Sprintf("%v", false)
 		}
-		if currentCluster.GetFailoverTs() != 0 {
+		if RepMan.currentCluster.GetFailoverTs() != 0 {
 			t := time.Unix(mycluster.GetFailoverTs(), 0)
 			s.LastFailover = t.String()
 		} else {
@@ -1034,7 +1034,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		initConfig()
 		mycluster.ReloadConfig(confs[vars["clusterName"]])
@@ -1049,7 +1049,7 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
 		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
@@ -1065,14 +1065,14 @@ func handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
-	MonitorAddCluster(vars["clusterName"])
+	RepMan.AddCluster(vars["clusterName"])
 
 }
 
 func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.StopDatabaseService(node)
@@ -1086,7 +1086,7 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		node.JobBackupPhysical()
@@ -1100,7 +1100,7 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		node.JobOptimize()
@@ -1114,7 +1114,7 @@ func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		node.JobBackupErrorLog()
@@ -1128,7 +1128,7 @@ func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		node.JobBackupSlowQueryLog()
@@ -1141,7 +1141,7 @@ func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) 
 func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -1160,7 +1160,7 @@ func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.StartDatabaseService(node)
@@ -1174,7 +1174,7 @@ func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.InitDatabaseService(node)
@@ -1188,7 +1188,7 @@ func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		mycluster.UnprovisionDatabaseService(node)
@@ -1202,7 +1202,7 @@ func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		mycluster.InitProxyService(node)
@@ -1216,7 +1216,7 @@ func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		mycluster.UnprovisionProxyService(node)
@@ -1244,7 +1244,7 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
@@ -1263,7 +1263,7 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node == nil {
@@ -1289,7 +1289,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
@@ -1309,7 +1309,7 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
@@ -1330,7 +1330,7 @@ func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
@@ -1349,7 +1349,7 @@ func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	if isStarted {
+	if RepMan.isStarted {
 		io.WriteString(w, `{"alive": "running"}`)
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
@@ -1358,7 +1358,7 @@ func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
@@ -1371,7 +1371,7 @@ func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		w.WriteHeader(http.StatusOK)
 		mycluster.GetMaster().JobBackupPhysical()
@@ -1383,7 +1383,7 @@ func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Reques
 
 func handlerMuxClusterOptimize(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		w.WriteHeader(http.StatusOK)
 		mycluster.Optimize()
@@ -1395,7 +1395,7 @@ func handlerMuxClusterOptimize(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	port, err := strconv.Atoi(vars["port"])
 	w.WriteHeader(http.StatusOK)
 	if err != nil {
@@ -1412,7 +1412,7 @@ func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
 	if err != nil {
 		w.WriteHeader(404)

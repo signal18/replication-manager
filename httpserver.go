@@ -40,11 +40,11 @@ func httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := testFile("app.html"); err != nil {
-		currentCluster.LogPrintf("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
+		RepMan.currentCluster.LogPrintf("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
 		return
 	}
 	if err := testFile("dashboard.js"); err != nil {
-		currentCluster.LogPrintf("ERROR", "Dashboard dashboard.js file missing - will not start http server")
+		RepMan.currentCluster.LogPrintf("ERROR", "Dashboard dashboard.js file missing - will not start http server")
 		return
 	}
 	// create mux router
@@ -189,16 +189,16 @@ func httpserver() {
 
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	mycluster := r.URL.Query().Get("cluster")
-	currentCluster = clusters[mycluster]
+	RepMan.currentCluster = RepMan.clusters[mycluster]
 	currentClusterName = mycluster
 	for _, gl := range cfgGroupList {
-		clusters[gl].SetCfgGroupDisplay(mycluster)
+		RepMan.clusters[gl].SetCfgGroupDisplay(mycluster)
 	}
 }
 
 func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
 	regtest := new(regtest.RegTest)
-	regtest.RunAllTests(currentCluster, r.URL.Query().Get("test"))
+	regtest.RunAllTests(RepMan.currentCluster, r.URL.Query().Get("test"))
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func handlerJS(w http.ResponseWriter, r *http.Request) {
 
 func handlerServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
-	data, _ := json.Marshal(currentCluster.GetServers())
+	data, _ := json.Marshal(RepMan.currentCluster.GetServers())
 	var srvs []*cluster.ServerMonitor
 
 	err := json.Unmarshal(data, &srvs)
@@ -239,7 +239,7 @@ func handlerCrashes(w http.ResponseWriter, r *http.Request) {
 
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(currentCluster.GetCrashes())
+	err := e.Encode(RepMan.currentCluster.GetCrashes())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -262,48 +262,48 @@ func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 
 func handlerTraffic(w http.ResponseWriter, r *http.Request) {
 
-	currentCluster.SetTraffic(!currentCluster.GetTraffic())
+	RepMan.currentCluster.SetTraffic(!RepMan.currentCluster.GetTraffic())
 
 }
 
 func handlerStopServer(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
 	srv := r.URL.Query().Get("server")
 
-	node := currentCluster.GetServerFromName(srv)
-	currentCluster.StopDatabaseService(node)
+	node := RepMan.currentCluster.GetServerFromName(srv)
+	RepMan.currentCluster.StopDatabaseService(node)
 }
 
 func handlerStartServer(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
 	srv := r.URL.Query().Get("server")
 
-	node := currentCluster.GetServerFromName(srv)
-	currentCluster.StartDatabaseService(node)
+	node := RepMan.currentCluster.GetServerFromName(srv)
+	RepMan.currentCluster.StartDatabaseService(node)
 }
 
 func handlerMaintenanceServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Rest API request toogle Maintenace server-id: %s", r.URL.Query().Get("server"))
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API request toogle Maintenace server-id: %s", r.URL.Query().Get("server"))
 	srv := r.URL.Query().Get("server")
-	node := currentCluster.GetServerFromName(srv)
+	node := RepMan.currentCluster.GetServerFromName(srv)
 	if node != nil {
-		currentCluster.SwitchServerMaintenance(node.ServerID)
+		RepMan.currentCluster.SwitchServerMaintenance(node.ServerID)
 	}
 }
 
 func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", currentCluster.GetName())
-	currentCluster.Unprovision()
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", RepMan.currentCluster.GetName())
+	RepMan.currentCluster.Unprovision()
 }
 
 func handlerRollingUpgrade(w http.ResponseWriter, r *http.Request) {
-	currentCluster.LogPrintf("INFO", "Rest API request rolling upgrade cluster: %s", currentCluster.GetName())
-	currentCluster.RollingUpgrade()
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API request rolling upgrade cluster: %s", RepMan.currentCluster.GetName())
+	RepMan.currentCluster.RollingUpgrade()
 }
 
 func handlerSlaves(w http.ResponseWriter, r *http.Request) {
-	data, _ := json.Marshal(currentCluster.GetSlaves())
+	data, _ := json.Marshal(RepMan.currentCluster.GetSlaves())
 	var srvs []*cluster.ServerMonitor
 
 	err := json.Unmarshal(data, &srvs)
@@ -329,7 +329,7 @@ func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(agents)
+	err := e.Encode(RepMan.agents)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -337,8 +337,8 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
-	svc := currentCluster.OpenSVCConnect()
-	servers := currentCluster.GetServers()
+	svc := RepMan.currentCluster.OpenSVCConnect()
+	servers := RepMan.currentCluster.GetServers()
 	var iplist []string
 	var portlist []string
 	for _, s := range servers {
@@ -351,14 +351,14 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 	var clusteragents []opensvc.Host
 
 	for _, node := range agts {
-		currentCluster.LogPrintf("INFO", "hypervisors for cluster: %s %s", svc.ProvAgents, node.Node_name)
+		RepMan.currentCluster.LogPrintf("INFO", "hypervisors for cluster: %s %s", svc.ProvAgents, node.Node_name)
 		if strings.Contains(svc.ProvAgents, node.Node_name) {
-			currentCluster.LogPrintf("INFO", "hypervisors Found")
+			RepMan.currentCluster.LogPrintf("INFO", "hypervisors Found")
 
 			clusteragents = append(clusteragents, node)
 		}
 	}
-	res, err := currentCluster.GetServers()[0].GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
+	res, err := RepMan.currentCluster.GetServers()[0].GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
 	if err != nil {
 		log.Println("HTTP Error ", err)
 		http.Error(w, "Encoding error", 500)
@@ -371,7 +371,7 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 func handlerProxies(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(currentCluster.GetProxies())
+	err := e.Encode(RepMan.currentCluster.GetProxies())
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -380,7 +380,7 @@ func handlerProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMaster(w http.ResponseWriter, r *http.Request) {
-	m := currentCluster.GetMaster()
+	m := RepMan.currentCluster.GetMaster()
 	var srvs *cluster.ServerMonitor
 	if m != nil {
 
@@ -405,8 +405,8 @@ func handlerMaster(w http.ResponseWriter, r *http.Request) {
 
 func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 	a := new(cluster.Alerts)
-	a.Errors = currentCluster.GetStateMachine().GetOpenErrors()
-	a.Warnings = currentCluster.GetStateMachine().GetOpenWarnings()
+	a.Errors = RepMan.currentCluster.GetStateMachine().GetOpenErrors()
+	a.Warnings = RepMan.currentCluster.GetStateMachine().GetOpenWarnings()
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	err := e.Encode(a)
@@ -419,55 +419,55 @@ func handlerAlerts(w http.ResponseWriter, r *http.Request) {
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s := new(Settings)
-	s.Enterprise = fmt.Sprintf("%v", currentCluster.GetConf().Enterprise)
-	s.Interactive = fmt.Sprintf("%v", currentCluster.GetConf().Interactive)
-	s.RplChecks = fmt.Sprintf("%v", currentCluster.GetConf().RplChecks)
-	s.FailSync = fmt.Sprintf("%v", currentCluster.GetConf().FailSync)
-	s.SwitchSync = fmt.Sprintf("%v", currentCluster.GetConf().SwitchSync)
-	s.Rejoin = fmt.Sprintf("%v", currentCluster.GetConf().Autorejoin)
-	s.RejoinBackupBinlog = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinBackupBinlog)
-	s.RejoinSemiSync = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSemisync)
-	s.RejoinFlashback = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinFlashback)
-	s.RejoinDump = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinMysqldump)
-	s.RejoinUnsafe = fmt.Sprintf("%v", currentCluster.GetConf().FailRestartUnsafe)
-	s.RejoinPseudoGTID = fmt.Sprintf("%v", currentCluster.GetConf().AutorejoinSlavePositionalHearbeat)
-	s.MaxDelay = fmt.Sprintf("%v", currentCluster.GetConf().FailMaxDelay)
-	s.FailoverCtr = fmt.Sprintf("%d", currentCluster.GetFailoverCtr())
-	s.Faillimit = fmt.Sprintf("%d", currentCluster.GetConf().FailLimit)
-	s.MonHearbeats = fmt.Sprintf("%d", currentCluster.GetStateMachine().GetHeartbeats())
-	s.Uptime = currentCluster.GetStateMachine().GetUptime()
-	s.UptimeFailable = currentCluster.GetStateMachine().GetUptimeFailable()
-	s.UptimeSemiSync = currentCluster.GetStateMachine().GetUptimeSemiSync()
-	s.Test = fmt.Sprintf("%v", currentCluster.GetConf().Test)
-	s.Heartbeat = fmt.Sprintf("%v", currentCluster.GetConf().Heartbeat)
-	s.Status = fmt.Sprintf("%v", runStatus)
-	s.IsActive = fmt.Sprintf("%v", currentCluster.IsActive())
+	s.Enterprise = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Enterprise)
+	s.Interactive = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Interactive)
+	s.RplChecks = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().RplChecks)
+	s.FailSync = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().FailSync)
+	s.SwitchSync = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().SwitchSync)
+	s.Rejoin = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Autorejoin)
+	s.RejoinBackupBinlog = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().AutorejoinBackupBinlog)
+	s.RejoinSemiSync = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().AutorejoinSemisync)
+	s.RejoinFlashback = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().AutorejoinFlashback)
+	s.RejoinDump = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().AutorejoinMysqldump)
+	s.RejoinUnsafe = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().FailRestartUnsafe)
+	s.RejoinPseudoGTID = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().AutorejoinSlavePositionalHearbeat)
+	s.MaxDelay = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().FailMaxDelay)
+	s.FailoverCtr = fmt.Sprintf("%d", RepMan.currentCluster.GetFailoverCtr())
+	s.Faillimit = fmt.Sprintf("%d", RepMan.currentCluster.GetConf().FailLimit)
+	s.MonHearbeats = fmt.Sprintf("%d", RepMan.currentCluster.GetStateMachine().GetHeartbeats())
+	s.Uptime = RepMan.currentCluster.GetStateMachine().GetUptime()
+	s.UptimeFailable = RepMan.currentCluster.GetStateMachine().GetUptimeFailable()
+	s.UptimeSemiSync = RepMan.currentCluster.GetStateMachine().GetUptimeSemiSync()
+	s.Test = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Test)
+	s.Heartbeat = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Heartbeat)
+	s.Status = fmt.Sprintf("%v", RepMan.runStatus)
+	s.IsActive = fmt.Sprintf("%v", RepMan.currentCluster.IsActive())
 	s.ConfGroup = fmt.Sprintf("%s", currentClusterName)
-	s.MonitoringTicker = fmt.Sprintf("%d", currentCluster.GetConf().MonitoringTicker)
-	s.FailResetTime = fmt.Sprintf("%d", currentCluster.GetConf().FailResetTime)
-	s.ToSessionEnd = fmt.Sprintf("%d", currentCluster.GetConf().SessionLifeTime)
-	s.HttpAuth = fmt.Sprintf("%v", currentCluster.GetConf().HttpAuth)
-	s.HttpBootstrapButton = fmt.Sprintf("%v", currentCluster.GetConf().HttpBootstrapButton)
-	s.GraphiteMetrics = fmt.Sprintf("%v", currentCluster.GetConf().GraphiteMetrics)
+	s.MonitoringTicker = fmt.Sprintf("%d", RepMan.currentCluster.GetConf().MonitoringTicker)
+	s.FailResetTime = fmt.Sprintf("%d", RepMan.currentCluster.GetConf().FailResetTime)
+	s.ToSessionEnd = fmt.Sprintf("%d", RepMan.currentCluster.GetConf().SessionLifeTime)
+	s.HttpAuth = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().HttpAuth)
+	s.HttpBootstrapButton = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().HttpBootstrapButton)
+	s.GraphiteMetrics = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().GraphiteMetrics)
 	s.Clusters = cfgGroupList
-	s.Scheduler = currentCluster.GetCron()
+	s.Scheduler = RepMan.currentCluster.GetCron()
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
-	if currentCluster.GetLogLevel() > 0 {
+	if RepMan.currentCluster.GetLogLevel() > 0 {
 		s.Verbose = fmt.Sprintf("%v", true)
 	} else {
 		s.Verbose = fmt.Sprintf("%v", false)
 	}
-	if currentCluster.GetFailoverTs() != 0 {
-		t := time.Unix(currentCluster.GetFailoverTs(), 0)
+	if RepMan.currentCluster.GetFailoverTs() != 0 {
+		t := time.Unix(RepMan.currentCluster.GetFailoverTs(), 0)
 		s.LastFailover = t.String()
 	} else {
 		s.LastFailover = "N/A"
 	}
-	s.Topology = currentCluster.GetTopology()
+	s.Topology = RepMan.currentCluster.GetTopology()
 	s.Version = fmt.Sprintf("%s %s %s %s", FullVersion, Build, GoOS, GoArch)
-	s.DBTags = currentCluster.GetDatabaseTags()
-	s.ProxyTags = currentCluster.GetProxyTags()
+	s.DBTags = RepMan.currentCluster.GetDatabaseTags()
+	s.ProxyTags = RepMan.currentCluster.GetProxyTags()
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	err := e.Encode(s)
@@ -481,10 +481,10 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 
 func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send heartbeat
-	send.UUID = runUUID
+	send.UUID = RepMan.runUUID
 	send.UID = conf.ArbitrationSasUniqueId
 	send.Secret = conf.ArbitrationSasSecret
-	send.Status = runStatus
+	send.Status = RepMan.runStatus
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
@@ -499,7 +499,7 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 		off = "1000"
 	}
 	noff, _ := strconv.Atoi(off)
-	err := e.Encode(htlog.Buffer[:noff])
+	err := e.Encode(RepMan.htlog.Buffer[:noff])
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -509,41 +509,41 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 
 func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if currentCluster.IsMasterFailed() {
-		currentCluster.LogPrintf("ERROR", " Master failed, cannot initiate switchover")
+	if RepMan.currentCluster.IsMasterFailed() {
+		RepMan.currentCluster.LogPrintf("ERROR", " Master failed, cannot initiate switchover")
 		http.Error(w, "Master failed", http.StatusBadRequest)
 		return
 	}
-	currentCluster.LogPrintf("INFO", "Rest API receive Switchover request")
-	currentCluster.SwitchOver()
+	RepMan.currentCluster.LogPrintf("INFO", "Rest API receive Switchover request")
+	RepMan.currentCluster.SwitchOver()
 	return
 }
 
 func handlerFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.MasterFailover(true)
+	RepMan.currentCluster.MasterFailover(true)
 	return
 }
 
 func handlerSetTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change test/prod mode %v", currentCluster.GetFailSync())
-	currentCluster.SetTestMode(!currentCluster.GetTestMode())
+	RepMan.currentCluster.LogPrintf("INFO", "Change test/prod mode %v", RepMan.currentCluster.GetFailSync())
+	RepMan.currentCluster.SetTestMode(!RepMan.currentCluster.GetTestMode())
 	return
 }
 
 func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.ResetFailoverCtr()
+	RepMan.currentCluster.ResetFailoverCtr()
 
 	return
 }
 
 func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.SetCleanAll(true)
-	if err := currentCluster.Bootstrap(); err != nil {
-		currentCluster.LogPrintf("ERROR", "Could not bootstrap replication %s", err)
+	RepMan.currentCluster.SetCleanAll(true)
+	if err := RepMan.currentCluster.Bootstrap(); err != nil {
+		RepMan.currentCluster.LogPrintf("ERROR", "Could not bootstrap replication %s", err)
 
 	}
 	return
@@ -552,15 +552,15 @@ func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	regtest := new(regtest.RegTest)
-	res := regtest.RunAllTests(currentCluster, "ALL")
-	currentCluster.LogPrintf("INFO", "Some tests failed %s", res)
+	res := regtest.RunAllTests(RepMan.currentCluster, "ALL")
+	RepMan.currentCluster.LogPrintf("INFO", "Some tests failed %s", res)
 
 	return
 }
 
 func handlerSysbench(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	go currentCluster.RunSysbench()
+	go RepMan.currentCluster.RunSysbench()
 	return
 }
 
@@ -913,7 +913,7 @@ func (hm *HandlerManager) HandleLoginFreePage(res http.ResponseWriter, req *http
 
 // auth provider function
 func checkAuth(u, p string) bool {
-	if u == currentCluster.GetDbUser() && p == currentCluster.GetDbPass() {
+	if u == RepMan.currentCluster.GetDbUser() && p == RepMan.currentCluster.GetDbPass() {
 		return true
 	}
 	return false

@@ -45,33 +45,32 @@ import (
 )
 
 // Global variables
-var (
+type ReplicationManager struct {
 	tlog           termlog.TermLog
 	htlog          httplog.HttpLog
 	termlength     int
 	runUUID        string
-	repmgrHostname string
+	Hostname       string
 	runStatus      string
 	splitBrain     bool
-	swChan         = make(chan bool)
 	exitMsg        string
 	exit           bool
 	currentCluster *cluster.Cluster
-	clusters       = map[string]*cluster.Cluster{}
+	clusters       map[string]*cluster.Cluster
 	agents         []opensvc.Host
 	isStarted      bool
 	OpenSVC        opensvc.Collector
+}
+
+const (
+	ConstMonitorActif   string = "A"
+	ConstMonitorStandby string = "S"
 )
 
-func getClusterByName(clname string) *cluster.Cluster {
-	return clusters[clname]
-}
+var RepMan *ReplicationManager
 
 func init() {
 
-	runUUID = misc.GetUUID()
-	runStatus = "A"
-	splitBrain = false
 	//conf.FailForceGtid = true
 	conf.GoArch = GoArch
 	conf.GoOS = GoOS
@@ -142,7 +141,6 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterRing, "replication-multi-master-ring", false, "Multi-master ring topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
-	//monitorCmd.Flags().BoolVar(&conf.ReplicationNoRelay, "replication-force-positional", false, "Force positional replication ")
 
 	monitorCmd.Flags().StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	monitorCmd.Flags().StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
@@ -451,18 +449,8 @@ func init() {
 
 		}
 	}
-
-	//viper.RegisterAlias("hosts", "db-servers-hosts")
-	//viper.RegisterAlias("db-servers-hosts", "hosts")
 	cobra.OnInitialize(initConfig)
 	viper.BindPFlags(monitorCmd.Flags())
-	//	viper.RegisterAlias("mariadb-binary-path", "mariadb-mysqlbinlog-path")
-
-	var err error
-	repmgrHostname, err = os.Hostname()
-	if err != nil {
-		log.Fatalln("ERROR: replication-manager could not get hostname from system")
-	}
 
 }
 
@@ -558,133 +546,142 @@ For interacting with this daemon use,
 
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		if conf.LogSyslog {
-			hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
-			if err == nil {
-				log.AddHook(hook)
-			}
-		}
 
-		if conf.LogLevel > 1 {
-			log.SetLevel(log.DebugLevel)
-		}
-		if conf.Arbitration == true {
-			runStatus = "S"
-		}
-		if !conf.Daemon {
-			err := termbox.Init()
-			if err != nil {
-				log.WithError(err).Fatal("Termbox initialization error")
-			}
-		}
-		if conf.Daemon {
-			termlength = 40
-			log.WithField("version", Version).Info("replication-manager started in daemon mode")
-		} else {
-			_, termlength = termbox.Size()
-			if termlength == 0 {
-				termlength = 120
-			} else if termlength < 18 {
-				log.Fatal("Terminal too small, please increase window size")
-			}
-		}
-		loglen := termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
-		tlog = termlog.NewTermLog(loglen)
-		htlog = httplog.NewHttpLog(1000)
+		RepMan = new(ReplicationManager)
+		RepMan.Run()
 
-		go apiserver()
-
-		agents = []opensvc.Host{}
-		if conf.Enterprise {
-			OpenSVC.Host, OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
-			OpenSVC.User, OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
-			OpenSVC.RplMgrUser, OpenSVC.RplMgrPassword = misc.SplitPair(conf.ProvUser)
-			//don't Bootstrap opensvc to speedup test
-			if conf.ProvRegister {
-				err := OpenSVC.Bootstrap(conf.ShareDir + "/opensvc/")
-				if err != nil {
-					log.Fatalf("%s", err)
-				}
-				log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
-			}
-			agents = OpenSVC.GetNodes()
-			if agents == nil {
-				log.Fatalf("Can't connect or agents not registered")
-			}
-		}
-
-		// Initialize go-carbon
-		if conf.GraphiteEmbedded {
-			go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
-			log.WithFields(log.Fields{
-				"metricport": conf.GraphiteCarbonPort,
-				"httpport":   conf.GraphiteCarbonServerPort,
-			}).Info("Carbon server started")
-			time.Sleep(2 * time.Second)
-			go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.WorkingDir)
-			log.WithField("apiport", conf.GraphiteCarbonApiPort).Info("Carbon server API started")
-		}
-
-		// If there's an existing encryption key, decrypt the passwords
-
-		for _, gl := range cfgGroupList {
-			MonitorStartCluster(gl)
-		}
-		for _, cluster := range clusters {
-			cluster.SetClusterList(clusters)
-		}
-		currentCluster.SetCfgGroupDisplay(currentClusterName)
-
-		// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
-		if conf.HttpServ {
-			go httpserver()
-		}
-		interval := time.Second
-		ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
-		isStarted = true
-		for exit == false {
-
-			select {
-			case <-ticker.C:
-				if conf.Arbitration {
-					fHeartbeat()
-				}
-				if conf.Enterprise {
-					//			agents = svc.GetNodes()
-				}
-			}
-
-		}
-		if exitMsg != "" {
-			log.Println(exitMsg)
-		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
-		currentCluster.Close()
-		termbox.Close()
-		if memprofile != "" {
-			f, err := os.Create(memprofile)
-			if err != nil {
-				log.Fatal(err)
-			}
-			pprof.WriteHeapProfile(f)
-			f.Close()
-		}
+		RepMan.Stop()
 	},
 }
 
-func newTbChan() chan termbox.Event {
-	termboxChan := make(chan termbox.Event)
-	go func() {
-		for {
-			termboxChan <- termbox.PollEvent()
+func (repman *ReplicationManager) Stop() {
+	repman.currentCluster.Close()
+	termbox.Close()
+	if memprofile != "" {
+		f, err := os.Create(memprofile)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
-	return termboxChan
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
 }
 
-func MonitorStartCluster(clusterName string) (*cluster.Cluster, error) {
+func (repman *ReplicationManager) Run() error {
+	var err error
+	repman.clusters = make(map[string]*cluster.Cluster)
+	repman.runUUID = misc.GetUUID()
+	repman.runStatus = ConstMonitorActif
+	repman.splitBrain = false
+	repman.Hostname, err = os.Hostname()
+	if err != nil {
+		log.Fatalln("ERROR: replication-manager could not get hostname from system")
+	}
+	if conf.Arbitration == true {
+		repman.runStatus = ConstMonitorStandby
+	}
+
+	if conf.LogSyslog {
+		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
+		if err == nil {
+			log.AddHook(hook)
+		}
+	}
+
+	if conf.LogLevel > 1 {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	if !conf.Daemon {
+		err := termbox.Init()
+		if err != nil {
+			log.WithError(err).Fatal("Termbox initialization error")
+		}
+	}
+	repman.termlength = 40
+	log.WithField("version", Version).Info("replication-manager started in daemon mode")
+	loglen := repman.termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
+	repman.tlog = termlog.NewTermLog(loglen)
+	repman.htlog = httplog.NewHttpLog(1000)
+
+	go apiserver()
+
+	repman.agents = []opensvc.Host{}
+	if conf.Enterprise {
+		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
+		repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
+		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(conf.ProvUser)
+		//don't Bootstrap opensvc to speedup test
+		if conf.ProvRegister {
+			err := repman.OpenSVC.Bootstrap(conf.ShareDir + "/opensvc/")
+			if err != nil {
+				log.Fatalf("%s", err)
+			}
+			log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
+		}
+		repman.agents = repman.OpenSVC.GetNodes()
+		if repman.agents == nil {
+			log.Fatalf("Can't connect or agents not registered")
+		}
+	}
+
+	// Initialize go-carbon
+	if conf.GraphiteEmbedded {
+		go graphite.RunCarbon(conf.ShareDir, conf.WorkingDir, conf.GraphiteCarbonPort, conf.GraphiteCarbonLinkPort, conf.GraphiteCarbonPicklePort, conf.GraphiteCarbonPprofPort, conf.GraphiteCarbonServerPort)
+		log.WithFields(log.Fields{
+			"metricport": conf.GraphiteCarbonPort,
+			"httpport":   conf.GraphiteCarbonServerPort,
+		}).Info("Carbon server started")
+		time.Sleep(2 * time.Second)
+		go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(conf.GraphiteCarbonServerPort), conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", conf.WorkingDir)
+		log.WithField("apiport", conf.GraphiteCarbonApiPort).Info("Carbon server API started")
+	}
+
+	// If there's an existing encryption key, decrypt the passwords
+
+	for _, gl := range cfgGroupList {
+		repman.StartCluster(gl)
+	}
+	for _, cluster := range repman.clusters {
+		cluster.SetClusterList(repman.clusters)
+	}
+	repman.currentCluster.SetCfgGroupDisplay(currentClusterName)
+
+	// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
+	if conf.HttpServ {
+		go httpserver()
+	}
+	interval := time.Second
+	ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
+	repman.isStarted = true
+	for repman.exit == false {
+
+		select {
+		case <-ticker.C:
+			if conf.Arbitration {
+				repman.Heartbeat()
+			}
+			if conf.Enterprise {
+				//			agents = svc.GetNodes()
+			}
+		}
+
+	}
+	if repman.exitMsg != "" {
+		log.Println(repman.exitMsg)
+	}
+	return nil
+
+}
+
+func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
+	return repman.clusters[clname]
+}
+
+func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
 	k, err := readKey()
 	if err != nil {
@@ -698,10 +695,10 @@ func MonitorStartCluster(clusterName string) (*cluster.Cluster, error) {
 		p.Decrypt()
 		apiPass = p.PlainText
 	}
-	currentCluster = new(cluster.Cluster)
+	repman.currentCluster = new(cluster.Cluster)
 
 	myClusterConf := confs[clusterName]
-	myClusterConf.MonitorAddress = resolveHostIp()
+	myClusterConf.MonitorAddress = repman.resolveHostIp()
 	if myClusterConf.FailMode == "manual" {
 		myClusterConf.Interactive = true
 	} else {
@@ -711,15 +708,15 @@ func MonitorStartCluster(clusterName string) (*cluster.Cluster, error) {
 		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
-	currentCluster.Init(myClusterConf, clusterName, &tlog, &htlog, termlength, runUUID, Version, repmgrHostname, k)
-	clusters[clusterName] = currentCluster
-	currentCluster.SetCertificate(OpenSVC)
-	go currentCluster.Run()
+	repman.currentCluster.Init(myClusterConf, clusterName, &repman.tlog, &repman.htlog, repman.termlength, repman.runUUID, Version, repman.Hostname, k)
+	repman.clusters[clusterName] = repman.currentCluster
+	repman.currentCluster.SetCertificate(repman.OpenSVC)
+	go repman.currentCluster.Run()
 	currentClusterName = clusterName
-	return currentCluster, nil
+	return repman.currentCluster, nil
 }
 
-func MonitorAddCluster(clusterName string) error {
+func (repman *ReplicationManager) AddCluster(clusterName string) error {
 	var myconf = make(map[string]config.Config)
 
 	myconf[clusterName] = conf
@@ -738,29 +735,29 @@ func MonitorAddCluster(clusterName string) error {
 	if err != nil {
 		return err
 	}
-	cluster, _ := MonitorStartCluster(clusterName)
-	cluster.SetClusterList(clusters)
+	cluster, _ := repman.StartCluster(clusterName)
+	cluster.SetClusterList(repman.clusters)
 	return nil
 
 }
 
-func fHeartbeat() {
+func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		currentCluster.LogPrintf("ERROR", "Arbitrator cannot send heartbeat to itself. Exiting")
+		log.Errorf("Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
-	bcksplitbrain := splitBrain
+	bcksplitbrain := repman.splitBrain
 
 	var peerList []string
 	// try to found an active peer replication-manager
 	if conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(conf.ArbitrationPeerHosts, ",")
 	} else {
-		currentCluster.LogPrintf("ERROR", "Arbitration peer not specified. Disabling arbitration")
+		log.Errorf("Arbitration peer not specified. Disabling arbitration")
 		conf.Arbitration = false
 		return
 	}
-	splitBrain = true
+	repman.splitBrain = true
 	timeout := time.Duration(2 * time.Second)
 	for _, peer := range peerList {
 		url := "http://" + peer + "/heartbeat"
@@ -771,11 +768,11 @@ func fHeartbeat() {
 		// Do sends an HTTP request and
 		// returns an HTTP response
 		// Build the request
-		currentCluster.LogPrintf("DEBUG", "Heartbeat: Sending peer request to node %s", peer)
+		log.Debugf("Heartbeat: Sending peer request to node %s", peer)
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR", "Error building HTTP request: %s", err)
+				log.Errorf("Error building HTTP request: %s", err)
 			}
 			continue
 
@@ -783,7 +780,7 @@ func fHeartbeat() {
 		resp, err := client.Do(req)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR", "Could not reach peer node, might be down or incorrect address")
+				log.Errorf("Could not reach peer node, might be down or incorrect address")
 			}
 			continue
 		}
@@ -791,7 +788,7 @@ func fHeartbeat() {
 		monjson, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR", "Could not read body from peer response")
+				log.Errorf("Could not read body from peer response")
 			}
 			continue
 		}
@@ -799,38 +796,38 @@ func fHeartbeat() {
 		var h heartbeat
 		if err := json.Unmarshal(monjson, &h); err != nil {
 			if bcksplitbrain == false {
-				currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
+				log.Errorf("Could not unmarshal JSON from peer response %s", err)
 			}
 			continue
 		} else {
-			splitBrain = false
+			repman.splitBrain = false
 			if conf.LogLevel > 1 {
-				currentCluster.LogPrintf("DEBUG", "RETURN: %v", h)
+				log.Debugf("RETURN: %v", h)
 			}
-			if h.Status == "S" {
-				currentCluster.LogPrintf("DEBUG", "Peer node is Standby, I am Active")
-				runStatus = "A"
+			if h.Status == ConstMonitorStandby {
+				log.Debugf("Peer node is Standby, I am Active")
+				repman.runStatus = ConstMonitorActif
 			} else {
-				currentCluster.LogPrintf("DEBUG", "Peer node is Active, I am Standby")
-				runStatus = "S"
+				log.Debugf("Peer node is Active, I am Standby")
+				repman.runStatus = ConstMonitorStandby
 			}
 			// propagate all runStatus to clusters after peer negotiation
-			for _, cl := range clusters {
-				cl.SetActiveStatus(runStatus)
+			for _, cl := range repman.clusters {
+				cl.SetActiveStatus(repman.runStatus)
 			}
 		}
 
 	} //end check all peers
-	if splitBrain {
-		if bcksplitbrain != splitBrain {
-			currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
+	if repman.splitBrain {
+		if bcksplitbrain != repman.splitBrain {
+			repman.currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
 		}
 
 		// report to arbitrator
-		for _, cl := range clusters {
+		for _, cl := range repman.clusters {
 			if cl.LostMajority() {
-				if bcksplitbrain != splitBrain {
-					currentCluster.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
+				if bcksplitbrain != repman.splitBrain {
+					repman.currentCluster.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
 				}
 			}
 			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
@@ -838,31 +835,31 @@ func fHeartbeat() {
 			if cl.GetMaster() != nil {
 				mst = cl.GetMaster().URL
 			}
-			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			var jsonStr = []byte(`{"uuid":"` + repman.runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
 			req.Header.Set("Content-Type", "application/json")
 
 			client := &http.Client{Timeout: timeout}
-			currentCluster.LogPrintf("DEBUG", "Sending message to Arbitrator server")
+			log.Debugf("Sending message to Arbitrator server")
 			resp, err := client.Do(req)
 			if err != nil {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
-				cl.SetActiveStatus("S")
-				runStatus = "S"
+				cl.SetActiveStatus(ConstMonitorStandby)
+				repman.runStatus = ConstMonitorStandby
 				return
 			}
 			defer resp.Body.Close()
 
 		}
 		// give a chance to other partitions to report if just happened
-		if bcksplitbrain != splitBrain {
+		if bcksplitbrain != repman.splitBrain {
 			time.Sleep(5 * time.Second)
 		}
 		// request arbitration for all cluster
-		for _, cl := range clusters {
+		for _, cl := range repman.clusters {
 
-			if bcksplitbrain != splitBrain {
+			if bcksplitbrain != repman.splitBrain {
 				cl.LogPrintf("INFO", "Arbitrator: External check requested")
 			}
 			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
@@ -870,7 +867,7 @@ func fHeartbeat() {
 			if cl.GetMaster() != nil {
 				mst = cl.GetMaster().URL
 			}
-			var jsonStr = []byte(`{"uuid":"` + runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			var jsonStr = []byte(`{"uuid":"` + repman.runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
 			req.Header.Set("Content-Type", "application/json")
@@ -879,9 +876,9 @@ func fHeartbeat() {
 			resp, err := client.Do(req)
 			if err != nil {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
-				cl.SetActiveStatus("S")
+				cl.SetActiveStatus(ConstMonitorStandby)
 				cl.SetMasterReadOnly()
-				runStatus = "S"
+				repman.runStatus = ConstMonitorStandby
 				return
 			}
 			defer resp.Body.Close()
@@ -896,21 +893,21 @@ func fHeartbeat() {
 			err = json.Unmarshal(body, &r)
 			if err != nil {
 				cl.LogPrintf("ERROR", "Arbitrator received invalid JSON")
-				cl.SetActiveStatus("S")
+				cl.SetActiveStatus(ConstMonitorStandby)
 				cl.SetMasterReadOnly()
-				runStatus = "S"
+				repman.runStatus = ConstMonitorStandby
 				return
 
 			}
 			if r.Arbitration == "winner" {
-				if bcksplitbrain != splitBrain {
+				if bcksplitbrain != repman.splitBrain {
 					cl.LogPrintf("INFO", "Arbitration message - Election Won")
 				}
-				cl.SetActiveStatus("A")
-				runStatus = "A"
+				cl.SetActiveStatus(ConstMonitorActif)
+				repman.runStatus = ConstMonitorActif
 				return
 			}
-			if bcksplitbrain != splitBrain {
+			if bcksplitbrain != repman.splitBrain {
 				cl.LogPrintf("INFO", "Arbitration message - Election Lost")
 				if cl.GetMaster() != nil {
 					mst = cl.GetMaster().URL
@@ -919,8 +916,8 @@ func fHeartbeat() {
 					cl.SetMasterReadOnly()
 				}
 			}
-			cl.SetActiveStatus("S")
-			runStatus = "S"
+			cl.SetActiveStatus(ConstMonitorStandby)
+			repman.runStatus = ConstMonitorStandby
 			return
 
 		}
@@ -929,7 +926,7 @@ func fHeartbeat() {
 
 }
 
-func resolveHostIp() string {
+func (repman *ReplicationManager) resolveHostIp() string {
 	netInterfaceAddresses, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
