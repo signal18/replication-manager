@@ -30,7 +30,7 @@ import (
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
 	conn, err := sqlx.Connect("mysql", server.DSN)
 	if err != nil {
-		if server.ClusterGroup.conf.LogLevel > 2 {
+		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlErr, "Job can't connect")
 		}
 		return 0, err
@@ -38,7 +38,7 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	defer conn.Close()
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		if server.ClusterGroup.conf.LogLevel > 2 {
+		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlErr, "Job can't disable binlog for session")
 		}
 		return 0, err
@@ -49,7 +49,7 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	}
 	_, err = conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
 	if err != nil {
-		if server.ClusterGroup.conf.LogLevel > 2 {
+		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.jobs")
 		}
 		return 0, err
@@ -64,16 +64,16 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 }
 
 func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
-	server.ClusterGroup.LogPrintf(LvlInfo, "Receive physical backup %s reques for server: %s", server.ClusterGroup.conf.BackupPhysicalType, server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive physical backup %s reques for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
 	if server.IsDown() {
 		return 0, nil
 	}
 
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
-	jobid, err := server.JobInsertTaks("xtrabackup", port, server.ClusterGroup.conf.BindAddr)
+	jobid, err := server.JobInsertTaks("xtrabackup", port, server.ClusterGroup.Conf.BindAddr)
 	return jobid, err
 }
 
@@ -81,11 +81,11 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("error", port, server.ClusterGroup.conf.BindAddr)
+	return server.JobInsertTaks("error", port, server.ClusterGroup.Conf.BindAddr)
 }
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
@@ -121,13 +121,13 @@ func (server *ServerMonitor) SlowLogWatcher() {
 	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
 	for line := range server.SlowLogTailer.Lines {
 		newlog := slowlog.NewMessage()
-		if server.ClusterGroup.conf.LogSST {
+		if server.ClusterGroup.Conf.LogSST {
 			server.ClusterGroup.LogPrintf(LvlInfo, "New line %s", line.Text)
 		}
 		log.Group = server.ClusterGroup.GetClusterName()
 		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
 			// new querySelector
-			if server.ClusterGroup.conf.LogSST {
+			if server.ClusterGroup.Conf.LogSST {
 				server.ClusterGroup.LogPrintf(LvlInfo, "New query %s", log)
 			}
 			if log.Query != "" {
@@ -146,25 +146,25 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("slowquery", port, server.ClusterGroup.conf.BindAddr)
+	return server.JobInsertTaks("slowquery", port, server.ClusterGroup.Conf.BindAddr)
 }
 
 func (server *ServerMonitor) JobOptimize() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("optimize", "0", server.ClusterGroup.conf.BindAddr)
+	return server.JobInsertTaks("optimize", "0", server.ClusterGroup.Conf.BindAddr)
 }
 
 func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("zfssnapback", "0", server.ClusterGroup.conf.BindAddr)
+	return server.JobInsertTaks("zfssnapback", "0", server.ClusterGroup.Conf.BindAddr)
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {
@@ -222,12 +222,12 @@ func (server *ServerMonitor) JobHandler(JobId int64) error {
 }
 
 func (server *ServerMonitor) JobBackupLogical() error {
-	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %d for: %s", server.ClusterGroup.conf.BackupLogicalType, server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %d for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return nil
 	}
 
-	if server.ClusterGroup.conf.BackupLogicalType == "river" {
+	if server.ClusterGroup.Conf.BackupLogicalType == "river" {
 		cfg := new(river.Config)
 		cfg.MyHost = server.URL
 		cfg.MyUser = server.User
@@ -238,14 +238,14 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cfg.StatAddr = "127.0.0.1:12800"
 		cfg.DumpServerID = 1001
 
-		cfg.DumpPath = server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
-		cfg.DumpExec = server.ClusterGroup.conf.ShareDir + "/" + server.ClusterGroup.conf.GoArch + "/" + server.ClusterGroup.conf.GoOS + "/mysqldump"
+		cfg.DumpPath = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
+		cfg.DumpExec = server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqldump"
 		cfg.DumpOnly = true
 		cfg.DumpInit = true
 		cfg.BatchMode = "CSV"
 		cfg.BatchSize = 100000
 		cfg.BatchTimeOut = 1
-		cfg.DataDir = server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
+		cfg.DataDir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
 
 		os.RemoveAll(cfg.DumpPath)
 
@@ -254,9 +254,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		river.NewRiver(cfg)
 	}
-	if server.ClusterGroup.conf.BackupLogicalType == "mysqldump" {
+	if server.ClusterGroup.Conf.BackupLogicalType == "mysqldump" {
 		usegtid := "--gtid"
-		dumpCmd := exec.Command(server.ClusterGroup.conf.ShareDir+"/"+server.ClusterGroup.conf.GoArch+"/"+server.ClusterGroup.conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 		var out bytes.Buffer
 		dumpCmd.Stdout = &out
 		err := dumpCmd.Run()
@@ -269,7 +269,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		w.Write(out.Bytes())
 		w.Close()
 		out = outGzip
-		ioutil.WriteFile(server.ClusterGroup.conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/mysqldump.gz", out.Bytes(), 0666)
+		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/mysqldump.gz", out.Bytes(), 0666)
 	}
 	return nil
 }

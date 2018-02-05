@@ -65,7 +65,7 @@ max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + cluster.GetGComm() + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_api_addr = ` + cluster.Conf.BindAddr + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	log.Println(conf)

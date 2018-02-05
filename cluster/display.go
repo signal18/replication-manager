@@ -66,7 +66,7 @@ func (cluster *Cluster) printfTb(x, y int, fg, bg termbox.Attribute, format stri
 func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 
-	if cluster.conf.LogFile != "" {
+	if cluster.Conf.LogFile != "" {
 		s := fmt.Sprint(stamp, " [", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
 		io.WriteString(cluster.logPtr, fmt.Sprintln(s))
 	}
@@ -75,7 +75,7 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 		cluster.tlog.Add(s)
 		cluster.display()
 	}
-	if cluster.conf.Daemon {
+	if cluster.Conf.Daemon {
 		s := fmt.Sprint("[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
 		log.Println(s)
 	}
@@ -93,10 +93,10 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
-	if level == "DEBUG" && cluster.conf.LogLevel <= 1 {
+	if level == "DEBUG" && cluster.Conf.LogLevel <= 1 {
 		// Only print debug messages if loglevel > 1
 	} else {
-		if cluster.conf.LogFile != "" {
+		if cluster.Conf.LogFile != "" {
 			f := fmt.Sprintln(stamp, format)
 
 			io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
@@ -106,7 +106,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			cluster.display()
 		}
 
-		if cluster.conf.HttpServ {
+		if cluster.Conf.HttpServ {
 			msg := httplog.Message{
 				Group:     cluster.cfgGroup,
 				Level:     level,
@@ -117,7 +117,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		}
 	}
 
-	if cluster.conf.Daemon {
+	if cluster.Conf.Daemon {
 		// wrap logrus levels
 		switch level {
 		case "ERROR":

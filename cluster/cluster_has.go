@@ -9,7 +9,7 @@ package cluster
 import "strings"
 
 func (cluster *Cluster) IsInIgnoredHosts(host string) bool {
-	ihosts := strings.Split(cluster.conf.IgnoreSrv, ",")
+	ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
 	for _, ihost := range ihosts {
 		if host == ihost {
 			return true
@@ -19,7 +19,7 @@ func (cluster *Cluster) IsInIgnoredHosts(host string) bool {
 }
 
 func (cluster *Cluster) IsInPreferedHosts(host string) bool {
-	ihosts := strings.Split(cluster.conf.PrefMaster, ",")
+	ihosts := strings.Split(cluster.Conf.PrefMaster, ",")
 	for _, ihost := range ihosts {
 		if host == ihost {
 			return true
@@ -29,7 +29,7 @@ func (cluster *Cluster) IsInPreferedHosts(host string) bool {
 }
 
 func (cluster *Cluster) IsProvision() bool {
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 			return false
 		}
@@ -63,7 +63,7 @@ func (cluster *Cluster) IsActive() bool {
 }
 
 func (cluster *Cluster) IsVerbose() bool {
-	if cluster.conf.Verbose {
+	if cluster.Conf.Verbose {
 		return true
 	} else {
 		return false

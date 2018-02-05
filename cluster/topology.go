@@ -44,15 +44,15 @@ func (cluster *Cluster) newServerList() error {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
 	}
-	cluster.servers = make([]*ServerMonitor, len(cluster.hostList))
+	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	for k, url := range cluster.hostList {
 
-		cluster.servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
+		cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.servers[k].URL, err)
+			cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 		}
-		if cluster.conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.servers[k].URL)
+		if cluster.Conf.Verbose {
+			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.Servers[k].URL)
 		}
 	}
 
@@ -61,7 +61,7 @@ func (cluster *Cluster) newServerList() error {
 
 func (cluster *Cluster) pingServerList() {
 	wg := new(sync.WaitGroup)
-	for _, sv := range cluster.servers {
+	for _, sv := range cluster.Servers {
 		wg.Add(1)
 		go func(sv *ServerMonitor) {
 			defer wg.Done()
@@ -101,7 +101,7 @@ func (cluster *Cluster) pingServerList() {
 func (cluster *Cluster) TopologyDiscover() error {
 
 	wg := new(sync.WaitGroup)
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		wg.Add(1)
 		go server.Ping(wg)
 	}
@@ -115,18 +115,18 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Spider shard discover
-	if cluster.conf.Spider == true {
+	if cluster.Conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
 	}
 	cluster.slaves = nil
-	for k, sv := range cluster.servers {
+	for k, sv := range cluster.Servers {
 
 		if sv.IsDown() {
 			continue
 		}
 
 		if sv.IsSlave {
-			if cluster.conf.LogLevel > 2 {
+			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
@@ -140,14 +140,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 			if n == 0 && sv.State != stateMaster {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
-				if cluster.conf.LogLevel > 2 {
+				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
 				}
 			} else {
-				if cluster.conf.LogLevel > 2 {
+				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 				}
-				cluster.master = cluster.servers[k]
+				cluster.master = cluster.Servers[k]
 				cluster.master.State = stateMaster
 				cluster.master.SetReadWrite()
 			}
@@ -161,32 +161,32 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 
 	// Check that all slave servers have the same master and conformity.
-	if cluster.conf.MultiMaster == false && cluster.conf.Spider == false {
+	if cluster.Conf.MultiMaster == false && cluster.Conf.Spider == false {
 		for _, sl := range cluster.slaves {
 			if sl.IsMaxscale == false && !sl.IsDown() {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
-					if cluster.conf.MultiMaster == false && len(cluster.servers) == 2 {
+					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
-						cluster.conf.MultiMaster = true
+						cluster.Conf.MultiMaster = true
 					}
-					if cluster.conf.MultiMasterRing == false && len(cluster.servers) > 2 {
-						cluster.conf.MultiMasterRing = true
+					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
+						cluster.Conf.MultiMasterRing = true
 					}
-					if cluster.conf.MultiMasterRing == true && cluster.GetMaster() == nil {
+					if cluster.Conf.MultiMasterRing == true && cluster.GetMaster() == nil {
 						cluster.vmaster = sl
 					}
 
 					//broken replication ring
-				} else if cluster.conf.MultiMasterRing == true {
+				} else if cluster.Conf.MultiMasterRing == true {
 					//setting a virtual master if none
 					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
 					cluster.master = cluster.GetFailedServer()
 				}
 
 			}
-			if cluster.conf.MultiMaster == false && sl.IsMaxscale == false {
+			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
 					sl.IsRelay = true
 					sl.State = stateRelay
@@ -196,9 +196,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 	}
-	if cluster.conf.MultiMaster == true {
+	if cluster.Conf.MultiMaster == true {
 		srw := 0
-		for _, s := range cluster.servers {
+		for _, s := range cluster.Servers {
 			if s.IsReadWrite() {
 				srw++
 			}
@@ -207,7 +207,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
-		for _, s := range cluster.servers {
+		for _, s := range cluster.Servers {
 			if s.IsReadOnly() {
 				srw++
 			}
@@ -229,23 +229,23 @@ func (cluster *Cluster) TopologyDiscover() error {
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
 			sid := cluster.slaves[0].GetReplicationServerID()
-			for k, s := range cluster.servers {
-				if cluster.conf.MultiMaster == false && s.State == stateUnconn {
+			for k, s := range cluster.Servers {
+				if cluster.Conf.MultiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {
-						cluster.master = cluster.servers[k]
+						cluster.master = cluster.Servers[k]
 						cluster.master.State = stateMaster
 						cluster.master.SetReadWrite()
-						if cluster.conf.LogLevel > 2 {
+						if cluster.Conf.LogLevel > 2 {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
 				}
-				if cluster.conf.MultiMaster == true && !cluster.servers[k].IsDown() {
+				if cluster.Conf.MultiMaster == true && !cluster.Servers[k].IsDown() {
 					if s.IsReadWrite() {
-						cluster.master = cluster.servers[k]
+						cluster.master = cluster.Servers[k]
 						cluster.master.State = stateMaster
-						if cluster.conf.LogLevel > 2 {
+						if cluster.Conf.LogLevel > 2 {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
@@ -258,11 +258,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				// Slave master_host variable must point to failed master
 
 				smh := cluster.slaves[0].GetReplicationMasterHost()
-				for k, s := range cluster.servers {
+				for k, s := range cluster.Servers {
 					if s.State == stateFailed {
 						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
-							if cluster.conf.FailRestartUnsafe {
-								cluster.master = cluster.servers[k]
+							if cluster.Conf.FailRestartUnsafe {
+								cluster.master = cluster.Servers[k]
 								cluster.master.PrevState = stateMaster
 								cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
 							}
@@ -286,11 +286,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.master.CheckMasterSettings()
 		}
 		// Replication checks
-		if cluster.conf.MultiMaster == false {
+		if cluster.Conf.MultiMaster == false {
 			for _, sl := range cluster.slaves {
 
 				if sl.IsRelay == false {
-					if cluster.conf.LogLevel > 2 {
+					if cluster.Conf.LogLevel > 2 {
 						cluster.LogPrintf(LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
@@ -298,7 +298,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
 						cluster.SetState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: Pointing to %s", sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
 
-						if cluster.conf.ReplicationNoRelay {
+						if cluster.Conf.ReplicationNoRelay {
 							cluster.RejoinFixRelay(sl, cluster.master)
 						}
 
@@ -307,7 +307,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
 					}
 				}
-				if sl.GetReplicationDelay() <= cluster.conf.FailMaxDelay && sl.IsSQLThreadRunning() {
+				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() {
 					cluster.master.RplMasterStatus = true
 				}
 
@@ -326,9 +326,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 
 	if cluster.IsProvision() {
-		if len(cluster.crashes) > 0 {
+		if len(cluster.Crashes) > 0 {
 			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
-			cluster.crashes = nil
+			cluster.Crashes = nil
 			cluster.Save()
 		}
 	}
@@ -342,7 +342,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
 	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
-		//	if cluster.conf.Interactive == false {
+		//	if cluster.Conf.Interactive == false {
 		allslavefailed := true
 		for _, s := range cluster.slaves {
 			if s.State != stateFailed && s.IsIgnored() == false {
@@ -350,7 +350,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 			}
 		}
 		if allslavefailed {
-			if cluster.master != nil && cluster.conf.Interactive == false && cluster.conf.FailRestartUnsafe == false {
+			if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
 				// forget the master if safe mode
 				cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 				cluster.lastmaster = cluster.master
@@ -366,7 +366,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 }
 
 func (cluster *Cluster) PrintTopology() {
-	for k, v := range cluster.servers {
+	for k, v := range cluster.Servers {
 		cluster.LogPrintf(LvlInfo, "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
 }
@@ -374,7 +374,7 @@ func (cluster *Cluster) PrintTopology() {
 // CountFailed Count number of failed node
 func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 	failed := 0
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.State == stateFailed {
 			failed = failed + 1
 		}
@@ -384,9 +384,9 @@ func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 
 // LostMajority should be call in case of splitbrain to set maintenance mode
 func (cluster *Cluster) LostMajority() bool {
-	failed := cluster.CountFailed(cluster.servers)
-	alive := len(cluster.servers) - failed
-	if alive > len(cluster.servers)/2 {
+	failed := cluster.CountFailed(cluster.Servers)
+	alive := len(cluster.Servers) - failed
+	if alive > len(cluster.Servers)/2 {
 		return false
 	} else {
 		return true

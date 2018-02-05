@@ -141,7 +141,7 @@ func httpserver() {
 	// main page
 
 	// page to view which does not need authorization
-
+	router.HandleFunc("/data", handlerMuxReplicationManager)
 	router.HandleFunc("/servers", handlerServers)
 	router.HandleFunc("/stop", handlerStopServer)
 	router.HandleFunc("/start", handlerStartServer)
@@ -189,10 +189,10 @@ func httpserver() {
 
 func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	mycluster := r.URL.Query().Get("cluster")
-	RepMan.currentCluster = RepMan.clusters[mycluster]
+	RepMan.currentCluster = RepMan.Clusters[mycluster]
 	currentClusterName = mycluster
 	for _, gl := range cfgGroupList {
-		RepMan.clusters[gl].SetCfgGroupDisplay(mycluster)
+		RepMan.Clusters[gl].SetCfgGroupDisplay(mycluster)
 	}
 }
 
@@ -329,7 +329,7 @@ func handlerSlaves(w http.ResponseWriter, r *http.Request) {
 func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(RepMan.agents)
+	err := e.Encode(RepMan.Agents)
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)
@@ -440,7 +440,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 	s.UptimeSemiSync = RepMan.currentCluster.GetStateMachine().GetUptimeSemiSync()
 	s.Test = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Test)
 	s.Heartbeat = fmt.Sprintf("%v", RepMan.currentCluster.GetConf().Heartbeat)
-	s.Status = fmt.Sprintf("%v", RepMan.runStatus)
+	s.Status = fmt.Sprintf("%v", RepMan.Status)
 	s.IsActive = fmt.Sprintf("%v", RepMan.currentCluster.IsActive())
 	s.ConfGroup = fmt.Sprintf("%s", currentClusterName)
 	s.MonitoringTicker = fmt.Sprintf("%d", RepMan.currentCluster.GetConf().MonitoringTicker)
@@ -481,10 +481,10 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 
 func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send heartbeat
-	send.UUID = RepMan.runUUID
+	send.UUID = RepMan.UUID
 	send.UID = conf.ArbitrationSasUniqueId
 	send.Secret = conf.ArbitrationSasSecret
-	send.Status = RepMan.runStatus
+	send.Status = RepMan.Status
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
@@ -499,7 +499,7 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 		off = "1000"
 	}
 	noff, _ := strconv.Atoi(off)
-	err := e.Encode(RepMan.htlog.Buffer[:noff])
+	err := e.Encode(RepMan.Logs.Buffer[:noff])
 	if err != nil {
 		log.Println("Error encoding JSON: ", err)
 		http.Error(w, "Encoding error", 500)

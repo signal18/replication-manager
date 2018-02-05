@@ -73,7 +73,7 @@ func (server *ServerMonitor) HasCycling() bool {
 	currentSlave := server
 	searchServerID := server.ServerID
 
-	for range server.ClusterGroup.servers {
+	for range server.ClusterGroup.Servers {
 		currentMaster, _ := server.ClusterGroup.GetMasterFromReplication(currentSlave)
 		if currentMaster != nil {
 			//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%d me id:%d", currentMaster.ServerID, currentSlave.ServerID)

@@ -65,7 +65,7 @@ type ServerMonitor struct {
 	RplMasterStatus             bool
 	EventScheduler              bool
 	EventStatus                 []dbhelper.Event
-	ClusterGroup                *Cluster
+	ClusterGroup                *Cluster `json:"-"` //avoid recusive json
 	BinaryLogFile               string
 	BinaryLogPos                string
 	FailoverMasterLogFile       string
@@ -167,8 +167,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Host, server.Port = misc.SplitHostPort(url)
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
-	errLogFile := server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_error.log"
-	slowLogFile := server.ClusterGroup.conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_slow_query.log"
+	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_error.log"
+	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
@@ -191,14 +191,14 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
+	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.Conf.Timeout, cluster.Conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
 			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 		} else {
-			dsn += "unix(" + cluster.conf.Socket + ")/" + params
+			dsn += "unix(" + cluster.Conf.Socket + ")/" + params
 		}
 		return dsn
 	}
@@ -229,7 +229,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	var conn *sqlx.DB
 	var err error
-	switch server.ClusterGroup.conf.CheckType {
+	switch server.ClusterGroup.Conf.CheckType {
 	case "tcp":
 		conn, err = sqlx.Connect("mysql", server.DSN)
 	case "agent":
@@ -255,11 +255,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.FailCount++
 			if server.ClusterGroup.master != nil && server.URL == server.ClusterGroup.master.URL {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
-				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.conf.MaxFail {
-					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.conf.MaxFail)
+				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.Conf.MaxFail {
+					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.Conf.MaxFail)
 				}
-				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
-					if server.FailCount == server.ClusterGroup.conf.MaxFail {
+				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
+					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring master as failed")
 					}
 					server.ClusterGroup.master.State = stateFailed
@@ -268,9 +268,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			} else {
 				// not the master
-				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.conf.MaxFail)
-				if server.FailCount >= server.ClusterGroup.conf.MaxFail {
-					if server.FailCount == server.ClusterGroup.conf.MaxFail {
+				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.Conf.MaxFail)
+				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
+					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring server %s as failed", server.URL)
 						server.State = stateFailed
 						// remove from slave list
@@ -287,7 +287,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		// Send alert if state has changed
 		if server.PrevState != server.State {
-			//if cluster.conf.Verbose {
+			//if cluster.Conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			//}
 			server.SendAlert()
@@ -303,7 +303,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	server.Refresh()
 
 	// Reset FailCount
-	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.conf.MonitoringTicker) > server.ClusterGroup.conf.FailResetTime)*/ {
+	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -316,12 +316,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected %s", server.URL)
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
-			if server.ClusterGroup.conf.Autorejoin && server.ClusterGroup.IsActive() {
+			if server.ClusterGroup.Conf.Autorejoin && server.ClusterGroup.IsActive() {
 				server.RejoinMaster()
 			} else {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
@@ -329,7 +329,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
@@ -360,7 +360,7 @@ func (server *ServerMonitor) Refresh() error {
 		return err
 	}
 	defer conn.Close()
-	if server.ClusterGroup.conf.MxsBinlogOn {
+	if server.ClusterGroup.Conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
 			server.ClusterGroup.LogPrintf("INFO", "Found Maxscale")
@@ -376,7 +376,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	}
 
-	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) {
+	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) {
 		// maxscale don't support show variables
 
 		server.Variables, err = dbhelper.GetVariables(server.Conn)
@@ -483,7 +483,7 @@ func (server *ServerMonitor) Refresh() error {
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
-		if server.ClusterGroup.conf.MonitorScheduler {
+		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
 
@@ -497,18 +497,18 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogFile = server.MasterStatus.File
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 	}
-	if server.ClusterGroup.conf.GraphiteEmbedded {
+	if server.ClusterGroup.Conf.GraphiteEmbedded {
 		// SHOW ENGINE INNODB STATUS
 		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 	}
 	// SHOW SLAVE STATUS
-	err = server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
+	err = server.SetReplicationChannel(server.ClusterGroup.Conf.MasterConn)
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not set replication channel")
 	}
-	if !(server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
 		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn)
@@ -535,7 +535,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	server.ReplicationHealth = server.CheckReplication()
 	// if MaxScale exit at fetch variables and status part as not supported
-	if server.ClusterGroup.conf.MxsBinlogOn && server.IsMaxscale {
+	if server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
 	server.Status, _ = dbhelper.GetStatus(server.Conn)
@@ -568,7 +568,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 
 	// Initialize graphite monitoring
-	if server.ClusterGroup.conf.GraphiteMetrics {
+	if server.ClusterGroup.Conf.GraphiteMetrics {
 		go server.SendDatabaseStats(slaveStatus)
 	}
 	return nil
@@ -581,7 +581,7 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf("INFO", "Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
-	for i := server.ClusterGroup.conf.SwitchWaitKill; i > 0; i -= 500 {
+	for i := server.ClusterGroup.Conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
 		if threads == 0 {
 			break

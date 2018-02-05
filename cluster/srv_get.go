@@ -75,7 +75,7 @@ func (server *ServerMonitor) GetSibling() *ServerMonitor {
 	if err != nil {
 		return nil
 	}
-	for _, sl := range server.ClusterGroup.servers {
+	for _, sl := range server.ClusterGroup.Servers {
 		sssib, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		if err != nil {
 			continue

@@ -32,7 +32,7 @@ func connectSphinx(proxy *Proxy) (sphinx.SphinxSQL, error) {
 }
 
 func (cluster *Cluster) initSphinx(proxy *Proxy) {
-	if cluster.conf.SphinxOn == false {
+	if cluster.Conf.SphinxOn == false {
 		return
 	}
 
@@ -46,7 +46,7 @@ func (cluster *Cluster) initSphinx(proxy *Proxy) {
 }
 
 func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
-	if cluster.conf.SphinxOn == false {
+	if cluster.Conf.SphinxOn == false {
 		return
 	}
 
@@ -63,8 +63,8 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
 
 	status, err := sphinx.GetStatus()
 	var bke = Backend{
-		Host:           cluster.conf.ProvProxRouteAddr,
-		Port:           cluster.conf.ProvProxRoutePort,
+		Host:           cluster.Conf.ProvProxRouteAddr,
+		Port:           cluster.Conf.ProvProxRoutePort,
 		Status:         "UP",
 		PrxName:        "",
 		PrxStatus:      "UP",
@@ -79,7 +79,7 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
 }
 
 func (cluster *Cluster) setMaintenanceSphinx(proxy *Proxy, host string, port string) {
-	if cluster.conf.SphinxOn == false {
+	if cluster.Conf.SphinxOn == false {
 		return
 	}
 

@@ -24,7 +24,7 @@ import (
 )
 
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	haproxyconfigPath := cluster.conf.WorkingDir
+	haproxyconfigPath := cluster.Conf.WorkingDir
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := cluster.cfgGroup + "-haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
@@ -34,17 +34,17 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
 	haRuntime := haproxy.Runtime{
-		Binary:   cluster.conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(cluster.conf.WorkingDir, "/", haproxysockFile),
+		Binary:   cluster.Conf.HaproxyBinaryPath,
+		SockFile: filepath.Join(cluster.Conf.WorkingDir, "/", haproxysockFile),
 	}
 	haConfig := haproxy.Config{
-		TemplateFile:  filepath.Join(cluster.conf.ShareDir, haproxytemplateFile),
+		TemplateFile:  filepath.Join(cluster.Conf.ShareDir, haproxytemplateFile),
 		ConfigFile:    filepath.Join(haproxyconfigPath, haproxyconfigFile),
 		JsonFile:      filepath.Join(haproxyconfigPath, haproxyjsonFile),
 		ErrorPagesDir: filepath.Join(haproxyconfigPath, haproxyerrorPagesDir, "/"),
-		PidFile:       filepath.Join(cluster.conf.WorkingDir, "/", haproxypidFile),
-		SockFile:      filepath.Join(cluster.conf.WorkingDir, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(cluster.conf.WorkingDir + "/"),
+		PidFile:       filepath.Join(cluster.Conf.WorkingDir, "/", haproxypidFile),
+		SockFile:      filepath.Join(cluster.Conf.WorkingDir, "/", haproxysockFile),
+		WorkingDir:    filepath.Join(cluster.Conf.WorkingDir + "/"),
 	}
 
 	cluster.LogPrintf(LvlInfo, "Haproxy loading haproxy config at %s", haproxyconfigPath)
@@ -53,7 +53,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		cluster.LogPrintf(LvlInfo, "Haproxy did not find an haproxy config...initializing new config")
 		haConfig.InitializeConfig()
 	}
-	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: cluster.conf.HaproxyWritePort, BindIp: cluster.conf.HaproxyWriteBindIp}
+	few := haproxy.Frontend{Name: "my_write_frontend", Mode: "tcp", DefaultBackend: "service_write", BindPort: cluster.Conf.HaproxyWritePort, BindIp: cluster.Conf.HaproxyWriteBindIp}
 	if err := haConfig.AddFrontend(&few); err != nil {
 		cluster.LogPrintf(LvlErr, "Failed to add frontend write ")
 	} else {
@@ -80,7 +80,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		//	log.Printf("Failed to add server to service_write ")
 	}
 
-	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: cluster.conf.HaproxyReadPort, BindIp: cluster.conf.HaproxyReadBindIp}
+	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		cluster.LogPrintf(LvlErr, "Haproxy failed to add frontend read")
 	} else {
@@ -100,7 +100,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
 	//var checksum64 string
 	crcHost := crc64.MakeTable(crc64.ECMA)
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.IsMaintenance == false {
 			p, _ := strconv.Atoi(server.Port)
 			checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
@@ -110,8 +110,8 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 			}
 		}
 	}
-	if cluster.conf.Enterprise {
-		/*cf, err := ioutil.ReadFile(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "-haproxy.cfg") // just pass the file name
+	if cluster.Conf.Enterprise {
+		/*cf, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + "-haproxy.cfg") // just pass the file name
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Haproxy can't log generated config for provisioning %s", err)
 		}

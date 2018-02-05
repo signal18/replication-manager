@@ -55,7 +55,7 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 
 	sst.out = io.MultiWriter(writers...)
 
-	sst.listener, err = net.Listen("tcp", cluster.conf.BindAddr+":0")
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":0")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
@@ -63,7 +63,7 @@ func (cluster *Cluster) SSTRunReceiver(filename string, openfile string) (string
 	sst.tcplistener = sst.listener.(*net.TCPListener)
 	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
-	if sst.cluster.conf.LogSST {
+	if sst.cluster.Conf.LogSST {
 		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
 	}
 	SSTs.Lock()
@@ -79,7 +79,7 @@ func (sst *SST) tcp_con_handle() {
 	var err error
 
 	defer func() {
-		if sst.cluster.conf.LogSST {
+		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogPrintf(LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 
@@ -103,7 +103,7 @@ func (sst *SST) tcp_con_handle() {
 	select {
 
 	case <-chan_to_stdout:
-		if sst.cluster.conf.LogSST {
+		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogPrintf(LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 	}
@@ -117,7 +117,7 @@ func (sst *SST) stream_copy() <-chan int {
 		defer func() {
 			if con, ok := sst.in.(net.Conn); ok {
 
-				if sst.cluster.conf.LogSST {
+				if sst.cluster.Conf.LogSST {
 					sst.cluster.LogPrintf(LvlErr, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()

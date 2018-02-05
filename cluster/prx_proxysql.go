@@ -28,7 +28,7 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 }
 
 func (cluster *Cluster) initProxysql(proxy *Proxy) {
-	if cluster.conf.ProxysqlOn == false {
+	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 
@@ -39,8 +39,8 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	}
 	defer psql.Connection.Close()
 
-	for _, s := range cluster.servers {
-		if cluster.conf.ProxysqlBootstrap {
+	for _, s := range cluster.Servers {
+		if cluster.Conf.ProxysqlBootstrap {
 			err = psql.AddServer(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s (%s)", s.URL, err)
@@ -70,7 +70,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 		return
 	}
 	defer psql.Connection.Close()
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		if s.State == stateUnconn {
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
@@ -85,7 +85,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 }
 
 func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
-	if cluster.conf.ProxysqlOn == false {
+	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 
@@ -101,7 +101,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
 
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHostWrite(s.Host, s.Port)
 		var bke = Backend{
 			Host:           s.Host,
@@ -180,7 +180,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			}
 		}
 		// load the grants
-		if s.IsMaster() && cluster.conf.ProxysqlCopyGrants {
+		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, err := dbhelper.GetProxySQLUsers(psql.Connection)
 			if err != nil {
 				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON"})
@@ -221,7 +221,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 }
 
 func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
-	if cluster.conf.ProxysqlOn == false {
+	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 

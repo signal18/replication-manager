@@ -18,7 +18,7 @@ import (
 
 func (cluster *Cluster) OpenSVCProvisionProxies() error {
 
-	for _, prx := range cluster.proxies {
+	for _, prx := range cluster.Proxies {
 		cluster.OpenSVCProvisionProxyService(prx)
 	}
 
@@ -62,8 +62,8 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		}
 		svc.SetServiceTag(idtag, idsrv)
 	}
-	srvlist := make([]string, len(cluster.servers))
-	for i, s := range cluster.servers {
+	srvlist := make([]string, len(cluster.Servers))
+	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
 
@@ -139,7 +139,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		}
 	}
 	if prx.Type == proxySphinx {
-		if strings.Contains(cluster.conf.ProvSphinxAgents, agent.Node_name) {
+		if strings.Contains(cluster.Conf.ProvSphinxAgents, agent.Node_name) {
 			res, err := cluster.GetSphinxTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
 				return err
@@ -209,7 +209,7 @@ func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
-	for i, srv := range cluster.proxies {
+	for i, srv := range cluster.Proxies {
 		if srv.Id == proxy.Id {
 			return clusteragents[i%len(clusteragents)], nil
 		}
@@ -245,8 +245,8 @@ func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers strin
 	}
 	network := strings.Join(ips, ".")
 
-	if cluster.conf.ExtProxyVIP != "" && cluster.conf.ProvProxRouteAddr == "" {
-		cluster.conf.ProvProxRouteAddr, cluster.conf.ProvProxRoutePort = misc.SplitHostPort(cluster.conf.ExtProxyVIP)
+	if cluster.Conf.ExtProxyVIP != "" && cluster.Conf.ProvProxRouteAddr == "" {
+		cluster.Conf.ProvProxRouteAddr, cluster.Conf.ProvProxRoutePort = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 	}
 
 	conf := `
@@ -259,27 +259,27 @@ mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
-sphinx_img = ` + cluster.conf.ProvSphinxImg + `
-sphinx_mem = ` + cluster.conf.ProvSphinxMem + `
-sphinx_max_children = ` + cluster.conf.ProvSphinxMaxChildren + `
+sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
+sphinx_mem = ` + cluster.Conf.ProvSphinxMem + `
+sphinx_max_children = ` + cluster.Conf.ProvSphinxMaxChildren + `
 haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
 proxysql_img = ` + collector.ProvProxDockerHaproxyImg + `
 maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
-vip_addr = ` + cluster.conf.ProvProxRouteAddr + `
-vip_port  = ` + cluster.conf.ProvProxRoutePort + `
-vip_netmask =  ` + cluster.conf.ProvProxRouteMask + `
+vip_addr = ` + cluster.Conf.ProvProxRouteAddr + `
+vip_port  = ` + cluster.Conf.ProvProxRoutePort + `
+vip_netmask =  ` + cluster.Conf.ProvProxRouteMask + `
 port_rw = ` + strconv.Itoa(prx.WritePort) + `
 port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
 port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
 port_http = 80
 base_dir = /srv/{svcname}
 backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.conf.MxsBinlogPort) + `
+port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
 port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.conf.BindAddr + ":" + cluster.conf.HttpPort + `
+mrm_api_addr = ` + cluster.Conf.BindAddr + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	return conf

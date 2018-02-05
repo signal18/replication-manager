@@ -19,7 +19,7 @@ import (
 )
 
 func (cluster *Cluster) SpiderShardsDiscovery() {
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		cluster.tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
 		mon, err := dbhelper.GetSpiderMonitor(s.Conn)
 		if err == nil {
@@ -32,12 +32,12 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 							var err error
 							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "mdbsproxy.cnf")
 							srv.State = stateShard
-							cluster.servers = append(cluster.servers, srv)
+							cluster.Servers = append(cluster.Servers, srv)
 							if err != nil {
-								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.servers[j].URL, err)
+								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.Servers[j].URL, err)
 							}
-							if cluster.conf.Verbose {
-								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.servers[j].URL))
+							if cluster.Conf.Verbose {
+								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.Servers[j].URL))
 							}
 						}
 					}
@@ -48,20 +48,20 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 }
 
 func (cluster *Cluster) SpiderSetShardsRepl() {
-	for k, s := range cluster.servers {
+	for k, s := range cluster.Servers {
 		url := s.URL
 
-		if cluster.conf.Heartbeat {
-			for _, s2 := range cluster.servers {
+		if cluster.Conf.Heartbeat {
+			for _, s2 := range cluster.Servers {
 				url2 := s2.URL
 				if url2 != url {
 					host, port := misc.SplitHostPort(url2)
-					err := dbhelper.SetHeartbeatTable(cluster.servers[k].Conn)
+					err := dbhelper.SetHeartbeatTable(cluster.Servers[k].Conn)
 					if err != nil {
 						cluster.LogPrintf(LvlWarn, "Can not set heartbeat table to %s", url)
 						return
 					}
-					err = dbhelper.SetMultiSourceRepl(cluster.servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
+					err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
 					if err != nil {
 						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
 					}

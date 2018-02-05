@@ -37,11 +37,11 @@ type Test struct {
 
 func (cluster *Cluster) PrepareBench() error {
 	if cluster.benchmarkType == "sysbench" {
-		var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
+		var prepare = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.Conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
 		cluster.LogPrintf("BENCH", "%s", prepare)
 		var cmdprep *exec.Cmd
 
-		cmdprep = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.Conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
 		var outprep bytes.Buffer
 		cmdprep.Stdout = &outprep
 
@@ -65,10 +65,10 @@ func (cluster *Cluster) PrepareBench() error {
 
 func (cluster *Cluster) CleanupBench() error {
 	if cluster.benchmarkType == "sysbench" {
-		var cleanup = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
+		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.Conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
 		cluster.LogPrintf("BENCHMARK : %s", cleanup)
 		var cmdcls *exec.Cmd
-		cmdcls = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
+		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.Conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
 		var outcls bytes.Buffer
 		cmdcls.Stdout = &outcls
 
@@ -107,11 +107,11 @@ func (cluster *Cluster) ChecksumBench() bool {
 
 func (cluster *Cluster) RunBench() error {
 	if cluster.benchmarkType == "sysbench" {
-		var run = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(cluster.conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.conf.SysbenchThreads) + " run"
+		var run = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.Conf.HaproxyWritePort) + " --max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads) + " run"
 		cluster.LogPrintf("BENCH", "%s", run)
 		var cmdrun *exec.Cmd
 
-		cmdrun = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time="+strconv.Itoa(cluster.conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.conf.SysbenchThreads), "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.Conf.HaproxyWritePort), "--max-time="+strconv.Itoa(cluster.Conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.Conf.SysbenchThreads), "run")
 		var outrun bytes.Buffer
 		cmdrun.Stdout = &outrun
 
@@ -291,10 +291,10 @@ func (cluster *Cluster) InitBenchTable() error {
 }
 
 func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
-	test.ConfigInit = cluster.conf
-	savedConf = cluster.conf
-	savedFailoverCtr = cluster.failoverCtr
-	savedFailoverTs = cluster.failoverTs
+	test.ConfigInit = cluster.Conf
+	savedConf = cluster.Conf
+	savedFailoverCtr = cluster.FailoverCtr
+	savedFailoverTs = cluster.FailoverTs
 	cluster.CleanAll = true
 	if cluster.testStopCluster {
 		err := cluster.Bootstrap()
@@ -309,7 +309,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 }
 
 func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
-	test.ConfigTest = cluster.conf
+	test.ConfigTest = cluster.Conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
 		cluster.WaitClusterStop()
@@ -328,14 +328,14 @@ func (cluster *Cluster) SwitchoverWaitTest() {
 }
 
 func (cluster *Cluster) RestoreConf() {
-	cluster.conf = savedConf
-	cluster.failoverTs = savedFailoverTs
-	cluster.failoverCtr = savedFailoverCtr
+	cluster.Conf = savedConf
+	cluster.FailoverTs = savedFailoverTs
+	cluster.FailoverCtr = savedFailoverCtr
 
 }
 
 func (cluster *Cluster) DisableSemisync() error {
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='OFF'")
 		if err != nil {
 
@@ -350,7 +350,7 @@ func (cluster *Cluster) DisableSemisync() error {
 	return nil
 }
 func (cluster *Cluster) EnableSemisync() error {
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		_, err := s.Conn.Exec("set global rpl_semi_sync_master_enabled='ON'")
 		if err != nil {
 

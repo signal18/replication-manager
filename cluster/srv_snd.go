@@ -22,7 +22,7 @@ import (
 )
 
 func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus) error {
-	graph, err := graphite.NewGraphite(server.ClusterGroup.conf.GraphiteCarbonHost, server.ClusterGroup.conf.GraphiteCarbonPort)
+	graph, err := graphite.NewGraphite(server.ClusterGroup.Conf.GraphiteCarbonHost, server.ClusterGroup.Conf.GraphiteCarbonPort)
 
 	if err != nil {
 		return err
@@ -94,23 +94,23 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 }
 
 func (server *ServerMonitor) SendAlert() error {
-	if server.ClusterGroup.conf.MailTo != "" {
+	if server.ClusterGroup.Conf.MailTo != "" {
 		a := alert.Alert{
-			From:        server.ClusterGroup.conf.MailFrom,
-			To:          server.ClusterGroup.conf.MailTo,
+			From:        server.ClusterGroup.Conf.MailFrom,
+			To:          server.ClusterGroup.Conf.MailTo,
 			Type:        server.State,
 			Origin:      server.URL,
-			Destination: server.ClusterGroup.conf.MailSMTPAddr,
+			Destination: server.ClusterGroup.Conf.MailSMTPAddr,
 		}
 		err := a.Email()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
 		}
 	}
-	if server.ClusterGroup.conf.AlertScript != "" {
+	if server.ClusterGroup.Conf.AlertScript != "" {
 		server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
 		var out []byte
-		out, err := exec.Command(server.ClusterGroup.conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
+		out, err := exec.Command(server.ClusterGroup.Conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}

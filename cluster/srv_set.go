@@ -66,10 +66,10 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Port:      master.Port,
 		User:      master.ClusterGroup.rplUser,
 		Password:  master.ClusterGroup.rplPass,
-		Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
-		SSL:       server.ClusterGroup.conf.ReplicationSSL,
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 	})
 }
 
@@ -83,10 +83,10 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Port:      server.ClusterGroup.master.Port,
 			User:      server.ClusterGroup.rplUser,
 			Password:  server.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(server.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "",
-			SSL:       server.ClusterGroup.conf.ReplicationSSL,
+			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 		})
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -94,10 +94,10 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Port:      master.Port,
 			User:      master.ClusterGroup.rplUser,
 			Password:  master.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "CURRENT_POS",
-			SSL:       server.ClusterGroup.conf.ReplicationSSL,
+			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 		})
 	}
 	return err
@@ -109,8 +109,8 @@ func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonit
 		Port:      master.Port,
 		User:      master.ClusterGroup.rplUser,
 		Password:  master.ClusterGroup.rplPass,
-		Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "MXS",
 		Logfile:   master.FailoverMasterLogFile,
 		Logpos:    master.FailoverMasterLogPos,

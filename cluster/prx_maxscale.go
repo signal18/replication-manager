@@ -17,7 +17,7 @@ import (
 )
 
 func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
-	if cluster.conf.MxsOn == false {
+	if cluster.Conf.MxsOn == false {
 		return
 	}
 	var m maxscale.MaxScale
@@ -27,7 +27,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		m = maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
 	}
 
-	if cluster.conf.MxsOn {
+	if cluster.Conf.MxsOn {
 		err := m.Connect()
 		if err != nil {
 			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
@@ -35,7 +35,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		}
 	}
 	proxy.BackendsWrite = nil
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 
 		var bke = Backend{
 			Host:    server.Host,
@@ -44,14 +44,14 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 			PrxName: server.URL,
 		}
 
-		if cluster.conf.MxsGetInfoMethod == "maxinfo" {
-			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/servers")
+		if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
+			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/servers")
 			if err != nil {
 				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
 			}
 			srvport, _ := strconv.Atoi(server.Port)
 			mxsConnections := 0
-			bke.PrxName, bke.PrxStatus, mxsConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.conf.MxsServerMatchPort)
+			bke.PrxName, bke.PrxStatus, mxsConnections = m.GetMaxInfoServer(server.Host, srvport, server.ClusterGroup.Conf.MxsServerMatchPort)
 			bke.PrxConnections = strconv.Itoa(mxsConnections)
 			server.MxsServerStatus = bke.PrxStatus
 			server.MxsServerName = bke.PrxName
@@ -64,12 +64,12 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 
 				if proxy.Tunnel {
 
-					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.Host, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.Host, server.Port, server.ClusterGroup.Conf.MxsServerMatchPort)
 					server.MxsServerStatus = bke.PrxStatus
 					server.MxsServerName = bke.PrxName
 
 				} else {
-					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.IP, server.Port, server.ClusterGroup.conf.MxsServerMatchPort)
+					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.IP, server.Port, server.ClusterGroup.Conf.MxsServerMatchPort)
 					server.MxsServerStatus = bke.PrxStatus
 					server.MxsServerName = bke.PrxName
 				}
@@ -82,7 +82,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 }
 
 func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
-	if cluster.conf.MxsOn == false {
+	if cluster.Conf.MxsOn == false {
 		return
 	}
 
@@ -103,9 +103,9 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 	}
 
 	var monitor string
-	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
 		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
-		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
+		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoMonitor()
 
 	} else {
@@ -116,7 +116,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		}
 		monitor = m.GetMonitor()
 	}
-	if monitor != "" && cluster.conf.MxsDisableMonitor == true {
+	if monitor != "" && cluster.Conf.MxsDisableMonitor == true {
 		cmd := "shutdown monitor \"" + monitor + "\""
 		cluster.LogPrintf(LvlInfo, "Maxscale shutdown monitor: %s", cmd)
 		err = m.ShutdownMonitor(monitor)
@@ -144,8 +144,8 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 		cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
 	}
 
-	if cluster.conf.MxsBinlogOn == false {
-		for _, s := range cluster.servers {
+	if cluster.Conf.MxsBinlogOn == false {
+		for _, s := range cluster.Servers {
 			if s != cluster.GetMaster() {
 
 				err = m.ClearServer(s.MxsServerName, "master")

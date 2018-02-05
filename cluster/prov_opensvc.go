@@ -22,42 +22,42 @@ var dockerMinusRm bool
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
-	svc.Host, svc.Port = misc.SplitHostPort(cluster.conf.ProvHost)
-	svc.User, svc.Pass = misc.SplitPair(cluster.conf.ProvAdminUser)
-	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.conf.ProvUser)
-	svc.RplMgrCodeApp = cluster.conf.ProvCodeApp
-	svc.ProvAgents = cluster.conf.ProvAgents
-	svc.ProvMem = cluster.conf.ProvMem
+	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
+	svc.User, svc.Pass = misc.SplitPair(cluster.Conf.ProvAdminUser)
+	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.Conf.ProvUser)
+	svc.RplMgrCodeApp = cluster.Conf.ProvCodeApp
+	svc.ProvAgents = cluster.Conf.ProvAgents
+	svc.ProvMem = cluster.Conf.ProvMem
 	svc.ProvPwd = cluster.GetDbPass()
-	svc.ProvIops = cluster.conf.ProvIops
-	svc.ProvCores = cluster.conf.ProvCores
-	svc.ProvTags = cluster.conf.ProvTags
-	svc.ProvDisk = cluster.conf.ProvDisk
-	svc.ProvNetMask = cluster.conf.ProvNetmask
-	svc.ProvNetGateway = cluster.conf.ProvGateway
-	svc.ProvNetIface = cluster.conf.ProvNetIface
-	svc.ProvMicroSrv = cluster.conf.ProvType
-	svc.ProvFSType = cluster.conf.ProvDiskFS
-	svc.ProvFSPool = cluster.conf.ProvDiskPool
-	svc.ProvFSMode = cluster.conf.ProvDiskType
-	svc.ProvFSPath = cluster.conf.ProvDiskDevice
-	svc.ProvDockerImg = cluster.conf.ProvDbImg
-	svc.ProvProxAgents = cluster.conf.ProvProxAgents
-	svc.ProvProxDisk = cluster.conf.ProvProxDisk
-	svc.ProvProxNetMask = cluster.conf.ProvProxNetmask
-	svc.ProvProxNetGateway = cluster.conf.ProvProxGateway
-	svc.ProvProxNetIface = cluster.conf.ProvProxNetIface
-	svc.ProvProxMicroSrv = cluster.conf.ProvProxType
-	svc.ProvProxFSType = cluster.conf.ProvProxDiskFS
-	svc.ProvProxFSPool = cluster.conf.ProvProxDiskPool
-	svc.ProvProxFSMode = cluster.conf.ProvProxDiskType
-	svc.ProvProxFSPath = cluster.conf.ProvProxDiskDevice
-	svc.ProvProxDockerMaxscaleImg = cluster.conf.ProvProxMaxscaleImg
-	svc.ProvProxDockerHaproxyImg = cluster.conf.ProvProxHaproxyImg
-	svc.ProvProxDockerProxysqlImg = cluster.conf.ProvProxProxysqlImg
-	svc.ProvProxDockerShardproxyImg = cluster.conf.ProvProxShardingImg
+	svc.ProvIops = cluster.Conf.ProvIops
+	svc.ProvCores = cluster.Conf.ProvCores
+	svc.ProvTags = cluster.Conf.ProvTags
+	svc.ProvDisk = cluster.Conf.ProvDisk
+	svc.ProvNetMask = cluster.Conf.ProvNetmask
+	svc.ProvNetGateway = cluster.Conf.ProvGateway
+	svc.ProvNetIface = cluster.Conf.ProvNetIface
+	svc.ProvMicroSrv = cluster.Conf.ProvType
+	svc.ProvFSType = cluster.Conf.ProvDiskFS
+	svc.ProvFSPool = cluster.Conf.ProvDiskPool
+	svc.ProvFSMode = cluster.Conf.ProvDiskType
+	svc.ProvFSPath = cluster.Conf.ProvDiskDevice
+	svc.ProvDockerImg = cluster.Conf.ProvDbImg
+	svc.ProvProxAgents = cluster.Conf.ProvProxAgents
+	svc.ProvProxDisk = cluster.Conf.ProvProxDisk
+	svc.ProvProxNetMask = cluster.Conf.ProvProxNetmask
+	svc.ProvProxNetGateway = cluster.Conf.ProvProxGateway
+	svc.ProvProxNetIface = cluster.Conf.ProvProxNetIface
+	svc.ProvProxMicroSrv = cluster.Conf.ProvProxType
+	svc.ProvProxFSType = cluster.Conf.ProvProxDiskFS
+	svc.ProvProxFSPool = cluster.Conf.ProvProxDiskPool
+	svc.ProvProxFSMode = cluster.Conf.ProvProxDiskType
+	svc.ProvProxFSPath = cluster.Conf.ProvProxDiskDevice
+	svc.ProvProxDockerMaxscaleImg = cluster.Conf.ProvProxMaxscaleImg
+	svc.ProvProxDockerHaproxyImg = cluster.Conf.ProvProxHaproxyImg
+	svc.ProvProxDockerProxysqlImg = cluster.Conf.ProvProxProxysqlImg
+	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
 
-	svc.ProvProxTags = cluster.conf.ProvProxTags
+	svc.ProvProxTags = cluster.Conf.ProvProxTags
 	svc.Verbose = 1
 
 	return svc
@@ -68,7 +68,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 	//agents := opensvc.GetNodes()
 	//for _, node := range agents {
 	//	for _, svc := range node.Svc {
-	for _, db := range cluster.servers {
+	for _, db := range cluster.Servers {
 		go cluster.OpenSVCUnprovisionDatabaseService(db)
 		/*		if db.Id == svc.Svc_name {
 				idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -82,7 +82,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 				}
 		*/
 	}
-	for _, db := range cluster.servers {
+	for _, db := range cluster.Servers {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
@@ -93,7 +93,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		}
 	}
 	//}
-	for _, prx := range cluster.proxies {
+	for _, prx := range cluster.Proxies {
 		go cluster.OpenSVCUnprovisionProxyService(prx)
 		/*		if prx.Id == svc.Svc_name {
 					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -109,7 +109,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 			}*/
 
 	}
-	for _, prx := range cluster.proxies {
+	for _, prx := range cluster.Proxies {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
@@ -247,11 +247,11 @@ for _, addr := range agent.Ips {
 }*/
 
 func (server *ServerMonitor) GetSnapshot(collector opensvc.Collector) string {
-	if !server.IsPrefered() || !server.ClusterGroup.conf.ProvDiskSnapshot {
+	if !server.IsPrefered() || !server.ClusterGroup.Conf.ProvDiskSnapshot {
 		return ""
 	}
 	conf := ""
-	if server.ClusterGroup.conf.ProvDiskPool == "zpool" {
+	if server.ClusterGroup.Conf.ProvDiskPool == "zpool" {
 		conf = `
 [sync#2]
 type = zfssnap
@@ -259,7 +259,7 @@ dataset = {disk#1001.name}/pod01
 recursive = true
 name = daily
 schedule = 00:01-02:00@120
-keep =  ` + strconv.Itoa(server.ClusterGroup.conf.ProvDiskSnapshotKeep) + `
+keep =  ` + strconv.Itoa(server.ClusterGroup.Conf.ProvDiskSnapshotKeep) + `
 sync_max_delay = 1440
 
 `

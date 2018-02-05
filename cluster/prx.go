@@ -76,82 +76,82 @@ type proxyList []*Proxy
 
 func (cluster *Cluster) newProxyList() error {
 	nbproxies := 0
-	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
-		nbproxies += len(strings.Split(cluster.conf.MxsHost, ","))
+	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
+		nbproxies += len(strings.Split(cluster.Conf.MxsHost, ","))
 	}
-	if cluster.conf.HaproxyOn {
-		nbproxies += len(strings.Split(cluster.conf.HaproxyHosts, ","))
+	if cluster.Conf.HaproxyOn {
+		nbproxies += len(strings.Split(cluster.Conf.HaproxyHosts, ","))
 	}
-	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
-		nbproxies += len(strings.Split(cluster.conf.MdbsProxyHosts, ","))
+	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
+		nbproxies += len(strings.Split(cluster.Conf.MdbsProxyHosts, ","))
 	}
-	if cluster.conf.ProxysqlOn {
-		nbproxies += len(strings.Split(cluster.conf.ProxysqlHosts, ","))
+	if cluster.Conf.ProxysqlOn {
+		nbproxies += len(strings.Split(cluster.Conf.ProxysqlHosts, ","))
 	}
-	if cluster.conf.MysqlRouterOn {
-		nbproxies += len(strings.Split(cluster.conf.MysqlRouterHosts, ","))
+	if cluster.Conf.MysqlRouterOn {
+		nbproxies += len(strings.Split(cluster.Conf.MysqlRouterHosts, ","))
 	}
-	if cluster.conf.SphinxOn {
-		nbproxies += len(strings.Split(cluster.conf.SphinxHosts, ","))
+	if cluster.Conf.SphinxOn {
+		nbproxies += len(strings.Split(cluster.Conf.SphinxHosts, ","))
 	}
-	if cluster.conf.ExtProxyOn {
+	if cluster.Conf.ExtProxyOn {
 		nbproxies++
 	}
 	// internal myproxy
-	if cluster.conf.MyproxyOn {
+	if cluster.Conf.MyproxyOn {
 		nbproxies++
 	}
-	cluster.proxies = make([]*Proxy, nbproxies)
+	cluster.Proxies = make([]*Proxy, nbproxies)
 
 	cluster.LogPrintf(LvlInfo, "Loading %d proxies", nbproxies)
 
 	var ctproxy = 0
 	var err error
-	if cluster.conf.MxsHost != "" && cluster.conf.MxsOn {
-		for _, proxyHost := range strings.Split(cluster.conf.MxsHost, ",") {
+	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
+		for _, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
 			cluster.LogPrintf(LvlInfo, "Loading Maxscale...")
 			prx := new(Proxy)
 			prx.Type = proxyMaxscale
 			prx.Host = proxyHost
-			prx.Port = cluster.conf.MxsPort
-			prx.User = cluster.conf.MxsUser
-			prx.Pass = cluster.conf.MxsPass
+			prx.Port = cluster.Conf.MxsPort
+			prx.User = cluster.Conf.MxsUser
+			prx.Pass = cluster.Conf.MxsPass
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
 				p.CipherText = prx.Pass
 				p.Decrypt()
 				prx.Pass = p.PlainText
 			}
-			prx.ReadPort = cluster.conf.MxsReadPort
-			prx.WritePort = cluster.conf.MxsWritePort
-			prx.ReadWritePort = cluster.conf.MxsReadWritePort
+			prx.ReadPort = cluster.Conf.MxsReadPort
+			prx.WritePort = cluster.Conf.MxsWritePort
+			prx.ReadWritePort = cluster.Conf.MxsReadWritePort
 
 			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
-			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
 			ctproxy++
 		}
 	}
-	if cluster.conf.HaproxyOn {
+	if cluster.Conf.HaproxyOn {
 
-		for _, proxyHost := range strings.Split(cluster.conf.HaproxyHosts, ",") {
+		for _, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
 
 			cluster.LogPrintf(LvlInfo, "Loading HaProxy...")
 
 			prx := new(Proxy)
 			prx.Type = proxyHaproxy
-			prx.Port = strconv.Itoa(cluster.conf.HaproxyStatPort)
+			prx.Port = strconv.Itoa(cluster.Conf.HaproxyStatPort)
 			prx.Host = proxyHost
-			prx.ReadPort = cluster.conf.HaproxyReadPort
-			prx.WritePort = cluster.conf.HaproxyWritePort
-			prx.ReadWritePort = cluster.conf.HaproxyWritePort
+			prx.ReadPort = cluster.Conf.HaproxyReadPort
+			prx.WritePort = cluster.Conf.HaproxyWritePort
+			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
 
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
@@ -159,32 +159,32 @@ func (cluster *Cluster) newProxyList() error {
 			ctproxy++
 		}
 	}
-	if cluster.conf.ExtProxyOn {
+	if cluster.Conf.ExtProxyOn {
 		prx := new(Proxy)
 		prx.Type = proxyExternal
-		prx.Host, prx.Port = misc.SplitHostPort(cluster.conf.ExtProxyVIP)
+		prx.Host, prx.Port = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 		prx.WritePort, _ = strconv.Atoi(prx.Port)
 		prx.ReadPort = prx.WritePort
 		prx.ReadWritePort = prx.WritePort
 		ctproxy++
 	}
-	if cluster.conf.ProxysqlOn {
+	if cluster.Conf.ProxysqlOn {
 
-		for _, proxyHost := range strings.Split(cluster.conf.ProxysqlHosts, ",") {
+		for _, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
 			cluster.LogPrintf(LvlInfo, "Loading ProxySQL...")
 
 			prx := new(Proxy)
 			prx.Type = proxySqlproxy
-			prx.Port = cluster.conf.ProxysqlAdminPort
-			prx.ReadWritePort, _ = strconv.Atoi(cluster.conf.ProxysqlPort)
+			prx.Port = cluster.Conf.ProxysqlAdminPort
+			prx.ReadWritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
 			prx.Host = proxyHost
-			prx.User = cluster.conf.ProxysqlUser
-			prx.Pass = cluster.conf.ProxysqlPassword
-			prx.ReaderHostgroup, _ = strconv.Atoi(cluster.conf.ProxysqlReaderHostgroup)
-			prx.WriterHostgroup, _ = strconv.Atoi(cluster.conf.ProxysqlWriterHostgroup)
-			prx.WritePort, _ = strconv.Atoi(cluster.conf.ProxysqlPort)
-			prx.ReadPort, _ = strconv.Atoi(cluster.conf.ProxysqlPort)
+			prx.User = cluster.Conf.ProxysqlUser
+			prx.Pass = cluster.Conf.ProxysqlPassword
+			prx.ReaderHostgroup, _ = strconv.Atoi(cluster.Conf.ProxysqlReaderHostgroup)
+			prx.WriterHostgroup, _ = strconv.Atoi(cluster.Conf.ProxysqlWriterHostgroup)
+			prx.WritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
+			prx.ReadPort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
 
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
@@ -193,7 +193,7 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Pass = p.PlainText
 			}
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
@@ -203,18 +203,18 @@ func (cluster *Cluster) newProxyList() error {
 
 	}
 
-	if cluster.conf.MdbsProxyHosts != "" && cluster.conf.MdbsProxyOn {
-		for _, proxyHost := range strings.Split(cluster.conf.MdbsProxyHosts, ",") {
+	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
+		for _, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			cluster.LogPrintf(LvlInfo, "Loading MdbShardProxy...")
 			prx := new(Proxy)
 			prx.Type = proxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
-			prx.User, prx.Pass = misc.SplitPair(cluster.conf.MdbsProxyUser)
+			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyUser)
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
@@ -222,20 +222,20 @@ func (cluster *Cluster) newProxyList() error {
 			ctproxy++
 		}
 	}
-	if cluster.conf.SphinxHosts != "" && cluster.conf.SphinxOn {
-		for _, proxyHost := range strings.Split(cluster.conf.SphinxHosts, ",") {
+	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
+		for _, proxyHost := range strings.Split(cluster.Conf.SphinxHosts, ",") {
 			cluster.LogPrintf(LvlInfo, "Loading SphinxSearch Proxy...")
 			prx := new(Proxy)
 			prx.Type = proxySphinx
 			prx.Host = proxyHost
-			prx.Port = cluster.conf.SphinxQLPort
+			prx.Port = cluster.Conf.SphinxQLPort
 			prx.User = ""
 			prx.Pass = ""
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-			cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
@@ -243,20 +243,20 @@ func (cluster *Cluster) newProxyList() error {
 			ctproxy++
 		}
 	}
-	if cluster.conf.MyproxyOn {
+	if cluster.Conf.MyproxyOn {
 		cluster.LogPrintf(LvlInfo, "Loading MyProxy...")
 
 		prx := new(Proxy)
 		prx.Type = proxyMyProxy
-		prx.Port = strconv.Itoa(cluster.conf.MyproxyPort)
+		prx.Port = strconv.Itoa(cluster.Conf.MyproxyPort)
 		prx.Host = "0.0.0.0"
-		prx.ReadPort = cluster.conf.MyproxyPort
-		prx.WritePort = cluster.conf.MyproxyPort
-		prx.ReadWritePort = cluster.conf.MyproxyPort
-		prx.User = cluster.conf.MyproxyUser
-		prx.Pass = cluster.conf.MyproxyPassword
+		prx.ReadPort = cluster.Conf.MyproxyPort
+		prx.WritePort = cluster.Conf.MyproxyPort
+		prx.ReadWritePort = cluster.Conf.MyproxyPort
+		prx.User = cluster.Conf.MyproxyUser
+		prx.Pass = cluster.Conf.MyproxyPassword
 		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-		cluster.proxies[ctproxy], err = cluster.newProxy(prx)
+		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 
 		ctproxy++
 	}
@@ -274,7 +274,7 @@ func (cluster *Cluster) InjectTraffic() {
 	var definer string
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
-		for _, pr := range cluster.proxies {
+		for _, pr := range cluster.Proxies {
 			if pr.Type == proxySphinx || pr.Type == proxyMyProxy {
 				// Does not yet understand CREATE OR REPLACE VIEW
 				continue
@@ -304,7 +304,7 @@ func (cluster *Cluster) InjectTraffic() {
 func (cluster *Cluster) IsProxyEqualMaster() bool {
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
-		for _, pr := range cluster.proxies {
+		for _, pr := range cluster.Proxies {
 			db, err := cluster.GetClusterThisProxyConn(pr)
 			if err != nil {
 				if cluster.IsVerbose() {
@@ -342,18 +342,18 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 
 func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 	// Found server from ServerId
-	for _, pr := range cluster.proxies {
-		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+	for _, pr := range cluster.Proxies {
+		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
-		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+		if cluster.Conf.MxsOn && pr.Type == proxyMaxscale {
 			//intsrvid, _ := strconv.Atoi(serverid)
 			server := cluster.GetServerFromId(serverid)
 			if cluster.GetMaster() != nil {
 				cluster.setMaintenanceMaxscale(pr, server)
 			}
 		}
-		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			if cluster.GetMaster() != nil {
 				server := cluster.GetServerFromId(serverid)
 				cluster.setMaintenanceProxysql(pr, server)
@@ -364,25 +364,25 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 
 func (cluster *Cluster) refreshProxies() {
 
-	for _, pr := range cluster.proxies {
-		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+	for _, pr := range cluster.Proxies {
+		if cluster.Conf.MxsOn && pr.Type == proxyMaxscale {
 			cluster.refreshMaxscale(pr)
 		}
-		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
 			if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
 				cluster.refreshMdbsproxy(nil, pr)
 			}
 		}
-		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.refreshProxysql(pr)
 		}
-		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.refreshHaproxy(pr)
 		}
-		if cluster.conf.SphinxOn && pr.Type == proxySphinx {
+		if cluster.Conf.SphinxOn && pr.Type == proxySphinx {
 			cluster.refreshSphinx(pr)
 		}
-		if cluster.conf.GraphiteMetrics {
+		if cluster.Conf.GraphiteMetrics {
 			cluster.SendProxyStats(pr)
 		}
 	}
@@ -390,18 +390,18 @@ func (cluster *Cluster) refreshProxies() {
 }
 
 func (cluster *Cluster) failoverProxies() {
-	for _, pr := range cluster.proxies {
+	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
-		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
-		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+		if cluster.Conf.MxsOn && pr.Type == proxyMaxscale {
 			cluster.initMaxscale(nil, pr)
 		}
-		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
 			cluster.initMdbsproxy(nil, pr)
 		}
-		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.failoverProxysql(pr)
 		}
 	}
@@ -409,21 +409,21 @@ func (cluster *Cluster) failoverProxies() {
 }
 
 func (cluster *Cluster) initProxies() {
-	for _, pr := range cluster.proxies {
+	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "Init Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
-		if cluster.conf.HaproxyOn && pr.Type == proxyHaproxy {
+		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
-		if cluster.conf.MxsOn && pr.Type == proxyMaxscale {
+		if cluster.Conf.MxsOn && pr.Type == proxyMaxscale {
 			cluster.initMaxscale(nil, pr)
 		}
-		if cluster.conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
 			cluster.initMdbsproxy(nil, pr)
 		}
-		if cluster.conf.ProxysqlOn && pr.Type == proxySqlproxy {
+		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.initProxysql(pr)
 		}
-		if cluster.conf.MyproxyOn && pr.Type == proxyMyProxy {
+		if cluster.Conf.MyproxyOn && pr.Type == proxyMyProxy {
 			cluster.initMyProxy(pr)
 		}
 	}
@@ -432,12 +432,12 @@ func (cluster *Cluster) initProxies() {
 }
 
 func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	if len(cluster.proxies) == 0 {
+	if len(cluster.Proxies) == 0 {
 		return nil, errors.New("No proxies defined")
 	}
-	prx := cluster.proxies[0]
+	prx := cluster.Proxies[0]
 
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
 	if prx.Host != "" {
@@ -455,10 +455,10 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 }
 
 func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if cluster.conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.conf.MonitorWriteHeartbeatCredential + "@"
+	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
+		dsn = cluster.Conf.MonitorWriteHeartbeatCredential + "@"
 	}
 
 	if prx.Host != "" {
@@ -473,7 +473,7 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 }
 
 func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
-	for _, pr := range cluster.proxies {
+	for _, pr := range cluster.Proxies {
 		if pr.Id == name {
 			return pr
 		}
@@ -482,7 +482,7 @@ func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
 }
 
 func (cluster *Cluster) SendProxyStats(proxy *Proxy) error {
-	graph, err := graphite.NewGraphite(cluster.conf.GraphiteCarbonHost, cluster.conf.GraphiteCarbonPort)
+	graph, err := graphite.NewGraphite(cluster.Conf.GraphiteCarbonHost, cluster.Conf.GraphiteCarbonPort)
 	if err != nil {
 		return err
 	}

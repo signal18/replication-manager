@@ -70,44 +70,44 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	}
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Could not check binlog filters")
 		}
 		return false
 	}
-	if hasBinLogs == false && cluster.conf.CheckBinFilter == true {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.conf.CheckReplFilter == true {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.Conf.CheckReplFilter == true {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.conf.RplChecks == true {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		}
 		return false
 	}
-	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.SwitchSync && cluster.conf.RplChecks {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
-	if ss.SecondsBehindMaster.Valid == false && cluster.conf.RplChecks == true {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+	if ss.SecondsBehindMaster.Valid == false && cluster.Conf.RplChecks == true {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
 		}
 		return false
@@ -116,7 +116,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 }
 
 func (cluster *Cluster) isAutomaticFailover() bool {
-	if cluster.conf.Interactive == false {
+	if cluster.Conf.Interactive == false {
 		return true
 	}
 	cluster.sme.AddState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
@@ -134,11 +134,11 @@ func (cluster *Cluster) isMasterFailed() bool {
 func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
 
-	if cluster.master.FailCount >= cluster.conf.MaxFail {
+	if cluster.master.FailCount >= cluster.Conf.MaxFail {
 		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
 	} else {
-		//	cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.conf.Interactive, cluster.conf.MaxFail), ErrFrom: "CONF"})
+		//	cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
 	}
 	return false
 }
@@ -146,10 +146,10 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 	// illimited failed count
 	//cluster.LogPrintf("CHECK: Failover Counter Reach")
-	if cluster.conf.FailLimit == 0 {
+	if cluster.Conf.FailLimit == 0 {
 		return true
 	}
-	if cluster.failoverCtr == cluster.conf.FailLimit {
+	if cluster.FailoverCtr == cluster.Conf.FailLimit {
 		cluster.sme.AddState("ERR00027", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
 		return false
 	}
@@ -158,8 +158,8 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 
 func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	// illimited failed count
-	rem := (cluster.failoverTs + cluster.conf.FailTime) - time.Now().Unix()
-	if cluster.conf.FailTime == 0 {
+	rem := (cluster.FailoverTs + cluster.Conf.FailTime) - time.Now().Unix()
+	if cluster.Conf.FailTime == 0 {
 		return true
 	}
 	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
@@ -171,7 +171,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 }
 
 func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
-	if cluster.conf.CheckFalsePositiveHeartbeat == false {
+	if cluster.Conf.CheckFalsePositiveHeartbeat == false {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
@@ -182,12 +182,12 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 			if relaycheck.IsRelay == false {
 				status, _ := dbhelper.GetStatusAsInt(s.Conn)
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-				if cluster.conf.LogLevel > 1 {
+				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
-				time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
+				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
-				if cluster.conf.LogLevel > 1 {
+				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
@@ -201,14 +201,14 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 }
 
 func (cluster *Cluster) isMaxscaleSupectRunning() bool {
-	if cluster.conf.MxsOn == false {
+	if cluster.Conf.MxsOn == false {
 		return false
 	}
-	if cluster.conf.CheckFalsePositiveMaxscale == false {
+	if cluster.Conf.CheckFalsePositiveMaxscale == false {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover Maxscale Master Satus")
-	m := maxscale.MaxScale{Host: cluster.conf.MxsHost, Port: cluster.conf.MxsPort, User: cluster.conf.MxsUser, Pass: cluster.conf.MxsPass}
+	m := maxscale.MaxScale{Host: cluster.Conf.MxsHost, Port: cluster.Conf.MxsPort, User: cluster.Conf.MxsUser, Pass: cluster.Conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not connect to MaxScale:", err)
@@ -222,9 +222,9 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	//disable monitoring
 
 	var monitor string
-	if cluster.conf.MxsGetInfoMethod == "maxinfo" {
+	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
 		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
-		m.GetMaxInfoMonitors("http://" + cluster.conf.MxsHost + ":" + strconv.Itoa(cluster.conf.MxsMaxinfoPort) + "/monitors")
+		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {
@@ -249,7 +249,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		return false
 	}
 
-	time.Sleep(time.Duration(cluster.conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
+	time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
 		cluster.sme.AddState("ERR00030", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
 		return true
@@ -269,17 +269,17 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 
 func (cluster *Cluster) isActiveArbitration() bool {
 
-	if cluster.conf.Arbitration == false {
+	if cluster.Conf.Arbitration == false {
 		return true
 	}
 	//	cluster.LogPrintf("CHECK: Failover External Arbitration")
 
-	url := "http://" + cluster.conf.ArbitrationSasHosts + "/arbitrator"
+	url := "http://" + cluster.Conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
 	if cluster.master != nil {
 		mst = cluster.master.URL
 	}
-	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.conf.ArbitrationSasUniqueId) + `}`)
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.Conf.ArbitrationSasSecret + `","cluster":"` + cluster.cfgGroup + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.Conf.ArbitrationSasUniqueId) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
@@ -314,14 +314,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 }
 
 func (cluster *Cluster) isExternalOk() bool {
-	if cluster.conf.CheckFalsePositiveExternal == false {
+	if cluster.Conf.CheckFalsePositiveExternal == false {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover External Request")
 	if cluster.master == nil {
 		return false
 	}
-	url := "http://" + cluster.master.Host + ":" + strconv.Itoa(cluster.conf.CheckFalsePositiveExternalPort)
+	url := "http://" + cluster.master.Host + ":" + strconv.Itoa(cluster.Conf.CheckFalsePositiveExternalPort)
 	req, err := http.Get(url)
 	if err != nil {
 		return false
@@ -335,7 +335,7 @@ func (cluster *Cluster) isExternalOk() bool {
 
 func (cluster *Cluster) isNotFirstSlave() bool {
 	// let the failover doable if interactive or failover on first slave
-	if cluster.conf.Interactive == true || cluster.conf.FailRestartUnsafe == true {
+	if cluster.Conf.Interactive == true || cluster.Conf.FailRestartUnsafe == true {
 		return true
 	}
 	// do not failover if master info is unknowned:
@@ -353,34 +353,34 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 // must lead to Fatal errors if initialized with wrong values.
 
 func (cluster *Cluster) isValidConfig() error {
-	if cluster.conf.LogFile != "" {
+	if cluster.Conf.LogFile != "" {
 		var err error
-		cluster.logPtr, err = os.OpenFile(cluster.conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		cluster.logPtr, err = os.OpenFile(cluster.Conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed opening logfile, disabling for the rest of the session")
-			cluster.conf.LogFile = ""
+			cluster.Conf.LogFile = ""
 		}
 	}
 	// if slaves option has been supplied, split into a slice.
-	if cluster.conf.Hosts != "" {
-		cluster.hostList = strings.Split(cluster.conf.Hosts, ",")
+	if cluster.Conf.Hosts != "" {
+		cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
 	} else {
 		cluster.LogPrintf(LvlErr, "No hosts list specified")
 		return errors.New("No hosts list specified")
 	}
 
 	// validate users
-	if cluster.conf.User == "" {
+	if cluster.Conf.User == "" {
 		cluster.LogPrintf(LvlErr, "No master user/pair specified")
 		return errors.New("No master user/pair specified")
 	}
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.conf.User)
+	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
 
-	if cluster.conf.RplUser == "" {
+	if cluster.Conf.RplUser == "" {
 		cluster.LogPrintf(LvlErr, "No replication user/pair specified")
 		return errors.New("No replication user/pair specified")
 	}
-	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.conf.RplUser)
+	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.Conf.RplUser)
 
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
@@ -393,30 +393,30 @@ func (cluster *Cluster) isValidConfig() error {
 	}
 
 	// Check if ignored servers are included in Host List
-	if cluster.conf.IgnoreSrv != "" {
-		ihosts := strings.Split(cluster.conf.IgnoreSrv, ",")
+	if cluster.Conf.IgnoreSrv != "" {
+		ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
 		for _, host := range ihosts {
-			if !strings.Contains(cluster.conf.Hosts, host) {
+			if !strings.Contains(cluster.Conf.Hosts, host) {
 				cluster.LogPrintf(LvlErr, clusterError["ERR00059"], host)
 			}
 		}
 	}
 
 	// Check if preferred master is included in Host List
-	pfa := strings.Split(cluster.conf.PrefMaster, ",")
+	pfa := strings.Split(cluster.Conf.PrefMaster, ",")
 	if len(pfa) > 1 {
 		cluster.LogPrintf(LvlErr, "Prefmaster option takes exactly one argument")
 		return errors.New("Prefmaster option takes exactly one argument")
 	}
 	ret := func() bool {
 		for _, v := range cluster.hostList {
-			if v == cluster.conf.PrefMaster {
+			if v == cluster.Conf.PrefMaster {
 				return true
 			}
 		}
 		return false
 	}
-	if ret() == false && cluster.conf.PrefMaster != "" {
+	if ret() == false && cluster.Conf.PrefMaster != "" {
 		cluster.LogPrintf(LvlErr, "Preferred master is not included in the hosts option")
 		return errors.New("Prefmaster option takes exactly one argument")
 	}

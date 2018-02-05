@@ -13,21 +13,21 @@ func (cluster *Cluster) SwitchServerMaintenance(serverid uint) {
 }
 
 func (cluster *Cluster) SwitchInteractive() {
-	if cluster.conf.Interactive == true {
-		cluster.conf.Interactive = false
+	if cluster.Conf.Interactive == true {
+		cluster.Conf.Interactive = false
 		cluster.LogPrintf(LvlInfo, "Failover monitor switched to automatic mode")
 	} else {
-		cluster.conf.Interactive = true
+		cluster.Conf.Interactive = true
 		cluster.LogPrintf(LvlInfo, "Failover monitor switched to manual mode")
 	}
 }
 
 func (cluster *Cluster) SwitchReadOnly() {
-	cluster.conf.ReadOnly = !cluster.conf.ReadOnly
+	cluster.Conf.ReadOnly = !cluster.Conf.ReadOnly
 }
 
 func (cluster *Cluster) SwitchRplChecks() {
-	cluster.conf.RplChecks = !cluster.conf.RplChecks
+	cluster.Conf.RplChecks = !cluster.Conf.RplChecks
 }
 
 func (cluster *Cluster) SwitchCleanAll() {
@@ -35,11 +35,11 @@ func (cluster *Cluster) SwitchCleanAll() {
 }
 
 func (cluster *Cluster) SwitchFailSync() {
-	cluster.conf.FailSync = !cluster.conf.FailSync
+	cluster.Conf.FailSync = !cluster.Conf.FailSync
 }
 
 func (cluster *Cluster) SwitchSwitchoverSync() {
-	cluster.conf.SwitchSync = !cluster.conf.SwitchSync
+	cluster.Conf.SwitchSync = !cluster.Conf.SwitchSync
 }
 
 func (cluster *Cluster) SwitchVerbosity() {
@@ -52,96 +52,96 @@ func (cluster *Cluster) SwitchVerbosity() {
 }
 
 func (cluster *Cluster) SwitchRejoin() {
-	cluster.conf.Autorejoin = !cluster.conf.Autorejoin
+	cluster.Conf.Autorejoin = !cluster.Conf.Autorejoin
 }
 
 func (cluster *Cluster) SwitchRejoinDump() {
-	cluster.conf.AutorejoinMysqldump = !cluster.conf.AutorejoinMysqldump
+	cluster.Conf.AutorejoinMysqldump = !cluster.Conf.AutorejoinMysqldump
 }
 
 func (cluster *Cluster) SwitchRejoinBackupBinlog() {
-	cluster.conf.AutorejoinBackupBinlog = !cluster.conf.AutorejoinBackupBinlog
+	cluster.Conf.AutorejoinBackupBinlog = !cluster.Conf.AutorejoinBackupBinlog
 }
 
 func (cluster *Cluster) SwitchRejoinSemisync() {
-	cluster.conf.AutorejoinSemisync = !cluster.conf.AutorejoinSemisync
+	cluster.Conf.AutorejoinSemisync = !cluster.Conf.AutorejoinSemisync
 }
 func (cluster *Cluster) SwitchRejoinFlashback() {
-	cluster.conf.AutorejoinFlashback = !cluster.conf.AutorejoinFlashback
+	cluster.Conf.AutorejoinFlashback = !cluster.Conf.AutorejoinFlashback
 }
 
 func (cluster *Cluster) SwitchRejoinPseudoGTID() {
-	cluster.conf.AutorejoinSlavePositionalHearbeat = !cluster.conf.AutorejoinSlavePositionalHearbeat
+	cluster.Conf.AutorejoinSlavePositionalHearbeat = !cluster.Conf.AutorejoinSlavePositionalHearbeat
 }
 
 func (cluster *Cluster) SwitchCheckReplicationFilters() {
-	cluster.conf.CheckReplFilter = !cluster.conf.CheckReplFilter
+	cluster.Conf.CheckReplFilter = !cluster.Conf.CheckReplFilter
 }
 
 func (cluster *Cluster) SwitchFailoverRestartUnsafe() {
-	cluster.conf.FailRestartUnsafe = !cluster.conf.FailRestartUnsafe
+	cluster.Conf.FailRestartUnsafe = !cluster.Conf.FailRestartUnsafe
 }
 
 func (cluster *Cluster) SwitchFailoverEventScheduler() {
-	cluster.conf.FailEventScheduler = !cluster.conf.FailEventScheduler
+	cluster.Conf.FailEventScheduler = !cluster.Conf.FailEventScheduler
 }
 
 func (cluster *Cluster) SwitchRejoinZFSFlashback() {
-	cluster.conf.AutorejoinZFSFlashback = !cluster.conf.AutorejoinZFSFlashback
+	cluster.Conf.AutorejoinZFSFlashback = !cluster.Conf.AutorejoinZFSFlashback
 }
 
 func (cluster *Cluster) SwitchBackup() {
-	cluster.conf.Backup = !cluster.conf.Backup
+	cluster.Conf.Backup = !cluster.Conf.Backup
 }
 
 func (cluster *Cluster) SwitchSchedulerBackupLogical() {
-	cluster.conf.SchedulerBackupLogical = !cluster.conf.SchedulerBackupLogical
+	cluster.Conf.SchedulerBackupLogical = !cluster.Conf.SchedulerBackupLogical
 }
 
 func (cluster *Cluster) SwitchSchedulerBackupPhysical() {
-	cluster.conf.SchedulerBackupPhysical = !cluster.conf.SchedulerBackupPhysical
+	cluster.Conf.SchedulerBackupPhysical = !cluster.Conf.SchedulerBackupPhysical
 }
 
 func (cluster *Cluster) SwitchSchedulerDatabaseLogs() {
-	cluster.conf.SchedulerDatabaseLogs = !cluster.conf.SchedulerDatabaseLogs
+	cluster.Conf.SchedulerDatabaseLogs = !cluster.Conf.SchedulerDatabaseLogs
 }
 
 func (cluster *Cluster) SwitchSchedulerDatabaseOptimize() {
-	cluster.conf.SchedulerDatabaseOptimize = !cluster.conf.SchedulerDatabaseOptimize
+	cluster.Conf.SchedulerDatabaseOptimize = !cluster.Conf.SchedulerDatabaseOptimize
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
-	cluster.conf.GraphiteEmbedded = !cluster.conf.GraphiteEmbedded
+	cluster.Conf.GraphiteEmbedded = !cluster.Conf.GraphiteEmbedded
 }
 
 func (cluster *Cluster) SwitchGraphiteMetrics() {
-	cluster.conf.GraphiteMetrics = !cluster.conf.GraphiteMetrics
+	cluster.Conf.GraphiteMetrics = !cluster.Conf.GraphiteMetrics
 }
 
 func (cluster *Cluster) SwitchFailoverEventStatus() {
-	cluster.conf.FailEventStatus = !cluster.conf.FailEventStatus
+	cluster.Conf.FailEventStatus = !cluster.Conf.FailEventStatus
 }
 
 func (cluster *Cluster) SwitchProxysqlBootstrap() {
-	cluster.conf.ProxysqlBootstrap = !cluster.conf.ProxysqlBootstrap
+	cluster.Conf.ProxysqlBootstrap = !cluster.Conf.ProxysqlBootstrap
 }
 
 func (cluster *Cluster) SwitchProxysqlCopyGrants() {
-	cluster.conf.ProxysqlCopyGrants = !cluster.conf.ProxysqlCopyGrants
+	cluster.Conf.ProxysqlCopyGrants = !cluster.Conf.ProxysqlCopyGrants
 }
 
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
-	cluster.conf.MonitorSchemaChange = !cluster.conf.MonitorSchemaChange
+	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange
 }
 
 func (cluster *Cluster) SwitchMonitoringScheduler() {
-	cluster.conf.MonitorScheduler = !cluster.conf.MonitorScheduler
+	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
 }
 
 func (cluster *Cluster) SwitchMonitoringQueries() {
-	cluster.conf.MonitorQueries = !cluster.conf.MonitorQueries
+	cluster.Conf.MonitorQueries = !cluster.Conf.MonitorQueries
 }
 
 func (cluster *Cluster) SwitchTestMode() {
-	cluster.conf.Test = !cluster.conf.Test
+	cluster.Conf.Test = !cluster.Conf.Test
 }

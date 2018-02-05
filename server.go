@@ -39,6 +39,7 @@ import (
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/termlog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -46,20 +47,25 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	tlog           termlog.TermLog
-	htlog          httplog.HttpLog
-	termlength     int
-	runUUID        string
-	Hostname       string
-	runStatus      string
-	splitBrain     bool
-	exitMsg        string
-	exit           bool
-	currentCluster *cluster.Cluster
-	clusters       map[string]*cluster.Cluster
-	agents         []opensvc.Host
-	isStarted      bool
-	OpenSVC        opensvc.Collector
+	tlog           termlog.TermLog             `mapstructure:"-"`
+	Logs           httplog.HttpLog             `mapstructure:"logs"`
+	termlength     int                         `mapstructure:"-"`
+	UUID           string                      `mapstructure:"uuid"`
+	Hostname       string                      `mapstructure:"hostname"`
+	Status         string                      `mapstructure:"status"`
+	SplitBrain     bool                        `mapstructure:"spitbrain"`
+	exitMsg        string                      `mapstructure:"-"`
+	exit           bool                        `mapstructure:"-"`
+	currentCluster *cluster.Cluster            `mapstructure:"-"`
+	Clusters       map[string]*cluster.Cluster `mapstructure:"clusters"`
+	Agents         []opensvc.Host              `mapstructure:"agents"`
+	isStarted      bool                        `mapstructure:"-"`
+	OpenSVC        opensvc.Collector           `mapstructure:"-"`
+	Version        string                      `mapstructure:"version"`
+	Fullversion    string                      `mapstructure:"full-version"`
+	Os             string                      `mapstructure:"os"`
+	Arch           string                      `mapstructure:"arch"`
+	Tests          []string                    `mapstructure:"tests"`
 }
 
 const (
@@ -572,16 +578,23 @@ func (repman *ReplicationManager) Stop() {
 
 func (repman *ReplicationManager) Run() error {
 	var err error
-	repman.clusters = make(map[string]*cluster.Cluster)
-	repman.runUUID = misc.GetUUID()
-	repman.runStatus = ConstMonitorActif
-	repman.splitBrain = false
+	repman.Version = Version
+	repman.Fullversion = FullVersion
+	repman.Arch = GoArch
+	repman.Os = GoOS
+	repman.Clusters = make(map[string]*cluster.Cluster)
+	repman.UUID = misc.GetUUID()
+	repman.Status = ConstMonitorActif
+	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
+	regtest := new(regtest.RegTest)
+	repman.Tests = regtest.GetTests()
+
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
 	if conf.Arbitration == true {
-		repman.runStatus = ConstMonitorStandby
+		repman.Status = ConstMonitorStandby
 	}
 
 	if conf.LogSyslog {
@@ -605,11 +618,11 @@ func (repman *ReplicationManager) Run() error {
 	log.WithField("version", Version).Info("replication-manager started in daemon mode")
 	loglen := repman.termlength - 9 - (len(strings.Split(conf.Hosts, ",")) * 3)
 	repman.tlog = termlog.NewTermLog(loglen)
-	repman.htlog = httplog.NewHttpLog(1000)
+	repman.Logs = httplog.NewHttpLog(1000)
 
 	go apiserver()
 
-	repman.agents = []opensvc.Host{}
+	repman.Agents = []opensvc.Host{}
 	if conf.Enterprise {
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
 		repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
@@ -622,8 +635,8 @@ func (repman *ReplicationManager) Run() error {
 			}
 			log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
 		}
-		repman.agents = repman.OpenSVC.GetNodes()
-		if repman.agents == nil {
+		repman.Agents = repman.OpenSVC.GetNodes()
+		if RepMan.Agents == nil {
 			log.Fatalf("Can't connect or agents not registered")
 		}
 	}
@@ -645,8 +658,8 @@ func (repman *ReplicationManager) Run() error {
 	for _, gl := range cfgGroupList {
 		repman.StartCluster(gl)
 	}
-	for _, cluster := range repman.clusters {
-		cluster.SetClusterList(repman.clusters)
+	for _, cluster := range repman.Clusters {
+		cluster.SetClusterList(repman.Clusters)
 	}
 	repman.currentCluster.SetCfgGroupDisplay(currentClusterName)
 
@@ -678,7 +691,7 @@ func (repman *ReplicationManager) Run() error {
 }
 
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
-	return repman.clusters[clname]
+	return repman.Clusters[clname]
 }
 
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
@@ -708,8 +721,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
-	repman.currentCluster.Init(myClusterConf, clusterName, &repman.tlog, &repman.htlog, repman.termlength, repman.runUUID, Version, repman.Hostname, k)
-	repman.clusters[clusterName] = repman.currentCluster
+	repman.currentCluster.Init(myClusterConf, clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, Version, repman.Hostname, k)
+	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()
 	currentClusterName = clusterName
@@ -736,7 +749,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 		return err
 	}
 	cluster, _ := repman.StartCluster(clusterName)
-	cluster.SetClusterList(repman.clusters)
+	cluster.SetClusterList(repman.Clusters)
 	return nil
 
 }
@@ -746,7 +759,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		log.Errorf("Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
-	bcksplitbrain := repman.splitBrain
+	bcksplitbrain := repman.SplitBrain
 
 	var peerList []string
 	// try to found an active peer replication-manager
@@ -757,7 +770,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		conf.Arbitration = false
 		return
 	}
-	repman.splitBrain = true
+	repman.SplitBrain = true
 	timeout := time.Duration(2 * time.Second)
 	for _, peer := range peerList {
 		url := "http://" + peer + "/heartbeat"
@@ -800,33 +813,33 @@ func (repman *ReplicationManager) Heartbeat() {
 			}
 			continue
 		} else {
-			repman.splitBrain = false
+			repman.SplitBrain = false
 			if conf.LogLevel > 1 {
 				log.Debugf("RETURN: %v", h)
 			}
 			if h.Status == ConstMonitorStandby {
 				log.Debugf("Peer node is Standby, I am Active")
-				repman.runStatus = ConstMonitorActif
+				repman.Status = ConstMonitorActif
 			} else {
 				log.Debugf("Peer node is Active, I am Standby")
-				repman.runStatus = ConstMonitorStandby
+				repman.Status = ConstMonitorStandby
 			}
-			// propagate all runStatus to clusters after peer negotiation
-			for _, cl := range repman.clusters {
-				cl.SetActiveStatus(repman.runStatus)
+			// propagate all Status to clusters after peer negotiation
+			for _, cl := range repman.Clusters {
+				cl.SetActiveStatus(repman.Status)
 			}
 		}
 
 	} //end check all peers
-	if repman.splitBrain {
-		if bcksplitbrain != repman.splitBrain {
+	if repman.SplitBrain {
+		if bcksplitbrain != repman.SplitBrain {
 			repman.currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
 		}
 
 		// report to arbitrator
-		for _, cl := range repman.clusters {
+		for _, cl := range repman.Clusters {
 			if cl.LostMajority() {
-				if bcksplitbrain != repman.splitBrain {
+				if bcksplitbrain != repman.SplitBrain {
 					repman.currentCluster.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
 				}
 			}
@@ -835,7 +848,7 @@ func (repman *ReplicationManager) Heartbeat() {
 			if cl.GetMaster() != nil {
 				mst = cl.GetMaster().URL
 			}
-			var jsonStr = []byte(`{"uuid":"` + repman.runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
 			req.Header.Set("Content-Type", "application/json")
@@ -846,20 +859,20 @@ func (repman *ReplicationManager) Heartbeat() {
 			if err != nil {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
 				cl.SetActiveStatus(ConstMonitorStandby)
-				repman.runStatus = ConstMonitorStandby
+				repman.Status = ConstMonitorStandby
 				return
 			}
 			defer resp.Body.Close()
 
 		}
 		// give a chance to other partitions to report if just happened
-		if bcksplitbrain != repman.splitBrain {
+		if bcksplitbrain != repman.SplitBrain {
 			time.Sleep(5 * time.Second)
 		}
 		// request arbitration for all cluster
-		for _, cl := range repman.clusters {
+		for _, cl := range repman.Clusters {
 
-			if bcksplitbrain != repman.splitBrain {
+			if bcksplitbrain != repman.SplitBrain {
 				cl.LogPrintf("INFO", "Arbitrator: External check requested")
 			}
 			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
@@ -867,7 +880,7 @@ func (repman *ReplicationManager) Heartbeat() {
 			if cl.GetMaster() != nil {
 				mst = cl.GetMaster().URL
 			}
-			var jsonStr = []byte(`{"uuid":"` + repman.runUUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.runStatus + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+			var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 			req.Header.Set("X-Custom-Header", "myvalue")
 			req.Header.Set("Content-Type", "application/json")
@@ -878,7 +891,7 @@ func (repman *ReplicationManager) Heartbeat() {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
 				cl.SetActiveStatus(ConstMonitorStandby)
 				cl.SetMasterReadOnly()
-				repman.runStatus = ConstMonitorStandby
+				repman.Status = ConstMonitorStandby
 				return
 			}
 			defer resp.Body.Close()
@@ -895,19 +908,19 @@ func (repman *ReplicationManager) Heartbeat() {
 				cl.LogPrintf("ERROR", "Arbitrator received invalid JSON")
 				cl.SetActiveStatus(ConstMonitorStandby)
 				cl.SetMasterReadOnly()
-				repman.runStatus = ConstMonitorStandby
+				repman.Status = ConstMonitorStandby
 				return
 
 			}
 			if r.Arbitration == "winner" {
-				if bcksplitbrain != repman.splitBrain {
+				if bcksplitbrain != repman.SplitBrain {
 					cl.LogPrintf("INFO", "Arbitration message - Election Won")
 				}
 				cl.SetActiveStatus(ConstMonitorActif)
-				repman.runStatus = ConstMonitorActif
+				repman.Status = ConstMonitorActif
 				return
 			}
-			if bcksplitbrain != repman.splitBrain {
+			if bcksplitbrain != repman.SplitBrain {
 				cl.LogPrintf("INFO", "Arbitration message - Election Lost")
 				if cl.GetMaster() != nil {
 					mst = cl.GetMaster().URL
@@ -917,7 +930,7 @@ func (repman *ReplicationManager) Heartbeat() {
 				}
 			}
 			cl.SetActiveStatus(ConstMonitorStandby)
-			repman.runStatus = ConstMonitorStandby
+			repman.Status = ConstMonitorStandby
 			return
 
 		}

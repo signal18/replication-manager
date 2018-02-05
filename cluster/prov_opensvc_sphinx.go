@@ -35,7 +35,7 @@ show_disabled = false
 	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 
 	conf = conf + `[task0]
-   schedule = ` + cluster.conf.ProvSphinxCron + `
+   schedule = ` + cluster.Conf.ProvSphinxCron + `
 	 command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/reindex.sh
 	 user = root
 	 run_requires = fs#01(up)

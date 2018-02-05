@@ -81,12 +81,12 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 
 		go cluster.OpenSVCProvisionDatabaseService(s)
 
 	}
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
@@ -143,7 +143,7 @@ func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host,
 			clusteragents = append(clusteragents, node)
 		}
 	}
-	for i, srv := range cluster.servers {
+	for i, srv := range cluster.Servers {
 
 		if srv.Id == server.Id {
 			if len(clusteragents) == 0 {
@@ -229,11 +229,11 @@ max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + server.ClusterGroup.GetGComm() + `
-mrm_api_addr = ` + server.ClusterGroup.conf.BindAddr + ":" + server.ClusterGroup.conf.HttpPort + `
+mrm_api_addr = ` + server.ClusterGroup.Conf.BindAddr + ":" + server.ClusterGroup.Conf.HttpPort + `
 mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
-safe_ssl_ca_uuid = ` + server.ClusterGroup.conf.ProvSSLCaUUID + `
-safe_ssl_cert_uuid = ` + server.ClusterGroup.conf.ProvSSLCertUUID + `
-safe_ssl_key_uuid = ` + server.ClusterGroup.conf.ProvSSLKeyUUID + `
+safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
+safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
+safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
 `
 	log.Println(conf)
 

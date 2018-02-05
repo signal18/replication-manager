@@ -12,35 +12,35 @@ import "github.com/signal18/replication-manager/opensvc"
 
 func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	var err error
-	if cluster.conf.Enterprise == false {
+	if cluster.Conf.Enterprise == false {
 		return
 	}
-	if cluster.conf.ProvSSLCa != "" {
-		cluster.conf.ProvSSLCaUUID, err = svc.PostSafe(cluster.conf.ProvSSLCa)
+	if cluster.Conf.ProvSSLCa != "" {
+		cluster.Conf.ProvSSLCaUUID, err = svc.PostSafe(cluster.Conf.ProvSSLCa)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't upload root CA to Collector Safe %s", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Upload root Certificate to Safe %s", cluster.conf.ProvSSLCaUUID)
+			cluster.LogPrintf(LvlInfo, "Upload root Certificate to Safe %s", cluster.Conf.ProvSSLCaUUID)
 		}
-		svc.PublishSafe(cluster.conf.ProvSSLCaUUID, "replication-manager")
+		svc.PublishSafe(cluster.Conf.ProvSSLCaUUID, "replication-manager")
 	}
-	if cluster.conf.ProvSSLCert != "" {
-		cluster.conf.ProvSSLCertUUID, err = svc.PostSafe(cluster.conf.ProvSSLCert)
+	if cluster.Conf.ProvSSLCert != "" {
+		cluster.Conf.ProvSSLCertUUID, err = svc.PostSafe(cluster.Conf.ProvSSLCert)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't upload Server TLS Certificate to Collector Safe %s", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.conf.ProvSSLCertUUID)
+			cluster.LogPrintf(LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.Conf.ProvSSLCertUUID)
 		}
-		svc.PublishSafe(cluster.conf.ProvSSLCertUUID, "replication-manager")
+		svc.PublishSafe(cluster.Conf.ProvSSLCertUUID, "replication-manager")
 	}
-	if cluster.conf.ProvSSLKey != "" {
-		cluster.conf.ProvSSLKeyUUID, err = svc.PostSafe(cluster.conf.ProvSSLKey)
+	if cluster.Conf.ProvSSLKey != "" {
+		cluster.Conf.ProvSSLKeyUUID, err = svc.PostSafe(cluster.Conf.ProvSSLKey)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't upload Server TLS Private Key to Collector Safe %s", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.conf.ProvSSLKeyUUID)
+			cluster.LogPrintf(LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.Conf.ProvSSLKeyUUID)
 		}
-		svc.PublishSafe(cluster.conf.ProvSSLKeyUUID, "replication-manager")
+		svc.PublishSafe(cluster.Conf.ProvSSLKeyUUID, "replication-manager")
 	}
 }
 
@@ -49,13 +49,13 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 }
 
 func (cluster *Cluster) SetInteractive(check bool) {
-	cluster.conf.Interactive = check
+	cluster.Conf.Interactive = check
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	//cluster.SetBenchMethod("table")
 	//cluster.PrepareBench()
-	cluster.conf.TestInjectTraffic = traffic
+	cluster.Conf.TestInjectTraffic = traffic
 }
 
 func (cluster *Cluster) SetBenchMethod(m string) {
@@ -63,29 +63,29 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
-	for _, srv := range cluster.servers {
+	for _, srv := range cluster.Servers {
 		if srv.URL == PrefMaster {
 			srv.SetPrefered(true)
 		} else {
 			srv.SetPrefered(false)
 		}
 	}
-	cluster.conf.PrefMaster = PrefMaster
+	cluster.Conf.PrefMaster = PrefMaster
 }
 
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
-	cluster.failoverCtr = failoverCtr
+	cluster.FailoverCtr = failoverCtr
 }
 
 func (cluster *Cluster) SetFailoverTs(failoverTs int64) {
-	cluster.failoverTs = failoverTs
+	cluster.FailoverTs = failoverTs
 }
 
 func (cluster *Cluster) SetCheckFalsePositiveHeartbeat(CheckFalsePositiveHeartbeat bool) {
-	cluster.conf.CheckFalsePositiveHeartbeat = CheckFalsePositiveHeartbeat
+	cluster.Conf.CheckFalsePositiveHeartbeat = CheckFalsePositiveHeartbeat
 }
 func (cluster *Cluster) SetFailRestartUnsafe(check bool) {
-	cluster.conf.FailRestartUnsafe = check
+	cluster.Conf.FailRestartUnsafe = check
 }
 
 func (cluster *Cluster) SetSlavesReadOnly(check bool) {
@@ -94,15 +94,15 @@ func (cluster *Cluster) SetSlavesReadOnly(check bool) {
 	}
 }
 func (cluster *Cluster) SetReadOnly(check bool) {
-	cluster.conf.ReadOnly = check
+	cluster.Conf.ReadOnly = check
 }
 
 func (cluster *Cluster) SetRplChecks(check bool) {
-	cluster.conf.RplChecks = check
+	cluster.Conf.RplChecks = check
 }
 
 func (cluster *Cluster) SetRplMaxDelay(delay int64) {
-	cluster.conf.FailMaxDelay = delay
+	cluster.Conf.FailMaxDelay = delay
 }
 
 func (cluster *Cluster) SetCleanAll(check bool) {
@@ -110,11 +110,11 @@ func (cluster *Cluster) SetCleanAll(check bool) {
 }
 
 func (cluster *Cluster) SetFailLimit(limit int) {
-	cluster.conf.FailLimit = limit
+	cluster.Conf.FailLimit = limit
 }
 
 func (cluster *Cluster) SetFailTime(time int64) {
-	cluster.conf.FailTime = time
+	cluster.Conf.FailTime = time
 }
 
 func (cluster *Cluster) SetMasterStateFailed() {
@@ -122,44 +122,44 @@ func (cluster *Cluster) SetMasterStateFailed() {
 }
 
 func (cluster *Cluster) SetFailSync(check bool) {
-	cluster.conf.FailSync = check
+	cluster.Conf.FailSync = check
 }
 
 func (cluster *Cluster) SetRejoinDump(check bool) {
-	cluster.conf.AutorejoinMysqldump = check
+	cluster.Conf.AutorejoinMysqldump = check
 }
 
 func (cluster *Cluster) SetRejoinBackupBinlog(check bool) {
-	cluster.conf.AutorejoinBackupBinlog = check
+	cluster.Conf.AutorejoinBackupBinlog = check
 }
 
 func (cluster *Cluster) SetRejoinSemisync(check bool) {
-	cluster.conf.AutorejoinSemisync = check
+	cluster.Conf.AutorejoinSemisync = check
 }
 
 func (cluster *Cluster) SetRejoinFlashback(check bool) {
-	cluster.conf.AutorejoinFlashback = check
+	cluster.Conf.AutorejoinFlashback = check
 }
 
 func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
-	cluster.conf.ForceSlaveNoGtid = forceslavenogtid
+	cluster.Conf.ForceSlaveNoGtid = forceslavenogtid
 }
 
 // topology setter
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
-	cluster.conf.MultiTierSlave = multitierslave
+	cluster.Conf.MultiTierSlave = multitierslave
 }
 func (cluster *Cluster) SetMultiMasterRing(multimasterring bool) {
-	cluster.conf.MultiMasterRing = multimasterring
+	cluster.Conf.MultiMasterRing = multimasterring
 }
 func (cluster *Cluster) SetMultiMaster(multimaster bool) {
-	cluster.conf.MultiMaster = multimaster
+	cluster.Conf.MultiMaster = multimaster
 }
 func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
-	cluster.conf.MxsBinlogOn = binlogserver
+	cluster.Conf.MxsBinlogOn = binlogserver
 }
 func (cluster *Cluster) SetMultiMasterWsrep(wsrep bool) {
-	cluster.conf.MultiMasterWsrep = wsrep
+	cluster.Conf.MultiMasterWsrep = wsrep
 }
 
 func (cluster *Cluster) SetMasterReadOnly() {
@@ -172,19 +172,19 @@ func (cluster *Cluster) SetMasterReadOnly() {
 }
 
 func (cluster *Cluster) SetSwitchSync(check bool) {
-	cluster.conf.SwitchSync = check
+	cluster.Conf.SwitchSync = check
 }
 
 func (cluster *Cluster) SetLogLevel(level int) {
-	cluster.conf.LogLevel = level
+	cluster.Conf.LogLevel = level
 }
 
 func (cluster *Cluster) SetRejoin(check bool) {
-	cluster.conf.Autorejoin = check
+	cluster.Conf.Autorejoin = check
 }
 
 func (cluster *Cluster) SetTestMode(check bool) {
-	cluster.conf.Test = check
+	cluster.Conf.Test = check
 }
 
 func (cluster *Cluster) SetTestStopCluster(check bool) {
@@ -205,7 +205,7 @@ func (cluster *Cluster) SetTestStartCluster(check bool) {
 }
 
 func (cluster *Cluster) SetLogStdout() {
-	cluster.conf.Daemon = true
+	cluster.Conf.Daemon = true
 }
 
 func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {

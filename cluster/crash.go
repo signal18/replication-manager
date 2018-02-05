@@ -35,7 +35,7 @@ func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 }
 
 func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {
-	for _, cr := range cluster.crashes {
+	for _, cr := range cluster.Crashes {
 		if cr.URL == URL {
 			return cr
 		}
@@ -44,7 +44,7 @@ func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {
 }
 
 func (cluster *Cluster) getCrashFromMaster(URL string) *Crash {
-	for _, cr := range cluster.crashes {
+	for _, cr := range cluster.Crashes {
 		if cr.ElectedMasterURL == URL {
 			return cr
 		}
@@ -54,7 +54,7 @@ func (cluster *Cluster) getCrashFromMaster(URL string) *Crash {
 
 // GetCrashes return crashes
 func (cluster *Cluster) GetCrashes() crashList {
-	return cluster.crashes
+	return cluster.Crashes
 }
 
 func (crash *Crash) delete(cl *crashList) {

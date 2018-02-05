@@ -994,7 +994,7 @@ func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
 		s.UptimeSemiSync = mycluster.GetStateMachine().GetUptimeSemiSync()
 		s.Test = fmt.Sprintf("%v", mycluster.GetConf().Test)
 		s.Heartbeat = fmt.Sprintf("%v", mycluster.GetConf().Heartbeat)
-		s.Status = fmt.Sprintf("%v", RepMan.runStatus)
+		s.Status = fmt.Sprintf("%v", RepMan.Status)
 		s.ConfGroup = fmt.Sprintf("%s", mycluster.GetName())
 		s.MonitoringTicker = fmt.Sprintf("%d", mycluster.GetConf().MonitoringTicker)
 		s.FailResetTime = fmt.Sprintf("%d", mycluster.GetConf().FailResetTime)
@@ -1223,6 +1223,17 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	} else {
 
 		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
+
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err := e.Encode(RepMan)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
 		return
 	}
 }

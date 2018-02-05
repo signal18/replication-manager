@@ -20,10 +20,10 @@ import (
 func (cluster *Cluster) initConsul() error {
 	var opt registry.Options
 	//opt := consul.DefaultConfig()
-	if cluster.conf.RegistryConsul == false {
+	if cluster.Conf.RegistryConsul == false {
 		return nil
 	}
-	opt.Addrs = strings.Split(cluster.conf.RegistryHosts, ",")
+	opt.Addrs = strings.Split(cluster.Conf.RegistryHosts, ",")
 	//DefaultRegistry()
 	//opt := registry.DefaultRegistry
 
@@ -48,7 +48,7 @@ func (cluster *Cluster) initConsul() error {
 	}
 
 	reg := registry.NewRegistry()
-	for _, srv := range cluster.servers {
+	for _, srv := range cluster.Servers {
 		var readsrv registry.Service
 		readsrv.Name = "read_" + cluster.GetName()
 		readsrv.Version = "0.0.0"

@@ -35,7 +35,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogPrintf(LvlInfo, "--------------------------")
 		cluster.LogPrintf(LvlInfo, "Starting master switchover")
 		cluster.LogPrintf(LvlInfo, "--------------------------")
-		cluster.LogPrintf(LvlInfo, "Checking long running updates on master %d", cluster.conf.SwitchWaitWrite)
+		cluster.LogPrintf(LvlInfo, "Checking long running updates on master %d", cluster.Conf.SwitchWaitWrite)
 		if cluster.master == nil {
 			cluster.LogPrintf(LvlErr, "Cannot switchover without a master")
 			return false
@@ -44,7 +44,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Cannot switchover without a master connection")
 			return false
 		}
-		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.conf.SwitchWaitWrite) > 0 {
+		if dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.Conf.SwitchWaitWrite) > 0 {
 			cluster.LogPrintf(LvlErr, "Long updates running on master. Cannot switchover")
 			cluster.sme.RemoveFailoverState()
 			return false
@@ -64,8 +64,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf(LvlWarn, "Could not flush tables on master", err)
 			}
-		case <-time.After(time.Second * time.Duration(cluster.conf.SwitchWaitTrx)):
-			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.conf.SwitchWaitTrx)
+		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
+			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
 			cluster.sme.RemoveFailoverState()
 			return false
 		}
@@ -89,22 +89,22 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Shuffle the server list
 	oldMaster := cluster.master
 	var skey int
-	for k, server := range cluster.servers {
+	for k, server := range cluster.Servers {
 		if cluster.slaves[key].URL == server.URL {
 			skey = k
 			break
 		}
 	}
-	cluster.master = cluster.servers[skey]
+	cluster.master = cluster.Servers[skey]
 	cluster.master.State = stateMaster
-	if cluster.conf.MultiMaster == false {
+	if cluster.Conf.MultiMaster == false {
 		cluster.slaves[key].delete(&cluster.slaves)
 	}
 	// Call pre-failover script
-	if cluster.conf.PreScript != "" {
+	if cluster.Conf.PreScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PreScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PreScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -113,7 +113,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
-		if cluster.conf.FailEventStatus {
+		if cluster.Conf.FailEventStatus {
 			for _, v := range cluster.master.EventStatus {
 				if v.Status == 3 {
 					cluster.LogPrintf(LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
@@ -124,7 +124,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
-		if cluster.conf.FailEventScheduler {
+		if cluster.Conf.FailEventScheduler {
 
 			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
 			err = dbhelper.SetEventScheduler(oldMaster.Conn, false)
@@ -148,10 +148,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.ElectedMasterURL = cluster.master.URL
 
 	// if switchover on MariaDB Wait GTID
-	/*	if fail == false && cluster.conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
+	/*	if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
 		cluster.LogPrintf(LvlInfo, "Waiting for candidate Master to synchronize")
 		oldMaster.Refresh()
-		if cluster.conf.LogLevel > 2 {
+		if cluster.Conf.LogLevel > 2 {
 			cluster.LogPrintf(LvlDbg, "Syncing on master GTID Binlog Pos [%s]", oldMaster.GTIDBinlogPos.Sprint())
 			oldMaster.log()
 		}
@@ -178,7 +178,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.NewMasterLogFile = cluster.master.BinaryLogFile
 	crash.NewMasterLogPos = cluster.master.BinaryLogPos
 	if cluster.master.DBVersion.IsMariaDB() {
-		if cluster.conf.MxsBinlogOn {
+		if cluster.Conf.MxsBinlogOn {
 			//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
 			crash.FailoverIOGtid = cluster.master.CurrentGtid
 		} else {
@@ -194,7 +194,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
-	if cluster.conf.MxsBinlogOn || cluster.conf.MultiTierSlave {
+	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
 		cluster.LogPrintf(LvlInfo, "Candidate master has to catch up with relay server log position")
 		relaymaster = cluster.GetRelayServer()
 		if relaymaster != nil {
@@ -227,7 +227,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 	// Phase 3: Prepare new master
-	if cluster.conf.MultiMaster == false {
+	if cluster.Conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Stopping slave thread on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
 			err = cluster.master.StopSlave()
@@ -242,22 +242,22 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
-	cluster.crashes = append(cluster.crashes, crash)
+	cluster.Crashes = append(cluster.Crashes, crash)
 	t := time.Now()
-	crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + ".crash." + t.Format("20060102150405") + ".json")
+	crash.Save(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + ".crash." + t.Format("20060102150405") + ".json")
 	cluster.Save()
 	// Call post-failover script before unlocking the old master.
-	if cluster.conf.PostScript != "" {
+	if cluster.Conf.PostScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PostScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PostScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
 		cluster.LogPrintf(LvlInfo, "Post-failover script complete", string(out))
 	}
 	cluster.failoverProxies()
-	if cluster.conf.MultiMaster == false {
+	if cluster.Conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
 		if cluster.master.DBVersion.IsMySQL() {
 			// Need to stop all threads to reset on MySQL
@@ -273,7 +273,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
 	}
-	if cluster.conf.FailEventScheduler {
+	if cluster.Conf.FailEventScheduler {
 		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
 		err = dbhelper.SetEventScheduler(cluster.master.Conn, true)
 		if err != nil {
@@ -281,7 +281,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 	}
-	if cluster.conf.FailEventStatus {
+	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
 				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
@@ -312,7 +312,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
 		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
-		if cluster.conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
+		if cluster.Conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set gtid_slave_pos on old master, reason: %s", err)
@@ -334,10 +334,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Logfile:   cluster.master.BinaryLogFile,
 				Logpos:    cluster.master.BinaryLogPos,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "POSITIONAL",
-				SSL:       cluster.conf.ReplicationSSL,
+				SSL:       cluster.Conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
@@ -354,10 +354,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
-				SSL:       cluster.conf.ReplicationSSL,
+				SSL:       cluster.Conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -366,17 +366,17 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master %s", err)
 			}
-		} else if cluster.conf.MxsBinlogOn == false {
+		} else if cluster.Conf.MxsBinlogOn == false {
 			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
-				SSL:       cluster.conf.ReplicationSSL,
+				SSL:       cluster.Conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -394,10 +394,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Port:      relaymaster.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
-					SSL:       cluster.conf.ReplicationSSL,
+					SSL:       cluster.Conf.ReplicationSSL,
 				})
 			} else {
 				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -405,17 +405,17 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Port:      relaymaster.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
 					Logfile:   crash.FailoverMasterLogFile,
 					Logpos:    crash.FailoverMasterLogPos,
-					SSL:       cluster.conf.ReplicationSSL,
+					SSL:       cluster.Conf.ReplicationSSL,
 				})
 			}
 		}
 
-		if cluster.conf.ReadOnly {
+		if cluster.Conf.ReadOnly {
 			err = dbhelper.SetReadOnly(oldMaster.Conn, true)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set old master as read-only, %s", err)
@@ -429,7 +429,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", maxConn))
 		// Add the old master to the slaves list
 		oldMaster.State = stateSlave
-		if cluster.conf.MultiMaster == false {
+		if cluster.Conf.MultiMaster == false {
 			cluster.slaves = append(cluster.slaves, oldMaster)
 		}
 	}
@@ -441,19 +441,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlInfo, "Switching other slaves to the new master")
 	for _, sl := range cluster.slaves {
 		// Don't switch if slave was the old master or is in a multiple master setup or with relay server.
-		if sl.URL == oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.conf.MxsBinlogOn == true) {
+		if sl.URL == oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
 			continue
 		}
 		// maxscale is in the list of slave
 
-		if fail == false && cluster.conf.MxsBinlogOn == false && cluster.conf.SwitchSlaveWaitCatch {
+		if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.SwitchSlaveWaitCatch {
 			cluster.LogPrintf(LvlInfo, "Waiting for slave %s to sync", sl.URL)
 			if sl.DBVersion.Flavor == "MariaDB" {
 				dbhelper.MasterWaitGTID(sl.Conn, oldMaster.GTIDBinlogPos.Sprint(), 30)
 			} else {
 				dbhelper.MasterPosWait(sl.Conn, oldMaster.BinaryLogFile, oldMaster.BinaryLogPos, 30)
 			}
-			if cluster.conf.LogLevel > 2 {
+			if cluster.Conf.LogLevel > 2 {
 				sl.log()
 			}
 		}
@@ -463,8 +463,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not stop slave on server %s, %s", sl.URL, err)
 		}
 
-		if fail == false && cluster.conf.MxsBinlogOn == false && cluster.conf.SwitchSlaveWaitCatch {
-			if cluster.conf.FailForceGtid && sl.DBVersion.IsMariaDB() {
+		if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.SwitchSlaveWaitCatch {
+			if cluster.Conf.FailForceGtid && sl.DBVersion.IsMariaDB() {
 				_, err = sl.Conn.Exec("SET GLOBAL gtid_slave_pos='" + oldMaster.GTIDBinlogPos.Sprint() + "'")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
@@ -477,7 +477,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 
-			if cluster.conf.AutorejoinSlavePositionalHearbeat == true {
+			if cluster.Conf.AutorejoinSlavePositionalHearbeat == true {
 
 				pseudoGTID, err := sl.GetLastPseudoGTID()
 				if err != nil {
@@ -515,10 +515,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Password:  cluster.rplPass,
 					Logfile:   mFile,
 					Logpos:    mPos,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
-					SSL:       cluster.conf.ReplicationSSL,
+					SSL:       cluster.Conf.ReplicationSSL,
 				})
 			} else {
 				sl.SetMaintenance()
@@ -531,12 +531,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
-				SSL:       cluster.conf.ReplicationSSL,
+				SSL:       cluster.Conf.ReplicationSSL,
 			})
-		} else if cluster.conf.MxsBinlogOn == false {
+		} else if cluster.Conf.MxsBinlogOn == false {
 			//MariaDB all cases use GTID
 
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -544,10 +544,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Port:      cluster.master.Port,
 				User:      cluster.rplUser,
 				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
-				SSL:       cluster.conf.ReplicationSSL,
+				SSL:       cluster.Conf.ReplicationSSL,
 			})
 		} else { // We deduct we are in maxscale binlog server , but can heve support for GTID or not
 
@@ -558,10 +558,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
-					SSL:       cluster.conf.ReplicationSSL,
+					SSL:       cluster.Conf.ReplicationSSL,
 				})
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -569,10 +569,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Port:      cluster.master.Port,
 					User:      cluster.rplUser,
 					Password:  cluster.rplPass,
-					Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-					Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "MXS",
-					SSL:       cluster.conf.ReplicationSSL,
+					SSL:       cluster.Conf.ReplicationSSL,
 				})
 			}
 		}
@@ -584,18 +584,18 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not start slave on server %s, %s", sl.URL, err)
 		}
 		// now start the old master as relay is ready
-		if cluster.conf.MxsBinlogOn && fail == false {
+		if cluster.Conf.MxsBinlogOn && fail == false {
 			cluster.LogPrintf(LvlInfo, "Restating old master replication relay server ready")
 			dbhelper.StartSlave(oldMaster.Conn)
 		}
-		if cluster.conf.ReadOnly && cluster.conf.MxsBinlogOn == false {
+		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false {
 
 			err = sl.SetReadOnly()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set slave %s as read-only, %s", sl.URL, err)
 			}
 		} else {
-			if cluster.conf.MxsBinlogOn == false {
+			if cluster.Conf.MxsBinlogOn == false {
 				err = sl.SetReadWrite()
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Could not remove slave %s as read-only, %s", sl.URL, err)
@@ -604,7 +604,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 
-	if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
+	if fail == true && cluster.Conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.Conf.PrefMaster && cluster.Conf.PrefMaster != "" {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
 		if prm != nil {
 			cluster.LogPrintf(LvlInfo, "Not on Preferred Master after failover")
@@ -615,8 +615,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
 	if fail == true {
-		cluster.failoverCtr++
-		cluster.failoverTs = time.Now().Unix()
+		cluster.FailoverCtr++
+		cluster.FailoverTs = time.Now().Unix()
 	}
 	cluster.sme.RemoveFailoverState()
 	return true
@@ -644,7 +644,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
 			continue
 		}
-		if cluster.conf.MultiMaster == true && sl.State == stateMaster {
+		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
 			continue
 		}
@@ -664,14 +664,14 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
-		if sl.URL == cluster.conf.PrefMaster && cluster.master.State != stateFailed {
-			if (cluster.conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
+		if sl.URL == cluster.Conf.PrefMaster && cluster.master.State != stateFailed {
+			if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
 		//old style replication
-		if errss != nil && cluster.conf.FailRestartUnsafe == false {
+		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
 			continue
 		}
@@ -737,36 +737,36 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 		cluster.sme.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlDbg, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.IsMaintenance {
 		cluster.sme.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlDbg, "Slave %s is in maintenance. Skipping", sl.URL)
 		}
 		return false
 	}
 
-	if ss.SecondsBehindMaster.Int64 > cluster.conf.FailMaxDelay && cluster.conf.FailMaxDelay != -1 && cluster.conf.RplChecks == true {
-		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+	if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1 && cluster.Conf.RplChecks == true {
+		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"], sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK"})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		}
 		return false
 	}
-	if ss.SlaveSQLRunning.String == "No" && cluster.conf.RplChecks {
+	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
 		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
-	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.conf.FailSync && cluster.conf.RplChecks {
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
 		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK"})
-		if cluster.conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlDbg, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
@@ -777,7 +777,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 
 func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 	for _, sl := range l {
-		if sl.URL == cluster.conf.PrefMaster && cluster.master.State != stateFailed {
+		if sl.URL == cluster.Conf.PrefMaster && cluster.master.State != stateFailed {
 			return sl
 		}
 	}
@@ -794,7 +794,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogPrintf(LvlInfo, "----------------------------------")
 		cluster.LogPrintf(LvlInfo, "Starting virtual master switchover")
 		cluster.LogPrintf(LvlInfo, "----------------------------------")
-		cluster.LogPrintf(LvlInfo, "Checking long running updates on virtual master %d", cluster.conf.SwitchWaitWrite)
+		cluster.LogPrintf(LvlInfo, "Checking long running updates on virtual master %d", cluster.Conf.SwitchWaitWrite)
 		if cluster.vmaster == nil {
 			cluster.LogPrintf(LvlErr, "Cannot switchover without a virtual master")
 			return false
@@ -803,7 +803,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Cannot switchover without a vmaster connection")
 			return false
 		}
-		if dbhelper.CheckLongRunningWrites(cluster.vmaster.Conn, cluster.conf.SwitchWaitWrite) > 0 {
+		if dbhelper.CheckLongRunningWrites(cluster.vmaster.Conn, cluster.Conf.SwitchWaitWrite) > 0 {
 			cluster.LogPrintf(LvlErr, "Long updates running on virtual master. Cannot switchover")
 			cluster.sme.RemoveFailoverState()
 			return false
@@ -823,8 +823,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf(LvlWarn, "Could not flush tables on master", err)
 			}
-		case <-time.After(time.Second * time.Duration(cluster.conf.SwitchWaitTrx)):
-			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.conf.SwitchWaitTrx)
+		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
+			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
 			cluster.sme.RemoveFailoverState()
 			return false
 		}
@@ -850,19 +850,19 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	// Shuffle the server list
 
 	var skey int
-	for k, server := range cluster.servers {
+	for k, server := range cluster.Servers {
 		if cluster.slaves[key].URL == server.URL {
 			skey = k
 			break
 		}
 	}
-	cluster.vmaster = cluster.servers[skey]
-	cluster.master = cluster.servers[skey]
+	cluster.vmaster = cluster.Servers[skey]
+	cluster.master = cluster.Servers[skey]
 	// Call pre-failover script
-	if cluster.conf.PreScript != "" {
+	if cluster.Conf.PreScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PreScript, oldMaster.Host, cluster.vmaster.Host, oldMaster.Port, cluster.vmaster.Port, oldMaster.MxsServerName, cluster.vmaster.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PreScript, oldMaster.Host, cluster.vmaster.Host, oldMaster.Port, cluster.vmaster.Port, oldMaster.MxsServerName, cluster.vmaster.MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -871,7 +871,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
-		if cluster.conf.FailEventStatus {
+		if cluster.Conf.FailEventStatus {
 			for _, v := range cluster.vmaster.EventStatus {
 				if v.Status == 3 {
 					cluster.LogPrintf(LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
@@ -882,7 +882,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				}
 			}
 		}
-		if cluster.conf.FailEventScheduler {
+		if cluster.Conf.FailEventScheduler {
 
 			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
 			err = dbhelper.SetEventScheduler(oldMaster.Conn, false)
@@ -926,7 +926,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		crash.FailoverMasterLogFile = ms.MasterLogFile.String
 		crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
 		if cluster.master.DBVersion.IsMariaDB() {
-			if cluster.conf.MxsBinlogOn {
+			if cluster.Conf.MxsBinlogOn {
 				//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
 				crash.FailoverIOGtid = cluster.master.CurrentGtid
 			} else {
@@ -938,19 +938,19 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
-		cluster.crashes = append(cluster.crashes, crash)
+		cluster.Crashes = append(cluster.Crashes, crash)
 		cluster.Save()
 		t := time.Now()
-		crash.Save(cluster.conf.WorkingDir + "/" + cluster.cfgGroup + "/crash-" + t.Format("20060102150405") + ".json")
+		crash.Save(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + "/crash-" + t.Format("20060102150405") + ".json")
 	}
 
 	// Phase 3: Prepare new master
 
 	// Call post-failover script before unlocking the old master.
-	if cluster.conf.PostScript != "" {
+	if cluster.Conf.PostScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
 		var out []byte
-		out, err = exec.Command(cluster.conf.PostScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PostScript, oldMaster.Host, cluster.master.Host, oldMaster.Port, cluster.master.Port, oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -962,7 +962,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
 	}
-	if cluster.conf.FailEventScheduler {
+	if cluster.Conf.FailEventScheduler {
 		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
 		err = dbhelper.SetEventScheduler(cluster.master.Conn, true)
 		if err != nil {
@@ -970,7 +970,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 
 	}
-	if cluster.conf.FailEventStatus {
+	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
 				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
@@ -995,7 +995,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
 
-		if cluster.conf.ReadOnly {
+		if cluster.Conf.ReadOnly {
 
 			err = oldMaster.SetReadOnly()
 			if err != nil {
@@ -1019,8 +1019,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlInfo, "Virtual Master switch on %s complete", cluster.vmaster.URL)
 	cluster.vmaster.FailCount = 0
 	if fail == true {
-		cluster.failoverCtr++
-		cluster.failoverTs = time.Now().Unix()
+		cluster.FailoverCtr++
+		cluster.FailoverTs = time.Now().Unix()
 	}
 	cluster.master = nil
 
@@ -1030,11 +1030,11 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingLog bool) int {
 
-	for i, sl := range cluster.servers {
+	for i, sl := range cluster.Servers {
 		/* If server is in the ignore list, do not elect it */
 		if sl.IsIgnored() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.conf.LogLevel > 1 || forcingLog {
+			if cluster.Conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
 			}
 			continue
@@ -1048,7 +1048,7 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 }
 
 func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
-	for _, s := range cluster.servers {
+	for _, s := range cluster.Servers {
 		if s.ServerID != oldMaster.ServerID {
 			//cluster.LogPrintf(LvlDbg, "test %s failed %s", s.URL, oldMaster.URL)
 			master, err := cluster.GetMasterFromReplication(s)
@@ -1095,10 +1095,10 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Port:      parent.Port,
 			User:      cluster.rplUser,
 			Password:  cluster.rplPass,
-			Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "",
-			SSL:       cluster.conf.ReplicationSSL,
+			SSL:       cluster.Conf.ReplicationSSL,
 		})
 	} else {
 		//MariaDB all cases use GTID
@@ -1108,10 +1108,10 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Port:      parent.Port,
 			User:      cluster.rplUser,
 			Password:  cluster.rplPass,
-			Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
+			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "SLAVE_POS",
-			SSL:       cluster.conf.ReplicationSSL,
+			SSL:       cluster.Conf.ReplicationSSL,
 		})
 	}
 	if changeMasterErr != nil {

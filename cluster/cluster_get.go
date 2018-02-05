@@ -26,7 +26,7 @@ func (cluster *Cluster) GetErrorList() map[string]string {
 	return clusterError
 }
 func (cluster *Cluster) GetTraffic() bool {
-	return cluster.conf.TestInjectTraffic
+	return cluster.Conf.TestInjectTraffic
 }
 
 func (cluster *Cluster) GetClusterName() string {
@@ -34,7 +34,7 @@ func (cluster *Cluster) GetClusterName() string {
 }
 
 func (cluster *Cluster) GetServers() serverList {
-	return cluster.servers
+	return cluster.Servers
 }
 
 func (cluster *Cluster) GetSlaves() serverList {
@@ -42,15 +42,15 @@ func (cluster *Cluster) GetSlaves() serverList {
 }
 
 func (cluster *Cluster) GetProxies() proxyList {
-	return cluster.proxies
+	return cluster.Proxies
 }
 
 func (cluster *Cluster) GetConf() config.Config {
-	return cluster.conf
+	return cluster.Conf
 }
 
 func (cluster *Cluster) GetWaitTrx() int64 {
-	return cluster.conf.SwitchWaitTrx
+	return cluster.Conf.SwitchWaitTrx
 }
 
 func (cluster *Cluster) GetStateMachine() *state.StateMachine {
@@ -62,53 +62,53 @@ func (cluster *Cluster) GetMasterFailCount() int {
 }
 
 func (cluster *Cluster) GetFailoverCtr() int {
-	return cluster.failoverCtr
+	return cluster.FailoverCtr
 }
 
 func (cluster *Cluster) GetFailoverTs() int64 {
-	return cluster.failoverTs
+	return cluster.FailoverTs
 }
 
 func (cluster *Cluster) GetRunStatus() string {
 	return cluster.runStatus
 }
 func (cluster *Cluster) GetFailSync() bool {
-	return cluster.conf.FailSync
+	return cluster.Conf.FailSync
 }
 
 func (cluster *Cluster) GetRplChecks() bool {
-	return cluster.conf.RplChecks
+	return cluster.Conf.RplChecks
 }
 
 func (cluster *Cluster) GetMaxFail() int {
-	return cluster.conf.MaxFail
+	return cluster.Conf.MaxFail
 }
 
 func (cluster *Cluster) GetLogLevel() int {
-	return cluster.conf.LogLevel
+	return cluster.Conf.LogLevel
 }
 func (cluster *Cluster) GetSwitchSync() bool {
-	return cluster.conf.SwitchSync
+	return cluster.Conf.SwitchSync
 }
 
 func (cluster *Cluster) GetRejoin() bool {
-	return cluster.conf.Autorejoin
+	return cluster.Conf.Autorejoin
 }
 
 func (cluster *Cluster) GetRejoinDump() bool {
-	return cluster.conf.AutorejoinMysqldump
+	return cluster.Conf.AutorejoinMysqldump
 }
 
 func (cluster *Cluster) GetRejoinBackupBinlog() bool {
-	return cluster.conf.AutorejoinBackupBinlog
+	return cluster.Conf.AutorejoinBackupBinlog
 }
 
 func (cluster *Cluster) GetRejoinSemisync() bool {
-	return cluster.conf.AutorejoinSemisync
+	return cluster.Conf.AutorejoinSemisync
 }
 
 func (cluster *Cluster) GetRejoinFlashback() bool {
-	return cluster.conf.AutorejoinFlashback
+	return cluster.Conf.AutorejoinFlashback
 }
 
 func (cluster *Cluster) GetName() string {
@@ -116,7 +116,7 @@ func (cluster *Cluster) GetName() string {
 }
 
 func (cluster *Cluster) GetTestMode() bool {
-	return cluster.conf.Test
+	return cluster.Conf.Test
 }
 
 func (cluster *Cluster) GetDbUser() string {
@@ -133,21 +133,21 @@ func (cluster *Cluster) GetStatus() bool {
 
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		gcomms = append(gcomms, server.Host+":4567")
 	}
 	return strings.Join(gcomms, ",")
 }
 
 func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
-	if cluster.conf.PrefMaster == "" {
+	if cluster.Conf.PrefMaster == "" {
 		return nil
 	}
-	for _, server := range cluster.servers {
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if preferred master: %s", server.URL, cluster.conf.PrefMaster)
+	for _, server := range cluster.Servers {
+		if cluster.Conf.LogLevel > 2 {
+			cluster.LogPrintf(LvlDbg, "Lookup server %s if preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		}
-		if server.URL == cluster.conf.PrefMaster {
+		if server.URL == cluster.Conf.PrefMaster {
 			return server
 		}
 	}
@@ -155,9 +155,9 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
-	for _, server := range cluster.servers {
-		if cluster.conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.conf.PrefMaster)
+	for _, server := range cluster.Servers {
+		if cluster.Conf.LogLevel > 2 {
+			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.Conf.PrefMaster)
 		}
 		if server.IsRelay {
 			return server
@@ -168,7 +168,7 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 
 func (cluster *Cluster) GetIndiceServerFromId(Id string) int {
 	i := 0
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 
 		if server.Id == Id {
 			return i
@@ -179,7 +179,7 @@ func (cluster *Cluster) GetIndiceServerFromId(Id string) int {
 }
 
 func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.ServerID == serverid {
 			return server
 		}
@@ -188,7 +188,7 @@ func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
 }
 
 func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.Id == name {
 			return server
 		}
@@ -197,7 +197,7 @@ func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 }
 
 func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.Host+":"+server.Port == url {
 			return server
 		}
@@ -207,14 +207,14 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 
 func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.ServerID == s.ServerID {
 			//Ignoring same ServerID
 			continue
 		}
 		if len(s.Replications) > 0 {
 
-			if cluster.conf.LogLevel > 2 {
+			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.URL, server.ServerID)
 			}
 			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
@@ -244,7 +244,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 }
 
 func (cluster *Cluster) GetFailedServer() *ServerMonitor {
-	for _, server := range cluster.servers {
+	for _, server := range cluster.Servers {
 		if server.State == stateFailed {
 			return server
 		}
@@ -253,40 +253,40 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetTopology() string {
-	cluster.conf.Topology = topoUnknown
-	if cluster.conf.MultiMaster {
-		cluster.conf.Topology = topoMultiMaster
-	} else if cluster.conf.MultiMasterRing {
-		cluster.conf.Topology = topoMultiMasterRing
-	} else if cluster.conf.MultiMasterWsrep {
-		cluster.conf.Topology = topoMultiMasterWsrep
-	} else if cluster.conf.MxsBinlogOn {
-		cluster.conf.Topology = topoBinlogServer
-	} else if cluster.conf.MultiTierSlave {
-		cluster.conf.Topology = topoMultiTierSlave
+	cluster.Conf.Topology = topoUnknown
+	if cluster.Conf.MultiMaster {
+		cluster.Conf.Topology = topoMultiMaster
+	} else if cluster.Conf.MultiMasterRing {
+		cluster.Conf.Topology = topoMultiMasterRing
+	} else if cluster.Conf.MultiMasterWsrep {
+		cluster.Conf.Topology = topoMultiMasterWsrep
+	} else if cluster.Conf.MxsBinlogOn {
+		cluster.Conf.Topology = topoBinlogServer
+	} else if cluster.Conf.MultiTierSlave {
+		cluster.Conf.Topology = topoMultiTierSlave
 	} else {
 		relay := cluster.GetRelayServer()
-		if relay != nil && cluster.conf.ReplicationNoRelay == false {
-			cluster.conf.Topology = topoMultiTierSlave
+		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
+			cluster.Conf.Topology = topoMultiTierSlave
 		} else if cluster.master != nil {
-			cluster.conf.Topology = topoMasterSlave
+			cluster.Conf.Topology = topoMasterSlave
 		}
 	}
-	return cluster.conf.Topology
+	return cluster.Conf.Topology
 }
 
 func (cluster *Cluster) GetDatabaseTags() []string {
-	return strings.Split(cluster.conf.ProvTags, ",")
+	return strings.Split(cluster.Conf.ProvTags, ",")
 }
 
 func (cluster *Cluster) GetProxyTags() []string {
-	return strings.Split(cluster.conf.ProvProxTags, ",")
+	return strings.Split(cluster.Conf.ProvProxTags, ",")
 }
 
 func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
 	// dirty: need to point LB to all DB  proxies, just pick the first one so far
 	var prx Proxy
-	for _, p := range cluster.proxies {
+	for _, p := range cluster.Proxies {
 		if p != this && p.Type != proxySphinx {
 			return *p
 		}

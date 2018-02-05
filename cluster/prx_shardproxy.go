@@ -28,7 +28,7 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 }
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	params := fmt.Sprintf("?timeout=%ds", cluster.conf.Timeout)
+	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 
 	dsn := proxy.User + ":" + proxy.Pass + "@"
 	dsn += "tcp(" + proxy.Host + ":" + proxy.Port + ")/" + params
