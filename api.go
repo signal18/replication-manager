@@ -821,7 +821,8 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchProxysqlCopyGrants()
 		case "proxysql-bootstrap":
 			mycluster.SwitchProxysqlBootstrap()
-
+		case "test":
+			mycluster.SwitchTestMode()
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

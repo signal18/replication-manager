@@ -141,3 +141,7 @@ func (cluster *Cluster) SwitchMonitoringScheduler() {
 func (cluster *Cluster) SwitchMonitoringQueries() {
 	cluster.conf.MonitorQueries = !cluster.conf.MonitorQueries
 }
+
+func (cluster *Cluster) SwitchTestMode() {
+	cluster.conf.Test = !cluster.conf.Test
+}
