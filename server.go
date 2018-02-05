@@ -47,25 +47,26 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	tlog           termlog.TermLog             `mapstructure:"-"`
-	Logs           httplog.HttpLog             `mapstructure:"logs"`
-	termlength     int                         `mapstructure:"-"`
-	UUID           string                      `mapstructure:"uuid"`
-	Hostname       string                      `mapstructure:"hostname"`
-	Status         string                      `mapstructure:"status"`
-	SplitBrain     bool                        `mapstructure:"spitbrain"`
-	exitMsg        string                      `mapstructure:"-"`
-	exit           bool                        `mapstructure:"-"`
-	currentCluster *cluster.Cluster            `mapstructure:"-"`
-	Clusters       map[string]*cluster.Cluster `mapstructure:"clusters"`
-	Agents         []opensvc.Host              `mapstructure:"agents"`
-	isStarted      bool                        `mapstructure:"-"`
-	OpenSVC        opensvc.Collector           `mapstructure:"-"`
-	Version        string                      `mapstructure:"version"`
-	Fullversion    string                      `mapstructure:"full-version"`
-	Os             string                      `mapstructure:"os"`
-	Arch           string                      `mapstructure:"arch"`
-	Tests          []string                    `mapstructure:"tests"`
+	Logs           httplog.HttpLog             `json:"logs"`
+	OpenSVC        opensvc.Collector           `json:"-"`
+	Version        string                      `json:"version"`
+	Fullversion    string                      `json:"full-version"`
+	Os             string                      `json:"os"`
+	Arch           string                      `json:"arch"`
+	Tests          []string                    `json:"tests"`
+	Clusters       map[string]*cluster.Cluster `json:"clusters"`
+	Agents         []opensvc.Host              `json:"agents"`
+	UUID           string                      `json:"uuid"`
+	Hostname       string                      `json:"hostname"`
+	Status         string                      `json:"status"`
+	SplitBrain     bool                        `json:"spitbrain"`
+	tlog           termlog.TermLog
+	termlength     int
+	exitMsg        string
+	exit           bool
+	currentCluster *cluster.Cluster
+
+	isStarted bool
 }
 
 const (

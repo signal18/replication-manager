@@ -31,13 +31,22 @@ import (
 )
 
 type Cluster struct {
+	Name                 string        `json:"name"`
+	Servers              serverList    `json:"db-servers"`
+	Crashes              crashList     `json:"db-servers-crashes"`
+	Proxies              proxyList     `json:"proxies"`
+	FailoverCtr          int           `json:"failover-counter"`
+	FailoverTs           int64         `json:"failover-last-time"`
+	Status               string        `json:"active-passive-status"`
+	Conf                 config.Config `json:"config"`
+	CleanAll             bool          `json:"clean-replication"` //used in testing
+	IsDown               bool          `json:"is-down"`
+	IsProvisionned       bool          `json:"is-provisionned"`
+	Schedule             []CronEntry   `json:"schedule"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
-	Servers              serverList `json:"db-servers"`
 	slaves               serverList
-	Proxies              proxyList `json:"proxies"`
-	Crashes              crashList `json:"db-servers-crashes"`
 	master               *ServerMonitor
 	vmaster              *ServerMonitor
 	mxs                  *maxscale.MaxScale
@@ -45,42 +54,33 @@ type Cluster struct {
 	dbPass               string
 	rplUser              string
 	rplPass              string
-	FailoverCtr          int   `json:"failover-counter"`
-	FailoverTs           int64 `json:"failover-last-time"`
 	sme                  *state.StateMachine
-	Status               string `json:"active-passive-status"`
 	runOnceAfterTopology bool
-	Conf                 config.Config `json:"config"`
 	tlog                 *termlog.TermLog
 	htlog                *httplog.HttpLog
 	logPtr               *os.File
 	termlength           int
 	runUUID              string
-	Name                 string               `json:"config"`
-	cfgGroupDisplay      string               `mapstructure:"config-group-display"`
-	repmgrVersion        string               `mapstructure:"replication-manager-version"`
-	repmgrHostname       string               `mapstructure:"replication-manager-hostname"`
-	key                  []byte               `mapstructure:"-"`
-	exitMsg              string               `mapstructure:"-"`
-	exit                 bool                 `mapstructure:"-"`
-	CleanAll             bool                 `mapstructure:"clean-all"` //used in testing
-	canFlashBack         bool                 `mapstructure:"can-flashback"`
-	failoverCond         *nbc.NonBlockingChan `mapstructure:"-"`
-	switchoverCond       *nbc.NonBlockingChan `mapstructure:"-"`
-	rejoinCond           *nbc.NonBlockingChan `mapstructure:"-"`
-	bootstrapCond        *nbc.NonBlockingChan `mapstructure:"-"`
-	switchoverChan       chan bool            `mapstructure:"-"`
-	errorChan            chan error           `mapstructure:"-"`
-	testStopCluster      bool                 `mapstructure:"test-stop-cluster"`
-	testStartCluster     bool                 `mapstructure:"test-start-cluster"`
-	IsDown               bool                 `mapstructure:"is-down"`
-	IsProvisionned       bool                 `mapstructure:"is-provisionned"`
-	lastmaster           *ServerMonitor       `mapstructure:"last-master"` //saved when all cluster down
-	benchmarkType        string               `mapstructure:"benchmark-type"`
-	haveDBTLSCert        bool                 `mapstructure:"have-db-tls-cert"`
-	tlsconf              *tls.Config          `mapstructure:"-"`
-	scheduler            *cron.Cron           `mapstructure:"-"`
-	Schedule             []CronEntry          `mapstructure:"schedule"`
+	cfgGroupDisplay      string
+	repmgrVersion        string
+	repmgrHostname       string
+	key                  []byte
+	exitMsg              string
+	exit                 bool
+	canFlashBack         bool
+	failoverCond         *nbc.NonBlockingChan
+	switchoverCond       *nbc.NonBlockingChan
+	rejoinCond           *nbc.NonBlockingChan
+	bootstrapCond        *nbc.NonBlockingChan
+	switchoverChan       chan bool
+	errorChan            chan error
+	testStopCluster      bool
+	testStartCluster     bool
+	lastmaster           *ServerMonitor
+	benchmarkType        string
+	haveDBTLSCert        bool
+	tlsconf              *tls.Config
+	scheduler            *cron.Cron
 }
 
 type CronEntry struct {
