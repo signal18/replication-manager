@@ -70,7 +70,7 @@ func (cluster *Cluster) GetFailoverTs() int64 {
 }
 
 func (cluster *Cluster) GetRunStatus() string {
-	return cluster.runStatus
+	return cluster.Status
 }
 func (cluster *Cluster) GetFailSync() bool {
 	return cluster.Conf.FailSync

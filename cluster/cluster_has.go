@@ -55,7 +55,7 @@ func (cluster *Cluster) IsMasterFailed() bool {
 }
 
 func (cluster *Cluster) IsActive() bool {
-	if cluster.runStatus == ConstMonitorActif {
+	if cluster.Status == ConstMonitorActif {
 		return true
 	} else {
 		return false

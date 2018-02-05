@@ -48,7 +48,7 @@ type Cluster struct {
 	FailoverCtr          int                  `mapstructure:"failover-counter"`
 	FailoverTs           int64                `mapstructure:"failover-last-time"`
 	sme                  *state.StateMachine  `mapstructure:"-"`
-	runStatus            string               `mapstructure:"active-passive-status"`
+	Status               string               `mapstructure:"active-passive-status"`
 	runOnceAfterTopology bool                 `mapstructure:"passed-fist-detection"`
 	Conf                 config.Config        `mapstructure:"config"`
 	tlog                 *termlog.TermLog     `mapstructure:"-"`
@@ -133,7 +133,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
 	cluster.sme = new(state.StateMachine)
-	cluster.runStatus = ConstMonitorActif
+	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
 	cluster.sme.Init()
 	if cluster.Conf.MonitorScheduler {
@@ -213,12 +213,12 @@ func (cluster *Cluster) Run() {
 		select {
 		case sig := <-cluster.switchoverChan:
 			if sig {
-				if cluster.runStatus == "A" {
+				if cluster.Status == "A" {
 					cluster.LogPrintf(LvlInfo, "Signaling Switchover...")
 					cluster.MasterFailover(false)
 					cluster.switchoverCond.Send <- true
 				} else {
-					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.runStatus)
+					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
 				}
 			}
 
