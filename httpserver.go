@@ -156,32 +156,22 @@ func httpserver() {
 	router.HandleFunc("/log", handlerLog)
 	router.HandleFunc("/switchover", handlerSwitchover)
 	router.HandleFunc("/failover", handlerFailover)
-	router.HandleFunc("/interactive", handlerInteractiveToggle)
 	router.HandleFunc("/settings", handlerSettings)
 	router.HandleFunc("/alerts", handlerAlerts)
 	router.HandleFunc("/resetfail", handlerResetFailoverCtr)
-	router.HandleFunc("/rplchecks", handlerRplChecks)
+
 	router.HandleFunc("/bootstrap", handlerBootstrap)
-	router.HandleFunc("/failsync", handlerFailSync)
-	router.HandleFunc("/switchsync", handlerSwitchSync)
-	router.HandleFunc("/setrejoin", handlerRejoin)
-	router.HandleFunc("/setrejoinbackupbinlog", handlerRejoinBackupBinlog)
-	router.HandleFunc("/setrejoinsemisync", handlerRejoinSemisync)
-	router.HandleFunc("/setrejoinflashback", handlerRejoinFlashback)
-	router.HandleFunc("/setrejoindump", handlerRejoinDump)
-	router.HandleFunc("/setrejoinpseudogtid", handlerRejoinPseudoGTID)
-	router.HandleFunc("/settest", handlerSetTest)
 	router.HandleFunc("/tests", handlerTests)
 	router.HandleFunc("/sysbench", handlerSysbench)
-	router.HandleFunc("/setactive", handlerSetActive)
 	router.HandleFunc("/dashboard.js", handlerJS)
 	router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
-	router.HandleFunc("/setverbosity", handlerVerbosity)
+
 	router.HandleFunc("/template", handlerOpenSVCTemplate)
 	router.HandleFunc("/repocomp/current", handlerRepoComp)
 	router.HandleFunc("/unprovision", handlerUnprovision)
 	router.HandleFunc("/rolling", handlerRollingUpgrade)
 	router.HandleFunc("/toggletraffic", handlerTraffic)
+	router.HandleFunc("/clusters/{clusterName}/settings/switch/{settingName}", handlerMuxSwitchSettings)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)
@@ -529,88 +519,9 @@ func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerSetActive(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	//currentCluster.GetActiveStatus()
-	return
-}
-
 func handlerFailover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.MasterFailover(true)
-	return
-}
-
-func handlerInteractiveToggle(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.ToggleInteractive()
-	return
-}
-
-func handlerRplChecks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Force to ignore conditions %v", currentCluster.GetRplChecks())
-	currentCluster.SetRplChecks(!currentCluster.GetRplChecks())
-	return
-}
-
-func handlerSwitchSync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Force swithover on status sync %v", currentCluster.GetFailSync())
-
-	currentCluster.SetSwitchSync(!currentCluster.GetSwitchSync())
-	return
-}
-
-func handlerVerbosity(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Verbosity %v", currentCluster.GetFailSync())
-	if currentCluster.GetLogLevel() > 0 {
-		currentCluster.SetLogLevel(0)
-	} else {
-		currentCluster.SetLogLevel(4)
-	}
-	return
-}
-
-func handlerRejoin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin %v", currentCluster.GetRejoin())
-	currentCluster.SetRejoin(!currentCluster.GetRejoin())
-	return
-}
-
-func handlerRejoinBackupBinlog(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Backup Binlog %v", currentCluster.GetRejoinBackupBinlog())
-	currentCluster.SetRejoinBackupBinlog(!currentCluster.GetRejoinBackupBinlog())
-	return
-}
-
-func handlerRejoinFlashback(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Flashback %v", currentCluster.GetRejoinFlashback())
-	currentCluster.SetRejoinFlashback(!currentCluster.GetRejoinFlashback())
-	return
-}
-func handlerRejoinDump(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Dump %v", currentCluster.GetRejoinDump())
-	currentCluster.SetRejoinDump(!currentCluster.GetRejoinDump())
-	return
-}
-
-func handlerRejoinSemisync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Semisync SYNC %v", currentCluster.GetRejoinSemisync())
-	currentCluster.SetRejoinSemisync(!currentCluster.GetRejoinSemisync())
-	return
-}
-
-func handlerRejoinPseudoGTID(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Change Auto Rejoin Pseudo GTID")
-	currentCluster.SwitchPseudoGTID()
 	return
 }
 
@@ -618,14 +529,6 @@ func handlerSetTest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	currentCluster.LogPrintf("INFO", "Change test/prod mode %v", currentCluster.GetFailSync())
 	currentCluster.SetTestMode(!currentCluster.GetTestMode())
-	return
-}
-
-func handlerFailSync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	currentCluster.LogPrintf("INFO", "Force failover on status sync %v", currentCluster.GetFailSync())
-
-	currentCluster.SetFailSync(!currentCluster.GetFailSync())
 	return
 }
 

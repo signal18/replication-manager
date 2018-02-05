@@ -8,11 +8,9 @@
                     <tr>
                         <th>Failover Mode (interactive)</th>
                     </tr>
-
-
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.interactive" ng-click="inttoggle()" aria-label="Mode Change">
+                            <md-switch ng-model="settings.interactive" ng-click="switchsettings('failover-mode')" aria-label="Mode Change">
                                 <span ng-if="settings.interactive=='true'" class="label label-primary">On-call (manual)</span><span ng-if="settings.interactive=='false'" class="label label-warning">On-leave (auto)</span>
                         </td>
                         </md-switch>
@@ -29,7 +27,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.test" ng-click="settest()" aria-label="Test Mode Change">
+                            <md-switch ng-model="settings.test" ng-click="switchsettings('test')" aria-label="Test Mode Change">
                                 <span ng-if="settings.test=='true'" class="label label-primary">On</span><span ng-if="settings.test=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -40,7 +38,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.verbose" ng-click="verbose()" aria-label="Verbosity Change">
+                            <md-switch ng-model="settings.verbose" ng-click="switchsettings('verbose')" aria-label="Verbosity Change">
                                 <span ng-if="settings.verbose=='true'" class="label label-primary">On</span><span ng-if="settings.verbose=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -50,8 +48,6 @@
 
         </div>
         </md-card>
-
-
         <div flex-gt-xs="30" class="col-lg-33">
             <md-card>
                 <table ng-if="settings" class="table">
@@ -60,8 +56,8 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rplchecks" ng-click="rplchecks()" aria-label="Failover in Sync">
-                                <span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">Off</span>
+                            <md-switch ng-model="settings.rplchecks" ng-click="switchsettings('check-replication-state')" aria-label="Failover in Sync">
+                                <span ng-if="settings.rplchecks=='true'" ng-click="switchsettings('check-replication-state')" class="label label-primary">On</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">Off</span>
                             </md-switch>
                         </td>
                     </tr>
@@ -70,8 +66,8 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.failsync" ng-click="failsync()" aria-label="Failover in Sync">
-                                <span ng-if="settings.failsync=='true'" ng-click="failsync()" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" ng-click="failsync()" class="label label-warning">Off</span>
+                            <md-switch ng-model="settings.failsync" ng-click="switchsettings('failover-at-sync')"  aria-label="Failover in Sync">
+                                <span ng-if="settings.failsync=='true'" ng-click="switchsettings('failover-at-sync')" class="label label-primary">On</span><span ng-if="settings.failsync=='false'" ng-click="failsync()" class="label label-warning">Off</span>
                             </md-switch>
                         </td>
                     </tr>
@@ -80,8 +76,8 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.switchsync" ng-click="switchsync()" aria-label="Switchover in Sync">
-                                <span ng-if="settings.switchsync=='true'" ng-click="switchsync()" class="label label-primary">On</span><span ng-if="settings.switchsync=='false'" ng-click="switchsync()" class="label label-warning">Off</span>
+                            <md-switch ng-model="settings.switchsync" ng-click="switchsettings('switchover-at-sync')()" aria-label="Switchover in Sync">
+                                <span ng-if="settings.switchsync=='true'" ng-click="switchsettings('switchover-at-sync')" class="label label-primary">On</span><span ng-if="settings.switchsync=='false'" ng-click="switchsync()" class="label label-warning">Off</span>
                             </md-switch>
                         </td>
                     </tr>
@@ -92,7 +88,7 @@
                         <td>
                             <md-slider class="md-primary" flex ng-model="settings.maxdelay" min="10" max="1000" aria-label="delay"></md-slider>
 
-                            <span ng-if="settings.rplchecks=='true'" ng-click="rplchecks()" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="rplchecks()" class="label label-warning">{{settings.maxdelay}}</span>
+                            <span ng-if="settings.rplchecks=='true'" ng-click="switchsettings('check-replication-state')" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="switchsettings('check-replication-state')" class="label label-warning">{{settings.maxdelay}}</span>
                         </td>
                     </tr>
                 </table>
@@ -109,7 +105,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoin" ng-click="setrejoin()" aria-label="Auto Rejoin">
+                            <md-switch ng-model="settings.rejoin" ng-click="switchsettings('autorejoin')" aria-label="Auto Rejoin">
                                 <span ng-if="settings.rejoin=='true'" class="label label-primary">On</span><span ng-if="settings.rejoin=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -121,7 +117,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoinbackupbinlog" ng-click="setrejoinbackupbinlog()" aria-label="Auto Rejoin">
+                            <md-switch ng-model="settings.rejoinbackupbinlog" ng-click="switchsettings('autorejoin-backup-binlog')" aria-label="Auto Rejoin">
                                 <span ng-if="settings.rejoinbackupbinlog=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinbackupbinlog=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -133,7 +129,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoinsemisync" ng-click="setrejoinsemisync()" aria-label="Auto Rejoin">
+                            <md-switch ng-model="settings.rejoinsemisync" ng-click="switchsettings('autorejoin-flashback-on-sync')" aria-label="Auto rejoin with binlog flashback only if semisync ">
                                 <span ng-if="settings.rejoinsemisync=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinsemisync=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -145,7 +141,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoinflashback" ng-click="setrejoinflashback()" aria-label="Auto Rejoin">
+                            <md-switch ng-model="settings.rejoinflashback" ng-click="switchsettings('autorejoin-flashback')" aria-label="Auto rejoin with binlog flashback">
                                 <span ng-if="settings.rejoinflashback=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinflashback=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -157,7 +153,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoindump" ng-click="setrejoindump()" aria-label="Auto Rejoin">
+                            <md-switch ng-model="settings.rejoindump" ng-click="switchsettings('autorejoin-mysqldump')" aria-label="Auto rejoin with logical dump">
                                 <span ng-if="settings.rejoindump=='true'" class="label label-primary">On</span><span ng-if="settings.rejoindump=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>
@@ -168,7 +164,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-model="settings.rejoinpseudogtid" ng-click="setrejoinpseudogtid()" aria-label="Auto Rejoin Pseudo GTID">
+                            <md-switch ng-model="settings.rejoinpseudogtid" ng-click="switchsettings('autorejoin-slave-positional-hearbeat')" aria-label="Auto rejoin using pseudo GTID">
                                 <span ng-if="settings.rejoinpseudogtid=='true'" class="label label-primary">On</span><span ng-if="settings.rejoinpseudogtid=='false'" class="label label-warning">Off</span>
                         </td>
                         </md-switch>

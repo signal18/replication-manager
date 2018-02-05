@@ -10,9 +10,12 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
         });
 });
 
+app.factory('CLusterServers', function($resource) {
+    return $resource('/clusters/:clusterName/servers',{clusterName:'@clusters'});
+});
 
 app.factory('Servers', function($resource) {
-    return $resource('/servers');
+    return $resource('/servers',);
 });
 
 app.factory('Slaves', function($resource) {
@@ -231,19 +234,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             }
         }
     };
-    $scope.inttoggle = function() {
-        var r = confirm("Confirm Mode Change");
-        if (r == true) {
-            var response = $http.get('/interactive');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
 
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
     $scope.maintenance = function(server) {
         var r = confirm("Confirm maintenance for server-id: " + server);
         if (r == true) {
@@ -312,157 +303,6 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
     };
 
-    $scope.rplchecks = function() {
-        var r = confirm("Confirm Change Replication Checks?");
-        if (r == true) {
-            var response = $http.get('/rplchecks');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.failsync = function() {
-        var r = confirm("Confirm Change Sync Checks?");
-        if (r == true) {
-            var response = $http.get('/failsync');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-
-    };
-
-    $scope.verbose = function() {
-        var r = confirm("Confirm Verbosity Change?");
-        if (r == true) {
-            var response = $http.get('/setverbosity');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-
-    };
-
-    $scope.switchsync = function() {
-        var r = confirm("Confirm Change Switchover Sync Checks?");
-        if (r == true) {
-            var response = $http.get('/switchsync');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.setrejoin = function() {
-        var r = confirm("Confirm Change Auto Rejoin ?");
-        if (r == true) {
-            var response = $http.get('/setrejoin');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.setrejoinpseudogtid = function() {
-        var r = confirm("Confirm Change Auto Rejoin Pseudo GTID ?");
-        if (r == true) {
-            var response = $http.get('/setrejoinpseudogtid');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-
-    $scope.setrejoinbackupbinlog = function() {
-        var r = confirm("Confirm Change Auto backup binlogs ?");
-        if (r == true) {
-            var response = $http.get('/setrejoinbackupbinlog');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-
-    $scope.setrejoinsemisync = function() {
-        var r = confirm("Confirm Change Auto Rejoin Semisync SYNC  ?");
-        if (r == true) {
-            var response = $http.get('/setrejoinsemisync');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.setrejoinflashback = function() {
-        var r = confirm("Confirm Change Auto Rejoin FlashBack ?");
-        if (r == true) {
-            var response = $http.get('/setrejoinflashback');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.setrejoindump = function() {
-        var r = confirm("Confirm Change Auto Rejoin FlashBack ?");
-        if (r == true) {
-            var response = $http.get('/setrejoindump');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-    };
-
-    $scope.settest = function() {
-        var r = confirm("Confirm Change Test Prod Mode?");
-        if (r == true) {
-            var response = $http.get('/settest');
-            response.success(function(data, status, headers, config) {
-                console.log("Ok.");
-            });
-
-            response.error(function(data, status, headers, config) {
-                console.log("Error.");
-            });
-        }
-
-    };
 
     $scope.setactive = function() {
         var r = confirm("Confirm Active Status?");
@@ -619,6 +459,18 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 console.log("Error.");
             });
         }
+    };
+
+    $scope.switchsettings = function(setting) {
+
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/switch/' + setting );
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+
     };
 
     $scope.selectUserIndex = function(index) {

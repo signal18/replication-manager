@@ -150,38 +150,11 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/interactive", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/switch/{settingName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchInteractive)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSettings)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/readonly", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchReadOnly)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/verbosity", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchVerbosity)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/autorejoin", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoin)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/rejoinflashback", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoinFlashback)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/rejoinmysqldump", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchRejoinMysqldump)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/failoversync", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchFailoverSync)),
-	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/swithoversync", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSwitchoverSync)),
-	))
+
 	router.Handle("/api/clusters/{clusterName}/settings/reset/failovercontrol", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxResetFailoverControl)),
@@ -782,12 +755,74 @@ func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSwitchInteractive(w http.ResponseWriter, r *http.Request) {
+func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.ToggleInteractive()
+		setting := vars["settingName"]
+		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
+		switch setting {
+		case "verbose":
+			mycluster.SwitchVerbosity()
+		case "failover-mode":
+			mycluster.SwitchInteractive()
+		case "failover-readonly-state":
+			mycluster.SwitchReadOnly()
+		case "failover-restart-unsafe":
+			mycluster.SwitchFailoverRestartUnsafe()
+		case "failover-at-sync":
+			mycluster.SwitchFailSync()
+		case "failover-event-status":
+			mycluster.SwitchFailoverEventStatus()
+		case "failover-event-scheduler":
+			mycluster.SwitchFailoverEventScheduler()
+		case "autorejoin":
+			mycluster.SwitchRejoin()
+		case "autorejoin-backup-binlog":
+			mycluster.SwitchRejoinBackupBinlog()
+		case "autorejoin-flashback":
+			mycluster.SwitchRejoinFlashback()
+		case "autorejoin-flashback-on-sync":
+			mycluster.SwitchRejoinSemisync()
+		case "autorejoin-flashback-on-unsync": //?????
+		case "autorejoin-slave-positional-hearbeat":
+			mycluster.SwitchRejoinPseudoGTID()
+		case "autorejoin-zfs-flashback":
+			mycluster.SwitchRejoinZFSFlashback()
+		case "autorejoin-mysqldump":
+			mycluster.SwitchRejoinDump()
+		case "switchover-at-sync":
+			mycluster.SwitchSwitchoverSync()
+		case "check-replication-filters":
+			mycluster.SwitchCheckReplicationFilters()
+		case "check-replication-state":
+			mycluster.SwitchRplChecks()
+		case "scheduler-db-servers-logical-backup":
+			mycluster.SwitchSchedulerBackupLogical()
+		case "scheduler-db-servers-logs":
+			mycluster.SwitchSchedulerDatabaseLogs()
+		case "scheduler-db-servers-optimize":
+			mycluster.SwitchSchedulerDatabaseOptimize()
+		case "scheduler-db-servers-physical-backup":
+			mycluster.SwitchSchedulerBackupPhysical()
+		case "graphite-metrics":
+			mycluster.SwitchGraphiteMetrics()
+		case "graphite-embedded":
+			mycluster.SwitchGraphiteEmbedded()
+		case "shardproxy-copy-grants":
+		case "monitoring-queries":
+			mycluster.SwitchMonitoringQueries()
+		case "monitoring-scheduler":
+			mycluster.SwitchMonitoringScheduler()
+		case "monitoring-schema-change":
+			mycluster.SwitchMonitoringSchemaChange()
+		case "proxysql-copy-grants":
+			mycluster.SwitchProxysqlCopyGrants()
+		case "proxysql-bootstrap":
+			mycluster.SwitchProxysqlBootstrap()
+
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -795,96 +830,12 @@ func handlerMuxSwitchInteractive(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxSwitchVerbosity(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchVerbosity()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchRejoin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchRejoin()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchRejoinMysqldump(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchRejoinDump()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchRejoinFlashback(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchRejoinFlashback()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchRejoinSemisync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchRejoinSemisync()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchRplchecks(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchRplChecks()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-func handlerMuxSwitchSwitchoverSync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		mycluster.SwitchSwitchoverSync()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
 func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.SwitchFailSync()
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
