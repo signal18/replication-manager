@@ -172,6 +172,7 @@ func httpserver() {
 	router.HandleFunc("/rolling", handlerRollingUpgrade)
 	router.HandleFunc("/toggletraffic", handlerTraffic)
 	router.HandleFunc("/clusters/{clusterName}/settings/switch/{settingName}", handlerMuxSwitchSettings)
+	router.HandleFunc("/clusters/{clusterName}/servers", handlerMuxServers)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)

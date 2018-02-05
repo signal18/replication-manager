@@ -26,10 +26,10 @@ import (
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	haproxyconfigPath := cluster.Conf.WorkingDir
 	haproxytemplateFile := "haproxy_config.template"
-	haproxyconfigFile := cluster.cfgGroup + "-haproxy.cfg"
+	haproxyconfigFile := cluster.Name + "-haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
-	haproxypidFile := cluster.cfgGroup + "-haproxy-private.pid"
-	haproxysockFile := cluster.cfgGroup + "-haproxy.stats.sock"
+	haproxypidFile := cluster.Name + "-haproxy-private.pid"
+	haproxysockFile := cluster.Name + "-haproxy.stats.sock"
 	haproxyerrorPagesDir := "error_pages"
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
@@ -111,7 +111,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		}
 	}
 	if cluster.Conf.Enterprise {
-		/*cf, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + "-haproxy.cfg") // just pass the file name
+		/*cf, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "-haproxy.cfg") // just pass the file name
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Haproxy can't log generated config for provisioning %s", err)
 		}

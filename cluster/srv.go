@@ -167,8 +167,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Host, server.Port = misc.SplitHostPort(url)
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
-	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_error.log"
-	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/" + server.Id + "_log_slow_query.log"
+	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
+	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()

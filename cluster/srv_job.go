@@ -69,7 +69,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		return 0, nil
 	}
 
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -81,7 +81,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -146,7 +146,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -238,14 +238,14 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cfg.StatAddr = "127.0.0.1:12800"
 		cfg.DumpServerID = 1001
 
-		cfg.DumpPath = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
+		cfg.DumpPath = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/river"
 		cfg.DumpExec = server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqldump"
 		cfg.DumpOnly = true
 		cfg.DumpInit = true
 		cfg.BatchMode = "CSV"
 		cfg.BatchSize = 100000
 		cfg.BatchTimeOut = 1
-		cfg.DataDir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.cfgGroup + "/river"
+		cfg.DataDir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/river"
 
 		os.RemoveAll(cfg.DumpPath)
 
@@ -269,7 +269,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		w.Write(out.Bytes())
 		w.Close()
 		out = outGzip
-		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.cfgGroup+"/mysqldump.gz", out.Bytes(), 0666)
+		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/mysqldump.gz", out.Bytes(), 0666)
 	}
 	return nil
 }

@@ -30,7 +30,7 @@ func (cluster *Cluster) GetTraffic() bool {
 }
 
 func (cluster *Cluster) GetClusterName() string {
-	return cluster.cfgGroup
+	return cluster.Name
 }
 
 func (cluster *Cluster) GetServers() serverList {
@@ -112,7 +112,7 @@ func (cluster *Cluster) GetRejoinFlashback() bool {
 }
 
 func (cluster *Cluster) GetName() string {
-	return cluster.cfgGroup
+	return cluster.Name
 }
 
 func (cluster *Cluster) GetTestMode() bool {

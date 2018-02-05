@@ -30,7 +30,7 @@ const (
 )
 
 func (cluster *Cluster) display() {
-	if cluster.cfgGroup != cluster.cfgGroupDisplay {
+	if cluster.Name != cluster.cfgGroupDisplay {
 		return
 	}
 
@@ -67,16 +67,16 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 
 	if cluster.Conf.LogFile != "" {
-		s := fmt.Sprint(stamp, " [", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		s := fmt.Sprint(stamp, " [", cluster.Name, "] ", fmt.Sprint(msg...))
 		io.WriteString(cluster.logPtr, fmt.Sprintln(s))
 	}
 	if cluster.tlog.Len > 0 {
-		s := fmt.Sprint("[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		s := fmt.Sprint("[", cluster.Name, "] ", fmt.Sprint(msg...))
 		cluster.tlog.Add(s)
 		cluster.display()
 	}
 	if cluster.Conf.Daemon {
-		s := fmt.Sprint("[", cluster.cfgGroup, "] ", fmt.Sprint(msg...))
+		s := fmt.Sprint("[", cluster.Name, "] ", fmt.Sprint(msg...))
 		log.Println(s)
 	}
 }
@@ -92,7 +92,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		}
 	}
 	cliformat := format
-	format = "[" + cluster.cfgGroup + "] " + padright(level, " ", 5) + " - " + format
+	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
 	if level == "DEBUG" && cluster.Conf.LogLevel <= 1 {
 		// Only print debug messages if loglevel > 1
 	} else {
@@ -108,7 +108,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 
 		if cluster.Conf.HttpServ {
 			msg := httplog.Message{
-				Group:     cluster.cfgGroup,
+				Group:     cluster.Name,
 				Level:     level,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(cliformat, args...),
@@ -121,27 +121,27 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		// wrap logrus levels
 		switch level {
 		case "ERROR":
-			log.WithField("cluster", cluster.cfgGroup).Errorf(cliformat, args...)
+			log.WithField("cluster", cluster.Name).Errorf(cliformat, args...)
 		case "INFO":
-			log.WithField("cluster", cluster.cfgGroup).Infof(cliformat, args...)
+			log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
 		case "DEBUG":
-			log.WithField("cluster", cluster.cfgGroup).Debugf(cliformat, args...)
+			log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
 		case "WARN":
-			log.WithField("cluster", cluster.cfgGroup).Warnf(cliformat, args...)
+			log.WithField("cluster", cluster.Name).Warnf(cliformat, args...)
 		case "TEST":
-			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "test"}).Infof(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test"}).Infof(cliformat, args...)
 		case "BENCH":
-			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "benchmark"}).Infof(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark"}).Infof(cliformat, args...)
 		case "ALERT":
-			log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "alert"}).Warnf(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Warnf(cliformat, args...)
 		case "STATE":
 			status := cliformat[0:6]
 			code := cliformat[7:15]
 			err := cliformat[18:]
 			if status == "OPENED" {
-				log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "state", "status": status, "code": code}).Warnf(err, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code}).Warnf(err, args...)
 			} else {
-				log.WithFields(log.Fields{"cluster": cluster.cfgGroup, "type": "state", "status": status, "code": code}).Infof(err, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code}).Infof(err, args...)
 			}
 		default:
 			log.Printf(cliformat, args...)

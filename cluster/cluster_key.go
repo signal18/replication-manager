@@ -77,13 +77,13 @@ func (cluster *Cluster) CreateKey() error {
 			log.Fatalf("Failed to create certificate: %s", err)
 		}
 
-		certOut, err := os.Create(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + "/cert.pem")
+		certOut, err := os.Create(cluster.Conf.WorkingDir + "/" + cluster.Name + "/cert.pem")
 		if err != nil {
 			log.Fatalf("failed to open cert.pem for writing: %s", err)
 		}
 		pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 		certOut.Close()
-		keyOut, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		keyOut, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			log.Print("failed to open key.pem for writing:", err)
 			return err
@@ -95,19 +95,19 @@ func (cluster *Cluster) CreateKey() error {
 
 		publicKey := key.PublicKey
 
-		err = cluster.saveGobKey(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/private.key", key)
+		err = cluster.saveGobKey(cluster.Conf.WorkingDir+"/"+cluster.Name+"/private.key", key)
 		if err != nil {
 			return err
 		}
-		err = cluster.savePEMKey(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/private.pem", key)
+		err = cluster.savePEMKey(cluster.Conf.WorkingDir+"/"+cluster.Name+"/private.pem", key)
 		if err != nil {
 			return err
 		}
-		err = cluster.saveGobKey(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/public.key", publicKey)
+		err = cluster.saveGobKey(cluster.Conf.WorkingDir+"/"+cluster.Name+"/public.key", publicKey)
 		if err != nil {
 			return err
 		}
-		err = cluster.savePublicPEMKey(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/public.pem", publicKey)
+		err = cluster.savePublicPEMKey(cluster.Conf.WorkingDir+"/"+cluster.Name+"/public.pem", publicKey)
 		return err
 	}
 	return nil

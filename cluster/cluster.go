@@ -31,32 +31,32 @@ import (
 )
 
 type Cluster struct {
-	hostList             []string             `mapstructure:"db-servers-list"`
-	proxyList            []string             `mapstructure:"proxy-list"`
-	clusterList          map[string]*Cluster  `mapstructure:"-"`
-	Servers              serverList           `mapstructure:"-"`
-	slaves               serverList           `mapstructure:"db-servers-slaves"`
-	Proxies              proxyList            `mapstructure:"proxies"`
-	Crashes              crashList            `mapstructure:"db-servers-crashes"`
-	master               *ServerMonitor       `mapstructure:"db-servers-master"`
-	vmaster              *ServerMonitor       `mapstructure:"db-servers-master-virtual"`
-	mxs                  *maxscale.MaxScale   `mapstructure:"-"`
-	dbUser               string               `mapstructure:"db-servers-user"`
-	dbPass               string               `mapstructure:"-"`
-	rplUser              string               `mapstructure:"db-servers-replication-user"`
-	rplPass              string               `mapstructure:"-"`
-	FailoverCtr          int                  `mapstructure:"failover-counter"`
-	FailoverTs           int64                `mapstructure:"failover-last-time"`
-	sme                  *state.StateMachine  `mapstructure:"-"`
-	Status               string               `mapstructure:"active-passive-status"`
-	runOnceAfterTopology bool                 `mapstructure:"passed-fist-detection"`
-	Conf                 config.Config        `mapstructure:"config"`
-	tlog                 *termlog.TermLog     `mapstructure:"-"`
-	htlog                *httplog.HttpLog     `mapstructure:"-"`
-	logPtr               *os.File             `mapstructure:"-"`
-	termlength           int                  `mapstructure:"-"`
-	runUUID              string               `mapstructure:"running-uuid"`
-	cfgGroup             string               `mapstructure:"config-group"`
+	hostList             []string
+	proxyList            []string
+	clusterList          map[string]*Cluster
+	Servers              serverList `json:"db-servers"`
+	slaves               serverList
+	Proxies              proxyList `json:"proxies"`
+	Crashes              crashList `json:"db-servers-crashes"`
+	master               *ServerMonitor
+	vmaster              *ServerMonitor
+	mxs                  *maxscale.MaxScale
+	dbUser               string
+	dbPass               string
+	rplUser              string
+	rplPass              string
+	FailoverCtr          int   `json:"failover-counter"`
+	FailoverTs           int64 `json:"failover-last-time"`
+	sme                  *state.StateMachine
+	Status               string `json:"active-passive-status"`
+	runOnceAfterTopology bool
+	Conf                 config.Config `json:"config"`
+	tlog                 *termlog.TermLog
+	htlog                *httplog.HttpLog
+	logPtr               *os.File
+	termlength           int
+	runUUID              string
+	Name                 string               `json:"config"`
 	cfgGroupDisplay      string               `mapstructure:"config-group-display"`
 	repmgrVersion        string               `mapstructure:"replication-manager-version"`
 	repmgrHostname       string               `mapstructure:"replication-manager-hostname"`
@@ -127,7 +127,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.tlog = tlog
 	cluster.htlog = httplog
 	cluster.termlength = termlength
-	cluster.cfgGroup = cfgGroup
+	cluster.Name = cfgGroup
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
@@ -187,8 +187,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	cluster.ReloadFromSave()
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup); os.IsNotExist(err) {
-		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup, os.ModePerm)
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
+		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 		cluster.CreateKey()
 	}
 
@@ -202,13 +202,8 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
-	//ticker := time.NewTicker(interval * time.Duration(cluster.Conf.MonitoringTicker))
+
 	for cluster.exit == false {
-
-		//select {
-		//case <-ticker.C:
-
-		//cluster.display()
 
 		select {
 		case sig := <-cluster.switchoverChan:
@@ -263,9 +258,7 @@ func (cluster *Cluster) Run() {
 				}
 			}
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
-
 		}
-		//	}
 	}
 }
 
@@ -282,7 +275,7 @@ func (cluster *Cluster) Save() error {
 	clsave.Servers = cluster.Conf.Hosts
 	clsave.SLA = cluster.sme.GetSla()
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
-	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+"/clusterstate.json", saveJson, 0644)
+	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
 	if err != nil {
 		return err
 	}
@@ -290,12 +283,12 @@ func (cluster *Cluster) Save() error {
 	if strings.Contains(cluster.Conf.ClusterConfigPath, "cluster.d") {
 		var myconf = make(map[string]config.Config)
 
-		myconf[cluster.cfgGroup] = cluster.Conf
+		myconf[cluster.Name] = cluster.Conf
 
-		file, err := os.OpenFile(cluster.Conf.ClusterConfigPath+"/"+cluster.cfgGroup+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		file, err := os.OpenFile(cluster.Conf.ClusterConfigPath+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.ClusterConfigPath+"/"+cluster.cfgGroup+".toml")
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.ClusterConfigPath+"/"+cluster.Name+".toml")
 			}
 			return err
 		}
@@ -318,7 +311,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 	}
 
 	var clsave Save
-	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + "/clusterstate.json")
+	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
 	if err != nil {
 		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
 		return err
@@ -329,7 +322,7 @@ func (cluster *Cluster) ReloadFromSave() error {
 		return err
 	}
 	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.cfgGroup+".json")
+		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
 	}
 	cluster.Crashes = clsave.Crashes
 	cluster.sme.SetSla(clsave.SLA)
@@ -359,7 +352,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 }
 
 func (cluster *Cluster) FailoverForce() error {
-	sf := stateFile{Name: "/tmp/mrm" + cluster.cfgGroup + ".state"}
+	sf := stateFile{Name: "/tmp/mrm" + cluster.Name + ".state"}
 	err := sf.access()
 	if err != nil {
 		cluster.LogPrintf(LvlWarn, "Could not create state file")

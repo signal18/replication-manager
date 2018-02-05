@@ -37,7 +37,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.Servers[j].URL, err)
 							}
 							if cluster.Conf.Verbose {
-								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.cfgGroup, cluster.Servers[j].URL))
+								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.Name, cluster.Servers[j].URL))
 							}
 						}
 					}

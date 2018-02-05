@@ -66,7 +66,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	var err error
 	cluster.sme.SetFailoverState()
 	// delete the cluster state here
-	path := cluster.Conf.WorkingDir + "/" + cluster.cfgGroup + ".json"
+	path := cluster.Conf.WorkingDir + "/" + cluster.Name + ".json"
 	os.Remove(path)
 	if cluster.Conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
