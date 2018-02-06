@@ -255,7 +255,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 			// If master is not initialized, find it in the failed hosts list
 			if cluster.master == nil {
-				cluster.FailedMasterDicovery()
+				cluster.FailedMasterDiscovery()
 			}
 		}
 	}
@@ -380,7 +380,7 @@ func (cluster *Cluster) LostMajority() bool {
 
 }
 
-func (cluster *Cluster) FailedMasterDicovery() {
+func (cluster *Cluster) FailedMasterDiscovery() {
 
 	// Slave master_host variable must point to failed master
 
