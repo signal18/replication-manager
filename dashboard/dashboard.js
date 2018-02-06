@@ -49,7 +49,7 @@ app.factory('Settings', function($resource) {
 app.factory('Alerts', function($resource) {
     return $resource(
         '/clusters/:clusterName/topology/alerts',{clusterName:'@clusters'},
-        '', {
+         {
             'query': {
                 method: 'GET',
                 isArray: false
@@ -61,7 +61,7 @@ app.factory('Alerts', function($resource) {
 app.factory('Master', function($resource) {
     return $resource(
         '/clusters/:clusterName/topology/master',{clusterName:'@clusters'},
-        '', {
+       {
             'query': {
                 method: 'GET',
                 isArray: false
