@@ -47,7 +47,12 @@ func (cluster *Cluster) IsInHostList(host string) bool {
 }
 
 func (cluster *Cluster) IsMasterFailed() bool {
-	if cluster.GetMaster().State == stateFailed {
+	// get real master or the virtual master
+	mymaster := cluster.GetMaster()
+	if mymaster == nil {
+		return true
+	}
+	if mymaster.State == stateFailed {
 		return true
 	} else {
 		return false
