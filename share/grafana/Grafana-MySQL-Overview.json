@@ -4279,7 +4279,7 @@
         "multi": true,
         "name": "host",
         "options": [],
-        "query": "*",
+        "query": "mysql.*",
         "refresh": 1,
         "regex": "",
         "sort": 0,

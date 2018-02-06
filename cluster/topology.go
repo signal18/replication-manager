@@ -255,21 +255,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 			// If master is not initialized, find it in the failed hosts list
 			if cluster.master == nil {
-				// Slave master_host variable must point to failed master
 
-				smh := cluster.slaves[0].GetReplicationMasterHost()
-				for k, s := range cluster.servers {
-					if s.State == stateFailed {
-						if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
-							if cluster.conf.FailRestartUnsafe {
-								cluster.master = cluster.servers[k]
-								cluster.master.PrevState = stateMaster
-								cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
-							}
-							break
-						}
-					}
-				}
+				cluster.FailedMasterDicovery()
 			}
 		}
 	}
@@ -392,4 +379,37 @@ func (cluster *Cluster) LostMajority() bool {
 		return true
 	}
 
+}
+
+func (cluster *Cluster) FailedMasterDicovery() {
+
+	// Slave master_host variable must point to failed master
+
+	smh := cluster.slaves[0].GetReplicationMasterHost()
+	for k, s := range cluster.servers {
+		if s.State == stateFailed {
+			if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
+				if cluster.conf.FailRestartUnsafe || cluster.MultipleSlavesUp(s) {
+					cluster.master = cluster.servers[k]
+					cluster.master.PrevState = stateMaster
+					cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
+				}
+				break
+			}
+		}
+	}
+}
+
+func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
+	ct := 0
+	for _, s := range cluster.slaves {
+
+		if s.State != stateFailed && (candidate.Host == s.GetReplicationMasterHost() || candidate.IP == s.GetReplicationMasterHost()) && candidate.Port == s.GetReplicationMasterPort() {
+			ct++
+		}
+	}
+	if ct > 1 {
+		return true
+	}
+	return false
 }
