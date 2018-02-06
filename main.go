@@ -187,7 +187,7 @@ func initConfig() {
 	m := viper.AllKeys()
 	currentClusterName = cfgGroup
 	if currentClusterName == "" {
-		var clusterDicovery = map[string]string{}
+		var clusterDiscovery = map[string]string{}
 		var discoveries []string
 		for _, k := range m {
 
@@ -195,9 +195,9 @@ func initConfig() {
 				mycluster := strings.Split(k, ".")[0]
 				if mycluster != "default" {
 
-					_, ok := clusterDicovery[mycluster]
+					_, ok := clusterDiscovery[mycluster]
 					if !ok {
-						clusterDicovery[mycluster] = mycluster
+						clusterDiscovery[mycluster] = mycluster
 						discoveries = append(discoveries, mycluster)
 						//						log.Println(strings.Split(k, ".")[0])
 					}
