@@ -155,12 +155,12 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSettings)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/settings/reset/failovercontrol", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxResetFailoverControl)),
-	))
-
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
+
+	router.Handle("/api/clusters/{clusterName}/actions/reset-failover-control", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterResetFailoverControl)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
@@ -178,9 +178,13 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplicationCleanup)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/services/provision", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/services/actions/provision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxProvisionServices)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServicesProvision)),
+	))
+	router.Handle("/api/clusters/{clusterName}/services/actions/unprovision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServicesUnprovision)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
@@ -196,6 +200,11 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}/actions/optimize", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterOptimize)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/sysbench", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSysbench)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
@@ -644,7 +653,7 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -662,7 +671,7 @@ func handlerMuxBootstrapServices(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServicesProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -680,7 +689,20 @@ func handlerMuxProvisionServices(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxResetFailoverControl(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServicesUnprovision(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		mycluster.Unprovision()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func handlerMuxClusterResetFailoverControl(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -821,6 +843,8 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchProxysqlCopyGrants()
 		case "proxysql-bootstrap":
 			mycluster.SwitchProxysqlBootstrap()
+		case "database-hearbeat":
+			mycluster.SwitchTraffic()
 		case "test":
 			mycluster.SwitchTestMode()
 		}
@@ -1432,6 +1456,15 @@ func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(data)
 
+}
+
+func handlerMuxClusterSysbench(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		go mycluster.RunSysbench()
+	}
+	return
 }
 
 func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {

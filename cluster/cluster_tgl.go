@@ -145,3 +145,7 @@ func (cluster *Cluster) SwitchMonitoringQueries() {
 func (cluster *Cluster) SwitchTestMode() {
 	cluster.Conf.Test = !cluster.Conf.Test
 }
+
+func (cluster *Cluster) SwitchTraffic() {
+	cluster.SetTraffic(!cluster.GetTraffic())
+}

@@ -25,7 +25,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
-	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	log "github.com/sirupsen/logrus"
@@ -141,46 +140,48 @@ func httpserver() {
 	// main page
 
 	// page to view which does not need authorization
+	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	router.HandleFunc("/data", handlerMuxReplicationManager)
-	router.HandleFunc("/servers", handlerServers)
-	router.HandleFunc("/stop", handlerStopServer)
-	router.HandleFunc("/start", handlerStartServer)
-	router.HandleFunc("/maintenance", handlerMaintenanceServer)
-	router.HandleFunc("/setcluster", handlerSetCluster)
-	router.HandleFunc("/runonetest", handlerSetOneTest)
-	router.HandleFunc("/master", handlerMaster)
-	router.HandleFunc("/slaves", handlerSlaves)
-	router.HandleFunc("/agents", handlerAgents)
-	router.HandleFunc("/proxies", handlerProxies)
-	router.HandleFunc("/crashes", handlerCrashes)
-	router.HandleFunc("/log", handlerLog)
-	router.HandleFunc("/switchover", handlerSwitchover)
-	router.HandleFunc("/failover", handlerFailover)
 	router.HandleFunc("/settings", handlerSettings)
-	router.HandleFunc("/alerts", handlerAlerts)
-	router.HandleFunc("/resetfail", handlerResetFailoverCtr)
+	router.HandleFunc("/log", handlerLog)
+	router.HandleFunc("/agents", handlerAgents)
 
-	router.HandleFunc("/bootstrap", handlerBootstrap)
-	router.HandleFunc("/tests", handlerTests)
-	router.HandleFunc("/sysbench", handlerSysbench)
+	router.HandleFunc("/setcluster", handlerSetCluster)
 	router.HandleFunc("/dashboard.js", handlerJS)
-	router.HandleFunc("/heartbeat", handlerMrmHeartbeat)
-
+	router.HandleFunc("/heartbeat", handlerHeartbeat)
 	router.HandleFunc("/template", handlerOpenSVCTemplate)
-	router.HandleFunc("/repocomp/current", handlerRepoComp)
-	router.HandleFunc("/unprovision", handlerUnprovision)
-	router.HandleFunc("/rolling", handlerRollingUpgrade)
-	router.HandleFunc("/toggletraffic", handlerTraffic)
-	router.HandleFunc("/clusters/{clusterName}/settings/switch/{settingName}", handlerMuxSwitchSettings)
-	router.HandleFunc("/clusters/{clusterName}/servers", handlerMuxServers)
+	router.HandleFunc("/tests", handlerTests)
+	router.HandleFunc("/repocomp/current", handlerRepoComp) // needed to point opensvc agent compliance
+	router.HandleFunc("/rolling", handlerRollingUpgrade)    // ? work it out
+
+	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/actions/maintenance", handlerMuxServerMaintenance)
+	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/actions/stop", handlerMuxServerStop)
+	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/actions/start", handlerMuxServerStart)
+
+	router.HandleFunc("/clusters/{clusterName}/topology/crashes", handlerMuxCrashes)
+	router.HandleFunc("/clusters/{clusterName}/topology/alerts", handlerMuxAlerts)
+	router.HandleFunc("/clusters/{clusterName}/topology/servers", handlerMuxServers)
+	router.HandleFunc("/clusters/{clusterName}/topology/slaves", handlerMuxSlaves)
+	router.HandleFunc("/clusters/{clusterName}/topology/master", handlerMuxMaster)
+	router.HandleFunc("/clusters/{clusterName}/topology/proxies", handlerMuxProxies)
+
+	router.HandleFunc("/clusters/{clusterName}/sphinx-indexes", handlerMuxSphinxIndexes)
+	router.HandleFunc("/clusters/{clusterName}/tests/actions/run/{testName}", handlerMuxOneTest)
+
+	router.HandleFunc("/clusters/{clusterName}/actions/switchover", handlerMuxSwitchover)
+	router.HandleFunc("/clusters/{clusterName}/actions/failover", handlerMuxFailover)
+	router.HandleFunc("/clusters/{clusterName}/actions/reset-failover-counter", handlerMuxClusterResetFailoverControl)
+	router.HandleFunc("/clusters/{clusterName}/actions/sysbench", handlerMuxClusterSysbench)
+	router.HandleFunc("/clusters/{clusterName}/services/actions/bootstrap", handlerMuxServicesBootstrap)
+	router.HandleFunc("/clusters/{clusterName}/services/actions/unprovision", handlerMuxServicesUnprovision)
+	router.HandleFunc("/clusters/{clusterName}/actions/switch/{settingName}", handlerMuxSwitchSettings)
+
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", handlerMuxServersPortMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", handlerMuxServersPortSlaveStatus)
-	router.HandleFunc("/clusters/{clusterName}/sphinx-indexes", handlerMuxSphinxIndexes)
-	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/optimize", handlerMuxServerOptimize)
-	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/backup-physical", handlerMuxServerBackupPhysical)
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/actions/optimize", handlerMuxServerOptimize)
+	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", handlerMuxServerBackupPhysical)
 
 	if confs[currentClusterName].Verbose {
 		log.Printf("Starting http monitor on port " + confs[currentClusterName].HttpPort)
@@ -197,55 +198,12 @@ func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerSetOneTest(w http.ResponseWriter, r *http.Request) {
-	regtest := new(regtest.RegTest)
-	regtest.RunAllTests(RepMan.currentCluster, r.URL.Query().Get("test"))
-}
-
 func handlerApp(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/app.html")
 }
 
 func handlerJS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/dashboard.js")
-}
-
-func handlerServers(w http.ResponseWriter, r *http.Request) {
-	//marshal unmarchal for ofuscation deep copy of struc
-	data, _ := json.Marshal(RepMan.currentCluster.GetServers())
-	var srvs []*cluster.ServerMonitor
-
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-
-	err = e.Encode(srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}
-
-func handlerCrashes(w http.ResponseWriter, r *http.Request) {
-
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(RepMan.currentCluster.GetCrashes())
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
 }
 
 func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
@@ -261,70 +219,9 @@ func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handlerTraffic(w http.ResponseWriter, r *http.Request) {
-
-	RepMan.currentCluster.SetTraffic(!RepMan.currentCluster.GetTraffic())
-
-}
-
-func handlerStopServer(w http.ResponseWriter, r *http.Request) {
-	RepMan.currentCluster.LogPrintf("INFO", "Rest API request stop server-id: %s", r.URL.Query().Get("server"))
-	srv := r.URL.Query().Get("server")
-
-	node := RepMan.currentCluster.GetServerFromName(srv)
-	RepMan.currentCluster.StopDatabaseService(node)
-}
-
-func handlerStartServer(w http.ResponseWriter, r *http.Request) {
-	RepMan.currentCluster.LogPrintf("INFO", "Rest API request start server-id: %s", r.URL.Query().Get("server"))
-	srv := r.URL.Query().Get("server")
-
-	node := RepMan.currentCluster.GetServerFromName(srv)
-	RepMan.currentCluster.StartDatabaseService(node)
-}
-
-func handlerMaintenanceServer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	RepMan.currentCluster.LogPrintf("INFO", "Rest API request toogle Maintenace server-id: %s", r.URL.Query().Get("server"))
-	srv := r.URL.Query().Get("server")
-	node := RepMan.currentCluster.GetServerFromName(srv)
-	if node != nil {
-		RepMan.currentCluster.SwitchServerMaintenance(node.ServerID)
-	}
-}
-
-func handlerUnprovision(w http.ResponseWriter, r *http.Request) {
-	RepMan.currentCluster.LogPrintf("INFO", "Rest API request unprovision cluster: %s", RepMan.currentCluster.GetName())
-	RepMan.currentCluster.Unprovision()
-}
-
 func handlerRollingUpgrade(w http.ResponseWriter, r *http.Request) {
 	RepMan.currentCluster.LogPrintf("INFO", "Rest API request rolling upgrade cluster: %s", RepMan.currentCluster.GetName())
 	RepMan.currentCluster.RollingUpgrade()
-}
-
-func handlerSlaves(w http.ResponseWriter, r *http.Request) {
-	data, _ := json.Marshal(RepMan.currentCluster.GetSlaves())
-	var srvs []*cluster.ServerMonitor
-
-	err := json.Unmarshal(data, &srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	for i := range srvs {
-		srvs[i].Pass = "XXXXXXXX"
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err = e.Encode(srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
 }
 
 func handlerAgents(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +234,7 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 	svc := RepMan.currentCluster.OpenSVCConnect()
 	servers := RepMan.currentCluster.GetServers()
@@ -367,55 +265,6 @@ func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte(res))
-}
-
-func handlerProxies(w http.ResponseWriter, r *http.Request) {
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(RepMan.currentCluster.GetProxies())
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}
-
-func handlerMaster(w http.ResponseWriter, r *http.Request) {
-	m := RepMan.currentCluster.GetMaster()
-	var srvs *cluster.ServerMonitor
-	if m != nil {
-
-		data, _ := json.Marshal(m)
-
-		err := json.Unmarshal(data, &srvs)
-		if err != nil {
-			log.Println("Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	}
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(srvs)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}
-
-func handlerAlerts(w http.ResponseWriter, r *http.Request) {
-	a := new(cluster.Alerts)
-	a.Errors = RepMan.currentCluster.GetStateMachine().GetOpenErrors()
-	a.Warnings = RepMan.currentCluster.GetStateMachine().GetOpenWarnings()
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(a)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
 }
 
 func handlerSettings(w http.ResponseWriter, r *http.Request) {
@@ -480,7 +329,7 @@ func handlerSettings(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func handlerMrmHeartbeat(w http.ResponseWriter, r *http.Request) {
+func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send heartbeat
 	send.UUID = RepMan.UUID
 	send.UID = conf.ArbitrationSasUniqueId
@@ -508,60 +357,12 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerSwitchover(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if RepMan.currentCluster.IsMasterFailed() {
-		RepMan.currentCluster.LogPrintf("ERROR", " Master failed, cannot initiate switchover")
-		http.Error(w, "Master failed", http.StatusBadRequest)
-		return
-	}
-	RepMan.currentCluster.LogPrintf("INFO", "Rest API receive Switchover request")
-	RepMan.currentCluster.SwitchOver()
-	return
-}
-
-func handlerFailover(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	RepMan.currentCluster.MasterFailover(true)
-	return
-}
-
-func handlerSetTest(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	RepMan.currentCluster.LogPrintf("INFO", "Change test/prod mode %v", RepMan.currentCluster.GetFailSync())
-	RepMan.currentCluster.SetTestMode(!RepMan.currentCluster.GetTestMode())
-	return
-}
-
-func handlerResetFailoverCtr(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	RepMan.currentCluster.ResetFailoverCtr()
-
-	return
-}
-
-func handlerBootstrap(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	RepMan.currentCluster.SetCleanAll(true)
-	if err := RepMan.currentCluster.Bootstrap(); err != nil {
-		RepMan.currentCluster.LogPrintf("ERROR", "Could not bootstrap replication %s", err)
-
-	}
-	return
-}
-
 func handlerTests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	regtest := new(regtest.RegTest)
 	res := regtest.RunAllTests(RepMan.currentCluster, "ALL")
 	RepMan.currentCluster.LogPrintf("INFO", "Some tests failed %s", res)
 
-	return
-}
-
-func handlerSysbench(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	go RepMan.currentCluster.RunSysbench()
 	return
 }
 

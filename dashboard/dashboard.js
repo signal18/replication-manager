@@ -10,29 +10,29 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
         });
 });
 
-app.factory('CLusterServers', function($resource) {
-    return $resource('/clusters/:clusterName/servers',{clusterName:'@clusters'});
-});
-
 app.factory('Servers', function($resource) {
-    return $resource('/servers',);
-});
-
-app.factory('Slaves', function($resource) {
-    return $resource('/slaves');
-});
-
-app.factory('Agents', function($resource) {
-    return $resource('/agents');
+    return $resource('/clusters/:clusterName/topology/servers',{clusterName:'@clusters'});
 });
 
 app.factory('Proxies', function($resource) {
-    return $resource('/proxies');
+    return $resource('/clusters/:clusterName/topology/proxies',{clusterName:'@clusters'});
+});
+
+app.factory('Slaves', function($resource) {
+  return $resource('/clusters/:clusterName/topology/slaves',{clusterName:'@clusters'});
 });
 
 app.factory('Log', function($resource) {
     return $resource('/log');
 });
+
+
+
+app.factory('Agents', function($resource) {
+    return $resource('/agents');
+});
+
+
 
 app.factory('Settings', function($resource) {
     return $resource(
@@ -48,7 +48,7 @@ app.factory('Settings', function($resource) {
 
 app.factory('Alerts', function($resource) {
     return $resource(
-        '/alerts',
+        '/clusters/:clusterName/topology/alerts',{clusterName:'@clusters'},
         '', {
             'query': {
                 method: 'GET',
@@ -60,7 +60,7 @@ app.factory('Alerts', function($resource) {
 
 app.factory('Master', function($resource) {
     return $resource(
-        '/master',
+        '/clusters/:clusterName/topology/master',{clusterName:'@clusters'},
         '', {
             'query': {
                 method: 'GET',
@@ -82,79 +82,6 @@ app.factory('Test', function($resource) {
     );
 });
 
-app.factory('Sysbench', function($resource) {
-    return $resource(
-        '/sysbench',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-app.factory('Toggletraffic', function($resource) {
-    return $resource(
-        '/toggletraffic',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-app.factory('SetCluster', function($resource) {
-    return $resource(
-        '/setcluster',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-app.factory('Bootstrap', function($resource) {
-    return $resource(
-        '/bootstrap',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-app.factory('Rolling', function($resource) {
-    return $resource(
-        '/rolling',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-app.factory('Unprovision', function($resource) {
-    return $resource(
-        '/unprovision',
-        '', {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
-});
-
-
 app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves', function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves) {
 
     var timeFrame = $routeParams.timeFrame;
@@ -163,7 +90,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     }
 
     $interval(function() {
-        Servers.query({}, function(data) {
+      Settings.query( {}, function(data) {
+          $scope.settings = data;
+      }, function(error) {
+          $scope.reserror = true;
+      });
+        Servers.query({clusterName:$scope.clusters}, function(data) {
             $scope.servers = data;
             $scope.reserror = false;
         }, function(error) {
@@ -176,32 +108,29 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             $scope.reserror = true;
 
         });
-        Settings.query({}, function(data) {
-            $scope.settings = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-        Alerts.query({}, function(data) {
-            $scope.alerts = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-        Master.query({}, function(data) {
-            $scope.master = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-        Proxies.query({}, function(data) {
-            $scope.proxies = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
         Agents.query({}, function(data) {
             $scope.agents = data;
         }, function(error) {
             $scope.reserror = true;
         });
-        Slaves.query({}, function(data) {
+
+        Alerts.query({clusterName:$scope.clusters}, function(data) {
+            $scope.alerts = data;
+        }, function(error) {
+            $scope.reserror = true;
+        });
+        Master.query({clusterName:$scope.clusters}, function(data) {
+            $scope.master = data;
+        }, function(error) {
+            $scope.reserror = true;
+        });
+        Proxies.query({clusterName:$scope.clusters}, function(data) {
+            $scope.proxies = data;
+        }, function(error) {
+            $scope.reserror = true;
+        });
+
+        Slaves.query({clusterName:$scope.clusters}, function(data) {
             $scope.slaves = data;
         }, function(error) {
             $scope.reserror = true;
@@ -209,11 +138,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     }, 1000);
 
     $scope.selectedUserIndex = undefined;
+
     $scope.switch = function(fail) {
         if (fail == false) {
             var r = confirm("Confirm switchover");
             if (r == true) {
-                var response = $http.get('/switchover');
+                var response = $http.get('/clusters/'+$scope.clusters+'/actions/switchover');
                 response.success(function(data, status, headers, config) {
                     console.log("Ok.");
                 });
@@ -224,7 +154,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         } else {
             var r = confirm("Confirm failover");
             if (r == true) {
-                var response = $http.get('/failover');
+                var response = $http.get('/clusters/'+$scope.clusters+'/actions/failover');
                 response.success(function(data, status, headers, config) {
                     console.log("Ok.");
                 });
@@ -238,7 +168,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.maintenance = function(server) {
         var r = confirm("Confirm maintenance for server-id: " + server);
         if (r == true) {
-            var response = $http.get('/maintenance?server=' + server);
+            var response = $http.get('/clusters/'+$scope.clusters+'/servers/'+server+'/actions/maintenance'  );
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -250,7 +180,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.start = function(server) {
         var r = confirm("Confirm start for server-id: " + server);
         if (r == true) {
-            var response = $http.get('/start?server=' + server);
+            var response = $http.get('/clusters/'+$scope.clusters+'/servers/'+server+'/actions/start' );
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -262,7 +192,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.stop = function(server) {
         var r = confirm("Confirm stop for server-id: " + server);
         if (r == true) {
-            var response = $http.get('/stop?server=' + server);
+            var response = $http.get('/clusters/'+$scope.clusters+'/servers/'+server+'/actions/stop' );
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -278,7 +208,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.toggletraffic = function() {
         var r = confirm("Confirm toggle traffic");
         if (r == true) {
-            var response = $http.get('/toggletraffic');
+            var response = $http.get('/clusters/' + $scope.clusters + '/actions/switch/database-hearbeat');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -292,7 +222,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.resetfail = function() {
         var r = confirm("Reset Failover counter?");
         if (r == true) {
-            var response = $http.get('/resetfail');
+            var response = $http.get('/clusters/' + $scope.clusters + '/actions/reset-failover-counter');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -322,7 +252,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.bootstrap = function() {
         var r = confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?");
         if (r == true) {
-            var response = $http.get('/bootstrap');
+            var response = $http.get('/clusters/' + $scope.clusters + '/services/actions/bootstrap');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -336,7 +266,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.unprovision = function() {
         var r = confirm("Unprovision operation will destroy your existing data. \n Are you really sure?");
         if (r == true) {
-            var response = $http.get('/unprovision');
+            var response = $http.get('/clusters/' + $scope.clusters + '/services/actions/unprovision');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -348,7 +278,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     };
 
     $scope.rolling = function() {
-        var response = $http.get('/rolling');
+        var response = $http.get('/clusters/' + $scope.clusters + '/actions/rolling');
         response.success(function(data, status, headers, config) {
             console.log("Ok.");
         });
@@ -390,7 +320,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.sysbench = function() {
         var r = confirm("Confirm sysbench run !");
         if (r == true) {
-            var response = $http.get('/sysbench');
+            var response = $http.get('/clusters/' + $scope.clusters + '/actions/sysbench');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -404,7 +334,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.runonetest = function() {
         var r = confirm("Confirm run one test !");
         if (r == true) {
-            var response = $http.get('/runonetest?test=' + $scope.tests);
+            var response = $http.get('/clusters/' + $scope.clusters + '/tests/actions/run/' + $scope.tests);
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -428,7 +358,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     $scope.optimize = function() {
 
-        var response = $http.get('/clusters/' + $scope.clusters + '/optimize');
+        var response = $http.get('/clusters/' + $scope.clusters + '/actions/optimize');
         response.success(function(data, status, headers, config) {
             console.log("Ok.");
         });
@@ -439,7 +369,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     $scope.backupphysical = function(server) {
       var r = confirm("Confirm master physical backup");
-        var response = $http.get('/clusters/' + $scope.clusters + '/backupphysical');
+        var response = $http.get('/clusters/' + $scope.clusters + '/actions/backupphysical');
         response.success(function(data, status, headers, config) {
             console.log("Ok.");
         });
@@ -463,7 +393,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     $scope.switchsettings = function(setting) {
 
-            var response = $http.get('/clusters/' + $scope.clusters + '/settings/switch/' + setting );
+            var response = $http.get('/clusters/' + $scope.clusters + '/actions/switch/' + setting );
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
