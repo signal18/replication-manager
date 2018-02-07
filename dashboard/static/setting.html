@@ -86,9 +86,11 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-slider class="md-primary" flex ng-model="settings.maxdelay" min="10" max="1000" aria-label="delay"></md-slider>
+                            <md-slider ng-value="settings.maxdelay" md-discrete ng-if="settings.rplchecks=='true'"  flex ng-model="settings.maxdelay" step="1" min="10" max="100" aria-label="delay">
+                            </md-slider>
 
-                            <span ng-if="settings.rplchecks=='true'" ng-click="switchsettings('check-replication-state')" class="label label-primary">{{settings.maxdelay}}</span><span ng-if="settings.rplchecks=='false'" ng-click="switchsettings('check-replication-state')" class="label label-warning">{{settings.maxdelay}}</span>
+                            <span  class="label label-primary">{{settings.maxdelay}}</span>
+
                         </td>
                     </tr>
                 </table>

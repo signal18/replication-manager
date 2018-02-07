@@ -10,9 +10,12 @@
 package cluster
 
 import (
+	"fmt"
 	"strconv"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/misc"
 )
 
 func (server *ServerMonitor) SetIgnored(ignored bool) {
@@ -57,6 +60,29 @@ func (server *ServerMonitor) SetReadWrite() error {
 
 func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
+}
+
+func (server *ServerMonitor) SetCredential(url string, user string, pass string) {
+	server.User = user
+	server.Pass = pass
+	server.URL = url
+	server.Host, server.Port = misc.SplitHostPort(url)
+	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.Conf.Timeout, server.ClusterGroup.Conf.ReadTimeout)
+
+	mydsn := func() string {
+		dsn := server.User + ":" + server.Pass + "@"
+		if server.Host != "" {
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+		} else {
+			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
+		}
+		return dsn
+	}
+	server.DSN = mydsn()
+	if server.ClusterGroup.haveDBTLSCert {
+		mysql.RegisterTLSConfig("tlsconfig", server.ClusterGroup.tlsconf)
+		server.DSN = server.DSN + "&tls=tlsconfig"
+	}
 }
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {

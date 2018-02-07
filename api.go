@@ -146,13 +146,17 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/reload", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/switch/{settingName}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSettings)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSetSettings)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -311,12 +315,11 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
 	))
-
+	log.Info("Starting JWT API on " + conf.APIBind + ":" + conf.APIPort)
 	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}
-	log.Info("JWT API listening on " + conf.APIBind + ":" + conf.APIPort)
 
 }
 
@@ -847,6 +850,37 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchTraffic()
 		case "test":
 			mycluster.SwitchTestMode()
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		setting := vars["settingName"]
+		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
+		switch setting {
+		case "failover-max-slave-delay":
+			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)
+			mycluster.SetRplMaxDelay(val)
+		case "failover-limit":
+			val, _ := strconv.Atoi(vars["settingValue"])
+			mycluster.SetFailLimit(val)
+		case "backup-keep-hourly":
+		case "backup-keep-daily":
+		case "backup-keep-monthly":
+		case "backup-keep-weekly":
+		case "backup-keep-yearly":
+		case "db-servers-hosts":
+		case "db-servers-credential":
+			mycluster.SetClusterCredential(vars["settingValue"])
+
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

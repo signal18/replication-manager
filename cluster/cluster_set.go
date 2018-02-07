@@ -6,9 +6,11 @@
 
 package cluster
 
-import "github.com/signal18/replication-manager/dbhelper"
-import "github.com/signal18/replication-manager/state"
-import "github.com/signal18/replication-manager/opensvc"
+import (
+	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/state"
+)
 
 func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	var err error
@@ -191,6 +193,18 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 	cluster.testStopCluster = check
 }
 
+func (cluster *Cluster) SetClusterCredential(credential string) {
+	cluster.Conf.User = credential
+	cluster.isValidConfig()
+	for _, srv := range cluster.Servers {
+		srv.SetCredential(srv.URL, cluster.dbUser, cluster.dbPass)
+	}
+	cluster.SetUnDiscovered()
+}
+
+func (cluster *Cluster) SetUnDiscovered() {
+	cluster.sme.UnDiscovered()
+}
 func (cluster *Cluster) SetActiveStatus(status string) {
 	cluster.Status = status
 	if cluster.Status == ConstMonitorActif {

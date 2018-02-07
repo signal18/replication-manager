@@ -26,7 +26,6 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
 	"github.com/signal18/replication-manager/httplog"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/slowlog"
 	"github.com/signal18/replication-manager/state"
 )
@@ -145,9 +144,11 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 
 	server := new(ServerMonitor)
+	server.ClusterGroup = cluster
+
+	server.SetCredential(url, user, pass)
 	server.TestConfig = conf
-	server.User = user
-	server.Pass = pass
+
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveSyncBinLog = true
@@ -160,11 +161,10 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	// consider all nodes are maxscale to avoid sending command until discoverd
 	server.IsRelay = false
 	server.IsMaxscale = true
-	server.ClusterGroup = cluster
-	server.URL = url
+
 	server.State = stateSuspect
 	server.PrevState = stateSuspect
-	server.Host, server.Port = misc.SplitHostPort(url)
+
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
@@ -191,22 +191,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
 		return server, errmsg
 	}
-	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.Conf.Timeout, cluster.Conf.ReadTimeout)
 
-	mydsn := func() string {
-		dsn := server.User + ":" + server.Pass + "@"
-		if server.Host != "" {
-			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
-		} else {
-			dsn += "unix(" + cluster.Conf.Socket + ")/" + params
-		}
-		return dsn
-	}
-	server.DSN = mydsn()
-	if cluster.haveDBTLSCert {
-		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
-		server.DSN = server.DSN + "&tls=tlsconfig"
-	}
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
 	return server, err

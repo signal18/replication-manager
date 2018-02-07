@@ -24,7 +24,6 @@ import (
 	"github.com/signal18/replication-manager/cron"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 	"github.com/signal18/replication-manager/termlog"
 	log "github.com/sirupsen/logrus"
@@ -473,11 +472,7 @@ func (cluster *Cluster) agentFlagCheck() {
 	if len(cluster.hostList) > 1 {
 		log.Fatal("Agent can only monitor a single host")
 	}
-	// validate users.
-	if cluster.Conf.User == "" {
-		log.Fatal("No master user/pair specified")
-	}
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
+
 }
 
 func (cluster *Cluster) BackupLogs() {

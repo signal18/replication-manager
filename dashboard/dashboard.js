@@ -208,7 +208,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.toggletraffic = function() {
         var r = confirm("Confirm toggle traffic");
         if (r == true) {
-            var response = $http.get('/clusters/' + $scope.clusters + '/actions/switch/database-hearbeat');
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/switch/database-hearbeat');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
@@ -393,7 +393,32 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     $scope.switchsettings = function(setting) {
 
-            var response = $http.get('/clusters/' + $scope.clusters + '/actions/switch/' + setting );
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/switch/' + setting );
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+
+    };
+
+
+    $scope.$watch('settings.maxdelay', function (newVal, oldVal) {
+      if (typeof newVal != 'undefined') {
+      var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/set/failover-max-slave-delay/' + newVal );
+      response.success(function(data, status, headers, config) {
+          console.log("Ok.");
+      });
+      response.error(function(data, status, headers, config) {
+          console.log("Error.");
+      });
+      }  
+    });
+
+    $scope.setsettings = function(setting,value) {
+
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/set/' + setting +'/'+value);
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });

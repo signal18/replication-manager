@@ -174,7 +174,8 @@ func httpserver() {
 	router.HandleFunc("/clusters/{clusterName}/actions/sysbench", handlerMuxClusterSysbench)
 	router.HandleFunc("/clusters/{clusterName}/services/actions/bootstrap", handlerMuxServicesBootstrap)
 	router.HandleFunc("/clusters/{clusterName}/services/actions/unprovision", handlerMuxServicesUnprovision)
-	router.HandleFunc("/clusters/{clusterName}/actions/switch/{settingName}", handlerMuxSwitchSettings)
+	router.HandleFunc("/clusters/{clusterName}/settings/actions/switch/{settingName}", handlerMuxSwitchSettings)
+	router.HandleFunc("/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", handlerMuxSetSettings)
 
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/master-status", handlerMuxServersMasterStatus)
 	router.HandleFunc("/clusters/{clusterName}/servers/{serverName}/slave-status", handlerMuxServersSlaveStatus)
