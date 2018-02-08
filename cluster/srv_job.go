@@ -179,6 +179,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct FROM replication_manager_schema.jobs WHERE result IS NULL group by task ")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Sceduler, error fetching replication_manager_schema.jobs %s", err)
+		return err
 	}
 	for rows.Next() {
 		var task DBTask
