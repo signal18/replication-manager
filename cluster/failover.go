@@ -95,9 +95,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.sme.RemoveFailoverState()
 		return false
 	}
+
 	cluster.LogPrintf(LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
+	if fail && !cluster.isSlaveElectable(cluster.slaves[key], true) {
+		cluster.LogPrintf(LvlInfo, "Elected slave have issue cancelling failover", cluster.slaves[key].URL)
+		cluster.sme.RemoveFailoverState()
+		return false
+	}
 	// Shuffle the server list
-	oldMaster := cluster.master
 	var skey int
 	for k, server := range cluster.Servers {
 		if cluster.slaves[key].URL == server.URL {
@@ -105,6 +110,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			break
 		}
 	}
+	oldMaster := cluster.master
 	cluster.master = cluster.Servers[skey]
 	cluster.master.State = stateMaster
 	if cluster.Conf.MultiMaster == false {
@@ -645,7 +651,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 	for i, sl := range l {
 
 		/* If server is in the ignore list, do not elect it */
-		if sl.IsIgnored() {
+		if sl.IsIgnored() && !cluster.master.IsDown() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			continue
 		}
@@ -665,12 +671,12 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 				cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ErrFrom: "CHECK"})
 				continue
 			}
-		}
+			/* binlog + ping  */
+			if cluster.isSlaveElectable(sl, forcingLog) == false {
+				cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
+				continue
+			}
 
-		/* binlog + ping  */
-		if cluster.isSlaveElectable(sl, forcingLog) == false {
-			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
-			continue
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
@@ -781,7 +787,12 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
-
+	if sl.IsIgnored() {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Slave is in ignored list ", sl.URL)
+		}
+		return false
+	}
 	return true
 }
 
