@@ -502,26 +502,26 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogPrintf(LvlInfo, "Found pseudoGTID %s", pseudoGTID)
 				slFile, slPos, err := sl.GetBinlogPosFromPseudoGTID(pseudoGTID)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Could not Found pseudoGTID in slave %s, %s", sl.URL, err)
+					cluster.LogPrintf(LvlErr, "Could not find pseudoGTID in slave %s, %s", sl.URL, err)
 				}
-				cluster.LogPrintf(LvlInfo, "Found Coordonate on slave %s,%s", slFile, slPos)
+				cluster.LogPrintf(LvlInfo, "Found Coordinates on slave %s, %s", slFile, slPos)
 				slSkip, err := sl.GetNumberOfEventsAfterPos(slFile, slPos)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Could not found number of events after pseudoGTID in slave %s, %s", sl.URL, err)
+					cluster.LogPrintf(LvlErr, "Could not find number of events after pseudoGTID in slave %s, %s", sl.URL, err)
 				}
-				cluster.LogPrintf(LvlInfo, "Found %d envents to skip aftre Coordonate on slave %s,%s", slSkip, slFile, slPos)
+				cluster.LogPrintf(LvlInfo, "Found %d events to skip after coordinates on slave %s,%s", slSkip, slFile, slPos)
 
 				mFile, mPos, err := cluster.master.GetBinlogPosFromPseudoGTID(pseudoGTID)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Could not Found pseudoGTID in master %s, %s", cluster.master.URL, err)
+					cluster.LogPrintf(LvlErr, "Could not find pseudoGTID in master %s, %s", cluster.master.URL, err)
 				}
-				cluster.LogPrintf(LvlInfo, "Found Coordonate on master %s,%s", mFile, mPos)
+				cluster.LogPrintf(LvlInfo, "Found coordinate on master %s ,%s", mFile, mPos)
 
 				mFile, mPos, err = cluster.master.GetBinlogPosAfterSkipNumberOfEvents(mFile, mPos, slSkip)
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Could not skip event after pseudoGTID in master %s, %s", cluster.master.URL, err)
 				}
-				cluster.LogPrintf(LvlInfo, "Found skip coordonate on master %s,%s", mFile, mPos)
+				cluster.LogPrintf(LvlInfo, "Found skip coordinate on master %s, %s", mFile, mPos)
 
 				cluster.LogPrintf(LvlInfo, "Doing Positional switch of slave %s", sl.URL)
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -601,7 +601,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		// now start the old master as relay is ready
 		if cluster.conf.MxsBinlogOn && fail == false {
-			cluster.LogPrintf(LvlInfo, "Restating old master replication relay server ready")
+			cluster.LogPrintf(LvlInfo, "Restarting old master replication relay server ready")
 			dbhelper.StartSlave(oldMaster.Conn)
 		}
 		if cluster.conf.ReadOnly && cluster.conf.MxsBinlogOn == false {
