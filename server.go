@@ -672,7 +672,6 @@ func (repman *ReplicationManager) Run() error {
 	ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
 	repman.isStarted = true
 	for repman.exit == false {
-
 		select {
 		case <-ticker.C:
 			if conf.Arbitration {
@@ -682,7 +681,6 @@ func (repman *ReplicationManager) Run() error {
 				//			agents = svc.GetNodes()
 			}
 		}
-
 	}
 	if repman.exitMsg != "" {
 		log.Println(repman.exitMsg)

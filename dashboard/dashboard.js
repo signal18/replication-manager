@@ -26,13 +26,9 @@ app.factory('Log', function($resource) {
     return $resource('/log');
 });
 
-
-
 app.factory('Agents', function($resource) {
     return $resource('/agents');
 });
-
-
 
 app.factory('Settings', function($resource) {
     return $resource(
@@ -413,7 +409,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
       response.error(function(data, status, headers, config) {
           console.log("Error.");
       });
-      }  
+      }
     });
 
     $scope.setsettings = function(setting,value) {

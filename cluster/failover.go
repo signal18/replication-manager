@@ -52,13 +52,23 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 		cluster.LogPrintf(LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
+		if cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major > 10 && cluster.master.DBVersion.Minor >= 1 {
 
-		go func() {
-			var err2 error
-			err2 = dbhelper.FlushTablesNoLog(cluster.master.Conn)
+			go func() {
+				var err2 error
+				err2 = dbhelper.MariaDBFlushTablesNoLogTimeout(cluster.master.Conn, strconv.FormatInt(cluster.Conf.SwitchWaitTrx+2, 10))
+				workerFlushTable <- err2
+			}()
+		} else {
+			go func() {
+				var err2 error
+				err2 = dbhelper.FlushTablesNoLog(cluster.master.Conn)
 
-			workerFlushTable <- err2
-		}()
+				workerFlushTable <- err2
+			}()
+
+		}
+
 		select {
 		case err = <-workerFlushTable:
 			if err != nil {
@@ -731,21 +741,21 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlDbg, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogPrintf(LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
 		cluster.sme.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK"})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlDbg, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.IsMaintenance {
 		cluster.sme.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK"})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlDbg, "Slave %s is in maintenance. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		}
 		return false
 	}
@@ -767,7 +777,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
 		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK"})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlDbg, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
