@@ -908,6 +908,12 @@ func FlushTablesNoLog(db *sqlx.DB) error {
 	return err
 }
 
+func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) error {
+	_, err := db.Exec("SET STATEMENT max_statement_time=" + timeout + " FOR FLUSH NO_WRITE_TO_BINLOG TABLES")
+	//MySQL does not support DML timeout only SELECT
+	return err
+}
+
 func FlushTablesWithReadLock(db *sqlx.DB) error {
 	_, err := db.Exec("FLUSH TABLES WITH READ LOCK")
 	return err

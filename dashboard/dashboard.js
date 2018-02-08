@@ -23,6 +23,7 @@ app.factory('Agents', function($resource) {
     return $resource('/agents');
 });
 
+<<<<<<< HEAD
 app.factory('Proxies', function($resource) {
     return $resource('/proxies');
 });
@@ -31,6 +32,8 @@ app.factory('Log', function($resource) {
     return $resource('/log');
 });
 
+=======
+>>>>>>> 97239bf... Flush table query timeout for > MariaDB 10.1
 app.factory('Settings', function($resource) {
     return $resource(
         '/settings',
@@ -621,6 +624,46 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
     };
 
+<<<<<<< HEAD
+=======
+    $scope.switchsettings = function(setting) {
+
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/switch/' + setting );
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+
+    };
+
+
+    $scope.$watch('settings.maxdelay', function (newVal, oldVal) {
+      if (typeof newVal != 'undefined') {
+      var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/set/failover-max-slave-delay/' + newVal );
+      response.success(function(data, status, headers, config) {
+          console.log("Ok.");
+      });
+      response.error(function(data, status, headers, config) {
+          console.log("Error.");
+      });
+      }
+    });
+
+    $scope.setsettings = function(setting,value) {
+
+            var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/set/' + setting +'/'+value);
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+
+    };
+
+>>>>>>> 97239bf... Flush table query timeout for > MariaDB 10.1
     $scope.selectUserIndex = function(index) {
       var r = confirm("Confirm select Index  " + index);
       if ($scope.selectedUserIndex !== index) {
