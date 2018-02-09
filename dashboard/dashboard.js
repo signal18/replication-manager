@@ -85,6 +85,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         timeFrame = "10m"
     }
 
+    var refreshInterval = 2000;
+
     $interval(function() {
       Settings.query( {}, function(data) {
           $scope.settings = data;
@@ -131,7 +133,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }, function(error) {
             $scope.reserror = true;
         });
-    }, 1000);
+    }, refreshInterval);
 
     $scope.selectedUserIndex = undefined;
 
