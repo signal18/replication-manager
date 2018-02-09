@@ -3,9 +3,7 @@
             <md-card-content>
                 <p class="sectionheader">ERRORS</p>
                 <BR>
-                <md-pre width="100%" class="alert alert-danger">
-                    <div ng-repeat="element in alerts.errors"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
-                </md-pre>
+                  <div ng-repeat="element in alerts.errors" class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
             </md-card-content>
         </md-card>
         <BR>
@@ -13,9 +11,7 @@
             <md-card-content>
                 <p class="sectionheader">WARNINGS</p>
                 <BR>
-                <md-pre>
-                    <div ng-repeat="element in alerts.warnings"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
-                </md-pre>
+                  <div ng-repeat="element in alerts.warnings" class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> {{ element.desc }}</div>
             </md-card-content>
         </md-card>
     </md-content>
