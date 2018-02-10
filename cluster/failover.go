@@ -622,8 +622,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	if fail == true && cluster.conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.conf.PrefMaster && cluster.conf.PrefMaster != "" {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
-		if prm != nil {
-			cluster.LogPrintf(LvlInfo, "Not on Preferred Master after failover")
+		if prm != nil && cluster.master.State != stateFailed {
+			cluster.LogPrintf(LvlInfo, "Not on Preferred Master after failover proceed switchover")
 			cluster.MasterFailover(false)
 		}
 	}
@@ -798,7 +798,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 
 func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 	for _, sl := range l {
-		if sl.URL == cluster.conf.PrefMaster && cluster.master.State != stateFailed {
+		if sl.URL == cluster.conf.PrefMaster {
 			return sl
 		}
 	}
