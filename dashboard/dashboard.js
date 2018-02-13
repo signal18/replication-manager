@@ -23,7 +23,6 @@ app.factory('Agents', function($resource) {
     return $resource('/agents');
 });
 
-<<<<<<< HEAD
 app.factory('Proxies', function($resource) {
     return $resource('/proxies');
 });
@@ -32,8 +31,6 @@ app.factory('Log', function($resource) {
     return $resource('/log');
 });
 
-=======
->>>>>>> 97239bf... Flush table query timeout for > MariaDB 10.1
 app.factory('Settings', function($resource) {
     return $resource(
         '/settings',
