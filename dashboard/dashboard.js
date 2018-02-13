@@ -82,7 +82,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     var timeFrame = $routeParams.timeFrame;
     if (timeFrame == "") {
-        timeFrame = "10m"
+        timeFrame = "10m";
     }
 
     var refreshInterval = 2000;
@@ -150,13 +150,13 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 });
             }
         } else {
-            var r = confirm("Confirm failover");
-            if (r == true) {
-                var response = $http.get('/clusters/'+$scope.clusters+'/actions/failover');
-                response.success(function(data, status, headers, config) {
+            var r2 = confirm("Confirm failover");
+            if (r2 == true) {
+                var response2 = $http.get('/clusters/'+$scope.clusters+'/actions/failover');
+                response2.success(function(data, status, headers, config) {
                     console.log("Ok.");
                 });
-                response.error(function(data, status, headers, config) {
+                response2.error(function(data, status, headers, config) {
                     console.log("Error.");
                 });
             }
@@ -292,8 +292,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         if (arr != null) {
             for (i = 0; i < arr.length; i++) {
                 var gtid = "";
-                gtid = arr[i]["DomainID"] + '-' + arr[i]["ServerID"] + '-' + arr[i]["SeqNo"];
-                output.push(gtid)
+                gtid = arr[i].DomainID + '-' + arr[i].ServerID + '-' + arr[i].SeqNo;
+                output.push(gtid);
             }
             return output.join(",");
         }
@@ -339,7 +339,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             response.error(function(data, status, headers, config) {
                 console.log("Error.");
             });
-            $scope.tests = ""
+            $scope.tests = "";
         }
     };
 
