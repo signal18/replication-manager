@@ -621,8 +621,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
     };
 
-<<<<<<< HEAD
-=======
+
     $scope.switchsettings = function(setting) {
 
             var response = $http.get('/clusters/' + $scope.clusters + '/settings/actions/switch/' + setting );
@@ -660,7 +659,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     };
 
->>>>>>> 97239bf... Flush table query timeout for > MariaDB 10.1
+
     $scope.selectUserIndex = function(index) {
       var r = confirm("Confirm select Index  " + index);
       if ($scope.selectedUserIndex !== index) {
