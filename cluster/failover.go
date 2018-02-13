@@ -89,7 +89,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
-	key := cluster.electCandidate(cluster.slaves, true)
+	key := cluster.electCandidate(cluster.slaves, fail, true)
 	if key == -1 {
 		cluster.LogPrintf(LvlErr, "No candidates found")
 		cluster.sme.RemoveFailoverState()
@@ -639,7 +639,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 }
 
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
-func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int {
+func (cluster *Cluster) electCandidate(l []*ServerMonitor, fail bool, forcingLog bool) int {
 	ll := len(l)
 	seqList := make([]uint64, ll)
 	posList := make([]uint64, ll)
@@ -650,7 +650,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 
 	for i, sl := range l {
 
-		/* If server is in the ignore list, do not elect it */
+		/* If server is in the ignore list, do not elect it in switchover */
 		if sl.IsIgnored() && !cluster.master.IsDown() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			continue
@@ -676,7 +676,6 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 				cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
 				continue
 			}
-
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
@@ -686,7 +685,7 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, forcingLog bool) int 
 			}
 			return i
 		}
-		//old style replication
+		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
 			continue
