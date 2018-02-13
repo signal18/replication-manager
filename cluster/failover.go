@@ -819,7 +819,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 	} //end loop all slaves
 
-	foundpos := 0
+	foundpos := -1
 	if max > 0 {
 		/* Return key of slave with the highest seqno. */
 		foundpos = hiseq
@@ -828,11 +828,13 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		/* Return key of slave with the highest pos. */
 		foundpos = hipos
 	}
-	if foundpos != 0 {
+	if foundpos != -1 {
 		if cluster.isSlaveElectable(l[foundpos], forcingLog) == false {
 			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], l[foundpos].URL), ErrFrom: "CHECK"})
 			return -1
 		}
+		return foundpos
+
 	}
 
 	return -1

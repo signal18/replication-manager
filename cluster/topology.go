@@ -99,11 +99,22 @@ func (cluster *Cluster) pingServerList() {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
-
+	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
 	for _, server := range cluster.Servers {
-		wg.Add(1)
-		go server.Ping(wg)
+		if server.IsIgnored() {
+			wg.Add(1)
+			go server.Ping(wg)
+		}
+	}
+	wg.Wait()
+
+	wg = new(sync.WaitGroup)
+	for _, server := range cluster.Servers {
+		if !server.IsIgnored() {
+			wg.Add(1)
+			go server.Ping(wg)
+		}
 	}
 	wg.Wait()
 
