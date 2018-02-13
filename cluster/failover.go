@@ -89,7 +89,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
-	key := cluster.electCandidate(cluster.slaves, fail, true)
+	key := -1
+	if fail {
+		key = cluster.electFailoverCandidate(cluster.slaves, true)
+	} else {
+		key = cluster.electSwitchoverCandidate(cluster.slaves, true)
+	}
 	if key == -1 {
 		cluster.LogPrintf(LvlErr, "No candidates found")
 		cluster.sme.RemoveFailoverState()
@@ -639,7 +644,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 }
 
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
-func (cluster *Cluster) electCandidate(l []*ServerMonitor, fail bool, forcingLog bool) int {
+func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog bool) int {
 	ll := len(l)
 	seqList := make([]uint64, ll)
 	posList := make([]uint64, ll)
@@ -651,11 +656,11 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, fail bool, forcingLog
 	for i, sl := range l {
 
 		/* If server is in the ignore list, do not elect it in switchover */
-		if sl.IsIgnored() && !cluster.master.IsDown() {
+		if sl.IsIgnored() {
 			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			continue
 		}
-		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
+		//Need comment//
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
 			continue
@@ -666,25 +671,25 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, fail bool, forcingLog
 		}
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
-		if !cluster.master.IsDown() {
-			if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
-				cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ErrFrom: "CHECK"})
-				continue
-			}
-			/* binlog + ping  */
-			if cluster.isSlaveElectable(sl, forcingLog) == false {
-				cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
-				continue
-			}
+
+		if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
+			cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ErrFrom: "CHECK"})
+			continue
+		}
+		/* binlog + ping  */
+		if cluster.isSlaveElectable(sl, forcingLog) == false {
+			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ErrFrom: "CHECK"})
+			continue
 		}
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
-		if sl.URL == cluster.Conf.PrefMaster && cluster.master.State != stateFailed {
+		if sl.URL == cluster.Conf.PrefMaster {
 			if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
+		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
@@ -740,6 +745,96 @@ func (cluster *Cluster) electCandidate(l []*ServerMonitor, fail bool, forcingLog
 		/* Return key of slave with the highest pos. */
 		return hipos
 	}
+	return -1
+}
+
+func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bool) int {
+	//Found the most uptodate and look after a possibility to failover on it
+	ll := len(l)
+	seqList := make([]uint64, ll)
+	posList := make([]uint64, ll)
+	hipos := 0
+	hiseq := 0
+	var max uint64
+	var maxpos uint64
+
+	for i, sl := range l {
+
+		//Need comment//
+		if sl.IsRelay {
+			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK"})
+			continue
+		}
+		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
+			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
+			continue
+		}
+
+		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
+		// not a slave
+		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
+			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
+			continue
+		}
+		// Fake position if none as new slave
+		filepos := "1"
+		logfile := "master.000001"
+		if errss == nil {
+			filepos = ss.ReadMasterLogPos.String
+			logfile = ss.MasterLogFile.String
+		}
+		if strings.Contains(logfile, ".") == false {
+			continue
+		}
+		for len(filepos) > 10 {
+			filepos = "0" + filepos
+		}
+
+		pos := strings.Split(logfile, ".")[1] + filepos
+		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
+
+		posList[i] = binlogposreach
+
+		seqnos := gtid.NewList("1-1-1").GetSeqNos()
+
+		if errss == nil {
+			if cluster.master.State != stateFailed {
+				seqnos = sl.SlaveGtid.GetSeqNos()
+			} else {
+				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqNos()
+			}
+		}
+
+		for _, v := range seqnos {
+			seqList[i] += v
+		}
+		if seqList[i] > max {
+			max = seqList[i]
+			hiseq = i
+		}
+		if posList[i] > maxpos {
+			maxpos = posList[i]
+			hipos = i
+		}
+
+	} //end loop all slaves
+
+	foundpos := 0
+	if max > 0 {
+		/* Return key of slave with the highest seqno. */
+		foundpos = hiseq
+	}
+	if maxpos > 0 {
+		/* Return key of slave with the highest pos. */
+		foundpos = hipos
+	}
+	if foundpos != 0 {
+		if cluster.isSlaveElectable(l[foundpos], forcingLog) == false {
+			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], l[foundpos].URL), ErrFrom: "CHECK"})
+			return -1
+		}
+	}
+
 	return -1
 }
 
