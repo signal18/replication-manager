@@ -259,7 +259,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 func (cluster *Cluster) isFoundCandidateMaster() bool {
 
-	key := cluster.electCandidate(cluster.slaves, false)
+	key := cluster.electFailoverCandidate(cluster.slaves, false)
 	if key == -1 {
 		cluster.sme.AddState("ERR00032", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
 		return false
