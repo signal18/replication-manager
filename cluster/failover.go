@@ -755,9 +755,8 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	ll := len(l)
 	seqList := make([]uint64, ll)
 	posList := make([]uint64, ll)
-	hipos := 0
-	hiseq := 0
-	var max uint64
+
+	var maxseq uint64
 	var maxpos uint64
 	type Trackpos struct {
 		URL                string
@@ -832,37 +831,59 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			seqList[i] += v
 		}
 		trackposList[i].Seq = seqList[i]
-		if seqList[i] > max {
-			max = seqList[i]
-			hiseq = i
+		if seqList[i] > maxseq {
+			maxseq = seqList[i]
+
 		}
 		if posList[i] > maxpos {
 			maxpos = posList[i]
-			hipos = i
+
 		}
 
 	} //end loop all slaves
 	sort.Slice(trackposList[:], func(i, j int) bool {
 		return trackposList[i].Seq > trackposList[j].Seq
 	})
-	data, _ := json.MarshalIndent(trackposList, "", "\t")
-	cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
-	foundpos := -1
-	if max > 0 {
-		/* Return key of slave with the highest seqno. */
-		foundpos = hiseq
+
+	if forcingLog {
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
 	}
+
+	if maxseq > 0 {
+		/* Return key of slave with the highest seqno. */
+
+		//send the prefered if equal max
+		for _, p := range trackposList {
+			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false && p.Prefered == true {
+				return p.Indice
+			}
+		}
+		//send one with maxseq
+		for _, p := range trackposList {
+			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false {
+				return p.Indice
+			}
+		}
+		return -1
+	}
+	sort.Slice(trackposList[:], func(i, j int) bool {
+		return trackposList[i].Pos > trackposList[j].Pos
+	})
 	if maxpos > 0 {
 		/* Return key of slave with the highest pos. */
-		foundpos = hipos
-	}
-	if foundpos != -1 {
-		if cluster.isSlaveElectable(l[foundpos], forcingLog) == false {
-			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], l[foundpos].URL), ErrFrom: "CHECK"})
-			return -1
+		for _, p := range trackposList {
+			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false && p.Prefered == true {
+				return p.Indice
+			}
 		}
-		return foundpos
-
+		//send one with maxpos
+		for _, p := range trackposList {
+			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false {
+				return p.Indice
+			}
+		}
+		return -1
 	}
 
 	return -1
