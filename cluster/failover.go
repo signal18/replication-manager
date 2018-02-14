@@ -793,10 +793,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
-			trackposList[i].Ignoredreplication = false
+			trackposList[i].Ignoredreplication = true
 			continue
 		}
-		trackposList[i].Ignoredreplication = cluster.isSlaveElectable(sl, false)
+		trackposList[i].Ignoredreplication = !cluster.isSlaveElectable(sl, false)
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"

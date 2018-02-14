@@ -64,6 +64,7 @@ type ServerMonitor struct {
 	RplMasterStatus             bool
 	EventScheduler              bool
 	EventStatus                 []dbhelper.Event
+	FullProcessList             []dbhelper.Processlist
 	ClusterGroup                *Cluster `json:"-"` //avoid recusive json
 	BinaryLogFile               string
 	BinaryLogPos                string
@@ -471,7 +472,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
-
+		server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
 	}
 
 	// SHOW MASTER STATUS
