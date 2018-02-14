@@ -10,9 +10,11 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -757,8 +759,25 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	hiseq := 0
 	var max uint64
 	var maxpos uint64
-
+	type Trackpos struct {
+		URL                string
+		Indice             int
+		Pos                uint64
+		Seq                uint64
+		Prefered           bool
+		Ignoredconf        bool
+		Ignoredrelay       bool
+		Ignoredmultimaster bool
+		Ignoredreplication bool
+		Weight             uint
+	}
+	trackposList := make([]Trackpos, ll)
 	for i, sl := range l {
+		trackposList[i].URL = sl.URL
+		trackposList[i].Indice = i
+		trackposList[i].Prefered = sl.IsPrefered()
+		trackposList[i].Ignoredconf = sl.IsIgnored()
+		trackposList[i].Ignoredrelay = sl.IsRelay
 
 		//Need comment//
 		if sl.IsRelay {
@@ -767,6 +786,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
+			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
 
@@ -774,8 +794,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
+			trackposList[i].Ignoredreplication = false
 			continue
 		}
+		trackposList[i].Ignoredreplication = cluster.isSlaveElectable(sl, false)
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"
@@ -794,6 +816,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
 
 		posList[i] = binlogposreach
+		trackposList[i].Pos = binlogposreach
 
 		seqnos := gtid.NewList("1-1-1").GetSeqNos()
 
@@ -808,6 +831,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, v := range seqnos {
 			seqList[i] += v
 		}
+		trackposList[i].Seq = seqList[i]
 		if seqList[i] > max {
 			max = seqList[i]
 			hiseq = i
@@ -818,7 +842,11 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 
 	} //end loop all slaves
-
+	sort.Slice(trackposList[:], func(i, j int) bool {
+		return trackposList[i].Seq > trackposList[j].Seq
+	})
+	data, _ := json.MarshalIndent(trackposList, "", "\t")
+	cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
 	foundpos := -1
 	if max > 0 {
 		/* Return key of slave with the highest seqno. */
