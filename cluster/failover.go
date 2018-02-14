@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -754,30 +755,30 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	ll := len(l)
 	seqList := make([]uint64, ll)
 	posList := make([]uint64, ll)
-	hipos := 0
-	hiseq := 0
+
 	var maxseq uint64
 	var maxpos uint64
 
 	type Trackpos struct {
 		URL                string
-		indice             int
-		pos                uint64
-		seq                uint64
-		prefered           bool
-		ignoredconf        bool
-		ignoredrelay       bool
-		ignoredmultimaster bool
-		ignoredreplication bool
-		weight             uint
+		Indice             int
+		Pos                uint64
+		Seq                uint64
+		Prefered           bool
+		Ignoredconf        bool
+		Ignoredrelay       bool
+		Ignoredmultimaster bool
+		Ignoredreplication bool
+		Weight             uint
 	}
 	trackposList := make([]Trackpos, ll)
 	//var trackposlist :=
 	for i, sl := range l {
-		trackposList[i].indice = i
-		trackposList[i].prefered = sl.IsPrefered()
-		trackposList[i].ignoredconf = sl.IsIgnored()
-		trackposList[i].ignoredrelay = sl.IsRelay
+		trackposList[i].URL = sl.URL
+		trackposList[i].Indice = i
+		trackposList[i].Prefered = sl.IsPrefered()
+		trackposList[i].Ignoredconf = sl.IsIgnored()
+		trackposList[i].Ignoredrelay = sl.IsRelay
 
 		//Need comment//
 		if sl.IsRelay {
@@ -786,7 +787,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 		if cluster.conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK"})
-			trackposList[i].ignoredmultimaster = true
+			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
 
@@ -794,10 +795,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		// not a slave
 		if errss != nil && cluster.conf.FailRestartUnsafe == false {
 			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK"})
-			trackposList[i].ignoredreplication = false
+			trackposList[i].Ignoredreplication = false
 			continue
 		}
-		trackposList[i].ignoredreplication = cluster.isSlaveElectable(sl, false)
+		trackposList[i].Ignoredreplication = cluster.isSlaveElectable(sl, false)
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"
@@ -817,7 +818,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		posList[i] = binlogposreach
 		trackposList[i].URL = sl.URL
-		trackposList[i].pos = binlogposreach
+		trackposList[i].Pos = binlogposreach
 		seqnos := gtid.NewList("1-1-1").GetSeqNos()
 
 		if errss == nil {
@@ -831,40 +832,60 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, v := range seqnos {
 			seqList[i] += v
 		}
-
+		trackposList[i].Seq = seqList[i]
 		if seqList[i] > maxseq {
 			maxseq = seqList[i]
-			hiseq = i
+
 		}
 		if posList[i] > maxpos {
 			maxpos = posList[i]
-			hipos = i
+
 		}
 
 	} //end loop all slaves
 
 	sort.Slice(trackposList[:], func(i, j int) bool {
-		return trackposList[i].seq < trackposList[j].seq
+		return trackposList[i].Seq > trackposList[j].Seq
 	})
+	if forcingLog {
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
+	}
 
-	cluster.LogPrintf(LvlInfo, "Election matrice: %s ", trackposList)
-	foundpos := -1
 	if maxseq > 0 {
 		/* Return key of slave with the highest seqno. */
-		foundpos = hiseq
+
+		//send the prefered if equal max
+		for _, p := range trackposList {
+			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false && p.Prefered == true {
+				return p.Indice
+			}
+		}
+		//send one with maxseq
+		for _, p := range trackposList {
+			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false {
+				return p.Indice
+			}
+		}
+		return -1
 	}
+	sort.Slice(trackposList[:], func(i, j int) bool {
+		return trackposList[i].Pos > trackposList[j].Pos
+	})
 	if maxpos > 0 {
 		/* Return key of slave with the highest pos. */
-		foundpos = hipos
-	}
-	if foundpos != -1 {
-		if cluster.isSlaveElectable(l[foundpos], forcingLog) == false {
-			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], l[foundpos].URL), ErrFrom: "CHECK"})
-			return -1
+		for _, p := range trackposList {
+			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false && p.Prefered == true {
+				return p.Indice
+			}
 		}
-
-		return foundpos
-
+		//send one with maxseq
+		for _, p := range trackposList {
+			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false {
+				return p.Indice
+			}
+		}
+		return -1
 	}
 
 	return -1
