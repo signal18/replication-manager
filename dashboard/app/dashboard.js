@@ -1,8 +1,13 @@
-var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ng-token-auth']).config(function($routeProvider) {
+var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ng-token-auth', 'ngStorage'])
+    .config(function($routeProvider) {
     routeProvider = $routeProvider;
     $routeProvider
-        .when('/:timeFrame', {
-            templateUrl: '/',
+        .when('/dashboard', {
+            templateUrl: 'static/app/dashboard.html',
+            controller: 'DashboardController'
+        })
+        .when('/login', {
+            templateUrl: 'static/app/login.html',
             controller: 'DashboardController'
         })
         .otherwise({
@@ -78,7 +83,8 @@ app.factory('Test', function($resource) {
     );
 });
 
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves', function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves) {
+app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves',
+    function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves) {
 
     var timeFrame = $routeParams.timeFrame;
     if (timeFrame == "") {

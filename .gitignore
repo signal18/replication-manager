@@ -7,3 +7,5 @@ copyright.*
 build*
 maxscale*.rpm
 data/*
+.idea
+data
