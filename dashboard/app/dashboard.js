@@ -3,11 +3,11 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
     routeProvider = $routeProvider;
     $routeProvider
         .when('/dashboard', {
-            templateUrl: 'static/app/dashboard.html',
+            templateUrl: 'app/dashboard.html',
             controller: 'DashboardController'
         })
         .when('/login', {
-            templateUrl: 'static/app/login.html',
+            templateUrl: 'app/login.html',
             controller: 'DashboardController'
         })
         .otherwise({
