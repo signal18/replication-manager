@@ -1,20 +1,3 @@
-var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ng-token-auth', 'ngStorage'])
-    .config(function($routeProvider) {
-    routeProvider = $routeProvider;
-    $routeProvider
-        .when('/dashboard', {
-            templateUrl: 'app/dashboard.html',
-            controller: 'DashboardController'
-        })
-        .when('/login', {
-            templateUrl: 'app/login.html',
-            controller: 'DashboardController'
-        })
-        .otherwise({
-            redirectTo: '/login'
-        });
-});
-
 app.factory('Servers', function($resource) {
     return $resource('/clusters/:clusterName/topology/servers',{clusterName:'@clusters'});
 });
@@ -83,63 +66,63 @@ app.factory('Test', function($resource) {
     );
 });
 
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves',
-    function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves) {
+app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves', 'AppService',
+    function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves, AppService) {
 
     var timeFrame = $routeParams.timeFrame;
     if (timeFrame == "") {
         timeFrame = "10m";
     }
 
-    var refreshInterval = 2000;
+        var refreshInterval = 2000;
 
-    $interval(function() {
-      Settings.query( {}, function(data) {
-          $scope.settings = data;
-      }, function(error) {
-          $scope.reserror = true;
-      });
-        Servers.query({clusterName:$scope.clusters}, function(data) {
-            $scope.servers = data;
-            $scope.reserror = false;
-        }, function(error) {
-            $scope.reserror = true;
+        $interval(function() {
+            Settings.query( {}, function(data) {
+                $scope.settings = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
+            Servers.query({clusterName:$scope.clusters}, function(data) {
+                $scope.servers = data;
+                $scope.reserror = false;
+            }, function(error) {
+                $scope.reserror = true;
 
-        });
-        Log.query({}, function(data) {
-            $scope.log = data;
-        }, function(error) {
-            $scope.reserror = true;
+            });
+            Log.query({}, function(data) {
+                $scope.log = data;
+            }, function(error) {
+                $scope.reserror = true;
 
-        });
-        Agents.query({}, function(data) {
-            $scope.agents = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
+            });
+            Agents.query({}, function(data) {
+                $scope.agents = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
 
-        Alerts.query({clusterName:$scope.clusters}, function(data) {
-            $scope.alerts = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-        Master.query({clusterName:$scope.clusters}, function(data) {
-            $scope.master = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-        Proxies.query({clusterName:$scope.clusters}, function(data) {
-            $scope.proxies = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
+            Alerts.query({clusterName:$scope.clusters}, function(data) {
+                $scope.alerts = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
+            Master.query({clusterName:$scope.clusters}, function(data) {
+                $scope.master = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
+            Proxies.query({clusterName:$scope.clusters}, function(data) {
+                $scope.proxies = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
 
-        Slaves.query({clusterName:$scope.clusters}, function(data) {
-            $scope.slaves = data;
-        }, function(error) {
-            $scope.reserror = true;
-        });
-    }, refreshInterval);
+            Slaves.query({clusterName:$scope.clusters}, function(data) {
+                $scope.slaves = data;
+            }, function(error) {
+                $scope.reserror = true;
+            });
+        }, refreshInterval);
 
     $scope.selectedUserIndex = undefined;
 
