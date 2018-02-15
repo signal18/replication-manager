@@ -124,16 +124,11 @@ func httpserver() {
 		}
 		router.Handle("/", g.GlobalAuth(router))
 		router.HandleFunc("/", hm.HandleMainPage)
-
-		router.HandleFunc("/noauth/page", hm.HandleLoginFreePage)
+		router.HandleFunc("/noauth/page", handlerApp)
 		// login page
-		router.HandleFunc("/login", hm.HandleLoginPage).Methods("GET")
-		// function for processing a request for authorization (via POST method)
-		router.HandleFunc("/login", g.AuthHandler).Methods("POST")
+		router.HandleFunc("/login", handlerApp)
 		// function for processing a request for logout (via POST method)
 		router.HandleFunc("/stats", handlerStats)
-		//http.HandleFunc("/", handlerApp)
-		router.HandleFunc("/logout", g.LogoutHandler).Methods("POST")
 	} else {
 		router.HandleFunc("/", handlerApp)
 	}
@@ -141,13 +136,13 @@ func httpserver() {
 
 	// page to view which does not need authorization
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	router.HandleFunc("/data", handlerMuxReplicationManager)
 	router.HandleFunc("/settings", handlerSettings)
 	router.HandleFunc("/log", handlerLog)
 	router.HandleFunc("/agents", handlerAgents)
 
 	router.HandleFunc("/setcluster", handlerSetCluster)
-	router.HandleFunc("/dashboard.js", handlerJS)
 	router.HandleFunc("/heartbeat", handlerHeartbeat)
 	router.HandleFunc("/template", handlerOpenSVCTemplate)
 	router.HandleFunc("/tests", handlerTests)
@@ -201,10 +196,6 @@ func handlerSetCluster(w http.ResponseWriter, r *http.Request) {
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/app.html")
-}
-
-func handlerJS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/dashboard.js")
 }
 
 func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
@@ -612,93 +603,6 @@ func (hm *HandlerManager) HandleLoginPage(res http.ResponseWriter, req *http.Req
 	if data.Visitor.Lockouts >= 1 {
 		data.LockDuration = data.Visitor.LockRemainingTime()
 	}
-
-	var loginPage = template.Must(template.New("").Parse(`
-		<html><head><title>REPLICATION-MANAGER</title>  <link rel="stylesheet" href="/static/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous" >
-	    <style>
-	  td {
-	      white-space: nowrap;
-	  }
-	  .sectionheader {
-	    font-size: 12px;
-	    font-weight: 700;
-	    margin-bottom: 0;
-	    padding-left: 0;
-	    border: none;
-	    background-color: transparent;
-	    letter-spacing: 0.02em;
-	  	text-transform: uppercase;
-	  }
-	  </style>
-	  </head>
-	    <body ng-app="dashboard" ng-controller="DashboardController">
-		<center>
-		<script>
-		var sessionTimer = document.getElementById("sessionTimer");
-		function startTimer(duration, display) {
-		    var timer = duration, minutes, seconds;
-		    var tick = setInterval(function() {
-		        minutes = parseInt(timer / 60, 10);
-		        seconds = parseInt(timer % 60, 10);
-		        minutes = minutes < 10 ? "0" + minutes : minutes;
-		        seconds = seconds < 10 ? "0" + seconds : seconds;
-		        display.textContent = minutes + ":" + seconds;
-		        if (--timer < 0) {
-		            //timer = duration;
-					clearInterval(tick);
-		        }
-		    }, 1000);
-		}
-		window.onload = function () {
-		    var display = document.querySelector('#timer');
-		    startTimer("{{.LockDuration}}", display);
-		};
-		</script>
-
-		<form id="login_form" action="/login" method="POST" style="padding-top:8%;">
-
-			<table><tr><td>
-			<img width="80" src="static/logo.png"/>
-			</td><td>
-			<h1>REPLICATION-MANAGER
-		  </h1></td></tr></table>
-			<span>Login: Database user | Password: <b>Database password</b><br>
-
-
-
-			<hr style='width:50%;'><br>
-			<input type="text" name="login" placeholder="Login" autofocus><br>
-			<input type="password" placeholder="Password" name="password"><br>
-			<br>
-			<input class="btn btn-primary"  type="submit" value="LOGIN">
-		</form>
-		<hr style='width:50%;'>
-		<h3>"Stats for your IP</h3>
-		{{if .Visitor.Ban}}
-			<h4>status: <font color="red"><b>baned</b></font></h4>
-		{{else}}
-			{{if ge .Visitor.Lockouts 1}}
-				<h4>status: <font color="blue"><b>locked</b></font></h4>
-			{{else}}
-				<h4>status: <font color="green"><b>no locks</b></font></h4>
-			{{end}}
-		{{end}}
-		<table style='text-align:left;border: 0px solid black;width:25%;'>
-			<tr><th>Action</th><th>Max</th><th>Current</th></tr>
-			<tr><td>Login attepts to lockout</td><td>3</td><td>{{.Visitor.Attempts}}</td></tr>
-			<tr><td>Lockouts to ban</td><td>3</td><td>{{.Visitor.Lockouts}}</td></tr>
-			{{if ge .Visitor.Lockouts 1}}
-				{{if .Visitor.Ban}}
-					<tr><td>Time before reset ban</td><td>01:00</td><td id='timer'>00:00</td></tr>
-				{{else}}
-					<tr><td>Time before reset lockout</td><td>00:30</td><td id='timer'>00:00</td></tr>
-				{{end}}
-			{{end}}
-		</table>
-		</center></body>
-		</html>`),
-	)
-	loginPage.Execute(res, data)
 }
 
 // HandleLoginFreePage - auth-free page.

@@ -1,0 +1,39 @@
+td {
+    white-space: nowrap;
+}
+.menudemoBasicUsage .md-menu-demo {
+    padding: 24px;
+}
+.menudemoBasicUsage .menu-demo-container {
+    min-height: 200px;
+}
+.sectionheader {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 0;
+    padding-left: 0;
+    border: none;
+    background-color: transparent;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.tabsdemoDynamicHeight md-content {
+    background-color: transparent !important;
+}
+.tabsdemoDynamicHeight md-content md-tabs {
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+}
+.tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
+    background: white;
+}
+.tabsdemoDynamicHeight md-content h1:first-child {
+    margin-top: 0;
+}
+.title {
+    font-size: 24px;
+    color: #282828;
+    padding-left: 20px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
