@@ -328,7 +328,7 @@ func apiserver() {
 /////////////////////////////////////////
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var user userCredentials
 
 	//decode request into UserCredentials struct
@@ -380,7 +380,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 //AUTH TOKEN VALIDATION
 
 func validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//validate token
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
 		func(token *jwt.Token) (interface{}, error) {
@@ -404,7 +404,7 @@ func validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.H
 //HELPER FUNCTIONS
 
 func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json, err := json.Marshal(apiresponse)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -418,6 +418,7 @@ func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
 
 func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -451,6 +452,7 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -482,6 +484,7 @@ func handlerMuxSlaves(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -510,6 +513,7 @@ func handlerMuxProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxAlerts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	a := new(cluster.Alerts)
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -720,6 +724,7 @@ func handlerMuxClusterResetFailoverControl(w http.ResponseWriter, r *http.Reques
 }
 
 func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -749,6 +754,7 @@ func handlerMuxSwitchover(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1028,6 +1034,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1286,7 +1293,7 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	err := e.Encode(RepMan)
@@ -1297,6 +1304,7 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	s := new(Settings)
 	s.Clusters = cfgGroupList
 	regtest := new(regtest.RegTest)
@@ -1375,6 +1383,7 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1416,6 +1425,7 @@ func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	if RepMan.isStarted {
@@ -1426,6 +1436,7 @@ func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 
@@ -1439,6 +1450,7 @@ func handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1451,6 +1463,7 @@ func handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Reques
 }
 
 func handlerMuxClusterOptimize(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1463,6 +1476,7 @@ func handlerMuxClusterOptimize(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	port, err := strconv.Atoi(vars["port"])
@@ -1480,6 +1494,7 @@ func handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
@@ -1493,6 +1508,7 @@ func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxClusterSysbench(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1502,8 +1518,37 @@ func handlerMuxClusterSysbench(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	time.Sleep(1200 * time.Second)
 	io.WriteString(w, `{"alive": "running"}`)
+}
+
+func handlerMuxProcesslist(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			prl := node.GetProcessList()
+			err := e.Encode(prl)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }

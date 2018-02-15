@@ -15,6 +15,10 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
+func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
+	return server.FullProcessList
+}
+
 func (server *ServerMonitor) GetSchemas() ([]string, error) {
 	return dbhelper.GetSchemas(server.Conn)
 }
