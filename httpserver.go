@@ -42,10 +42,6 @@ func httpserver() {
 		RepMan.currentCluster.LogPrintf("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
 		return
 	}
-	if err := testFile("dashboard.js"); err != nil {
-		RepMan.currentCluster.LogPrintf("ERROR", "Dashboard dashboard.js file missing - will not start http server")
-		return
-	}
 	// create mux router
 	router := mux.NewRouter()
 
