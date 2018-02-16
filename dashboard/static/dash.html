@@ -1,4 +1,3 @@
-
     <md-content class="md-padding">
         <md-card>
             <div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
@@ -9,13 +8,13 @@
                     <table class="table">
 
                         <tr>
-                            <th>Group Name</th>
+                            <th>Cluster Name</th>
                             <th>Topology</th>
                         </tr>
                         <tr>
-                            <td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-info">{{settings.confgroup}}</span>
+                            <td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span>
                             </td>
-                            <td><span class="label label-info">{{settings.topology}}</span>
+                            <td><span class="label label-info">{{selectedCluster.topology}}</span>
                             </td>
                         </tr>
                     </table>
@@ -33,10 +32,10 @@
                             <th>Last Failover Time</th>
                         </tr>
                         <tr>
-                            <td><span ng-if="settings.runstatus=='A'" class="label label-success">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span>
+                            <td><span ng-if="selectedCluster.activePassiveStatus=='A'" class="label label-success">ACTIVE</span><span ng-if="selectedCluster.activePassiveStatus=='S'" class="label label-warning">STANDBY</span>
                             </td>
-                            <td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
-                            <td>{{settings.lastfailover}}</td>
+                            <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
+                            <td>{{selectedCluster.failoverLastTime}}</td>
                         </tr>
                     </table>
                 </md-card>
