@@ -6,6 +6,10 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
                 templateUrl: 'app/dashboard.html',
                 controller: 'DashboardController'
             })
+            .when('/dashboard/:timeFrame', {
+                templateUrl: 'app/dashboard.html',
+                controller: 'DashboardController'
+            })
             .when('/login', {
                 templateUrl: 'app/login.html',
                 controller: 'DashboardController'
