@@ -141,7 +141,7 @@ func httpserver() {
 
 	// page to view which does not need authorization
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
-	router.HandleFunc("/data", handlerMuxReplicationManager)
+	router.HandleFunc("/monitor", handlerMuxReplicationManager)
 	router.HandleFunc("/settings", handlerSettings)
 	router.HandleFunc("/log", handlerLog)
 	router.HandleFunc("/agents", handlerAgents)
