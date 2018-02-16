@@ -1,5 +1,5 @@
 language: go
 sudo: false
 go:
-  - 1.8
+  - 1.9
 before_script: go get github.com/gwenn/yacr

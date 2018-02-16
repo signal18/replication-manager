@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 
 	"github.com/juju/errors"
 )
@@ -18,14 +19,28 @@ type BinlogParser struct {
 	rawMode bool
 
 	parseTime bool
+
+	// used to start/stop processing
+	stopProcessing uint32
+
+	useDecimal bool
 }
 
 func NewBinlogParser() *BinlogParser {
 	p := new(BinlogParser)
 
 	p.tables = make(map[uint64]*TableMapEvent)
+	// p.stop = make(uint32)
 
 	return p
+}
+
+func (p *BinlogParser) Stop() {
+	atomic.StoreUint32(&p.stopProcessing, 1)
+}
+
+func (p *BinlogParser) Resume() {
+	atomic.StoreUint32(&p.stopProcessing, 0)
 }
 
 func (p *BinlogParser) Reset() {
@@ -66,14 +81,10 @@ func (p *BinlogParser) ParseFile(name string, offset int64, onEvent OnEventFunc)
 	return p.ParseReader(f, onEvent)
 }
 
-
-
 func (p *BinlogParser) getFormatDescriptionEvent(r io.Reader, onEvent OnEventFunc) error {
 	_, err := p.parseSingleEvent(&r, onEvent)
 	return err
 }
-
-
 
 func (p *BinlogParser) parseSingleEvent(r *io.Reader, onEvent OnEventFunc) (bool, error) {
 	var err error
@@ -124,15 +135,17 @@ func (p *BinlogParser) parseSingleEvent(r *io.Reader, onEvent OnEventFunc) (bool
 		return false, errors.Trace(err)
 	}
 
-
 	return false, nil
 }
-
 
 func (p *BinlogParser) ParseReader(r io.Reader, onEvent OnEventFunc) error {
 
 	for {
-		done, err := p.parseSingleEvent(&r, onEvent); 
+		if atomic.LoadUint32(&p.stopProcessing) == 1 {
+			break
+		}
+
+		done, err := p.parseSingleEvent(&r, onEvent)
 		if err != nil {
 			if _, ok := err.(errMissingTableMapEvent); ok {
 				continue
@@ -154,6 +167,10 @@ func (p *BinlogParser) SetRawMode(mode bool) {
 
 func (p *BinlogParser) SetParseTime(parseTime bool) {
 	p.parseTime = parseTime
+}
+
+func (p *BinlogParser) SetUseDecimal(useDecimal bool) {
+	p.useDecimal = useDecimal
 }
 
 func (p *BinlogParser) parseHeader(data []byte) (*EventHeader, error) {
@@ -288,6 +305,7 @@ func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
 	e.needBitmap2 = false
 	e.tables = p.tables
 	e.parseTime = p.parseTime
+	e.useDecimal = p.useDecimal
 
 	switch h.EventType {
 	case WRITE_ROWS_EVENTv0:

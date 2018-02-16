@@ -130,6 +130,38 @@ func TestEncodeKVasRFC1464(t *testing.T) {
 	}
 }
 
+func TestDNS_Over_TCP(t *testing.T) {
+	t.Parallel()
+	a := NewTestAgent(t.Name(), "")
+	defer a.Shutdown()
+
+	// Register node
+	args := &structs.RegisterRequest{
+		Datacenter: "dc1",
+		Node:       "Foo",
+		Address:    "127.0.0.1",
+	}
+
+	var out struct{}
+	if err := a.RPC("Catalog.Register", args, &out); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion("foo.node.dc1.consul.", dns.TypeANY)
+
+	c := new(dns.Client)
+	c.Net = "tcp"
+	in, _, err := c.Exchange(m, a.DNSAddr())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if len(in.Answer) != 1 {
+		t.Fatalf("empty lookup: %#v", in)
+	}
+}
+
 func TestDNS_NodeLookup(t *testing.T) {
 	t.Parallel()
 	a := NewTestAgent(t.Name(), "")
@@ -2877,7 +2909,7 @@ func TestDNS_ServiceLookup_LargeResponses(t *testing.T) {
 	}
 }
 
-func testDNS_ServiceLookup_responseLimits(t *testing.T, answerLimit int, qType uint16,
+func testDNSServiceLookupResponseLimits(t *testing.T, answerLimit int, qType uint16,
 	expectedService, expectedQuery, expectedQueryID int) (bool, error) {
 	a := NewTestAgent(t.Name(), `
 		node_name = "test-node"
@@ -3007,7 +3039,7 @@ func TestDNS_ServiceLookup_AnswerLimits(t *testing.T) {
 		test := test // capture loop var
 		t.Run("A lookup", func(t *testing.T) {
 			t.Parallel()
-			ok, err := testDNS_ServiceLookup_responseLimits(t, test.udpAnswerLimit, dns.TypeA, test.expectedAService, test.expectedAQuery, test.expectedAQueryID)
+			ok, err := testDNSServiceLookupResponseLimits(t, test.udpAnswerLimit, dns.TypeA, test.expectedAService, test.expectedAQuery, test.expectedAQueryID)
 			if !ok {
 				t.Errorf("Expected service A lookup %s to pass: %v", test.name, err)
 			}
@@ -3015,7 +3047,7 @@ func TestDNS_ServiceLookup_AnswerLimits(t *testing.T) {
 
 		t.Run("AAAA lookup", func(t *testing.T) {
 			t.Parallel()
-			ok, err := testDNS_ServiceLookup_responseLimits(t, test.udpAnswerLimit, dns.TypeAAAA, test.expectedAAAAService, test.expectedAAAAQuery, test.expectedAAAAQueryID)
+			ok, err := testDNSServiceLookupResponseLimits(t, test.udpAnswerLimit, dns.TypeAAAA, test.expectedAAAAService, test.expectedAAAAQuery, test.expectedAAAAQueryID)
 			if !ok {
 				t.Errorf("Expected service AAAA lookup %s to pass: %v", test.name, err)
 			}
@@ -3023,7 +3055,7 @@ func TestDNS_ServiceLookup_AnswerLimits(t *testing.T) {
 
 		t.Run("ANY lookup", func(t *testing.T) {
 			t.Parallel()
-			ok, err := testDNS_ServiceLookup_responseLimits(t, test.udpAnswerLimit, dns.TypeANY, test.expectedANYService, test.expectedANYQuery, test.expectedANYQueryID)
+			ok, err := testDNSServiceLookupResponseLimits(t, test.udpAnswerLimit, dns.TypeANY, test.expectedANYService, test.expectedANYQuery, test.expectedANYQueryID)
 			if !ok {
 				t.Errorf("Expected service ANY lookup %s to pass: %v", test.name, err)
 			}
@@ -3620,8 +3652,8 @@ func TestDNS_PreparedQuery_Failover(t *testing.T) {
 	m.SetQuestion("my-query.query.consul.", dns.TypeSRV)
 
 	c := new(dns.Client)
-	cl_addr := a1.config.DNSAddrs[0]
-	in, _, err := c.Exchange(m, cl_addr.String())
+	clAddr := a1.config.DNSAddrs[0]
+	in, _, err := c.Exchange(m, clAddr.String())
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
