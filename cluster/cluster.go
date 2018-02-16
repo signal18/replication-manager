@@ -44,6 +44,9 @@ type Cluster struct {
 	IsDown               bool          `json:"is-down"`
 	IsProvisionned       bool          `json:"is-provisionned"`
 	Schedule             []CronEntry   `json:"schedule"`
+	DBTags               []string      `json:"db-servers-tags"`
+	ProxyTags            []string      `json:"topology"`
+	Topology             string
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -136,6 +139,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.sme = new(state.StateMachine)
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
+	cluster.DBTags = cluster.GetDatabaseTags()
+	cluster.ProxyTags = cluster.GetProxyTags()
+
 	cluster.sme.Init()
 	if cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
@@ -259,6 +265,7 @@ func (cluster *Cluster) Run() {
 					cluster.Save()
 				}
 			}
+			cluster.Topology = cluster.GetTopology()
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}
