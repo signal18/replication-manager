@@ -31,9 +31,11 @@ import (
 
 type Cluster struct {
 	Name                 string        `json:"name"`
-	Servers              serverList    `json:"db-servers"`
+	Servers              serverList    `json:"-"`
+	ServerIdList         []string      `json:"db-servers"`
 	Crashes              crashList     `json:"db-servers-crashes"`
-	Proxies              proxyList     `json:"proxies"`
+	Proxies              proxyList     `json:"-"`
+	ProxyIdList          []string      `json:"proxy-servers"`
 	FailoverCtr          int           `json:"failover-counter"`
 	FailoverTs           int64         `json:"failover-last-time"`
 	Status               string        `json:"active-passive-status"`
@@ -203,7 +205,8 @@ func (cluster *Cluster) Run() {
 	interval := time.Second
 
 	for cluster.exit == false {
-
+		cluster.ServerIdList = cluster.GetDBServerIdList()
+		cluster.ProxyIdList = cluster.GetProxyServerIdList()
 		select {
 		case sig := <-cluster.switchoverChan:
 			if sig {
