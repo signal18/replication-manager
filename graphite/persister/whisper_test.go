@@ -7,7 +7,7 @@
 package persister
 
 import (
-	"github.com/lomik/go-carbon/points"
+	"github.com/signal18/replication-manager/graphite/points"
 
 	"math/rand"
 )
