@@ -76,7 +76,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
         var refreshInterval = 2000;
 
-        $interval(function() {
+        var callServices = function(){
             Settings.query( {}, function(data) {
                 $scope.settings = data;
             }, function(error) {
@@ -122,6 +122,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             }, function(error) {
                 $scope.reserror = true;
             });
+        };
+
+        $interval(function() {
+            callServices();
         }, refreshInterval);
 
     $scope.selectedUserIndex = undefined;
