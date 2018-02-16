@@ -27,38 +27,38 @@ import (
 
 // Proxy defines a proxy
 type Proxy struct {
-	Id              string
-	Type            string
-	Host            string
-	Port            string
-	TunnelPort      int
-	TunnelWritePort int
-	Tunnel          bool
-	User            string
-	Pass            string
-	WritePort       int
-	ReadPort        int
-	ReadWritePort   int
-	ReaderHostgroup int
-	WriterHostgroup int
-	BackendsWrite   []Backend
-	BackendsRead    []Backend
-	Version         string
-	InternalProxy   *myproxy.Server
+	Id              string          `json:"id"`
+	Type            string          `json:"type"`
+	Host            string          `json:"host"`
+	Port            string          `json:"port"`
+	TunnelPort      int             `json:"tunnelPort"`
+	TunnelWritePort int             `json:"tunnelWritePort"`
+	Tunnel          bool            `json:"tunnel"`
+	User            string          `json:"user"`
+	Pass            string          `json:"pass"`
+	WritePort       int             `json:"writePort"`
+	ReadPort        int             `json:"readPort"`
+	ReadWritePort   int             `json:"readWritePort"`
+	ReaderHostgroup int             `json:"readerHostGroup"`
+	WriterHostgroup int             `json:"writerHostGroup"`
+	BackendsWrite   []Backend       `json:"backendsWrite"`
+	BackendsRead    []Backend       `json:"backendsRead"`
+	Version         string          `json:"version"`
+	InternalProxy   *myproxy.Server `json:"internalProxy"`
 }
 
 type Backend struct {
-	Host           string
-	Port           string
-	Status         string
-	PrxName        string
-	PrxStatus      string
-	PrxConnections string
-	PrxHostgroup   string
-	PrxByteOut     string
-	PrxByteIn      string
-	PrxLatency     string
-	PrxMaintenance bool
+	Host           string `json:"host"`
+	Port           string `json:"Port"`
+	Status         string `json:"status"`
+	PrxName        string `json:"prxName"`
+	PrxStatus      string `json:"prxStatus"`
+	PrxConnections string `json:"prxConnections"`
+	PrxHostgroup   string `json:"prxHostgroup"`
+	PrxByteOut     string `json:"prxByteOut"`
+	PrxByteIn      string `json:"prxByteIn"`
+	PrxLatency     string `json:"prxLatency"`
+	PrxMaintenance bool   `json:"prxMaintenance"`
 }
 
 const (

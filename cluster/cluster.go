@@ -32,18 +32,21 @@ import (
 type Cluster struct {
 	Name                 string        `json:"name"`
 	Servers              serverList    `json:"-"`
-	ServerIdList         []string      `json:"db-servers"`
-	Crashes              crashList     `json:"db-servers-crashes"`
+	ServerIdList         []string      `json:"dbServers"`
+	Crashes              crashList     `json:"dbServersCrashes"`
 	Proxies              proxyList     `json:"-"`
-	ProxyIdList          []string      `json:"proxy-servers"`
-	FailoverCtr          int           `json:"failover-counter"`
-	FailoverTs           int64         `json:"failover-last-time"`
-	Status               string        `json:"active-passive-status"`
+	ProxyIdList          []string      `json:"proxyServers"`
+	FailoverCtr          int           `json:"failoverCounter"`
+	FailoverTs           int64         `json:"failoverLastTime"`
+	Status               string        `json:"activePassiveStatus"`
 	Conf                 config.Config `json:"config"`
-	CleanAll             bool          `json:"clean-replication"` //used in testing
-	IsDown               bool          `json:"is-down"`
-	IsProvisionned       bool          `json:"is-provisionned"`
+	CleanAll             bool          `json:"cleanReplication"` //used in testing
+	IsDown               bool          `json:"isDown"`
+	IsProvisionned       bool          `json:"isProvisionned"`
 	Schedule             []CronEntry   `json:"schedule"`
+	DBTags               []string      `json:"dbServersTags"`
+	ProxyTags            []string      `json:"proxyServersTags"`
+	Topology             string        `json:"topology"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -136,6 +139,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.sme = new(state.StateMachine)
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
+	cluster.DBTags = cluster.GetDatabaseTags()
+	cluster.ProxyTags = cluster.GetProxyTags()
+
 	cluster.sme.Init()
 	if cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
@@ -259,6 +265,7 @@ func (cluster *Cluster) Run() {
 					cluster.Save()
 				}
 			}
+			cluster.Topology = cluster.GetTopology()
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}

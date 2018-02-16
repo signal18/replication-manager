@@ -32,87 +32,87 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id                          string //Unique name given by cluster & crc64(URL) used by test to provision
-	Conn                        *sqlx.DB
-	User                        string
-	Pass                        string `json:"-"`
-	URL                         string
-	DSN                         string `json:"-"`
-	Host                        string
-	Port                        string
-	IP                          string
-	Strict                      string
-	ServerID                    uint
-	ErrorLogTailer              *tail.Tail `json:"-"`
-	ErrorLog                    httplog.HttpLog
-	SlowLogTailer               *tail.Tail `json:"-"`
-	SlowLog                     slowlog.SlowLog
-	LogBin                      string
-	GTIDBinlogPos               *gtid.List
-	CurrentGtid                 *gtid.List
-	SlaveGtid                   *gtid.List
-	IOGtid                      *gtid.List
-	FailoverIOGtid              *gtid.List
-	GTIDExecuted                string
-	ReadOnly                    string
-	State                       string
-	PrevState                   string
-	FailCount                   int
-	FailSuspectHeartbeat        int64
-	SemiSyncMasterStatus        bool
-	SemiSyncSlaveStatus         bool
-	RplMasterStatus             bool
-	EventScheduler              bool
-	EventStatus                 []dbhelper.Event
-	FullProcessList             []dbhelper.Processlist
-	ClusterGroup                *Cluster `json:"-"` //avoid recusive json
-	BinaryLogFile               string
-	BinaryLogPos                string
-	FailoverMasterLogFile       string
-	FailoverMasterLogPos        string
-	FailoverSemiSyncSlaveStatus bool
-	Process                     *os.Process
-	MxsServerName               string //Unique server Name in maxscale conf
-	MxsServerStatus             string
-	ProxysqlHostgroup           string
-	HaveSemiSync                bool
-	HaveInnodbTrxCommit         bool
-	HaveSyncBinLog              bool
-	HaveChecksum                bool
-	HaveBinlogRow               bool
-	HaveBinlogAnnotate          bool
-	HaveBinlogSlowqueries       bool
-	HaveBinlogCompress          bool
-	HaveLogSlaveUpdates         bool
-	HaveGtidStrictMode          bool
-	HaveMySQLGTID               bool
-	HaveMariaDBGTID             bool
-	HaveWsrep                   bool
-	HaveReadOnly                bool
-	Version                     int
-	IsWsrepSync                 bool
-	IsWsrepDonor                bool
-	IsMaxscale                  bool
-	IsRelay                     bool
-	IsSlave                     bool
-	IsVirtualMaster             bool
-	IsMaintenance               bool
-	Ignored                     bool
-	Prefered                    bool
-	MxsVersion                  int
-	MxsHaveGtid                 bool
-	RelayLogSize                uint64
-	Replications                []dbhelper.SlaveStatus
-	LastSeenReplications        []dbhelper.SlaveStatus
-	MasterStatus                dbhelper.MasterStatus
-	ReplicationSourceName       string
-	DBVersion                   *dbhelper.MySQLVersion
-	Status                      map[string]string
-	Variables                   map[string]string
-	EngineInnoDB                map[string]string
-	Queries                     map[string]string
-	ReplicationHealth           string
-	TestConfig                  string
+	Id                          string                    `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Conn                        *sqlx.DB                  `json:"-"`
+	User                        string                    `json:"user"`
+	Pass                        string                    `json:"-"`
+	URL                         string                    `json:"url"`
+	DSN                         string                    `json:"-"`
+	Host                        string                    `json:"host"`
+	Port                        string                    `json:"port"`
+	IP                          string                    `json:"ip"`
+	Strict                      string                    `json:"strict"`
+	ServerID                    uint                      `json:"serverId"`
+	ErrorLogTailer              *tail.Tail                `json:"-"`
+	ErrorLog                    httplog.HttpLog           `json:"errorLog"`
+	SlowLogTailer               *tail.Tail                `json:"-"`
+	SlowLog                     slowlog.SlowLog           `json:"slowLog"`
+	LogBin                      string                    `json:"logBin"`
+	GTIDBinlogPos               *gtid.List                `json:"gtidBinlogPos"`
+	CurrentGtid                 *gtid.List                `json:"currentGtid"`
+	SlaveGtid                   *gtid.List                `json:"slaveGtid"`
+	IOGtid                      *gtid.List                `json:"ioGtid"`
+	FailoverIOGtid              *gtid.List                `json:"failoverIoGtid"`
+	GTIDExecuted                string                    `json:"gtidExecuted"`
+	ReadOnly                    string                    `json:"readOnly"`
+	State                       string                    `json:"state"`
+	PrevState                   string                    `json:"prevState"`
+	FailCount                   int                       `json:"failCount"`
+	FailSuspectHeartbeat        int64                     `json:"failSuspectHeartbeat"`
+	SemiSyncMasterStatus        bool                      `json:"semiSyncMasterStatus"`
+	SemiSyncSlaveStatus         bool                      `json:"semiSyncSlaveStatus"`
+	RplMasterStatus             bool                      `json:"rplMasterStatus"`
+	EventScheduler              bool                      `json:"eventScheduler"`
+	EventStatus                 []dbhelper.Event          `json:"eventStatus"`
+	FullProcessList             []dbhelper.Processlist    `json:"fullProcessList"`
+	ClusterGroup                *Cluster                  `json:"-"` //avoid recusive json
+	BinaryLogFile               string                    `json:"binaryLogFile"`
+	BinaryLogPos                string                    `json:"binaryLogPos"`
+	FailoverMasterLogFile       string                    `json:"failoverMasterLogFile"`
+	FailoverMasterLogPos        string                    `json:"failoverMasterLogPos"`
+	FailoverSemiSyncSlaveStatus bool                      `json:"failoverSemiSyncSlaveStatus"`
+	Process                     *os.Process               `json:"process"`
+	HaveSemiSync                bool                      `json:"haveSemiSync"`
+	HaveInnodbTrxCommit         bool                      `json:"haveInnodbTrxCommit"`
+	HaveSyncBinLog              bool                      `json:"haveSyncBinLog"`
+	HaveChecksum                bool                      `json:"haveChecksum"`
+	HaveBinlogRow               bool                      `json:"haveBinlogRow"`
+	HaveBinlogAnnotate          bool                      `json:"haveBinlogAnnotate"`
+	HaveBinlogSlowqueries       bool                      `json:"haveBinlogSlowqueries"`
+	HaveBinlogCompress          bool                      `json:"haveBinlogCompress"`
+	HaveLogSlaveUpdates         bool                      `json:"haveLogSlaveUpdates"`
+	HaveGtidStrictMode          bool                      `json:"haveGtidStrictMode"`
+	HaveMySQLGTID               bool                      `json:"haveMySQLGTID"`
+	HaveMariaDBGTID             bool                      `json:"HhveMariaDBGTID"`
+	HaveWsrep                   bool                      `json:"haveWsrep"`
+	HaveReadOnly                bool                      `json:"haveReadOnly"`
+	Version                     int                       `json:"-"`
+	IsWsrepSync                 bool                      `json:"isWsrepSync"`
+	IsWsrepDonor                bool                      `json:"isWsrepDonor"`
+	IsMaxscale                  bool                      `json:"isMaxscale"`
+	IsRelay                     bool                      `json:"isRelay"`
+	IsSlave                     bool                      `json:"isSlave"`
+	IsVirtualMaster             bool                      `json:"isVirtualMaster"`
+	IsMaintenance               bool                      `json:"isMaintenance"`
+	Ignored                     bool                      `json:"ignored"`
+	Prefered                    bool                      `json:"prefered"`
+	MxsVersion                  int                       `json:"maxscaleVersion"`
+	MxsHaveGtid                 bool                      `json:"maxscaleHaveGtid"`
+	MxsServerName               string                    `json:"maxscaleServerName"` //Unique server Name in maxscale conf
+	MxsServerStatus             string                    `json:"maxscaleServerStatus"`
+	ProxysqlHostgroup           string                    `json:"proxysqlHostgroup"`
+	RelayLogSize                uint64                    `json:"relayLogSize"`
+	Replications                []dbhelper.SlaveStatus    `json:"replications"`
+	LastSeenReplications        []dbhelper.SlaveStatus    `json:"lastSeenReplications"`
+	MasterStatus                dbhelper.MasterStatus     `json:"masterStatus"`
+	ReplicationSourceName       string                    `json:"replicationSourceName"`
+	DBVersion                   *dbhelper.MySQLVersion    `json:"dbVersion"`
+	Status                      map[string]string         `json:"status"`
+	Variables                   map[string]string         `json:"variables"`
+	EngineInnoDB                map[string]string         `json:"engineInnoDB"`
+	Queries                     map[string]string         `json:"queries"`
+	ReplicationHealth           string                    `json:"replicationHealth"`
+	TestConfig                  string                    `json:"testConfig"`
 	DictTables                  map[string]dbhelper.Table `json:"-"`
 	Users                       map[string]dbhelper.Grant `json:"-"`
 }

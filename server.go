@@ -49,7 +49,7 @@ import (
 type ReplicationManager struct {
 	OpenSVC     opensvc.Collector           `json:"-"`
 	Version     string                      `json:"version"`
-	Fullversion string                      `json:"full-version"`
+	Fullversion string                      `json:"fullVersion"`
 	Os          string                      `json:"os"`
 	Arch        string                      `json:"arch"`
 	Clusters    map[string]*cluster.Cluster `json:"-"`
@@ -57,7 +57,7 @@ type ReplicationManager struct {
 	UUID        string                      `json:"uuid"`
 	Hostname    string                      `json:"hostname"`
 	Status      string                      `json:"status"`
-	SplitBrain  bool                        `json:"spitbrain"`
+	SplitBrain  bool                        `json:"spitBrain"`
 	ClusterList []string                    `json:"clusters"`
 	Tests       []string                    `json:"tests"`
 	Conf        config.Config               `json:"config"`
