@@ -8,9 +8,7 @@
                     </h1>
                 </td>
                 <td>
-                    <form ng-if="settings.httpauth=='true'" align=right action="/logout" method="post">
-                        <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
-                    </form>
+                    <button ng-if="isLoggedIn" class="btn btn-primary" type="submit" ng-click="logout()">Logout</button>
                     <form name="myForm">
                         <md-panel>
                             <md-card-content>

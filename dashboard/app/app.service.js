@@ -7,18 +7,20 @@ app.service('AppService', ['$http', '$localStorage', function ($http, $localStor
     var setAuthenticated = function (user, token) {
         // store username and token in local storage to keep user logged in between page refreshes
         $localStorage.currentUser = { username: user, token: token };
-
-        // add jwt token to auth header for all requests made by the $http service
-        $http.defaults.headers.common.Authorization = 'Bearer ' + token;
     };
 
     var hasAuthHeaders = function () {
-        return ($http.defaults.headers.common.Authorization);
+        return ($localStorage.currentUser.token);
+    };
+
+    var logout = function() {
+        $localStorage.currentUser = {}
     };
 
     return {
         getApiDomain: getApiDomain,
         setAuthenticated: setAuthenticated,
-        hasAuthHeaders: hasAuthHeaders
+        hasAuthHeaders: hasAuthHeaders,
+        logout: logout
     };
 }]);

@@ -1,5 +1,5 @@
-app.controller('LoginController', ['$scope', '$http', '$localStorage', 'AppService',
-    function($scope, $http, $localStorage, AppService) {
+app.controller('LoginController', ['$scope', '$http', '$localStorage', '$location', 'AppService',
+    function($scope, $http, $localStorage, $location, AppService) {
 
         $scope.login = function(user){
             //This section should be moved to a service.
@@ -8,7 +8,7 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', 'AppServi
                     // login successful if there's a token in the response
                     if (response.token) {
                         AppService.setAuthenticated(user.username, response.token);
-                        //TODO: redirect to dashboard.
+                        $location.path('dashboard');
                     } else {
                         $scope.message = "Invalid username or password.";
                     }

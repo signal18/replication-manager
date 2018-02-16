@@ -66,15 +66,22 @@ app.factory('Test', function($resource) {
     );
 });
 
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves', 'AppService',
-    function($scope, $routeParams, $interval, $http, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves, AppService) {
+app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', 'Servers', 'Log', 'Settings', 'Alerts', 'Master', 'Agents', 'Proxies', 'Slaves', 'AppService',
+    function($scope, $routeParams, $interval, $http, $location, Servers, Log, Settings, Alerts, Master, Agents, Proxies, Slaves, AppService) {
+
+   $scope.isLoggedIn = AppService.hasAuthHeaders();
+
+   $scope.logout = function(){
+     AppService.logout();
+     $location.path('login');
+   };
 
     var timeFrame = $routeParams.timeFrame;
     if (timeFrame == "") {
         timeFrame = "10m";
     }
 
-        var refreshInterval = 2000000;
+        var refreshInterval = 2000;
 
         var callServices = function(){
             Settings.query( {}, function(data) {
