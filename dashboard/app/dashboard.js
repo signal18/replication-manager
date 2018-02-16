@@ -74,7 +74,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         timeFrame = "10m";
     }
 
-        var refreshInterval = 2000;
+        var refreshInterval = 2000000;
 
         var callServices = function(){
             Settings.query( {}, function(data) {

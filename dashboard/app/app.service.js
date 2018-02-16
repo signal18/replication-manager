@@ -1,7 +1,7 @@
 app.service('AppService', ['$http', '$localStorage', function ($http, $localStorage) {
 
     var getApiDomain = function(){
-        return 'https://localhost:10005/api';
+        return 'api';
     };
 
     var setAuthenticated = function (user, token) {
