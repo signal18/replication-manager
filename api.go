@@ -111,7 +111,7 @@ func apiserver() {
 	router := mux.NewRouter()
 	router.HandleFunc("/", handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.PathPrefix("/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	router.HandleFunc("/api/login", loginHandler)
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
