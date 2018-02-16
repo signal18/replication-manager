@@ -29,7 +29,6 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
-	"github.com/rs/cors"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
 )
@@ -111,7 +110,8 @@ func apiserver() {
 	router := mux.NewRouter()
 	router.HandleFunc("/", handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
 	router.HandleFunc("/api/login", loginHandler)
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
@@ -330,9 +330,9 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
 	))
-	handler := cors.Default().Handler(router)
+
 	log.Info("Starting JWT API on " + conf.APIBind + ":" + conf.APIPort)
-	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", handler)
+	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}
