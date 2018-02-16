@@ -29,6 +29,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
 )
@@ -142,10 +143,21 @@ func apiserver() {
 	))
 
 	//PROTECTED ENDPOINTS FOR SETTINGS
+	router.Handle("/api/monitor", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxCluster)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
 	))
+
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
@@ -315,8 +327,9 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
 	))
+	handler := cors.Default().Handler(router)
 	log.Info("Starting JWT API on " + conf.APIBind + ":" + conf.APIPort)
-	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", handler)
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}
@@ -1551,4 +1564,26 @@ func handlerMuxProcesslist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No cluster", 500)
 		return
 	}
+}
+
+func handlerMuxCluster(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster)
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
 }

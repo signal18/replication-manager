@@ -252,6 +252,22 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetDBServerIdList() []string {
+	ret := make([]string, len(cluster.Servers))
+	for i, server := range cluster.Servers {
+		ret[i] = server.Id
+	}
+	return ret
+}
+
+func (cluster *Cluster) GetProxyServerIdList() []string {
+	ret := make([]string, len(cluster.Proxies))
+	for i, server := range cluster.Proxies {
+		ret[i] = server.Id
+	}
+	return ret
+}
+
 func (cluster *Cluster) GetTopology() string {
 	cluster.Conf.Topology = topoUnknown
 	if cluster.Conf.MultiMaster {

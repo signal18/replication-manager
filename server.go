@@ -47,23 +47,26 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	Logs           httplog.HttpLog             `json:"logs"`
-	OpenSVC        opensvc.Collector           `json:"-"`
-	Version        string                      `json:"version"`
-	Fullversion    string                      `json:"full-version"`
-	Os             string                      `json:"os"`
-	Arch           string                      `json:"arch"`
-	Tests          []string                    `json:"tests"`
-	Clusters       map[string]*cluster.Cluster `json:"clusters"`
-	Agents         []opensvc.Host              `json:"agents"`
-	UUID           string                      `json:"uuid"`
-	Hostname       string                      `json:"hostname"`
-	Status         string                      `json:"status"`
-	SplitBrain     bool                        `json:"spitbrain"`
-	tlog           termlog.TermLog
-	termlength     int
-	exitMsg        string
-	exit           bool
+	OpenSVC     opensvc.Collector           `json:"-"`
+	Version     string                      `json:"version"`
+	Fullversion string                      `json:"full-version"`
+	Os          string                      `json:"os"`
+	Arch        string                      `json:"arch"`
+	Clusters    map[string]*cluster.Cluster `json:"-"`
+	Agents      []opensvc.Host              `json:"agents"`
+	UUID        string                      `json:"uuid"`
+	Hostname    string                      `json:"hostname"`
+	Status      string                      `json:"status"`
+	SplitBrain  bool                        `json:"spitbrain"`
+	ClusterList []string                    `json:"clusters"`
+	Tests       []string                    `json:"tests"`
+	Conf        config.Config               `json:"config"`
+	Logs        httplog.HttpLog             `json:"logs"`
+	tlog        termlog.TermLog
+	termlength  int
+	exitMsg     string
+	exit        bool
+
 	currentCluster *cluster.Cluster
 
 	isStarted bool
@@ -590,6 +593,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.Hostname, err = os.Hostname()
 	regtest := new(regtest.RegTest)
 	repman.Tests = regtest.GetTests()
+	repman.Conf = conf
 
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
@@ -655,7 +659,7 @@ func (repman *ReplicationManager) Run() error {
 	}
 
 	// If there's an existing encryption key, decrypt the passwords
-
+	repman.ClusterList = cfgGroupList
 	for _, gl := range cfgGroupList {
 		repman.StartCluster(gl)
 	}
@@ -733,6 +737,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 
 	myconf[clusterName] = conf
 	cfgGroupList = append(cfgGroupList, clusterName)
+	repman.ClusterList = cfgGroupList
 	confs[clusterName] = conf
 
 	file, err := os.OpenFile(conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
