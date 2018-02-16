@@ -25,20 +25,20 @@ type SlowLog struct {
 }
 
 type Message struct {
-	Group         string
-	Level         string
-	Timestamp     string
-	Admin         bool   // true if Query is admin command
-	Query         string // SQL query or admin command
-	User          string
-	Host          string
-	Db            string
-	TimeMetrics   map[string]float64 // *_time and *_wait metrics
-	NumberMetrics map[string]uint64  // most metrics
-	BoolMetrics   map[string]bool    // yes/no metrics
-	RateType      string             // Percona Server rate limit type
-	RateLimit     uint               // Percona Server rate limit value
-	Text          string
+	Group         string             `json:"group"`
+	Level         string             `json:"level"`
+	Timestamp     string             `json:"timestamp"`
+	Admin         bool               `json:"admin"` // true if Query is admin command
+	Query         string             `json:"query"` // SQL query or admin command
+	User          string             `json:"user"`
+	Host          string             `json:"host"`
+	Db            string             `json:"db"`
+	TimeMetrics   map[string]float64 `json:"timeMetrics"`   // *_time and *_wait metrics
+	NumberMetrics map[string]uint64  `json:"numberMetrics"` // most metrics
+	BoolMetrics   map[string]bool    `json:"bollMetrics"`   // yes/no metrics
+	RateType      string             `json:"raeType"`       // Percona Server rate limit type
+	RateLimit     uint               `json:"rateLimit"`     // Percona Server rate limit value
+	Text          string             `json:"text"`
 }
 
 func NewMessage() *Message {

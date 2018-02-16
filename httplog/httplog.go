@@ -19,10 +19,10 @@ type HttpLog struct {
 }
 
 type Message struct {
-	Group     string
-	Level     string
-	Timestamp string
-	Text      string
+	Group     string `json:"group"`
+	Level     string `json:"level"`
+	Timestamp string `json:"timestamp"`
+	Text      string `json:"text"`
 }
 
 func NewHttpLog(sz int) HttpLog {
