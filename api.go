@@ -442,19 +442,9 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-		return vk, nil
-	})
-
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 
 	if mycluster != nil {
-		if err != nil {
-			claims := token.Claims.(jwt.MapClaims)
-			fmt.Printf("Token for user %v expires %v", claims["user"], claims["exp"])
-			mycluster.LogPrintf(cluster.LvlErr, "API user : %s", claims["CustomUserInfo"])
-		}
 		data, _ := json.Marshal(mycluster.GetServers())
 		var srvs []*cluster.ServerMonitor
 
@@ -1329,10 +1319,33 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	err := e.Encode(RepMan)
+
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
-		return
+		claims := token.Claims.(jwt.MapClaims)
+
+		mycopy := RepMan
+		var cl []string
+		type ClaimUserInfo struct {
+			Name string
+			Role string
+		}
+		var userinfo ClaimUserInfo
+		userinfo = claims["CustomUserInfo"]
+		for _, cluster := range RepMan.Clusters {
+			if cluster.Conf.APIUser != userinfo.Name {
+				cl = append(cl, cluster.Name)
+			}
+		}
+		mycopy.ClusterList = cl
+		err := e.Encode(mycopy)
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
 	}
 }
 
