@@ -101,7 +101,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         Monitor.query( {}, function(data) {
             if (data){
                 $scope.settings = data;
-                $scope.log = data.logs.Buffer;
+                $scope.log = data.logs.buffer;
                 $scope.agents = data.agents;
             }
         }, function() {
@@ -310,7 +310,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         if (arr != null) {
             for (i = 0; i < arr.length; i++) {
                 var gtid = "";
-                gtid = arr[i].DomainID + '-' + arr[i].ServerID + '-' + arr[i].SeqNo;
+                gtid = arr[i].domainID + '-' + arr[i].serverID + '-' + arr[i].seqNo;
                 output.push(gtid);
             }
             return output.join(",");
