@@ -361,7 +361,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
     };
 
-    $scope.optimize = function() {
+    $scope.optimizeAll = function() {
 
         var response = $http.get(getClusterUrl() + '/actions/optimize');
         response.success(function(data, status, headers, config) {
