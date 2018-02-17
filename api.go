@@ -321,6 +321,11 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/optimize", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
+	))
+
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
