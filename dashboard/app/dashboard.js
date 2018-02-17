@@ -97,7 +97,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     var refreshInterval = 2000;
 
     var callServices = function(){
-
+        if (!AppService.hasAuthHeaders()) return;
         Monitor.query( {}, function(data) {
             if (data){
                 $scope.settings = data;
@@ -386,7 +386,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     $scope.optimize = function(server) {
         var r = confirm("Confirm optimize for server-id: " + server);
         if (r == true) {
-            var response = $http.get(getClusterUrl() + '/servers/' + server + '/optimize');
+            var response = $http.get(getClusterUrl() + '/servers/' + server + '/actions/optimize');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
