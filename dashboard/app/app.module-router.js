@@ -1,4 +1,4 @@
-var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ng-token-auth', 'ngStorage'])
+var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ngStorage'])
     .config(function($routeProvider) {
         routeProvider = $routeProvider;
         $routeProvider

@@ -2,7 +2,7 @@ app.factory('BearerAuthInterceptor', ['$q', '$location', '$localStorage', functi
     return {
         request: function(config) {
             config.headers = config.headers || {};
-            if ($localStorage.currentUser.token) {
+            if ($localStorage.currentUser && $localStorage.currentUser.token) {
                 config.headers.Authorization = 'Bearer ' + $localStorage.currentUser.token;
             }
             return config || $q.when(config);
