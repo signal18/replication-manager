@@ -9,19 +9,19 @@
             <div layout="column" layout-fill class="expanded">
                <p class="sectionheader">ERROR LOG</p>
                <table class="log">
-                  <tr ng-repeat="logline in server.ErrorLog.Buffer" ng-if="logline.Timestamp">
-                     <td class="stamp">{{ logline.Timestamp }}</td>
-                     <td ng-switch="logline.Level">
-                        <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
-                        <span ng-switch-when="Warning" class="label label-warning">{{ logline.Level }}</span>
-                        <span ng-switch-when="Error" class="label label-danger">{{ logline.Level }}</span>
-                        <span ng-switch-when="Note" class="label label-primary">{{ logline.Level }}</span>
-                        <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
+                  <tr ng-repeat="logline in server.errorLog.buffer" ng-if="logline.timestamp">
+                     <td class="stamp">{{ logline.timestamp }}</td>
+                     <td ng-switch="logline.level">
+                        <span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
+                        <span ng-switch-when="Warning" class="label label-warning">{{ logline.level }}</span>
+                        <span ng-switch-when="Error" class="label label-danger">{{ logline.level }}</span>
+                        <span ng-switch-when="Note" class="label label-primary">{{ logline.level }}</span>
+                        <span ng-switch-default class="label label-default">{{ logline.level }}</span>
                      <td class="text">{{ logline.Text }}</td>
                   </tr>
                </table>
                <BR><BR>
-               <p class="sectionheader">SLOW LOGs</p>
+               <p class="sectionheader">Slow Logs</p>
                <md-pre>
                <table class="table">
                   <tr>
@@ -39,12 +39,12 @@
                      <th>Send</th>
                      <th>Affected</th>
                   </tr>
-                  <tr ng-repeat="logline in server.SlowLog.Buffer" ng-if="logline.Timestamp">
-                     <td class="stamp">{{ logline.Timestamp }}</td>
-                     <td class="text">{{ logline.Query }}    </td>
-                     <td class="text">{{ logline.User }}@{{ logline.Host }}</td>
-                     <td class="text">{{ logline.TimeMetrics.Query_time }}</td>
-                     <td class="text">{{ logline.TimeMetrics.Lock_time }}</td>
+                  <tr ng-repeat="logline in server.slowLog.Buffer" ng-if="logline.timestamp">
+                     <td class="stamp">{{ logline.timestamp }}</td>
+                     <td class="text">{{ logline.query }}    </td>
+                     <td class="text">{{ logline.user }}@{{ logline.host }}</td>
+                     <td class="text">{{ logline.timeMetrics.Query_time }}</td>
+                     <td class="text">{{ logline.timeMetrics.Lock_time }}</td>
                      <td class="text">{{ logline.BoolMetrics.QC_hit }}</td>
                      <td class="text">{{ logline.NumberMetrics.Thread_id }}</td>
                      <td class="text">{{ logline.NumberMetrics.Rows_examined }}</td>

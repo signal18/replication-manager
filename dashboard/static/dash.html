@@ -245,7 +245,7 @@
 <md-card-content style="height: 400px; overflow-y: auto">
 <md-pre>
 <table class="log">
-<tr ng-repeat="logline in log" ng-if="logline.timestamp">
+<tr ng-repeat="logline in logs" ng-if="logline.timestamp">
 <td class="stamp">{{ logline.timestamp }}</td>
 <td ng-switch="logline.level">
 <span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>

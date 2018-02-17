@@ -101,7 +101,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         Monitor.query( {}, function(data) {
             if (data){
                 $scope.settings = data;
-                $scope.log = data.logs.buffer;
+                $scope.logs = data.logs.buffer;
                 $scope.agents = data.agents;
             }
         }, function() {
