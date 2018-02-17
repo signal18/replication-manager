@@ -19,9 +19,9 @@ import (
 
 // Gtid defines a GTID object
 type Gtid struct {
-	DomainID uint64
-	ServerID uint64
-	SeqNo    uint64
+	DomainID uint64 `json:"domainId"`
+	ServerID uint64 `json:"serverId"`
+	SeqNo    uint64 `json:"seqNo"`
 }
 
 // List defines a slice of GTIDs
