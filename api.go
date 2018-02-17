@@ -28,7 +28,6 @@ import (
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
-	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
@@ -442,11 +441,20 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	u := context.Get(r, "CustomUserInfo")
+
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
 
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
-	mycluster.LogPrintf(cluster.LvlErr, "API user is requesting server: %s", u)
+
 	if mycluster != nil {
+		if err != nil {
+			claims := token.Claims.(jwt.MapClaims)
+			fmt.Printf("Token for user %v expires %v", claims["user"], claims["exp"])
+			mycluster.LogPrintf(cluster.LvlErr, "API user : %s", claims["CustomUserInfo"])
+		}
 		data, _ := json.Marshal(mycluster.GetServers())
 		var srvs []*cluster.ServerMonitor
 

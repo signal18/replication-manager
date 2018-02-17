@@ -47,6 +47,7 @@ type Cluster struct {
 	DBTags               []string      `json:"dbServersTags"`
 	ProxyTags            []string      `json:"proxyServersTags"`
 	Topology             string        `json:"topology"`
+	Sla                  state.Sla     `json:"sla"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -213,6 +214,7 @@ func (cluster *Cluster) Run() {
 	for cluster.exit == false {
 		cluster.ServerIdList = cluster.GetDBServerIdList()
 		cluster.ProxyIdList = cluster.GetProxyServerIdList()
+		cluster.Sla = cluster.sme.GetSla()
 		select {
 		case sig := <-cluster.switchoverChan:
 			if sig {
