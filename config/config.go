@@ -203,10 +203,10 @@ type Config struct {
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
 	ArbitratorAddress                  string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                   string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
-	FailForceGtid                      bool   //suspicious code
+	FailForceGtid                      bool   `toml:"-" json:"-"` //suspicious code
 	Test                               bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
-	Enterprise                         bool   //used to talk to opensvc collector
+	Enterprise                         bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 	ProvHost                           string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvRegister                       bool   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`

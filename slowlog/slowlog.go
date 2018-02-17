@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/signal18/replication-manager/misc"
 )
 
 type SlowLog struct {
@@ -120,13 +122,13 @@ func (tl *SlowLog) ParseLine(line string, sl *Message) {
 			if strings.HasSuffix(smv[1], "_time") || strings.HasSuffix(smv[1], "_wait") {
 				// microsecond value
 				val, _ := strconv.ParseFloat(smv[2], 32)
-				sl.TimeMetrics[smv[1]] = float64(val)
+				sl.TimeMetrics[misc.Camelcase(smv[1])] = float64(val)
 			} else if smv[2] == "Yes" || smv[2] == "No" {
 				// boolean value
 				if smv[2] == "Yes" {
-					sl.BoolMetrics[smv[1]] = true
+					sl.BoolMetrics[misc.Camelcase(smv[1])] = true
 				} else {
-					sl.BoolMetrics[smv[1]] = false
+					sl.BoolMetrics[misc.Camelcase(smv[1])] = false
 				}
 			} else if smv[1] == "Schema" {
 				sl.Db = smv[2]
@@ -139,7 +141,7 @@ func (tl *SlowLog) ParseLine(line string, sl *Message) {
 				// integer value
 				val, err := strconv.ParseUint(smv[2], 10, 64)
 				if err == nil {
-					sl.NumberMetrics[smv[1]] = val
+					sl.NumberMetrics[misc.Camelcase(smv[1])] = val
 				}
 			}
 		}

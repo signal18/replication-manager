@@ -12,10 +12,10 @@ package httplog
 import "sync"
 
 type HttpLog struct {
-	Buffer []Message
-	Len    int
-	Line   int
-	L      sync.Mutex
+	Buffer []Message  `json:"buffer"`
+	Len    int        `json:"len"`
+	Line   int        `json:"line"`
+	L      sync.Mutex `json:"-"`
 }
 
 type Message struct {
