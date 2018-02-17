@@ -28,6 +28,7 @@ import (
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
+	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
@@ -367,7 +368,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
 	//set claims
-	claims["iss"] = "admin"
+	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
 	claims["jti"] = "1" // should be user ID(?)
@@ -436,7 +437,10 @@ func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+	u := context.Get(r, "CustomUserInfo")
+
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster.LogPrintf(cluster.LvlErr, "API user is requesting server: %s", u)
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetServers())
 		var srvs []*cluster.ServerMonitor
