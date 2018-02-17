@@ -1,0 +1,22 @@
+<div class="container" ng-controller="LoginController">
+    <div class="row">
+        <div class="modal-header">
+            <h3>Login to Replication Manager</h3>
+        </div>
+        <div class="modal-body">
+            <form name="login_form" ng-submit="login(user)">
+                <p><input type="text" class="span3" name="username" id="username" ng-model="user.username" placeholder="Username" required></p>
+                <span class="text-danger" ng-show="login_form.username.$touched && login_form.username.$invalid">The Username is required.</span>
+                <p><input type="password" class="span3" name="password" ng-model="user.password" placeholder="Password" required></p>
+                <span class="text-danger" ng-show="login_form.password.$touched && login_form.password.$invalid">The Password is required.</span>
+                <p><button type="submit" class="btn btn-primary"  ng-disabled="login_form.username.$dirty && login_form.username.$invalid ||
+                    login_form.password.$dirty && login_form.password.$invalid">Sign in</button>
+                    <a href="#">Forgot Password?</a>
+                </p>
+            </form>
+        </div>
+        <div ng-if="message" class="alert alert-danger">
+            {{message}}
+        </div>
+    </div>
+</div>

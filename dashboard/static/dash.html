@@ -1,236 +1,265 @@
-
-    <md-content class="md-padding">
-        <md-card>
-            <div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status will not update.</div>
-        </md-card>
-        <div layout="column" layout-gt-xs="row">
-            <div flex-gt-xs="30" class="col-lg-33">
-                <md-card>
-                    <table class="table">
-
-                        <tr>
-                            <th>Group Name</th>
-                            <th>Topology</th>
-                        </tr>
-                        <tr>
-                            <td><span ng-if="settings.confgroup==''" class="label label-primary">DEFAULT</span><span ng-if="settings.confgroup!=''" class="label label-info">{{settings.confgroup}}</span>
-                            </td>
-                            <td><span class="label label-info">{{settings.topology}}</span>
-                            </td>
-                        </tr>
-                    </table>
-
-                </md-card>
-            </div>
-            <div flex-gt-xs="10"></div>
-            <div flex-gt-xs="60" class="col-lg-66">
-                <md-card>
-
-                    <table ng-if="settings" class="table">
-                        <tr>
-                            <th>Manager Status</th>
-                            <th>Failover Count</th>
-                            <th>Last Failover Time</th>
-                        </tr>
-                        <tr>
-                            <td><span ng-if="settings.runstatus=='A'" class="label label-success">ACTIVE</span><span ng-if="settings.runstatus=='S'" class="label label-warning">STANDBY</span>
-                            </td>
-                            <td>{{settings.failoverctr}} / {{settings.faillimit}}</td>
-                            <td>{{settings.lastfailover}}</td>
-                        </tr>
-                    </table>
-                </md-card>
-            </div>
+<md-content class="md-padding">
+    <md-card>
+        <div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status
+            will not update.
         </div>
-        <md-card>
-            <md-card-content>
-                <p class="sectionheader">SERVERS</p>
-            </md-card-content>
-            <table ng-if="servers" class="table">
+    </md-card>
+    <div layout="column" layout-gt-xs="row">
+        <div flex-gt-xs="30" class="col-lg-33">
+            <md-card>
+                <table class="table">
 
-                <tr>
-                    <th>Host</th>
-                    <th>Port</th>
-                    <th>Version</th>
-                    <th>Status</th>
-                    <th>Priority</th>
-                    <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true ">Using GTID</th>
-                    <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Current GTID</th>
-                    <th ng-if="servers[0].DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">Slave GTID Pos</th>
-                    <th ng-if="servers[0].DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true">Executed GTID Set</th>
-                    <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">File</th>
-                    <th ng-if="slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">Pos</th>
-                    <th>IO Thread</th>
-                    <th>SQL Thread</th>
-                    <th>Delay</th>
-                    <th>Read Only</th>
-                    <th>Fail Count</th>
-                    <th>Scheduler</th>
-                    <th>Master Sync</th>
-                    <th>Slave Sync</th>
-                    <th>Actions</th>
-                </tr>
-
-                <tbody>
-                    <tr ng-repeat="server in servers" ng-class="{'active':server.State=='Master','danger': server.State=='SlaveErr','warning': server.State=='SlaveLate'  }">
-
-
-                        <td>{{server.Host}}</td>
-                        <td>{{server.Port}}</td>
-                        <td>{{server.DBVersion.Flavor}} {{server.DBVersion.Major}}.{{server.DBVersion.Minor}}</td>
-                        <td ng-switch="server.State">
-                            <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                            <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                            <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                            <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                            <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
-                            <span ng-switch-default class="label label-default">{{server.State}}<label ng-if="server.IsVirtualMaster==true">-VMaster</label></span>
+                    <tr>
+                        <th>Cluster Name</th>
+                        <th>Topology</th>
+                    </tr>
+                    <tr>
+                        <td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span
+                                ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span>
                         </td>
-                        <td ng-if="server.Ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"></td>
-          <td ng-if="server.Prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"></td>
-          <td ng-if="server.Prefered==false && server.Ignored==false"></td>
-          <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{server.Replications[0].UsingGtid.String}}</td>
-          <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.CurrentGtid)}}</td>
-          <td ng-if="server.DBVersion.Flavor=='MariaDB' && slaves[0].HaveMariaDBGTID==true">{{gtidstring(server.SlaveGtid)}}</td>
-          <td ng-if="server.DBVersion.Flavor!='MariaDB' && slaves[0].HaveMySQLGTID==true ">{{server.GTIDExecuted}}</td>
-          <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].MasterLogFile.String}}</th>
-          <th ng-if="server.IsSlave==true &&  slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.Replications[0].ExecMasterLogPos.String}}</th>
-          <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogFile}}</th>
-          <th ng-if="server.IsSlave==false && slaves[0].HaveMariaDBGTID==false && slaves[0].HaveMySQLGTID==false">{{server.BinaryLogPos}}</th>
-
-          <td>{{server.Replications[0].SlaveIORunning.String}}</td>
-          <td>{{server.Replications[0].SlaveSQLRunning.String}}</td>
-          <td>{{server.Replications[0].SecondsBehindMaster.Int64}}</td>
-          <td>{{server.ReadOnly}}</td>
-          <td>{{server.FailCount}}/{{server.FailSuspectHeartbeat}}</td>
-          <td ng-if="server.EventScheduler==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                        </td>
-                        <td ng-if="server.EventScheduler==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                        </td>
-                        <td ng-if="server.SemiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                        </td>
-                        <td ng-if="server.SemiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                        </td>
-                        <td ng-if="server.SemiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
-                        </td>
-                        <td ng-if="server.SemiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
-                        </td>
-                        <td>
-                            <button width=18 height=18 type="button" ng-click="maintenance(server.Id)">
-                                <md-tooltip md-direction="down">Toggle Maintenance Mode</md-tooltip><img width=18 height=18 src="/static/img/maintenance.png">
-                            </button>
-                            <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="stop(server.Id)">
-                                <md-tooltip md-direction="down">Stop Database</md-tooltip><img width=18 height=18 src="/static/img/stop.png">
-                            </button>
-                            <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button" ng-click="start(server.Id)">
-                            <md-tooltip md-direction="down">Start Database</md-tooltip><img width=18 height=18 src="/static/img/start.png">
-                            </button>
-                            <button width=18 height=18 type="button" ng-click="optimize(server.Id)">
-                                <md-tooltip md-direction="down">Optimize Database</md-tooltip> <img width=18 height=18 src="/static/img/defrag.png">
-                            </button>
-                            <button  ng-if="server.Id==master.Id"  width=18 height=18 type="button" ng-click="backupphysical(server.Id)">
-                                <md-tooltip md-direction="down">Physcical Backup</md-tooltip><img width=18 height=18 src="/static/img/backup.png">
-                            </button>
+                        <td><span class="label label-info">{{selectedCluster.topology}}</span>
                         </td>
                     </tr>
-                </tbody>
-            </table>
-        </md-card>
+                </table>
 
-        <div layout="column" layout-gt-xs="row">
-            <div flex-gt-xs="30" class="col-lg-33">
-                <md-card>
-                    <md-card-content>
-                        <p class="sectionheader">ACTIONS</p>
-                    </md-card-content>
+            </md-card>
+        </div>
+        <div flex-gt-xs="10"></div>
+        <div flex-gt-xs="60" class="col-lg-66">
+            <md-card>
 
-                    <table class="table">
-                        <tr>
-                            <td>
-                                <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="switch(false)">Switchover</button>
-                                <button ng-if="master.State =='Failed'" type="button" class="btn btn-danger" ng-click="switch(true)">Failover</button>
-                                <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="optimize()">Rolling Optimize</button>
-                                <button ng-if="master.State !='Failed'" type="button" class="btn btn-primary" ng-click="backupphysical()">Physical Backup</button>
-                            </td>
-                        </tr>
-                    </table>
-                </md-card>
-                <BR>
-                <md-card ng-if="settings.enterprise=='true'">
-                    <md-card-content ng-if="settings.enterprise=='true'">
-                        <p class="sectionheader">PRO</p>
-                    </md-card-content>
+                <table ng-if="settings" class="table">
+                    <tr>
+                        <th>Manager Status</th>
+                        <th>Failover Count</th>
+                        <th>Last Failover Time</th>
+                    </tr>
+                    <tr>
+                        <td><span ng-if="selectedCluster.activePassiveStatus=='A'"
+                                  class="label label-success">ACTIVE</span><span
+                                ng-if="selectedCluster.activePassiveStatus=='S'"
+                                class="label label-warning">STANDBY</span>
+                        </td>
+                        <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
+                        <td>{{selectedCluster.failoverLastTime}}</td>
+                    </tr>
+                </table>
+            </md-card>
+        </div>
+    </div>
+<md-card>
+    <md-card-content>
+        <p class="sectionheader">SERVERS</p>
+    </md-card-content>
+<table ng-if="servers" class="table">
 
-                    <table class="table" ng-if="settings.enterprise=='true'">
-                        <tr>
-                            <td>
-                                <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-                                <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
-                                <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="rolling()">Rolling Upgrade</button>
-                                <BR>
-                                <BR>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <div ng-repeat="tag in settings.databasetags"> <span class="label label-success">{{ tag }}<span></div>
-              </td>
-           </tr>
-          </table>
-          </md-card>
-          <BR>
+    <tr>
+        <th>Host</th>
+        <th>Port</th>
+        <th>Version</th>
+        <th>Status</th>
+        <th>Priority</th>
+        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true ">Using GTID</th>
+        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">Current GTID</th>
+        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">Slave GTID Pos</th>
+        <th ng-if="servers[0].dBVersion.flavor!='MariaDB' && slaves[0].haveMySQLGTID==true">Executed GTID Set</th>
+        <th ng-if="slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">File</th>
+        <th ng-if="slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">Pos</th>
+        <th>IO Thread</th>
+        <th>SQL Thread</th>
+        <th>Delay</th>
+        <th>Read Only</th>
+        <th>Fail Count</th>
+        <th>Scheduler</th>
+        <th>Master Sync</th>
+        <th>Slave Sync</th>
+        <th>Actions</th>
+    </tr>
 
-         <md-card ng-if="settings.test=='true'">
-               <table class="table">
-                  <tr>
-                     <td>
-             <labelfor="test" action="/runonetest" >
-                <p class="sectionheader">Tests</p>
-             </label><BR>
-             <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()" >
-                <md-option   ng-selected="{{element == settings.regtests}}" ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
-             </md-select><BR><BR>
-             <button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
-             <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
-             <BR><BR>
-             <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-             <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
-             <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
+<tbody>
+<tr ng-repeat="server in servers"
+    ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
+    <td>{{server.host}}</td>
+    <td>{{server.port}}</td>
+    <td>{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}</td>
+    <td ng-switch="server.state">
+        <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
+                ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
+                ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+    </td>
+    <td ng-if="server.ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"/></td>
+    <td ng-if="server.prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"/></td>
+    <td ng-if="server.prefered==false && server.ignored==false"></td>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{server.replications[0].usingGTID.string}}</td>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{gtidstring(server.currentGTID)}}</td>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{gtidstring(server.slaveGTID)}}</td>
+<td ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMySQLGTID==true ">{{server.gtIdExecuted}}</td>
+<th ng-if="server.isSlave==true &&  slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.replications[0].masterLogFile.String}}</th>
+<th ng-if="server.isSlave==true &&  slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.replications[0].execMasterLogPos.string}}</th>
+<th ng-if="server.isSlave==false && slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.binaryLogFile}}</th>
+<th ng-if="server.isSlave==false && slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.binaryLogPos}}</th>
 
-          </td>
-          <td>
-          </td>
-       </tr>
-    </table>
-    </md-card>
-  </div>
-  <div  flex-gt-xs="5" ></div>
-  <div  flex-gt-xs="65" class="col-lg-66">
+<td>{{server.replications[0].slaveIORunning.String}}</td>
+<td>{{server.replications[0].slaveIORunning.String}}</td>
+<td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
+<td>{{server.readOnly}}</td>
+<td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
+    <td ng-if="server.eventScheduler==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+    </td>
+    <td ng-if="server.eventScheduler==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+    </td>
+    <td ng-if="server.semiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+    </td>
+    <td ng-if="server.semiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+    </td>
+    <td ng-if="server.semiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+    </td>
+    <td ng-if="server.semiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+    </td>
+    <td>
+        <button width=18 height=18 type="button" ng-click="maintenance(server.id)">
+            <md-tooltip md-direction="down">Toggle Maintenance Mode</md-tooltip>
+            <img width=18 height=18 src="/static/img/maintenance.png">
+        </button>
+        <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button"
+                ng-click="stop(server.id)">
+            <md-tooltip md-direction="down">Stop Database</md-tooltip>
+            <img width=18 height=18 src="/static/img/stop.png">
+        </button>
+        <button ng-if="settings.enterprise=='true' || settings.test=='true'" width=18 height=18 type="button"
+                ng-click="start(server.id)">
+            <md-tooltip md-direction="down">Start Database</md-tooltip>
+            <img width=18 height=18 src="/static/img/start.png">
+        </button>
+        <button width=18 height=18 type="button" ng-click="optimize(server.id)">
+            <md-tooltip md-direction="down">Optimize Database</md-tooltip>
+            <img width=18 height=18 src="/static/img/defrag.png">
+        </button>
+        <button ng-if="server.id==master.id" width=18 height=18 type="button" ng-click="backupphysical(server.id)">
+            <md-tooltip md-direction="down">Physcical Backup</md-tooltip>
+            <img width=18 height=18 src="/static/img/backup.png">
+        </button>
+    </td>
+</tr>
+</tbody>
+</table>
+</md-card>
+
+<div layout="column" layout-gt-xs="row">
+<div flex-gt-xs="30" class="col-lg-33">
     <md-card>
-    <md-card-content><p class="sectionheader">LOGS</p>  </md-card-content>
-    <md-card-content style="height: 400px; overflow-y: auto">
-    <md-pre>
-<table class="log">
-<tr ng-repeat="logline in log" ng-if="logline.Timestamp">
-<td class="stamp">{{ logline.Timestamp }}</td>
-<td ng-switch="logline.Level">
- <span ng-switch-when="INFO" class="label label-info">{{ logline.Level }}</span>
-                                    <span ng-switch-when="WARN" class="label label-warning">{{ logline.Level }}</span>
-                                    <span ng-switch-when="ERROR" class="label label-danger">{{ logline.Level }}</span>
-                                    <span ng-switch-when="DEBUG" class="label label-primary">{{ logline.Level }}</span>
-                                    <span ng-switch-default class="label label-default">{{ logline.Level }}</span>
-                                    <td class="text">{{ logline.Text }}      </td>
-                        </tr>
-                    </table>
-                    </md-pre>
-                    </md-card-content>
+        <md-card-content>
+            <p class="sectionheader">ACTIONS</p>
+        </md-card-content>
 
-                </md-card>
-                </div>
-            </div>
-    </md-content>
+        <table class="table">
+            <tr>
+                <td>
+                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary"
+                            ng-click="switch(false)">Switchover
+                    </button>
+                    <button ng-if="master.state =='Failed'" type="button" class="btn btn-danger"
+                            ng-click="switch(true)">Failover
+                    </button>
+                    <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary" ng-click="optimizeAll()">
+                        Rolling Optimize
+                    </button>
+                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary"
+                            ng-click="backupphysical()">Physical Backup
+                    </button>
+                </td>
+            </tr>
+        </table>
+    </md-card>
+    <BR>
+<md-card ng-if="settings.enterprise=='true'">
+    <md-card-content ng-if="settings.enterprise=='true'">
+        <p class="sectionheader">PRO</p>
+    </md-card-content>
+
+<table class="table" ng-if="settings.enterprise=='true'">
+    <tr>
+        <td>
+            <button ng-if="settings.test=='true'" type="button" class="btn btn-primary" ng-click="bootstrap()">
+                Bootstrap
+            </button>
+            <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="unprovision()">
+                Unprovision
+            </button>
+            <button ng-if="settings.enterprise=='true'" type="button" class="btn btn-primary" ng-click="rolling()">
+                Rolling Upgrade
+            </button>
+            <BR>
+            <BR>
+        </td>
+    </tr>
+<tr>
+<td>
+<div ng-repeat="tag in settings.databasetags"> <span class="label label-success">{{ tag }}<span></div>
+</td>
+</tr>
+</table>
+</md-card>
+    <BR>
+
+<md-card ng-if="settings.test=='true'">
+<table class="table">
+<tr>
+<td>
+    <labelfor="test" action="/runonetest" >
+    <p class="sectionheader">Tests</p>
+    </label><BR>
+<md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()">
+        <md-option   ng-selected="{{element == settings.regtests}}"
+        ng-repeat="element in settings.regtests"  value="{{element}}">{{element}}</option>
+</md-select>
+    <br/><br/>
+    <button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+    <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
+    <br/><br/>
+    <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
+    <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
+    <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
+
+</td>
+    <td>
+    </td>
+</tr>
+</table>
+</md-card>
+</div>
+    <div flex-gt-xs="5"></div>
+<div flex-gt-xs="65" class="col-lg-66">
+<md-card>
+    <md-card-content><p class="sectionheader">LOGS</p></md-card-content>
+<md-card-content style="height: 400px; overflow-y: auto">
+<md-pre>
+<table class="log">
+<tr ng-repeat="logline in logs" ng-if="logline.timestamp">
+<td class="stamp">{{ logline.timestamp }}</td>
+<td ng-switch="logline.level">
+<span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
+<span ng-switch-when="WARN" class="label label-warning">{{ logline.level }}</span>
+<span ng-switch-when="ERROR" class="label label-danger">{{ logline.level }}</span>
+<span ng-switch-when="DEBUG" class="label label-primary">{{ logline.level }}</span>
+<span ng-switch-default class="label label-default">{{ logline.level }}</span>
+<td class="text">{{ logline.text }}</td>
+</tr>
+</table>
+</md-pre>
+</md-card-content>
+
+</md-card>
+</div>
+</div>
+</md-content>

@@ -35,116 +35,18 @@
       <script src="/static/vendor/svg-assets-cache.js"></script>
       <script src="/static/vendor/ng-token-auth.js"></script>
       <script src="/static/vendor/hammer.js"></script>
-      <script src="dashboard.js"></script>
+      <script src="/static/vendor/ng-storage.min.js"></script>
+      <script src="/app/app.module-router.js"></script>
+      <script src="/app/app.service.js"></script>
+      <script src="/app/interceptor.js"></script>
+      <script src="/app/dashboard.js"></script>
+      <script src="/app/login.controller.js"></script>
       <link rel="stylesheet" href="/static/css/angular-material.min.css">
       <link rel="stylesheet" href="/static/font-awesome/css/font-awesome.min.css">
-      <style>
-         td {
-         white-space: nowrap;
-         }
-         .menudemoBasicUsage .md-menu-demo {
-         padding: 24px;
-         }
-         .menudemoBasicUsage .menu-demo-container {
-         min-height: 200px;
-         }
-         .sectionheader {
-         font-size: 12px;
-         font-weight: 700;
-         margin-bottom: 0;
-         padding-left: 0;
-         border: none;
-         background-color: transparent;
-         letter-spacing: 0.02em;
-         text-transform: uppercase;
-         }
-         .tabsdemoDynamicHeight md-content {
-         background-color: transparent !important;
-         }
-         .tabsdemoDynamicHeight md-content md-tabs {
-         background: #ffffff;
-         border: 1px solid #dcdcdc;
-         }
-         .tabsdemoDynamicHeight md-content md-tabs md-tabs-wrapper {
-         background: white;
-         }
-         .tabsdemoDynamicHeight md-content h1:first-child {
-         margin-top: 0;
-         }
-         .title {
-         font-size: 24px;
-         color: #282828;
-         padding-left: 20px;
-         padding-top: 20px;
-         padding-bottom: 20px;
-         }
-      </style>
+      <link rel="stylesheet" href="/app/app.css">
       <link href="data:image/x-icon;base64,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" rel="icon" type="image/x-icon" />
    </head>
    <body ng-app="dashboard" ng-cloak>
-      <div ng-controller="DashboardController" class="col-lg-12">
-         <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
-            <table width="100%">
-               <tr>
-                  <td>
-                     <h1>
-                        <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
-                     </h1>
-                  </td>
-                  <td>
-                     <form ng-if="settings.httpauth=='true'" align=right action="/logout" method="post">
-                        <button ng-if="settings.httpauth=='true'" class="btn btn-primary" type="submit">Logout</button>
-                     </form>
-                     <form name="myForm">
-                        <md-panel>
-                           <md-card-content>
-                              <p class="sectionheader">CLUSTERS</p>
-                              <label for="cluster" action="/setcluster">
-                                 <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="clusters" ng-change="setcluster()">
-                                    <md-option ng-selected="{{element == settings.confgroup}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                                    {{element}}</option>
-                                 </md-select>
-                              </label>
-                           </md-card-content>
-                        </md-panel>
-                  </form>
-                    </td>
-               </tr>
-            </table>
-            <md-content layout="column">
-               <md-tabs md-dynamic-height="" md-border-bottom="">
-                  <md-tab label="Dashboard">
-                     <div ng-include src="'static/dash.html'"></div>
-                  </md-tab>
-                  <md-tab label="Alerts ^{{alerts.errors.length}}">
-                     <div ng-include src="'static/alert.html'"></div>
-                  </md-tab>
-                  <md-tab label="Sla">
-                     <div ng-include src="'static/sla.html'"></div>
-                  </md-tab>
-                  <md-tab label="Proxies">
-                     <div ng-include src="'static/proxy.html'"></div>
-                  </md-tab>
-                  <md-tab label="Settings">
-                     <div ng-include src="'static/setting.html'"></div>
-                  </md-tab>
-                  <md-tab label="Jobs">
-                     <div ng-include src="'static/job.html'"></div>
-                  </md-tab>
-                  <md-tab label="Graphs" ng-if="settings.graphitemetrics=='true'">
-                    <div ng-include src="'static/graph.html'"></div>
-                  </md-tab>
-                  <md-tab label="Agents" ng-if="settings.enterprise=='true'" >
-                    <div ng-include src="'static/agent.html'"></div>
-                  </md-tab>
-               </md-tabs>
-            </md-content>
-         </div>
-         <footer class="footer">
-            <div class="container">
-               <span class="text-muted">Replication-Manager {{settings.version}} © 2017 SIGNAL 18 SARL</span>
-            </div>
-         </footer>
-      </div>
+      <div ng-view></div>
    </body>
 </html>
