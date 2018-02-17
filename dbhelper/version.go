@@ -15,9 +15,9 @@ import (
 )
 
 type MySQLVersion struct {
-	Flavor string
-	Major  int
-	Minor  int
+	Flavor string `json:"flavor"`
+	Major  int    `json:"major"`
+	Minor  int    `json:"minor"`
 }
 
 func NewMySQLVersion(version string, versionComment string) *MySQLVersion {

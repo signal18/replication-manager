@@ -28,85 +28,85 @@ import (
 const debug = false
 
 type Table struct {
-	Table_schema string
-	Table_name   string
-	Engine       string
-	Table_rows   int64
-	Data_length  int64
-	Index_length int64
-	Table_crc    uint64
+	Table_schema string `json:"tableSchema"`
+	Table_name   string `json:"tableName"`
+	Engine       string `json:"engine"`
+	Table_rows   int64  `json:"tableRows"`
+	Data_length  int64  `json:"dataLength"`
+	Index_length int64  `json:"indexLength"`
+	Table_crc    uint64 `json:"tableCrc"`
 }
 
 type Grant struct {
-	User     string
-	Host     string
+	User     string `json:"user"`
+	Host     string `json:"host"`
 	Password string `json:"-"`
-	Hash     uint64
+	Hash     uint64 `json:"hash"`
 }
 
 type Event struct {
-	Db      string
-	Name    string
-	Definer string
-	Status  int64
+	Db      string `json:"db"`
+	Name    string `json:"name"`
+	Definer string `json:"definer"`
+	Status  int64  `json:"status"`
 }
 
 type Processlist struct {
-	Id       uint64
-	User     string
-	Host     string
-	Database sql.NullString
-	Command  string
-	Time     float64
-	State    string
+	Id       uint64         `json:"id"`
+	User     string         `json:"user"`
+	Host     string         `json:"host"`
+	Database sql.NullString `json:"database"`
+	Command  string         `json:"command"`
+	Time     float64        `json:"time"`
+	State    string         `json:"state"`
 }
 
 type SlaveHosts struct {
-	Server_id uint64
-	Host      string
-	Port      uint
-	Master_id uint64
+	Server_id uint64 `json:"serverId"`
+	Host      string `json:"host"`
+	Port      uint   `json:"port"`
+	Master_id uint64 `json:"masterId"`
 }
 
 type MasterStatus struct {
-	File             string
-	Position         uint
-	Binlog_Do_DB     string
-	Binlog_Ignore_DB string
+	File             string `json:"file"`
+	Position         uint   `json:"position"`
+	Binlog_Do_DB     string `json:"binlogDoDB"`
+	Binlog_Ignore_DB string `json:"binlogIgnoreDB"`
 }
 
 type SlaveStatus struct {
-	ConnectionName       sql.NullString `db:"Connection_Name"`
-	MasterHost           sql.NullString `db:"Master_Host"`
-	MasterUser           sql.NullString `db:"Master_User"`
-	MasterPort           sql.NullString `db:"Master_Port"`
-	MasterLogFile        sql.NullString `db:"Master_Log_File"`
-	ReadMasterLogPos     sql.NullString `db:"Read_Master_Log_Pos"`
-	RelayMasterLogFile   sql.NullString `db:"Relay_Master_Log_File"`
-	SlaveIORunning       sql.NullString `db:"Slave_IO_Running"`
-	SlaveSQLRunning      sql.NullString `db:"Slave_SQL_Running"`
-	ExecMasterLogPos     sql.NullString `db:"Exec_Master_Log_Pos"`
-	SecondsBehindMaster  sql.NullInt64  `db:"Seconds_Behind_Master"`
-	LastIOErrno          sql.NullString `db:"Last_IO_Errno"`
-	LastIOError          sql.NullString `db:"Last_IO_Error"`
-	LastSQLErrno         sql.NullString `db:"Last_SQL_Errno"`
-	LastSQLError         sql.NullString `db:"Last_SQL_Error"`
-	MasterServerID       uint           `db:"Master_Server_Id"`
-	UsingGtid            sql.NullString `db:"Using_Gtid"`
-	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos"`
-	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos"`
-	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period"`
-	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set"`
-	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set"`
+	ConnectionName       sql.NullString `db:"Connection_Name" json:"connectionName"`
+	MasterHost           sql.NullString `db:"Master_Host" json:"masterHost"`
+	MasterUser           sql.NullString `db:"Master_User" json:"masterUser"`
+	MasterPort           sql.NullString `db:"Master_Port" json:"masterPort"`
+	MasterLogFile        sql.NullString `db:"Master_Log_File" json:"masterLogFile"`
+	ReadMasterLogPos     sql.NullString `db:"Read_Master_Log_Pos" json:"readMasterLogPos"`
+	RelayMasterLogFile   sql.NullString `db:"Relay_Master_Log_File" json:"relayMasterLogFile"`
+	SlaveIORunning       sql.NullString `db:"Slave_IO_Running" json:"slaveIoRunning"`
+	SlaveSQLRunning      sql.NullString `db:"Slave_SQL_Running" json:"slaveSqlRunning"`
+	ExecMasterLogPos     sql.NullString `db:"Exec_Master_Log_Pos" json:"execMasterLogPos"`
+	SecondsBehindMaster  sql.NullInt64  `db:"Seconds_Behind_Master" json:"secondsBehindMaster"`
+	LastIOErrno          sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
+	LastIOError          sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
+	LastSQLErrno         sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
+	LastSQLError         sql.NullString `db:"Last_SQL_Error" json:"lastSqlError"`
+	MasterServerID       uint           `db:"Master_Server_Id" json:"masterServerId"`
+	UsingGtid            sql.NullString `db:"Using_Gtid" json:"usingGtid"`
+	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos" json:"gtidIoPos"`
+	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos" json:"gtidSlavePos"`
+	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
+	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
+	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 }
 
 type Privileges struct {
-	Select_priv      string
-	Process_priv     string
-	Super_priv       string
-	Repl_slave_priv  string
-	Repl_client_priv string
-	Reload_priv      string
+	Select_priv      string `json:"selectPriv"`
+	Process_priv     string `json:"processPriv"`
+	Super_priv       string `json:"superPriv"`
+	Repl_slave_priv  string `json:"replSlavePriv"`
+	Repl_client_priv string `json:"replClientPriv"`
+	Reload_priv      string `json:"reloadPriv"`
 }
 
 type SpiderTableNoSync struct {
@@ -118,12 +118,12 @@ type SpiderTableNoSync struct {
 }
 
 type BinlogEvents struct {
-	Log_name    string `db:"Log_name"`
-	Pos         uint   `db:"Pos"`
-	Event_type  string `db:"Event_type"`
-	Server_id   uint   `db:"Server_id"`
-	End_log_pos uint   `db:"End_log_pos"`
-	Info        string `db:"Info"`
+	Log_name    string `db:"log_name" json:"logName"`
+	Pos         uint   `db:"Pos" json:"pos"`
+	Event_type  string `db:"Event_type" json:"eventType"`
+	Server_id   uint   `db:"Server_id" json:"serverId"`
+	End_log_pos uint   `db:"End_log_pos" json:"endLogPos"`
+	Info        string `db:"Info" json:"info"`
 }
 
 func MySQLConnect(user string, password string, address string, parameters ...string) (*sqlx.DB, error) {
