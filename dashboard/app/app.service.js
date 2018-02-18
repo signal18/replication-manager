@@ -14,7 +14,7 @@ app.service('AppService', ['$http', '$localStorage', function ($http, $localStor
     };
 
     var hasAuthHeaders = function () {
-        return ($localStorage.currentUser.token);
+        return ($localStorage.currentUser && $localStorage.currentUser.token);
     };
 
     var logout = function() {
