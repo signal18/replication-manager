@@ -59,12 +59,12 @@
         <th>Version</th>
         <th>Status</th>
         <th>Priority</th>
-        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true ">Using GTID</th>
-        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">Current GTID</th>
-        <th ng-if="servers[0].dBVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">Slave GTID Pos</th>
-        <th ng-if="servers[0].dBVersion.flavor!='MariaDB' && slaves[0].haveMySQLGTID==true">Executed GTID Set</th>
-        <th ng-if="slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">File</th>
-        <th ng-if="slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">Pos</th>
+        <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</th>
+        <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</th>
+        <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID Pos</th>
+        <th ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</th>
+        <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</th>
+        <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</th>
         <th>IO Thread</th>
         <th>SQL Thread</th>
         <th>Delay</th>
@@ -95,17 +95,17 @@
     <td ng-if="server.ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"/></td>
     <td ng-if="server.prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"/></td>
     <td ng-if="server.prefered==false && server.ignored==false"></td>
-<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{server.replications[0].usingGTID.string}}</td>
-<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{gtidstring(server.currentGTID)}}</td>
-<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariaDBGTID==true">{{gtidstring(server.slaveGTID)}}</td>
-<td ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMySQLGTID==true ">{{server.gtIdExecuted}}</td>
-<th ng-if="server.isSlave==true &&  slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.replications[0].masterLogFile.String}}</th>
-<th ng-if="server.isSlave==true &&  slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.replications[0].execMasterLogPos.string}}</th>
-<th ng-if="server.isSlave==false && slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.binaryLogFile}}</th>
-<th ng-if="server.isSlave==false && slaves[0].haveMariaDBGTID==false && slaves[0].haveMySQLGTID==false">{{server.binaryLogPos}}</th>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</td>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</td>
+<td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</td>
+<td ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true ">{{server.gtidExecuted}}</td>
+<th ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</th>
+<th ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</th>
+<th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</th>
+<th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</th>
 
-<td>{{server.replications[0].slaveIORunning.String}}</td>
-<td>{{server.replications[0].slaveIORunning.String}}</td>
+<td>{{server.replications[0].slaveIoRunning.String}}</td>
+<td>{{server.replications[0].slaveIoRunning.String}}</td>
 <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
 <td>{{server.readOnly}}</td>
 <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>

@@ -82,8 +82,8 @@ type ServerMonitor struct {
 	HaveBinlogCompress          bool                      `json:"haveBinlogCompress"`
 	HaveLogSlaveUpdates         bool                      `json:"haveLogSlaveUpdates"`
 	HaveGtidStrictMode          bool                      `json:"haveGtidStrictMode"`
-	HaveMySQLGTID               bool                      `json:"haveMySQLGTID"`
-	HaveMariaDBGTID             bool                      `json:"HhveMariaDBGTID"`
+	HaveMySQLGTID               bool                      `json:"haveMysqlGtid"`
+	HaveMariaDBGTID             bool                      `json:"haveMariadbGtid"`
 	HaveWsrep                   bool                      `json:"haveWsrep"`
 	HaveReadOnly                bool                      `json:"haveReadOnly"`
 	Version                     int                       `json:"-"`
@@ -109,7 +109,7 @@ type ServerMonitor struct {
 	DBVersion                   *dbhelper.MySQLVersion    `json:"dbVersion"`
 	Status                      map[string]string         `json:"status"`
 	Variables                   map[string]string         `json:"variables"`
-	EngineInnoDB                map[string]string         `json:"engineInnoDB"`
+	EngineInnoDB                map[string]string         `json:"engineInnodb"`
 	Queries                     map[string]string         `json:"queries"`
 	ReplicationHealth           string                    `json:"replicationHealth"`
 	TestConfig                  string                    `json:"testConfig"`

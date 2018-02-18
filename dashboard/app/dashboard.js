@@ -310,7 +310,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         if (arr != null) {
             for (i = 0; i < arr.length; i++) {
                 var gtid = "";
-                gtid = arr[i].domainID + '-' + arr[i].serverID + '-' + arr[i].seqNo;
+                gtid = arr[i].domainId + '-' + arr[i].serverId + '-' + arr[i].seqNo;
                 output.push(gtid);
             }
             return output.join(",");

@@ -30,6 +30,8 @@ import (
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/regtest"
 )
 
@@ -154,11 +156,6 @@ func apiserver() {
 	router.Handle("/api/clusters/{clusterName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxCluster)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
@@ -359,42 +356,57 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
-
-	//validate user credentials
-	if user.Username != apiUser || user.Password != apiPass {
-		w.WriteHeader(http.StatusForbidden)
-		fmt.Println("Error logging in")
-		fmt.Fprint(w, "Invalid credentials")
-		return
+	k, err := readKey()
+	if err != nil {
+		k = nil
 	}
+	for _, cluster := range RepMan.Clusters {
+		//validate user credentials
+		apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
+		if k != nil {
+			p := crypto.Password{Key: k}
+			p.CipherText = apiPass
+			p.Decrypt()
+			apiPass = p.PlainText
+		}
+		if user.Username == apiUser && user.Password == apiPass {
+
+			signer := jwt.New(jwt.SigningMethodRS256)
+			claims := signer.Claims.(jwt.MapClaims)
+			//set claims
+			claims["iss"] = "https://api.replication-manager.signal18.io"
+			claims["iat"] = time.Now().Unix()
+			claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
+			claims["jti"] = "1" // should be user ID(?)
+			claims["CustomUserInfo"] = struct {
+				Name string
+				Role string
+			}{user.Username, "Member"}
+			signer.Claims = claims
+			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
+
+			tokenString, err := signer.SignedString(sk)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintln(w, "Error while signing the token")
+				log.Printf("Error signing token: %v\n", err)
+			}
+
+			//create a token instance using the token string
+			resp := token{tokenString}
+			jsonResponse(resp, w)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusForbidden)
+	fmt.Println("Error logging in")
+	fmt.Fprint(w, "Invalid credentials")
+	return
 
 	//create a rsa 256 signer
-	signer := jwt.New(jwt.SigningMethodRS256)
-	claims := signer.Claims.(jwt.MapClaims)
-	//set claims
-	claims["iss"] = "https://api.replication-manager.signal18.io"
-	claims["iat"] = time.Now().Unix()
-	claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
-	claims["jti"] = "1" // should be user ID(?)
-	claims["CustomUserInfo"] = struct {
-		Name string
-		Role string
-	}{user.Username, "Member"}
-	signer.Claims = claims
-	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
-	//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
-
-	tokenString, err := signer.SignedString(sk)
-
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintln(w, "Error while signing the token")
-		log.Printf("Error signing token: %v\n", err)
-	}
-
-	//create a token instance using the token string
-	resp := token{tokenString}
-	jsonResponse(resp, w)
 
 }
 
@@ -1056,69 +1068,6 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxSettings(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		s := new(Settings)
-		s.Enterprise = fmt.Sprintf("%v", mycluster.GetConf().Enterprise)
-		s.Interactive = fmt.Sprintf("%v", mycluster.GetConf().Interactive)
-		s.RplChecks = fmt.Sprintf("%v", mycluster.GetConf().RplChecks)
-		s.FailSync = fmt.Sprintf("%v", mycluster.GetConf().FailSync)
-		s.SwitchSync = fmt.Sprintf("%v", mycluster.GetConf().SwitchSync)
-		s.Rejoin = fmt.Sprintf("%v", mycluster.GetConf().Autorejoin)
-		s.RejoinBackupBinlog = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinBackupBinlog)
-		s.RejoinSemiSync = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinSemisync)
-		s.RejoinFlashback = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinFlashback)
-		s.RejoinDump = fmt.Sprintf("%v", mycluster.GetConf().AutorejoinMysqldump)
-		s.RejoinUnsafe = fmt.Sprintf("%v", mycluster.GetConf().FailRestartUnsafe)
-		s.MaxDelay = fmt.Sprintf("%v", mycluster.GetConf().FailMaxDelay)
-		s.FailoverCtr = fmt.Sprintf("%d", mycluster.GetFailoverCtr())
-		s.Faillimit = fmt.Sprintf("%d", mycluster.GetConf().FailLimit)
-		s.MonHearbeats = fmt.Sprintf("%d", mycluster.GetStateMachine().GetHeartbeats())
-		s.Uptime = mycluster.GetStateMachine().GetUptime()
-		s.UptimeFailable = mycluster.GetStateMachine().GetUptimeFailable()
-		s.UptimeSemiSync = mycluster.GetStateMachine().GetUptimeSemiSync()
-		s.Test = fmt.Sprintf("%v", mycluster.GetConf().Test)
-		s.Heartbeat = fmt.Sprintf("%v", mycluster.GetConf().Heartbeat)
-		s.Status = fmt.Sprintf("%v", RepMan.Status)
-		s.ConfGroup = fmt.Sprintf("%s", mycluster.GetName())
-		s.MonitoringTicker = fmt.Sprintf("%d", mycluster.GetConf().MonitoringTicker)
-		s.FailResetTime = fmt.Sprintf("%d", mycluster.GetConf().FailResetTime)
-		s.ToSessionEnd = fmt.Sprintf("%d", mycluster.GetConf().SessionLifeTime)
-		s.HttpAuth = fmt.Sprintf("%v", mycluster.GetConf().HttpAuth)
-		s.HttpBootstrapButton = fmt.Sprintf("%v", mycluster.GetConf().HttpBootstrapButton)
-		s.Clusters = cfgGroupList
-		regtest := new(regtest.RegTest)
-		s.RegTests = regtest.GetTests()
-		if mycluster.GetLogLevel() > 0 {
-			s.Verbose = fmt.Sprintf("%v", true)
-		} else {
-			s.Verbose = fmt.Sprintf("%v", false)
-		}
-		if RepMan.currentCluster.GetFailoverTs() != 0 {
-			t := time.Unix(mycluster.GetFailoverTs(), 0)
-			s.LastFailover = t.String()
-		} else {
-			s.LastFailover = "N/A"
-		}
-		s.Topology = mycluster.GetTopology()
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err := e.Encode(s)
-		if err != nil {
-			log.Println("Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	} else {
-
-		http.Error(w, "No cluster", 500)
-		return
-	}
-}
-
 func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1317,35 +1266,41 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 
 func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	/*
-		token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-			vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-			return vk, nil
-		})
-		if err != nil {
-			claims := token.Claims.(jwt.MapClaims)
 
-			mycopy := RepMan
-			var cl []string
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err == nil {
+		claims := token.Claims.(jwt.MapClaims)
 
-			userinfo := claims["CustomUserInfo"]
-			user := userinfo.(struct{ Name string }).Name
-			for _, cluster := range RepMan.Clusters {
-				if cluster.Conf.APIUser != user {
-					cl = append(cl, cluster.Name)
-				}
+		mycopy := RepMan
+		var cl []string
+
+		userinfo := claims["CustomUserInfo"]
+		mycutinfo := userinfo.(map[string]interface{})
+		meuser := mycutinfo["Name"].(string)
+
+		for _, cluster := range RepMan.Clusters {
+			apiUser, apiPass = misc.SplitPair(conf.APIUser)
+
+			if strings.Contains(meuser, apiUser) {
+				cl = append(cl, cluster.Name)
 			}
-			mycopy.ClusterList = cl
+		}
+		mycopy.ClusterList = cl
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycopy)
 
-			err := e.Encode(mycopy)*/
-	err := e.Encode(RepMan)
-	if err != nil {
-		http.Error(w, "Encoding error", 500)
-		return
+		//err := e.Encode(RepMan)
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "token parse error", 500)
 	}
-	//}
 }
 
 func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {

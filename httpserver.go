@@ -102,11 +102,6 @@ func httpserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxCluster)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSettings)),
-	))
-
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
