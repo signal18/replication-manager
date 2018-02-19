@@ -12,6 +12,7 @@ package cluster
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -64,7 +65,11 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 }
 
 func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
-	server.ClusterGroup.LogPrintf(LvlInfo, "Receive physical backup %s reques for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+	//server can be nil as no dicovered master
+	if server == nil {
+		return 0, nil
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive physical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
 	if server.IsDown() {
 		return 0, nil
 	}
@@ -223,6 +228,10 @@ func (server *ServerMonitor) JobHandler(JobId int64) error {
 }
 
 func (server *ServerMonitor) JobBackupLogical() error {
+	//server can be nil as no dicovered master
+	if server == nil {
+		return errors.New("No server define")
+	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %d for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return nil
