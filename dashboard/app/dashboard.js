@@ -374,7 +374,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
     $scope.backupphysical = function(server) {
       var r = confirm("Confirm master physical backup");
-        var response = $http.get(getClusterUrl() + '/actions/backupphysical');
+        var response = $http.get(getClusterUrl() + '/actions/master-physical-backup');
         response.success(function(data, status, headers, config) {
             console.log("Ok.");
         });
