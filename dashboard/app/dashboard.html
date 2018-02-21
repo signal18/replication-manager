@@ -8,11 +8,9 @@
                     </h1>
                 </td>
                 <td>
-                    <button ng-if="isLoggedIn" class="btn btn-primary" type="submit" ng-click="logout()">Logout</button>
                     <form name="myForm">
                         <md-panel>
                             <md-card-content>
-                                <p class="sectionheader">CLUSTERS</p>
                                 <label for="cluster">
                                     <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
                                         <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
@@ -23,7 +21,11 @@
                         </md-panel>
                     </form>
                 </td>
+                <td>
+                  <i ng-if="isLoggedIn" ng-click="logout()" class="fa fa-sign-out fa-2x" aria-hidden="true"></i>
+                </td>
             </tr>
+
         </table>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
