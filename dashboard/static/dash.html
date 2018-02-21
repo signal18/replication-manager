@@ -1,4 +1,19 @@
+
 <md-content class="md-padding">
+  <md-content class="md-padding">
+    <md-toolbar>
+      <div class="md-toolbar-tools">
+        <h2><span>Actions</span></h2>
+        <md-button class="md-raised" ng-if="master.State !='Failed'" aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
+        Switchover</md-button>
+        <md-button class="md-raised" ng-if="master.State !='Failed'" aria-label="Reset Failover Counter"></i><i class="fa fa-undo" aria-hidden="true"></i>
+          Reset Failover Counter</md-button>
+        <md-button class="md-raised" ng-if="master.State !='Failed'" aria-label="Physical backup"><i class="fa fa-database" aria-hidden="true"></i>
+        Snapshot</md-button>
+        <md-button class="md-raised" ng-if="master.State !='Failed'" aria-label="Rolling Optimize"><i class="fa fa-cogs" aria-hidden="true"></i>
+        Optimize</md-button>
+      </div>
+    </md-toolbar>
     <md-card>
         <div ng-if="reserror" class="alert alert-danger" role="alert">Cannot connect to the http server backend. Status
             will not update.
