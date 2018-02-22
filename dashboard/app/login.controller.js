@@ -2,17 +2,15 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
     function($scope, $http, $localStorage, $location, AppService) {
 
         $scope.login = function(user){
-            //This section should be moved to a service.
             $http.post(AppService.getApiDomain() + '/login', {"username": user.username, "password": user.password })
-                .success(function (response) {
-                    // login successful if there's a token in the response
-                    if (response.token) {
-                        AppService.setAuthenticated(user.username, response.token);
+                .then(function(success) {
+                    var data = success.data;
+                    if (data.token) {
+                        AppService.setAuthenticated(user.username, data.token);
                         $location.path('dashboard');
                     } else {
                         $scope.message = "Invalid username or password.";
                     }
-                });
-
+            });
         };
 }]);
