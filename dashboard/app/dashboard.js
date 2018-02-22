@@ -69,8 +69,8 @@ app.factory('Test', function($resource) {
     );
 });
 
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
-    function($scope, $routeParams, $interval, $http, $location, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
+app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', '$mdSidenav', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
+    function($scope, $routeParams, $interval, $http, $location, $mdSidenav, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
 
    //Selected cluster is choose from the drop-down-list
    $scope.selectedClusterName = undefined;
@@ -442,5 +442,14 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.selectedUserIndex = undefined;
       }
     };
+
+    $scope.toggleLeft = buildToggler('left');
+    $scope.toggleRight = buildToggler('right');
+
+    function buildToggler(componentId) {
+      return function() {
+        $mdSidenav(componentId).toggle();
+      };
+    }
 
 }]);

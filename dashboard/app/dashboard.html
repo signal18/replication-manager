@@ -3,7 +3,7 @@
         <table width="100%">
             <tr>
               <td>
-                <i class="fa fa-bars fa-2x" aria-hidden="true"></i>
+                <i class="fa fa-bars fa-2x" aria-hidden="true" ng-click="toggleLeft()"></i>
               </td>
                 <td>
                   <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
@@ -28,6 +28,8 @@
             </tr>
 
         </table>
+        <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
+        </md-sidenav>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
