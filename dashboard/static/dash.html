@@ -166,6 +166,19 @@
 
 <div layout="column" layout-gt-xs="row">
 <div flex-gt-xs="30" class="col-lg-33">
+
+  <md-card>
+      <md-card-content>
+          <p class="sectionheader">SLA</p>
+      </md-card-content>
+      <table ng-if="settings"  md-table class="table md-primary md-data-table">
+                <tr md-row><th>Monitor Tickers</th> <td>{{selectedCluster.monitorSpin}}</td></tr>
+                <tr md-row><th>Master Available</th><td>{{selectedCluster.uptime}}</td></tr>
+                <tr md-row><th>Can Failover Acceptable Data Loss</th><td>{{selectedCluster.uptimeFailable}}</td></tr>
+                <tr md-row><th>Can Failover No Data Loss</th><td>{{selectedCluster.uptimeSemisync}}</td></tr>
+      </table>
+        </md-card>
+        <BR>
     <md-card>
         <md-card-content>
             <p class="sectionheader">ACTIONS</p>
@@ -196,6 +209,7 @@
         </table>
     </md-card>
     <BR>
+
 <md-card ng-if="settings.config.enterprise==true">
     <md-card-content ng-if="settings.config.enterprise==true">
         <p class="sectionheader">PRO</p>

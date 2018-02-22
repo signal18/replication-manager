@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -47,7 +48,10 @@ type Cluster struct {
 	DBTags               []string      `json:"dbServersTags"`
 	ProxyTags            []string      `json:"proxyServersTags"`
 	Topology             string        `json:"topology"`
-	Sla                  state.Sla     `json:"sla"`
+	Uptime               string        `json:"uptime"`
+	UptimeFailable       string        `json:"uptimeFailable"`
+	UptimeSemiSync       string        `json:"uptimeSemisync"`
+	MonitorSpin          string        `json:"monitorSpin"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -214,7 +218,10 @@ func (cluster *Cluster) Run() {
 	for cluster.exit == false {
 		cluster.ServerIdList = cluster.GetDBServerIdList()
 		cluster.ProxyIdList = cluster.GetProxyServerIdList()
-		cluster.Sla = cluster.sme.GetSla()
+		cluster.Uptime = cluster.GetStateMachine().GetUptime()
+		cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
+		cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
+		cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 		select {
 		case sig := <-cluster.switchoverChan:
 			if sig {

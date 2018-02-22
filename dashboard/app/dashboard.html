@@ -28,6 +28,7 @@
             </tr>
 
         </table>
+        
         <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
         </md-sidenav>
         <md-content layout="column">
@@ -38,9 +39,7 @@
                 <md-tab label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
-                <md-tab label="Sla">
-                    <div ng-include src="'static/sla.html'"></div>
-                </md-tab>
+
                 <md-tab label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
