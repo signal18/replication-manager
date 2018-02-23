@@ -1,6 +1,5 @@
 app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', '$mdSidenav', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
     function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
-
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
 
@@ -23,9 +22,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             timeFrame = "10m";
         }
 
-        var refreshInterval = 2000;
-
         var callServices = function () {
+            console.log("callServices");
             if (!AppService.hasAuthHeaders()) return;
             Monitor.query({}, function (data) {
                 if (data) {
@@ -78,6 +76,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             }
         };
 
+        var refreshInterval = 2000;
         $interval(function () {
             callServices();
         }, refreshInterval);
@@ -212,5 +211,6 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 $mdSidenav(componentId).toggle();
             };
         }
+
 
     }]);
