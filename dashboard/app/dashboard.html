@@ -49,10 +49,10 @@
                 <md-tab label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics==true">
+                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab label="Agents" ng-if="settings.config.enterprise==true" >
+                <md-tab label="Agents" ng-if="settings.config.enterprise" >
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>
