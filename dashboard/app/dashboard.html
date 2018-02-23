@@ -28,7 +28,7 @@
             </tr>
 
         </table>
-        
+
         <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
         </md-sidenav>
         <md-content layout="column">
@@ -49,7 +49,7 @@
                 <md-tab label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics==true">
+                <md-tab label="Graphs" ng-if="selectedCluster.config.graphiteMetrics==true">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
                 <md-tab label="Agents" ng-if="settings.config.enterprise==true" >
