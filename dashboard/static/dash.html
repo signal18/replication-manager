@@ -158,6 +158,23 @@
             <md-tooltip md-direction="down">Physcical Backup</md-tooltip>
             <img width=18 height=18 src="/static/img/backup.png">
         </button>
+        <md-menu>
+        <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="openMenu($mdMenu, $event)">
+          <i class="fas fa-ellipsis-h"></i>
+        </md-button>
+        <md-menu-content>
+          <md-menu-item>
+            <md-button>
+            Maintenance mode
+            </md-button>
+          </md-menu-item>
+          <md-menu-item>
+            <md-button>
+            Optimize
+            </md-button>
+          </md-menu-item>
+        </md-menu-content>
+      </md-menu>
     </td>
 </tr>
 </tbody>
