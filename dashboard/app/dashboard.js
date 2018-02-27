@@ -128,6 +128,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap');
         };
 
+        $scope.provision = function () {
+            if (confirm("Provision Cluster. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/provision');
+        };
+
         $scope.unprovision = function () {
             if (confirm("Unprovision operation will destroy your existing data. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/unprovision');
         };

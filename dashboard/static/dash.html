@@ -218,7 +218,7 @@
 <table class="table" ng-if="settings.config.enterprise==true">
     <tr>
         <td>
-            <button ng-if="settings.config.test==true" type="button" class="btn btn-primary" ng-click="bootstrap()">
+            <button ng-if="settings.config.test==true" type="button" class="btn btn-primary" ng-click="provision()">
                 Bootstrap
             </button>
             <button ng-if="settings.config.enterprise==true" type="button" class="btn btn-primary" ng-click="unprovision()">
@@ -252,7 +252,7 @@
         ng-repeat="element in settings.tests"  value="{{element}}">{{element}}</option>
 </md-select>
     <br/><br/>
-    <button type="button" class="btn btn-primary" ng-click="bootstrap()">Bootstrap</button>
+    <button type="button" class="btn btn-primary" ng-click="provision()">Provision</button>
     <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
     <br/><br/>
     <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
