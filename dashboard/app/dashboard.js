@@ -218,9 +218,6 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
     };
 
-
-
-
     $scope.toggletraffic = function() {
         var r = confirm("Confirm toggle traffic");
         if (r == true) {
@@ -269,6 +266,20 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         var r = confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?");
         if (r == true) {
             var response = $http.get(getClusterUrl() + '/services/actions/bootstrap');
+            response.success(function(data, status, headers, config) {
+                console.log("Ok.");
+            });
+
+            response.error(function(data, status, headers, config) {
+                console.log("Error.");
+            });
+        }
+    };
+
+    $scope.provision = function () {
+        var r = confirm("Provision Cluster. \n Are you really sure?");
+        if (r == true) {
+            var response = $http.get(getClusterUrl() + '/services/actions/provision');
             response.success(function(data, status, headers, config) {
                 console.log("Ok.");
             });
