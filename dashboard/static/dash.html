@@ -183,14 +183,13 @@
 <div flex-gt-xs="30" class="col-lg-33">
 
   <md-card>
-      <md-card-content>
-          <p class="sectionheader">SLA</p>
-      </md-card-content>
+
       <table ng-if="settings"  md-table class="table md-primary md-data-table">
-                <tr md-row><th>Monitor Tickers</th> <td>{{selectedCluster.monitorSpin}}</td></tr>
-                <tr md-row><th>Master Available</th><td>{{selectedCluster.uptime}}</td></tr>
-                <tr md-row><th>Can Failover Acceptable Data Loss</th><td>{{selectedCluster.uptimeFailable}}</td></tr>
-                <tr md-row><th>Can Failover No Data Loss</th><td>{{selectedCluster.uptimeSemisync}}</td></tr>
+               <tr md-row><th colspan=2>SLA</th></tr>
+                <tr md-row><td>Monitor Tickers</td> <td>{{selectedCluster.monitorSpin}}</td></tr>
+                <tr md-row><td>Master Available</td><td>{{selectedCluster.uptime}}</td></tr>
+                <tr md-row><td>Can Failover Acceptable Data Loss</td><td>{{selectedCluster.uptimeFailable}}</td></tr>
+                <tr md-row><td>Can Failover No Data Loss</td><td>{{selectedCluster.uptimeSemisync}}</td></tr>
       </table>
         </md-card>
         <BR>
