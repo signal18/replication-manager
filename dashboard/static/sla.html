@@ -1,21 +1,7 @@
 <md-content class="md-padding">
-    <md-card>
-        <md-card-content>
-            <p class="sectionheader">SLA</p>
-        </md-card-content>
-        <table ng-if="settings" class="table">
-            <tr>
-                <th>Monitor Tickers</th>
-                <th>Master Available</th>
-                <th>Can Failover Acceptable Data Loss</th>
-                <th>Can Failover No Data Loss</th>
-            </tr>
-            <tr>
-                <td>{{selectedCluster.sla.firsttime}}</td>
-                <td>{{selectedCluster.sla.uptime}}</td>
-                <td>{{selectedCluster.sla.uptimeFailable}}</td>
-                <td>{{selectedCluster.sla.uptimeSemisync}}</td>
-            </tr>
-        </table>
+  <div layout="column" layout-gt-xs="row">
+      <div flex-gt-xs="30" class="col-lg-33">
+    
     </md-card>
+  </div></div>
 </md-content>

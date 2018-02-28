@@ -15,6 +15,7 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
                 controller: 'DashboardController'
             })
             .otherwise({
-                redirectTo: '/login'
+                templateUrl: 'app/dashboard.html',
+                controller: 'DashboardController'
             });
     });

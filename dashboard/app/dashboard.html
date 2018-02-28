@@ -1,18 +1,17 @@
-<div ng-controller="DashboardController" class="col-lg-12">
+<div class="col-lg-12">
     <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
         <table width="100%">
             <tr>
+              <td>
+                <i class="fa fa-bars fa-2x" aria-hidden="true" ng-click="toggleLeft()"></i>
+              </td>
                 <td>
-                    <h1>
-                        <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
-                    </h1>
+                  <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
                 </td>
                 <td>
-                    <button ng-if="isLoggedIn" class="btn btn-primary" type="submit" ng-click="logout()">Logout</button>
                     <form name="myForm">
                         <md-panel>
                             <md-card-content>
-                                <p class="sectionheader">CLUSTERS</p>
                                 <label for="cluster">
                                     <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
                                         <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
@@ -23,8 +22,15 @@
                         </md-panel>
                     </form>
                 </td>
+                <td>
+                  <i ng-if="isLoggedIn" ng-click="logout()" class="fa fa-sign-out fa-2x" aria-hidden="true"></i>
+                </td>
             </tr>
+
         </table>
+
+        <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
+        </md-sidenav>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
@@ -33,9 +39,7 @@
                 <md-tab label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
-                <md-tab label="Sla">
-                    <div ng-include src="'static/sla.html'"></div>
-                </md-tab>
+
                 <md-tab label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
@@ -45,10 +49,10 @@
                 <md-tab label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics==true">
+                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab label="Agents" ng-if="settings.config.enterprise==true" >
+                <md-tab label="Agents" ng-if="settings.config.enterprise" >
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>
