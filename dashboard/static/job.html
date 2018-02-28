@@ -1,13 +1,15 @@
-<md-content layout="row" flex  layout-fill>
-   <div  flex="70" class="content" ui-view>
-      <md-item  ng-repeat="server in servers" class="serverlogitem"  ng-class="{ 'selected-item': $index == selectedUserIndex}">
-         <md-item-content class="serverlog tile md-whiteframe-z1"  ng-class="{ 'selected md-whiteframe-z2': $index == selectedUserIndex}"   layout="column">
-            <div layout="row" layout-fill ng-click="selectUserIndex($index)" class="folded">
-               <p class="sectionheader" ng-hide="$index == selectedUserIndex" >{{server.Host}}:{{server.Port}}</p>
-            </div>
-            <md-divider layout-fill ng-show="$index == selectedUserIndex"></md-divider>
-            <div layout="column" layout-fill class="expanded">
-               <p class="sectionheader">ERROR LOG</p>
+<md-content class="md-padding">
+
+
+
+<div ng-repeat="server in servers">
+
+      <md-card>
+    <md-card-content   class="serverlogitem">
+      <p class="sectionheader">ERROR LOG {{server.host}}:{{server.port}}</p>
+      <BR>
+
+
                <table class="log">
                   <tr ng-repeat="logline in server.errorLog.buffer" ng-if="logline.timestamp">
                      <td class="stamp">{{ logline.timestamp }}</td>
@@ -17,47 +19,46 @@
                         <span ng-switch-when="Error" class="label label-danger">{{ logline.level }}</span>
                         <span ng-switch-when="Note" class="label label-primary">{{ logline.level }}</span>
                         <span ng-switch-default class="label label-default">{{ logline.level }}</span>
-                     <td class="text">{{ logline.Text }}</td>
+                     <td class="text">{{ logline.text }}</td>
                   </tr>
                </table>
-               <BR><BR>
-               <p class="sectionheader">Slow Logs</p>
-               <md-pre>
-               <table class="table">
-                  <tr>
-                     <th rowspan=2>At</th>
-                     <th rowspan=2>Query</th>
-                     <th rowspan=2>User</th>
-                     <th rowspan=2>Time</th>
-                     <th rowspan=2>Lock</th>
-                     <th rowspan=2>Cache</th>
-                     <th rowspan=2>Thread</th>
-                     <th colspan=3>Rows</th>
-                  </tr>
-                  <tr>
-                     <th>Examined</th>
-                     <th>Send</th>
-                     <th>Affected</th>
-                  </tr>
-                  <tr ng-repeat="logline in server.slowLog.Buffer" ng-if="logline.timestamp">
-                     <td class="stamp">{{ logline.timestamp }}</td>
-                     <td class="text">{{ logline.query }}    </td>
-                     <td class="text">{{ logline.user }}@{{ logline.host }}</td>
-                     <td class="text">{{ logline.timeMetrics.Query_time }}</td>
-                     <td class="text">{{ logline.timeMetrics.Lock_time }}</td>
-                     <td class="text">{{ logline.BoolMetrics.QC_hit }}</td>
-                     <td class="text">{{ logline.NumberMetrics.Thread_id }}</td>
-                     <td class="text">{{ logline.NumberMetrics.Rows_examined }}</td>
-                     <td class="text">{{ logline.NumberMetrics.Rows_sent }}</td>
-                     <td class="text">{{ logline.NumberMetrics.Rows_affected }}</td>
-                  </tr>
-               </table>
-            </div>
-         </md-item-content>
-         <md-divider class="divider-inset" ng-if="!$last"></md-divider>
-      </md-item>
-   </div>
+             </md-card-content>
+         </md-card>
+         <BR>
+         <md-card>
+             <md-card-content>
+                   <table  class="slowlog" >
+                      <tr>
+                         <th rowspan=2>At</th>
+                         <th rowspan=2>Query</th>
+                         <th rowspan=2>User</th>
+                         <th rowspan=2>Time</th>
+                         <th rowspan=2>Lock</th>
+                         <th rowspan=2>Cache</th>
+                         <th rowspan=2>Thread</th>
+                         <th colspan=3>Rows</th>
+                      </tr>
+                      <tr>
+                         <th>Examined</th>
+                         <th>Send</th>
+                         <th>Affected</th>
+                      </tr>
+                      <tr ng-repeat="logline in server.slowLog.Buffer" ng-if="logline.timestamp">
+                         <td class="stamp">{{ logline.timestamp }}</td>
+                         <td class="text">{{ logline.query }}    </td>
+                         <td class="text">{{ logline.user }}@{{ logline.host }}</td>
+                         <td class="text">{{ logline.timeMetrics.queryTime }}</td>
+                         <td class="text">{{ logline.timeMetrics.LockTime }}</td>
+                         <td class="text">{{ logline.boolMetrics.qcHit }}</td>
+                         <td class="text">{{ logline.numberMetrics.threadId }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsExamined }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsSent }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsAffected }}</td>
+                      </tr>
+                   </table>
+                 </md-card-content>
+             </md-card>
+
+</div>
+
 </md-content>
-
-
-   
