@@ -7,7 +7,7 @@
       <md-card>
     <md-card-content   class="serverlogitem">
       <p class="sectionheader">ERROR LOG {{server.host}}:{{server.port}}</p>
-      <BR>
+     </md-card-content>
 
 
                <table class="log">
@@ -22,11 +22,14 @@
                      <td class="text">{{ logline.text }}</td>
                   </tr>
                </table>
-             </md-card-content>
+
          </md-card>
          <BR>
          <md-card>
+
              <md-card-content>
+                 <p class="sectionheader">SLOW LOG {{server.host}}:{{server.port}}</p>
+              </md-card-content>
                    <table  class="slowlog" >
                       <tr>
                          <th rowspan=2>At</th>
@@ -56,9 +59,9 @@
                          <td class="text">{{ logline.numberMetrics.rowsAffected }}</td>
                       </tr>
                    </table>
-                 </md-card-content>
-             </md-card>
 
+             </md-card>
+             <BR><BR>
 </div>
 
 </md-content>

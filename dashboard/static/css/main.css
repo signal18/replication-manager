@@ -152,6 +152,7 @@ body {
 
 th {
   background-color: #e0e0e0;
+  padding: 10px;
 }
 
 .slowlog td {
@@ -160,6 +161,7 @@ th {
   white-space: pre-wrap;
   white-space: -moz-pre-wrap;
   white-space: -pre-wrap;
+  padding: 10px;
 }
 .slowlog td.text {
   font-family: "Courier New", Courier, monospace;
