@@ -2,29 +2,25 @@
     <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
         <table width="100%">
             <tr>
-              <td>
-                <i class="fa fa-bars fa-2x" aria-hidden="true" ng-click="toggleLeft()"></i>
-              </td>
-                <td>
-                  <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
+
+                <td width="10%">
+                <img src="/static/img/logo.png" alt="Replication Manager"/>
                 </td>
+
                 <td>
-                    <form name="myForm">
-                        <md-panel>
-                            <md-card-content>
-                                <label for="cluster">
-                                    <md-select width="100%" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                                    <md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
                                         <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
                                             {{element}}</option>
                                     </md-select>
-                                </label>
-                            </md-card-content>
-                        </md-panel>
-                    </form>
+
                 </td>
-                <td>
+                <td width="40" align="center">
                   <i ng-if="isLoggedIn" ng-click="logout()" class="fa fa-sign-out fa-2x" aria-hidden="true"></i>
                 </td>
+                <td width="40" align="center">
+                  <i class="fa fa-bars fa-2x" aria-hidden="true" ng-click="toggleLeft()"></i>
+                </td>
+
             </tr>
 
         </table>
