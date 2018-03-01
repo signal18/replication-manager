@@ -87,6 +87,20 @@ func httpserver() {
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
 	))
+	// handle API 2.0 compatibility for external checks
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortMasterStatus)),
+	))
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortBackup)),
 	))
