@@ -152,4 +152,26 @@ body {
 
 th {
   background-color: #e0e0e0;
+  padding: 10px;
+}
+
+.slowlog td {
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  padding: 10px;
+}
+.slowlog td.text {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.2rem;
+}
+table.slowlog  {
+  width: 100%;
+}
+.slowlog td.stamp {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.2rem;
+  width: 250px;
 }

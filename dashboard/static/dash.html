@@ -5,7 +5,7 @@
         <h2><span>Actions</span></h2>
         <md-button class="md-raised" ng-if="master.State !='Failed'" ng-click="switch(false)" aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Switchover</md-button>
-        <md-button class="md-raised md-warn" ng-if="master.State !='Failed'" ng-click="switch(true)" aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
+        <md-button class="md-raised md-warn" ng-if="master.State =='Failed'" ng-click="switch(true)" aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Failover</md-button>
         <md-button class="md-raised" ng-if="master.State !='Failed'" aria-label="Reset Failover Counter"></i><i class="fa fa-undo" aria-hidden="true"></i>
           Reset Failover Counter</md-button>
@@ -183,14 +183,13 @@
 <div flex-gt-xs="30" class="col-lg-33">
 
   <md-card>
-      <md-card-content>
-          <p class="sectionheader">SLA</p>
-      </md-card-content>
+
       <table ng-if="settings"  md-table class="table md-primary md-data-table">
-                <tr md-row><th>Monitor Tickers</th> <td>{{selectedCluster.monitorSpin}}</td></tr>
-                <tr md-row><th>Master Available</th><td>{{selectedCluster.uptime}}</td></tr>
-                <tr md-row><th>Can Failover Acceptable Data Loss</th><td>{{selectedCluster.uptimeFailable}}</td></tr>
-                <tr md-row><th>Can Failover No Data Loss</th><td>{{selectedCluster.uptimeSemisync}}</td></tr>
+               <tr md-row><th colspan=2>SLA</th></tr>
+                <tr md-row><td>Monitor Tickers</td> <td>{{selectedCluster.monitorSpin}}</td></tr>
+                <tr md-row><td>Master Available</td><td>{{selectedCluster.uptime}}</td></tr>
+                <tr md-row><td>Can Failover Acceptable Data Loss</td><td>{{selectedCluster.uptimeFailable}}</td></tr>
+                <tr md-row><td>Can Failover No Data Loss</td><td>{{selectedCluster.uptimeSemisync}}</td></tr>
       </table>
         </md-card>
         <BR>
@@ -202,23 +201,12 @@
         <table class="table">
             <tr>
                 <td>
-                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary"
-                            ng-click="switch(false)">Switchover
-                    </button>
-                    <button ng-if="master.state =='Failed'" type="button" class="btn btn-danger"
-                            ng-click="switch(true)">Failover
-                    </button>
-                    <button type="button" class="btn btn-primary" ng-click="resetfail()">Reset Failover Counter</button>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary" ng-click="optimizeAll()">
+                    <md-button ng-if="master.state !='Failed'" type="button" class="btn btn-primary" ng-click="optimizeAll()">
                         Rolling Optimize
-                    </button>
-                    <button ng-if="master.state !='Failed'" type="button" class="btn btn-primary"
+                    </md-button>
+                    <md-button ng-if="master.state !='Failed'" type="button" class="btn btn-primary"
                             ng-click="backupphysical()">Physical Backup
-                    </button>
+                    </md-button>
                 </td>
             </tr>
         </table>
@@ -233,15 +221,15 @@
 <table class="table" ng-if="settings.config.enterprise==true">
     <tr>
         <td>
-            <button ng-if="settings.config.test==true" type="button" class="btn btn-primary" ng-click="provision()">
+            <md-button ng-if="settings.config.test==true" type="button" class="btn btn-primary" ng-click="provision()">
                 Bootstrap
-            </button>
-            <button ng-if="settings.config.enterprise==true" type="button" class="btn btn-primary" ng-click="unprovision()">
+            </md-button>
+            <md-button ng-if="settings.config.enterprise==true" type="button" class="btn btn-primary" ng-click="unprovision()">
                 Unprovision
-            </button>
-            <button ng-if="settings.config.enterprise==true" type="button" class="btn btn-primary" ng-click="rolling()">
+            </md-button>
+            <md-button ng-if="settings.config.enterprise==true" type="button" class="btn btn-primary" ng-click="rolling()">
                 Rolling Upgrade
-            </button>
+            </md-button>
             <BR>
             <BR>
         </td>
@@ -267,12 +255,12 @@
         ng-repeat="element in settings.tests"  value="{{element}}">{{element}}</option>
 </md-select>
     <br/><br/>
-    <button type="button" class="btn btn-primary" ng-click="provision()">Provision</button>
-    <button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</button>
+    <md-button type="button" class="btn btn-primary" ng-click="provision()">Provision</md-button>
+    <md-button type="button" class="btn btn-primary" ng-click="unprovision()">Unprovision</md-button>
     <br/><br/>
-    <button type="button" class="btn btn-primary" ng-click="test()">Run Tests</button>
-    <button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</button>
-    <button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</button><BR>
+    <md-button type="button" class="btn btn-primary" ng-click="test()">Run Tests</md-button>
+    <md-button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</md-button>
+    <md-button type="button" class="btn btn-primary" ng-click="toggletraffic()">Toggle Traffic</md-button><BR>
 
 </td>
     <td>

@@ -82,12 +82,12 @@ func (sst *SST) tcp_con_handle() {
 		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogPrintf(LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
-
+		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
 		sst.file.Close()
 		sst.listener.Close()
 		SSTs.Lock()
-		delete(SSTs.SSTconnections, sst.listener.Addr().(*net.TCPAddr).Port)
+		delete(SSTs.SSTconnections, port)
 		SSTs.Unlock()
 	}()
 

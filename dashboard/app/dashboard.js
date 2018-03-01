@@ -112,7 +112,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         };
 
         $scope.toggletraffic = function () {
-            if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-hearbeat')
+            if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-hearbeat');
         };
 
         $scope.resetfail = function () {
@@ -214,6 +214,5 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 $mdSidenav(componentId).toggle();
             };
         }
-
 
     }]);
