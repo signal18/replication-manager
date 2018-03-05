@@ -1,6 +1,6 @@
-## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=2.0)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
+## replication-manager [![Build Status](https://travis-ci.org/signal18/replication-manager.svg?branch=2.1)](https://travis-ci.org/signal18/replication-manager) [![Stories in Ready](https://badge.waffle.io/signal18/replication-manager.svg?label=ready&title=Ready)](http://waffle.io/signal18/replication-manager) [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/replication-manager)
 
-![replication-manager](https://github.com/signal18/replication-manager/raw/2.0/dashboard/static/logo.png)
+![replication-manager](https://github.com/signal18/replication-manager/raw/2.1/dashboard/static/logo.png)
 
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
