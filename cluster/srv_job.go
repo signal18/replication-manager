@@ -82,6 +82,11 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	return jobid, err
 }
 
+func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
+	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+	return jobid, err
+}
+
 func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
@@ -197,6 +202,8 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB"})
 				} else if task.task == "xtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB"})
+				} else if task.task == "reseedxtrabackup" {
+					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				}
 			}
 		}

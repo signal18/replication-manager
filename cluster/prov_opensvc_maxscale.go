@@ -26,7 +26,7 @@ show_disabled = false
 	conf = conf + cluster.GetDockerDiskTemplate(collector)
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
-	conf = conf + cluster.GetPodDiskTemplate(collector, pod)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
 	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)

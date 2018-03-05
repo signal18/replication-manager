@@ -81,6 +81,7 @@ type Cluster struct {
 	switchoverCond       *nbc.NonBlockingChan
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
+	statecloseChan       chan state.State
 	switchoverChan       chan bool
 	errorChan            chan error
 	testStopCluster      bool
@@ -124,6 +125,7 @@ const (
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
+	cluster.statecloseChan = make(chan state.State)
 	cluster.errorChan = make(chan error)
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()
@@ -233,7 +235,17 @@ func (cluster *Cluster) Run() {
 					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
 				}
 			}
-
+		case st := <-cluster.statecloseChan:
+			if st.ErrKey == "WARN0074" {
+				cluster.LogPrintf(LvlInfo, "Sending Physical Backup to reseed %s", st.ServerUrl)
+				servertoreseed := cluster.GetServerFromURL(st.ServerUrl)
+				m := cluster.GetMaster()
+				if m != nil {
+					go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_xtrabackup.xbtream", servertoreseed)
+				} else {
+					cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", st.ServerUrl)
+				}
+			}
 		default:
 			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Monitoring server loop")
@@ -268,6 +280,10 @@ func (cluster *Cluster) Run() {
 				states := cluster.sme.GetStates()
 				for i := range states {
 					cluster.LogPrintf("STATE", states[i])
+				}
+				cstates := cluster.sme.GetResolvedStates()
+				for _, s := range cstates {
+					cluster.statecloseChan <- s
 				}
 				cluster.sme.ClearState()
 				if cluster.sme.GetHeartbeats()%60 == 0 {

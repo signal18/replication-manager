@@ -18,9 +18,11 @@ import (
 )
 
 type State struct {
-	ErrType string
-	ErrDesc string
-	ErrFrom string
+	ErrKey    string
+	ErrType   string
+	ErrDesc   string
+	ErrFrom   string
+	ServerUrl string
 }
 
 type StateHttp struct {
@@ -37,6 +39,7 @@ func NewMap() *Map {
 }
 
 func (m Map) Add(key string, s State) {
+	s.ErrKey = key
 	_, ok := m[key]
 	if !ok {
 		m[key] = s
@@ -272,6 +275,19 @@ func (SM *StateMachine) GetStates() []string {
 			log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
 		}
 	}
+	SM.Unlock()
+	return log
+}
+
+func (SM *StateMachine) GetResolvedStates() []State {
+	var log []State
+	SM.Lock()
+	for key, state := range *SM.OldState {
+		if SM.CurState.Search(key) == false {
+			log = append(log, state)
+		}
+	}
+
 	SM.Unlock()
 	return log
 }

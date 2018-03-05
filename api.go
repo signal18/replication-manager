@@ -322,6 +322,11 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/reseed/{backupMethod}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
+	))
+
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
@@ -930,18 +935,6 @@ func handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func handlerMuxSwitchFailoverSync(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
 func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -949,8 +942,7 @@ func handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		mycluster.SwitchReadOnly()
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 	return
@@ -986,8 +978,7 @@ func handlerMuxCrashes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1033,8 +1024,7 @@ func handlerMuxOneTest(w http.ResponseWriter, r *http.Request) {
 
 		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		mycluster.SetTestStartCluster(false)
 		mycluster.SetTestStopCluster(false)
 		return
@@ -1061,8 +1051,7 @@ func handlerMuxTests(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 	return
@@ -1076,8 +1065,7 @@ func handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 		initConfig()
 		mycluster.ReloadConfig(confs[vars["clusterName"]])
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 
@@ -1091,8 +1079,7 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
 		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 
@@ -1112,10 +1099,14 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		mycluster.StopDatabaseService(node)
+		if node != nil {
+			mycluster.StopDatabaseService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1126,10 +1117,14 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.JobBackupPhysical()
+		if node != nil {
+			node.JobBackupPhysical()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1140,10 +1135,37 @@ func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.JobOptimize()
+		if node != nil {
+			node.JobOptimize()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
 
-		http.Error(w, "No cluster", 500)
+func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			if vars["backupMethod"] == "mysqldump" {
+				node.RejoinMasterSST()
+			}
+			if vars["backupMethod"] == "xtrabackup" {
+				node.JobReseedXtraBackup()
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1154,10 +1176,14 @@ func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.JobBackupErrorLog()
+		if node != nil {
+			node.JobBackupErrorLog()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1168,9 +1194,14 @@ func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) 
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		node.JobBackupSlowQueryLog()
+		if node != nil {
+			node.JobBackupSlowQueryLog()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1183,13 +1214,12 @@ func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.SwitchServerMaintenance(node.ServerID)
-
 		} else {
-			http.Error(w, "No cluster", 500)
+			http.Error(w, "Server Not Found", 500)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1200,10 +1230,14 @@ func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		mycluster.StartDatabaseService(node)
+		if node != nil {
+			mycluster.StartDatabaseService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1214,10 +1248,14 @@ func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		mycluster.InitDatabaseService(node)
+		if node != nil {
+			mycluster.InitDatabaseService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1228,10 +1266,14 @@ func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		mycluster.UnprovisionDatabaseService(node)
+		if node != nil {
+			mycluster.UnprovisionDatabaseService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1242,10 +1284,14 @@ func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
-		mycluster.InitProxyService(node)
+		if node != nil {
+			mycluster.InitProxyService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
@@ -1256,10 +1302,14 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
-		mycluster.UnprovisionProxyService(node)
+		if node != nil {
+			mycluster.UnprovisionProxyService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
 	} else {
-
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }
