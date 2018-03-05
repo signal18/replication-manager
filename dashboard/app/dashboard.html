@@ -5,17 +5,15 @@
                 <td>
                   <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
                 </td>
-
                 <td>
-                                    <md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
-                                        <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                                            {{element}}</option>
-                                    </md-select>
-
+                  <md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                      <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
+                          {{element}}</option>
+                  </md-select>
                 </td>
                 <td width="40" align="center">
                   <span ng-if="isLoggedIn" ng-click="logout()">
-                  <md-icon ng-if="isLoggedIn" class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
+                  <md-icon class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
                 </span>
                 </td>
                 <td width="40" align="center">
@@ -28,7 +26,10 @@
 
         </table>
 
-        <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
+        <md-sidenav class="md-sidenav-right" md-component-id="right" md-whiteframe="4">
+          <span>Home</span>
+          <span>Proxies</span>
+          <span>Settings</span>
         </md-sidenav>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
