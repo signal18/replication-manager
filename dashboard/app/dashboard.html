@@ -2,30 +2,34 @@
     <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
         <table width="100%">
             <tr>
-
-                <td width="10%">
-                <img src="/static/img/logo.png" alt="Replication Manager"/>
-                </td>
-
                 <td>
-                                    <md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
-                                        <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                                            {{element}}</option>
-                                    </md-select>
-
+                  <span class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
+                </td>
+                <td>
+                  <md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                      <md-option ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
+                          {{element}}</option>
+                  </md-select>
                 </td>
                 <td width="40" align="center">
-                  <md-icon ng-if="isLoggedIn" ng-click="logout()" class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
+                  <span ng-if="isLoggedIn" ng-click="logout()">
+                  <md-icon class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
+                </span>
                 </td>
                 <td width="40" align="center">
-                  <md-icon class="fa fa-bars fa-2x" aria-hidden="true" ng-click="toggleLeft()"></md-icon>
+                  <span ng-click="toggleRight()">
+                  <md-icon class="fa fa-bars fa-2x" aria-hidden="true"></md-icon>
+                </span>
                 </td>
 
             </tr>
 
         </table>
 
-        <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4">
+        <md-sidenav class="md-sidenav-right" md-component-id="right" md-whiteframe="4">
+          <span>Home</span>
+          <span>Proxies</span>
+          <span>Settings</span>
         </md-sidenav>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">

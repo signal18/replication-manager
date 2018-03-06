@@ -23,12 +23,11 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         }
 
         var callServices = function () {
-            console.log("callServices");
             if (!AppService.hasAuthHeaders()) return;
             Monitor.query({}, function (data) {
                 if (data) {
                     $scope.settings = data;
-                    $scope.logs = data.logs.buffer;
+                    if (data.logs.buffer) $scope.logs = data.logs.buffer;
                     $scope.agents = data.agents;
                 }
             }, function () {
