@@ -134,41 +134,39 @@
     <td ng-if="server.semiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
     </td>
     <td>
-        <button width=18 height=18 type="button" ng-click="maintenance(server.id)">
-            <md-tooltip md-direction="down">Toggle Maintenance Mode</md-tooltip>
-            <img width=18 height=18 src="/static/img/maintenance.png">
-        </button>
-        <button ng-if="settings.config.enterprise==true || settings.config.test==true" width=18 height=18 type="button"
-                ng-click="stop(server.id)">
-            <md-tooltip md-direction="down">Stop Database</md-tooltip>
-            <img width=18 height=18 src="/static/img/stop.png">
-        </button>
-        <button ng-if="settings.config.enterprise==true || settings.config.test==true" width=18 height=18 type="button"
-                ng-click="start(server.id)">
-            <md-tooltip md-direction="down">Start Database</md-tooltip>
-            <img width=18 height=18 src="/static/img/start.png">
-        </button>
-        <button width=18 height=18 type="button" ng-click="optimize(server.id)">
-            <md-tooltip md-direction="down">Optimize Database</md-tooltip>
-            <img width=18 height=18 src="/static/img/defrag.png">
-        </button>
-        <button ng-if="server.id==master.id" width=18 height=18 type="button" ng-click="backupphysical(server.id)">
-            <md-tooltip md-direction="down">Physcical Backup</md-tooltip>
-            <img width=18 height=18 src="/static/img/backup.png">
-        </button>
         <md-menu>
-        <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="openMenu($mdMenu, $event)">
-          <i class="fas fa-ellipsis-h"></i>
+        <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
+          <md-icon md-menu-origin class="fas fa-ellipsis-h"></md-icon>
         </md-button>
         <md-menu-content>
-          <md-menu-item>
+          <md-menu-item ng-click="maintenance(server.id)">
             <md-button>
-            Maintenance mode
+              <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
+            Maintenance Mode
             </md-button>
           </md-menu-item>
-          <md-menu-item>
+          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="stop(server.id)">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
+            Stop Database
+            </md-button>
+          </md-menu-item>
+          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="start(server.id)">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-play"></md-icon>
+            Start Database
+            </md-button>
+          </md-menu-item>
+          <md-menu-item ng-click="optimize(server.id)">
+            <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
             <md-button>
             Optimize
+            </md-button>
+          </md-menu-item>
+          <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+          <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
+            <md-button>
+            Physical Backup
             </md-button>
           </md-menu-item>
         </md-menu-content>
