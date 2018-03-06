@@ -39,7 +39,7 @@ func NewMap() *Map {
 }
 
 func (m Map) Add(key string, s State) {
-	s.ErrKey = key
+
 	_, ok := m[key]
 	if !ok {
 		m[key] = s
@@ -131,6 +131,7 @@ func (SM *StateMachine) IsInFailover() bool {
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
+	s.ErrKey = key
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	SM.Unlock()
