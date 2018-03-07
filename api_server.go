@@ -201,7 +201,7 @@ func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -220,7 +220,7 @@ func handlerMuxServersMasterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -246,7 +246,7 @@ func handlerMuxServersPortMasterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -267,7 +267,7 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
+func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
@@ -480,6 +480,87 @@ func handlerMuxServerSchemas(w http.ResponseWriter, r *http.Request) {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l, _ := node.GetSchemas()
+			err := e.Encode(l)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerInnoDBStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetInnoDBStatus()
+			err := e.Encode(l)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerAllSlavesStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetAllSlavesStatus()
+			err := e.Encode(l)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetMasterStatus()
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)

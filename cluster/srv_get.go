@@ -117,6 +117,14 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 	return nil, errors.New("Empty replications channels")
 }
 
+func (server *ServerMonitor) GetAllSlavesStatus() []dbhelper.SlaveStatus {
+	return server.Replications
+}
+
+func (server *ServerMonitor) GetMasterStatus() dbhelper.MasterStatus {
+	return server.MasterStatus
+}
+
 func (server *ServerMonitor) GetLastPseudoGTID() (string, error) {
 	return dbhelper.GetLastPseudoGTID(server.Conn)
 }
@@ -155,4 +163,8 @@ func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
 
 func (server *ServerMonitor) GetTables() map[string]dbhelper.Table {
 	return server.DictTables
+}
+
+func (server *ServerMonitor) GetInnoDBStatus() map[string]string {
+	return server.EngineInnoDB
 }
