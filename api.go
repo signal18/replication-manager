@@ -277,7 +277,30 @@ func apiserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerProcesslist)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slowlog", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/tables", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerTables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/schemas", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSchemas)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/actions/add/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),

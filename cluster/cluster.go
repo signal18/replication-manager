@@ -125,7 +125,10 @@ const (
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
-	cluster.statecloseChan = make(chan state.State)
+	// should use buffered channels or it will block
+	cluster.statecloseChan = make(chan state.State, 100)
+	//cluster.changetableChan = make(chan state.State, 100)
+
 	cluster.errorChan = make(chan error)
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()

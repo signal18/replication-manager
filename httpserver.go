@@ -74,7 +74,28 @@ func httpserver() {
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterMasterPhysicalBackup)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerProcesslist)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
 
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slowlog", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/tables", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerTables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/schemas", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSchemas)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
 	))

@@ -13,6 +13,8 @@ import (
 	"errors"
 
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/httplog"
+	"github.com/signal18/replication-manager/slowlog"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
@@ -133,4 +135,24 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 
 func (server *ServerMonitor) GetTableFromDict(URI string) dbhelper.Table {
 	return server.DictTables[URI]
+}
+
+func (server *ServerMonitor) GetVariables() map[string]string {
+	return server.Variables
+}
+
+func (server *ServerMonitor) GetStatus() map[string]string {
+	return server.Status
+}
+
+func (server *ServerMonitor) GetErrorLog() httplog.HttpLog {
+	return server.ErrorLog
+}
+
+func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
+	return server.SlowLog
+}
+
+func (server *ServerMonitor) GetTables() map[string]dbhelper.Table {
+	return server.DictTables
 }
