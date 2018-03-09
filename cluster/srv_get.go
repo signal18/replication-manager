@@ -141,8 +141,18 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
-func (server *ServerMonitor) GetTableFromDict(URI string) dbhelper.Table {
-	return server.DictTables[URI]
+func (server *ServerMonitor) GetTableFromDict(URI string) (dbhelper.Table, error) {
+	var emptyTable dbhelper.Table
+	val, ok := server.DictTables[URI]
+	if !ok {
+		if len(server.DictTables) == 0 {
+			return emptyTable, errors.New("Empty")
+		} else {
+			return emptyTable, errors.New("Not found")
+		}
+	} else {
+		return val, nil
+	}
 }
 
 func (server *ServerMonitor) GetVariables() map[string]string {

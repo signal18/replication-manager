@@ -577,3 +577,39 @@ func handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func handlerMuxSkipReplicationEvent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			node.SkipReplicationEvent()
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxSetInnoDBMonitor(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			node.SetInnoDBMonitor()
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/cron"
+	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/state"
@@ -81,6 +82,8 @@ type Cluster struct {
 	switchoverCond       *nbc.NonBlockingChan
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
+	altertableCond       *nbc.NonBlockingChan
+	addtableCond         *nbc.NonBlockingChan
 	statecloseChan       chan state.State
 	switchoverChan       chan bool
 	errorChan            chan error
@@ -133,6 +136,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()
 	cluster.rejoinCond = nbc.New()
+	cluster.addtableCond = nbc.New()
+	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
@@ -263,6 +268,9 @@ func (cluster *Cluster) Run() {
 				}
 			} else {
 				cluster.refreshProxies()
+				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
+					go cluster.schemaMonitor()
+				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHearbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
@@ -526,4 +534,57 @@ func (cluster *Cluster) Optimize() {
 		jobid, _ := s.JobOptimize()
 		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
+}
+
+func (cluster *Cluster) schemaMonitor() {
+	if !cluster.Conf.MonitorSchemaChange && !cluster.Conf.MdbsProxyOn {
+		return
+	}
+	cluster.sme.SetMonitorSchemaState()
+
+	tables, err := dbhelper.GetTables(cluster.master.Conn)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
+	}
+	var duplicates []*ServerMonitor
+	for _, t := range tables {
+		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
+		duplicates = nil
+		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+		haschanged := false
+		if err != nil {
+			if err.Error() == "Empty" {
+				cluster.LogPrintf(LvlDbg, "Init table %s", t.Table_schema+"."+t.Table_name)
+				haschanged = true
+			} else {
+				cluster.LogPrintf(LvlDbg, "New table %s", t.Table_schema+"."+t.Table_name)
+				haschanged = true
+			}
+		} else if oldtable.Table_crc != t.Table_crc {
+			haschanged = true
+			cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+		}
+		if haschanged {
+
+			for _, cl := range cluster.clusterList {
+				if cl.GetName() != cluster.GetName() {
+					m := cl.GetMaster()
+					if m != nil {
+						cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+						if cltbldef.Table_name == t.Table_name {
+							duplicates = append(duplicates, cl.GetMaster())
+							cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+						}
+					}
+				}
+			}
+			for _, pr := range cluster.Proxies {
+				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+					cluster.createMdbsproxyVTable(pr, t, duplicates)
+				}
+			}
+		}
+	}
+	cluster.master.DictTables = tables
+	cluster.sme.RemoveMonitorSchemaState()
 }

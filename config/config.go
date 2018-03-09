@@ -26,7 +26,7 @@ type Config struct {
 	MonitorSchemaChangeScript          string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`
-	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryQcript"`
+	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
