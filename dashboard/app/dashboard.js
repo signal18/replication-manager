@@ -2,6 +2,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
     function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
+        $scope.menuOpened = false;
 
         var getClusterUrl = function () {
             return AppService.getClusterUrl($scope.selectedClusterName);
@@ -43,8 +44,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 });
 
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    $scope.servers = data;
-                    $scope.reserror = false;
+                    if (!$scope.menuOpened) {
+                        $scope.servers = data;
+                        $scope.reserror = false;
+                    }
                 }, function () {
                     $scope.reserror = true;
                 });
@@ -214,5 +217,17 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 $mdSidenav(componentId).toggle();
             };
         }
+
+
+        $scope.$on('$mdMenuOpen', function (event, menu) {
+            console.log('Opening menu refresh server will stop...', event, menu);
+            $scope.menuOpened = true;
+            $scope.openedAt = new Date().toLocaleString();
+        });
+        $scope.$on('$mdMenuClose', function (event, menu) {
+            console.log('Olosing menu refresh servers will resume...', event, menu);
+            $scope.menuOpened = false;
+            $scope.openedAt = "";
+        });
 
     }]);

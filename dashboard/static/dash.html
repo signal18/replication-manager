@@ -63,6 +63,9 @@
     <md-card-content>
         <p class="sectionheader">SERVERS</p>
     </md-card-content>
+<div class="alert alert-warning" ng-if="menuOpened">
+  <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
+</div>
 <table ng-if="servers" class="table">
 
     <tr>
