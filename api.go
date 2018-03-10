@@ -365,6 +365,16 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/toogle-innodb-monitor", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSetInnoDBMonitor)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/skip-replication-event", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
+	))
+
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(

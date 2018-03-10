@@ -699,3 +699,9 @@ func (server *ServerMonitor) Uprovision() {
 func (server *ServerMonitor) Provision() {
 	server.ClusterGroup.OpenSVCProvisionDatabaseService(server)
 }
+
+func (server *ServerMonitor) SkipReplicationEvent() {
+	server.StopSlave()
+	dbhelper.SkipBinlogEvent(server.Conn)
+	server.StartSlave()
+}
