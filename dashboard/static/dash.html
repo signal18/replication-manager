@@ -106,7 +106,8 @@
       </table>
         </md-card>
         <BR>
-
+  <div ng-repeat="tag in selectedCluster.dbServersTags"> <span class="label label-success">{{ tag }}<span></div>
+<BR>
 <md-card ng-if="settings.config.test==true">
 <table class="table">
 <tr>
