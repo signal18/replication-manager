@@ -152,3 +152,7 @@ func (server *ServerMonitor) SetReplicationChannel(source string) error {
 	}
 	return nil
 }
+
+func (server *ServerMonitor) SetInnoDBMonitor() {
+	dbhelper.SetInnoDBLockMonitor(server.Conn)
+}

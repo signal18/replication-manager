@@ -13,6 +13,8 @@ import (
 	"errors"
 
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/httplog"
+	"github.com/signal18/replication-manager/slowlog"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
@@ -115,6 +117,14 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 	return nil, errors.New("Empty replications channels")
 }
 
+func (server *ServerMonitor) GetAllSlavesStatus() []dbhelper.SlaveStatus {
+	return server.Replications
+}
+
+func (server *ServerMonitor) GetMasterStatus() dbhelper.MasterStatus {
+	return server.MasterStatus
+}
+
 func (server *ServerMonitor) GetLastPseudoGTID() (string, error) {
 	return dbhelper.GetLastPseudoGTID(server.Conn)
 }
@@ -131,6 +141,40 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
-func (server *ServerMonitor) GetTableFromDict(URI string) dbhelper.Table {
-	return server.DictTables[URI]
+func (server *ServerMonitor) GetTableFromDict(URI string) (dbhelper.Table, error) {
+	var emptyTable dbhelper.Table
+	val, ok := server.DictTables[URI]
+	if !ok {
+		if len(server.DictTables) == 0 {
+			return emptyTable, errors.New("Empty")
+		} else {
+			return emptyTable, errors.New("Not found")
+		}
+	} else {
+		return val, nil
+	}
+}
+
+func (server *ServerMonitor) GetVariables() map[string]string {
+	return server.Variables
+}
+
+func (server *ServerMonitor) GetStatus() map[string]string {
+	return server.Status
+}
+
+func (server *ServerMonitor) GetErrorLog() httplog.HttpLog {
+	return server.ErrorLog
+}
+
+func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
+	return server.SlowLog
+}
+
+func (server *ServerMonitor) GetTables() map[string]dbhelper.Table {
+	return server.DictTables
+}
+
+func (server *ServerMonitor) GetInnoDBStatus() map[string]string {
+	return server.EngineInnoDB
 }

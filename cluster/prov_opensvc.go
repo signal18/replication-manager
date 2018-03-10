@@ -301,7 +301,7 @@ gateway = {env.gateway}
 	return net
 }
 
-func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod string) string {
+func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod string, agent string) string {
 
 	var disk string
 	var fs string
@@ -312,6 +312,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 type = loop
 file = ` + collector.ProvFSPath + `/{svcname}_pod` + pod + `.dsk
 size = {env.size}
+always_on = nodes
 
 `
 	}
@@ -321,6 +322,7 @@ size = {env.size}
 name = {svcname}_` + pod + `
 type = lvm
 pvs = {disk#` + pod + `.file}
+always_on = nodes
 
 `
 	}
@@ -330,6 +332,7 @@ pvs = {disk#` + pod + `.file}
 name = zp{svcname}_pod` + pod + `
 type = zpool
 vdev  = {disk#` + pod + `.file}
+always_on = nodes
 
 `
 	}
@@ -378,6 +381,7 @@ size = {env.size}
 		}
 		fs = fs + `
 mnt = {env.base_dir}/pod` + pod + `
+always_on = nodes
 `
 
 	}

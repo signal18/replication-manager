@@ -182,7 +182,7 @@ show_disabled = false
 	//main loop over db instances
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
-		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod)
+		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod, agent)
 		conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 	`
 		conf = conf + server.GetSnapshot(collector)

@@ -206,7 +206,6 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 		case <-cluster.failoverCond.Recv:
 			cluster.LogPrintf(LvlInfo, "Failover end receive from channel failoverCond")
 			return
-		default:
 		}
 	}
 	if exitloop == 100 {
@@ -230,7 +229,6 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
 			return
-		default:
 		}
 	}
 	if exitloop == 100 {
@@ -258,8 +256,6 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		case <-cluster.rejoinCond.Recv:
 			return
 
-		default:
-
 		}
 
 	}
@@ -286,7 +282,7 @@ func (cluster *Cluster) WaitClusterStop() error {
 			if cluster.sme.IsInState("ERR00021") == true {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {
@@ -311,7 +307,6 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 			if cluster.IsProxyEqualMaster() == true {
 				exitloop = 100
 			}
-		default:
 		}
 	}
 	if exitloop == 100 {
@@ -335,7 +330,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 			if err != nil {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {
@@ -360,7 +355,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 			if err == nil {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {
@@ -384,7 +379,7 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 			if cluster.sme.IsDiscovered() {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {
@@ -408,7 +403,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 			if cluster.GetMaster() != nil {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {
@@ -442,7 +437,7 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 			if cluster.AllDatabaseCanConn() && cluster.IsProvision() {
 				exitloop = 100
 			}
-		default:
+
 		}
 	}
 	if exitloop == 100 {

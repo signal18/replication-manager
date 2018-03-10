@@ -18,9 +18,11 @@ import (
 )
 
 type State struct {
-	ErrType string
-	ErrDesc string
-	ErrFrom string
+	ErrKey    string
+	ErrType   string
+	ErrDesc   string
+	ErrFrom   string
+	ServerUrl string
 }
 
 type StateHttp struct {
@@ -37,6 +39,7 @@ func NewMap() *Map {
 }
 
 func (m Map) Add(key string, s State) {
+
 	_, ok := m[key]
 	if !ok {
 		m[key] = s
@@ -59,18 +62,21 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	CurState            *Map
-	OldState            *Map
-	discovered          bool
-	lasttime            int64
-	Firsttime           int64
-	Uptime              int64
-	UptimeFailable      int64
-	UptimeSemisync      int64
-	lastState           int64
-	heartbeats          int64
-	avgReplicationDelay float32
-	inFailover          bool
+	CurState               *Map
+	OldState               *Map
+	discovered             bool
+	lasttime               int64
+	Firsttime              int64
+	Uptime                 int64
+	UptimeFailable         int64
+	UptimeSemisync         int64
+	lastState              int64
+	heartbeats             int64
+	avgReplicationDelay    float32
+	inFailover             bool
+	inSchemaMonitor        bool
+	SchemaMonitorStartTime int64
+	SchemaMonitorEndTime   int64
 	sync.Mutex
 }
 
@@ -111,6 +117,19 @@ func (SM *StateMachine) Init() {
 	SM.heartbeats = 0
 }
 
+func (SM *StateMachine) SetMonitorSchemaState() {
+	SM.Lock()
+	SM.SchemaMonitorStartTime = time.Now().Unix()
+	SM.inSchemaMonitor = true
+	SM.Unlock()
+}
+func (SM *StateMachine) RemoveMonitorSchemaState() {
+	SM.Lock()
+	SM.inSchemaMonitor = false
+	SM.SchemaMonitorEndTime = time.Now().Unix()
+	SM.Unlock()
+}
+
 func (SM *StateMachine) SetFailoverState() {
 	SM.Lock()
 	SM.inFailover = true
@@ -127,7 +146,12 @@ func (SM *StateMachine) IsInFailover() bool {
 	return SM.inFailover
 }
 
+func (SM *StateMachine) IsInSchemaMonitor() bool {
+	return SM.inSchemaMonitor
+}
+
 func (SM *StateMachine) AddState(key string, s State) {
+	s.ErrKey = key
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	SM.Unlock()
@@ -272,6 +296,19 @@ func (SM *StateMachine) GetStates() []string {
 			log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
 		}
 	}
+	SM.Unlock()
+	return log
+}
+
+func (SM *StateMachine) GetResolvedStates() []State {
+	var log []State
+	SM.Lock()
+	for key, state := range *SM.OldState {
+		if SM.CurState.Search(key) == false {
+			log = append(log, state)
+		}
+	}
+
 	SM.Unlock()
 	return log
 }

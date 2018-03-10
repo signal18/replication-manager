@@ -526,6 +526,35 @@ func SetBinlogAnnotate(db *sqlx.DB) error {
 	return nil
 }
 
+func SetInnoDBLockMonitor(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL innodb_status_output=ON")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL innodb_status_output_locks=ON")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SkipBinlogEvent(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL sql_slave_skip_counter=1")
+	return err
+}
+
+func UnsetInnoDBLockMonitor(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL innodb_status_output_locks=0")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL innodb_status_output=0")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
 	_, err := db.Exec("SET GLOBAL relay_log_space_limit=" + size)
 	if err != nil {
