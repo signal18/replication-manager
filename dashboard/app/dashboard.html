@@ -23,8 +23,8 @@
         <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
           <md-radio-group width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
               <md-radio-button ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                  {{element}}</option>
-          </md-select>
+                  {{element}}</md-radio-button>
+          </md-radio-group>
         </md-sidenav>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">

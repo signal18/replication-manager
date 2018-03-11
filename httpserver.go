@@ -305,7 +305,10 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/reseed/{backupMethod}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/optimize", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
