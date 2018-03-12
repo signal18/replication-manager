@@ -84,6 +84,13 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
+		return jobid, err
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed physical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+
 	return jobid, err
 }
 

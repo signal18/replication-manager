@@ -391,6 +391,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		} else if cluster.Conf.MxsBinlogOn == false {
 			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
+			// current pos is needed on old master as  writes diverges from slave pos
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -398,7 +399,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "SLAVE_POS",
+				Mode:      "CURRENT_POS",
 				SSL:       cluster.Conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
