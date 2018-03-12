@@ -360,17 +360,17 @@ func apiserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/reseed/{backupMethod}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/toogle-innodb-monitor", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSetInnoDBMonitor)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/skip-replication-event", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-event", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
 	))
