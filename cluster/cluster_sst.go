@@ -174,6 +174,6 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 		}
 		client.Write(sendBuffer)
 	}
-	cluster.LogPrintf(LvlErr, "File has been sent, closing connection!")
+	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
 
 }

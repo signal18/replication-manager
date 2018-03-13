@@ -128,6 +128,9 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.dbxtrabackup = function (server) {
             if (confirm("Confirm sending xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
         };
+        $scope.dbdump = function (server) {
+            if (confirm("Confirm sending xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/locgical-physical');
+        };
         $scope.dbskipreplicationevent = function (server) {
             if (confirm("Confirm skip replication event for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
         };

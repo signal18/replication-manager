@@ -20,6 +20,7 @@
           Rolling Optimize
             </md-button>
             </md-menu-item>
+
             <md-menu-item ng-if="master.state !='Failed'"  ng-click="backupphysical()">
             <md-button >
             <md-icon md-menu-align-target class="fas fa-save"></md-icon>
@@ -161,6 +162,7 @@
   <table ng-if="servers" class="table">
 
       <tr>
+          <th>Actions</th>
           <th>Host</th>
           <th>Port</th>
           <th>Version</th>
@@ -180,12 +182,129 @@
           <th>Scheduler</th>
           <th>Master Sync</th>
           <th>Slave Sync</th>
-          <th>Actions</th>
+
       </tr>
 
   <tbody>
   <tr ng-repeat="server in servers"
       ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
+      <td>
+        <md-menu >
+ <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
+    <md-span md-menu-origin class="fas fa-ellipsis-h"></md-span>
+ </md-button>
+ <md-menu-content width="100">
+    <md-menu-item ng-click="dbmaintenance(server.id)">
+       <md-button>
+          <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
+          Maintenance Mode
+       </md-button>
+    </md-menu-item>
+    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+       <md-menu >
+          <md-button ng-click="$mdMenu.open($event)">
+             <span md-menu-align-target>
+                Provision
+                <md-icon  class="fas fa-arrow-right"></md-icon>
+             </span>
+          </md-button>
+          <md-menu-content>
+             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbstop(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
+                   Stop Database
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbstart(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-play"></md-icon>
+                   Start Database
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbprovision(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                   Provision Database
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbunprovision(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                   Unprovision Database
+                </md-button>
+             </md-menu-item>
+          </md-menu-content>
+       </md-menu>
+    </md-menu-item>
+    <md-menu-item>
+       <md-menu >
+          <md-button ng-click="$mdMenu.open($event)">
+             <span md-menu-align-target>
+                Backup
+                <md-icon class="fas fa-arrow-right"></md-icon>
+             </span>
+          </md-button>
+          <md-menu-content>
+             <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                   Physical Backup
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="server.id==master.id" ng-click="dbdump(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                   Logical Backup
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                   Reseed Logical Backup
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                   Reseed Physical Backup
+                </md-button>
+             </md-menu-item>
+          </md-menu-content>
+       </md-menu>
+    </md-menu-item>
+    <md-menu-item>
+       <md-menu >
+          <md-button ng-click="$mdMenu.open($event)">
+             <span md-menu-align-target>
+                DB Utils
+             </span>
+             <md-icon class="fas fa-arrow-right"></md-icon>
+          </md-button>
+          <md-menu-content>
+             <md-menu-item ng-click="dboptimize(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
+                   Optimize
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-code-merge"></md-icon>
+                   Skip Replication Event
+                </md-button>
+             </md-menu-item>
+             <md-menu-item  ng-click="dbtoogleinnodbmonitor(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                   Toogle InnoDB Monitor
+                </md-button>
+             </md-menu-item>
+          </md-menu-content>
+       </md-menu>
+    </md-menu-item>
+ </md-menu-content>
+</md-menu>
+      </td>
       <td>{{server.host}}</td>
       <td>{{server.port}}</td>
       <td>{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}</td>
@@ -228,82 +347,7 @@
       </td>
       <td ng-if="server.semiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
       </td>
-      <td>
-          <md-menu>
-          <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
-            <md-icon md-menu-origin class="fas fa-ellipsis-h"></md-icon>
-          </md-button>
-          <md-menu-content>
-            <md-menu-item ng-click="dbmaintenance(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
-              Maintenance Mode
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbstop(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
-              Stop Database
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbstart(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-play"></md-icon>
-              Start Database
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbprovision(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
-              Provision Database
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="dbunprovision(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-              Unprovision Database
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-click="dboptimize(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
-              Optimize
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-save"></md-icon>
-              Physical Backup
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-              Reseed Logical Backup
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-              Reseed Physical Backup
-              </md-button>
-            </md-menu-item>
-            <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-code-merge"></md-icon>
-              Skip Replication Event
-              </md-button>
-            </md-menu-item>
-            <md-menu-item  ng-click="dbtoogleinnodbmonitor(server.id)">
-              <md-button>
-                <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                Toogle InnoDB Monitor
-              </md-button>
-            </md-menu-item>
 
-          </md-menu-content>
-        </md-menu>
-      </td>
   </tr>
   </tbody>
   </table>
