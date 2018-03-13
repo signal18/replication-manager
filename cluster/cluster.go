@@ -282,7 +282,7 @@ func (cluster *Cluster) Run() {
 				for _, s := range cstates {
 
 					if s.ErrKey == "WARN0074" {
-						cluster.LogPrintf(LvlInfo, "Sending Physical Backup to reseed %s", s.ServerUrl)
+						cluster.LogPrintf(LvlInfo, "Sending physical backup to reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 						m := cluster.GetMaster()
 						if m != nil {

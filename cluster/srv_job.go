@@ -18,10 +18,12 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
 	river "github.com/signal18/replication-manager/river"
 	"github.com/signal18/replication-manager/slowlog"
@@ -84,11 +86,28 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 
 		return jobid, err
 	}
+	server.StopSlave()
+	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		Host:      server.ClusterGroup.master.Host,
+		Port:      server.ClusterGroup.master.Port,
+		User:      server.ClusterGroup.rplUser,
+		Password:  server.ClusterGroup.rplPass,
+		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+	})
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		return jobid, err
+	}
+
 	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed physical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
 
 	return jobid, err
@@ -195,7 +214,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	}
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct FROM replication_manager_schema.jobs WHERE result IS NULL group by task ")
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Sceduler, error fetching replication_manager_schema.jobs %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		return err
 	}
 	for rows.Next() {
@@ -291,9 +310,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		var outGzip bytes.Buffer
 		w := gzip.NewWriter(&outGzip)
 		w.Write(out.Bytes())
-		w.Close()
+		defer w.Close()
 		out = outGzip
 		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/mysqldump.gz", out.Bytes(), 0666)
+
 	}
 	return nil
 }
