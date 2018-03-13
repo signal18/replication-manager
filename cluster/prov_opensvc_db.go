@@ -207,7 +207,7 @@ show_disabled = false
 schedule = @1
 command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/trigger-dbjobs
 user = root
-run_requires = fs#01(up)
+run_requires = fs#01(up,stdby up)
 
 `
 
