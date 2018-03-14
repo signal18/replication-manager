@@ -265,7 +265,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server == nil {
 		return errors.New("No server define")
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %d for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return nil
 	}
@@ -312,7 +312,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		w.Write(out.Bytes())
 		defer w.Close()
 		out = outGzip
-		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/mysqldump.gz", out.Bytes(), 0666)
+		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_mysqldump.sql.gz", out.Bytes(), 0666)
 
 	}
 	return nil

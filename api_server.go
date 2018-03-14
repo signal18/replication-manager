@@ -59,7 +59,7 @@ func handlerMuxServerBackupLogical(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			node.JobBackupLogical()
+			go node.JobBackupLogical()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
