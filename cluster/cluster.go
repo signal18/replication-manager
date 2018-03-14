@@ -291,6 +291,16 @@ func (cluster *Cluster) Run() {
 							cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
 						}
 					}
+					if s.ErrKey == "WARN0075" {
+						cluster.LogPrintf(LvlInfo, "Sending logical backup to reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+						m := cluster.GetMaster()
+						if m != nil {
+							go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_mysqldump.sql.gz", servertoreseed)
+						} else {
+							cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
+						}
+					}
 					//		cluster.statecloseChan <- s
 				}
 				states := cluster.sme.GetStates()
