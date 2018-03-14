@@ -281,7 +281,6 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerMaintenance)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
@@ -290,12 +289,14 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupPhysical)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-logical", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupLogical)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-error-log", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupErrorLog)),
@@ -305,22 +306,26 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/optimize", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/toogle-innodb-monitor", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSetInnoDBMonitor)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/action/skip-replication-eventr", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-eventr", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
 	))
-	//PROTECTED ENDPOINTS FOR PROXIES
+
+	//PROXIES PROTECTED ENDPOINTS
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),

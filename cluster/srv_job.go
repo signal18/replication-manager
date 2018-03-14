@@ -10,18 +10,22 @@
 package cluster
 
 import (
-	"bytes"
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
 	river "github.com/signal18/replication-manager/river"
 	"github.com/signal18/replication-manager/slowlog"
@@ -84,6 +88,59 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
+		return jobid, err
+	}
+	server.StopSlave()
+	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		Host:      server.ClusterGroup.master.Host,
+		Port:      server.ClusterGroup.master.Port,
+		User:      server.ClusterGroup.rplUser,
+		Password:  server.ClusterGroup.rplPass,
+		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+	})
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		return jobid, err
+	}
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed physical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+
+	return jobid, err
+}
+
+func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
+	jobid, err := server.JobInsertTaks("reseedmysqldump", "4444", server.ClusterGroup.Conf.BindAddr)
+
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
+		return jobid, err
+	}
+	server.StopSlave()
+	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		Host:      server.ClusterGroup.master.Host,
+		Port:      server.ClusterGroup.master.Port,
+		User:      server.ClusterGroup.rplUser,
+		Password:  server.ClusterGroup.rplPass,
+		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+	})
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		return jobid, err
+	}
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+
 	return jobid, err
 }
 
@@ -188,7 +245,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	}
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct FROM replication_manager_schema.jobs WHERE result IS NULL group by task ")
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Sceduler, error fetching replication_manager_schema.jobs %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		return err
 	}
 	for rows.Next() {
@@ -204,6 +261,8 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB"})
 				} else if task.task == "reseedxtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "reseedmysqldump" {
+					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				}
 			}
 		}
@@ -239,7 +298,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server == nil {
 		return errors.New("No server define")
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %d for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return nil
 	}
@@ -272,21 +331,71 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		river.NewRiver(cfg)
 	}
 	if server.ClusterGroup.Conf.BackupLogicalType == "mysqldump" {
+		//var outGzip, outFile bytes.Buffer
+		//	var errStdout error
 		usegtid := "--gtid"
 		dumpCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-		var out bytes.Buffer
-		dumpCmd.Stdout = &out
-		err := dumpCmd.Run()
+
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//stdout := io.MultiWriter(w, &outDump)
+
+		f, err := os.Create(server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_mysqldump.sql.gz")
+		wf := bufio.NewWriter(f)
+		gw := gzip.NewWriter(wf)
+		//fw := bufio.NewWriter(gw)
+		dumpCmd.Stdout = gw
+
+		err = dumpCmd.Start()
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
 			return err
 		}
-		var outGzip bytes.Buffer
-		w := gzip.NewWriter(&outGzip)
-		w.Write(out.Bytes())
-		w.Close()
-		out = outGzip
-		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/mysqldump.gz", out.Bytes(), 0666)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := dumpCmd.Wait()
+
+			if err != nil {
+				log.Println(err)
+			}
+			gw.Flush()
+			gw.Close()
+			wf.Flush()
+			f.Close()
+		}()
+		wg.Wait()
+
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+
 	return nil
+}
+
+func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
+	var out []byte
+	buf := make([]byte, 1024, 1024)
+	for {
+		n, err := r.Read(buf[:])
+		if n > 0 {
+			d := buf[:n]
+			out = append(out, d...)
+			_, err := w.Write(d)
+			if err != nil {
+				return out, err
+			}
+		}
+		if err != nil {
+			// Read returns io.EOF at the end of file, which is not an error for us
+			if err == io.EOF {
+				err = nil
+			}
+			return out, err
+		}
+	}
+	// never reached
+	panic(true)
+	return nil, nil
 }

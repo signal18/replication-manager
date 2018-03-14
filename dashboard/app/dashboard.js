@@ -104,14 +104,41 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             }
         };
 
-        $scope.maintenance = function (server) {
+        $scope.dbmaintenance = function (server) {
             if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
         };
-        $scope.start = function (server) {
+        $scope.dbstart = function (server) {
             if (confirm("Confirm start for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start');
         };
-        $scope.stop = function (server) {
+        $scope.dbstop = function (server) {
             if (confirm("Confirm stop for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop');
+        };
+        $scope.dbprovision = function (server) {
+            if (confirm("Confirm provision server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/provision');
+        };
+        $scope.dbunprovision = function (server) {
+            if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
+        };
+        $scope.dbreseedxtrabackup = function (server) {
+            if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/xtrabackup');
+        };
+        $scope.dbreseedmysqldump = function (server) {
+            if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/mysqldump');
+        };
+        $scope.dbxtrabackup = function (server) {
+            if (confirm("Confirm sending xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
+        };
+        $scope.dbdump = function (server) {
+            if (confirm("Confirm sending mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
+        };
+        $scope.dbskipreplicationevent = function (server) {
+            if (confirm("Confirm skip replication event for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
+        };
+        $scope.dbtoogleinnodbmonitor = function (server) {
+            if (confirm("Confirm toogle innodb monitor server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
+        };
+        $scope.dboptimize = function (server) {
+            if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
         };
 
         $scope.toggletraffic = function () {
@@ -180,9 +207,6 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm master physical backup")) httpGetWithoutResponse(getClusterUrl() + '/actions/master-physical-backup');
         };
 
-        $scope.optimize = function (server) {
-            if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
-        };
 
         $scope.switchsettings = function (setting) {
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);
