@@ -96,6 +96,9 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+		Channel:   server.ClusterGroup.Conf.MasterConn,
+		IsMariaDB: server.DBVersion.IsMariaDB(),
+		IsMySQL:   server.DBVersion.IsMySQL(),
 	})
 }
 
@@ -113,6 +116,9 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "",
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:   server.ClusterGroup.Conf.MasterConn,
+			IsMariaDB: server.DBVersion.IsMariaDB(),
+			IsMySQL:   server.DBVersion.IsMySQL(),
 		})
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -124,6 +130,9 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "CURRENT_POS",
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:   server.ClusterGroup.Conf.MasterConn,
+			IsMariaDB: server.DBVersion.IsMariaDB(),
+			IsMySQL:   server.DBVersion.IsMySQL(),
 		})
 	}
 	return err
