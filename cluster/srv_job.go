@@ -10,16 +10,18 @@
 package cluster
 
 import (
-	"bytes"
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -298,22 +300,71 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		river.NewRiver(cfg)
 	}
 	if server.ClusterGroup.Conf.BackupLogicalType == "mysqldump" {
+		//var outGzip, outFile bytes.Buffer
+		//	var errStdout error
 		usegtid := "--gtid"
 		dumpCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-		var out bytes.Buffer
-		dumpCmd.Stdout = &out
-		err := dumpCmd.Run()
+
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//stdout := io.MultiWriter(w, &outDump)
+
+		f, err := os.Create(server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_mysqldump.sql.gz")
+		wf := bufio.NewWriter(f)
+		gw := gzip.NewWriter(wf)
+		//fw := bufio.NewWriter(gw)
+		dumpCmd.Stdout = gw
+
+		err = dumpCmd.Start()
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
 			return err
 		}
-		var outGzip bytes.Buffer
-		w := gzip.NewWriter(&outGzip)
-		w.Write(out.Bytes())
-		defer w.Close()
-		out = outGzip
-		ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_mysqldump.sql.gz", out.Bytes(), 0666)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := dumpCmd.Wait()
+
+			if err != nil {
+				log.Println(err)
+			}
+			gw.Flush()
+			gw.Close()
+			wf.Flush()
+			f.Close()
+		}()
+		wg.Wait()
 
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+
 	return nil
+}
+
+func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
+	var out []byte
+	buf := make([]byte, 1024, 1024)
+	for {
+		n, err := r.Read(buf[:])
+		if n > 0 {
+			d := buf[:n]
+			out = append(out, d...)
+			_, err := w.Write(d)
+			if err != nil {
+				return out, err
+			}
+		}
+		if err != nil {
+			// Read returns io.EOF at the end of file, which is not an error for us
+			if err == io.EOF {
+				err = nil
+			}
+			return out, err
+		}
+	}
+	// never reached
+	panic(true)
+	return nil, nil
 }
