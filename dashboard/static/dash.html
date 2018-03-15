@@ -270,7 +270,7 @@
                    Reseed Physical From Backup
                 </md-button>
              </md-menu-item>
-             <md-menu-item ng-if="server.id==master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
+             <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
                 <md-button>
                    <md-icon md-menu-align-target class="fas fa-save"></md-icon>
                    Reseed Logical From Master

@@ -517,6 +517,9 @@ func (cluster *Cluster) schemaMonitor() {
 	if !cluster.Conf.MonitorSchemaChange && !cluster.Conf.MdbsProxyOn {
 		return
 	}
+	if cluster.master == nil {
+		return
+	}
 	cluster.sme.SetMonitorSchemaState()
 
 	tables, err := dbhelper.GetTables(cluster.master.Conn)
