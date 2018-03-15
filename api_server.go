@@ -99,7 +99,7 @@ func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
 				node.JobReseedMysqldump()
 			}
 			if vars["backupMethod"] == "logicalmaster" {
-				node.RejoinMysqldump()
+				node.RejoinMasterDump()
 			}
 			if vars["backupMethod"] == "physicalbackup" {
 				node.JobReseedXtraBackup()

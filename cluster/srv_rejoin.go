@@ -102,7 +102,7 @@ func (server *ServerMonitor) RejoinPreviousSnapshot() error {
 func (server *ServerMonitor) RejoinMasterSST() error {
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
-		err := server.rejoinMasterDump()
+		err := server.RejoinMasterDump()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
 		}
@@ -235,7 +235,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterDump() error {
+func (server *ServerMonitor) RejoinMasterDump() error {
 	var err3 error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
