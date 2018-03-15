@@ -520,6 +520,9 @@ func (cluster *Cluster) schemaMonitor() {
 	if cluster.master == nil {
 		return
 	}
+	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance {
+		return
+	}
 	cluster.sme.SetMonitorSchemaState()
 
 	tables, err := dbhelper.GetTables(cluster.master.Conn)
