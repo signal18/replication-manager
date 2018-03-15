@@ -506,6 +506,9 @@ func (cluster *Cluster) BackupLogs() {
 	}
 }
 
+func (cluster *Cluster) ResetCrashes() {
+	cluster.Crashes = nil
+}
 func (cluster *Cluster) Optimize() {
 	for _, s := range cluster.slaves {
 		jobid, _ := s.JobOptimize()

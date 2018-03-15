@@ -68,6 +68,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	// delete the cluster state here
 	path := cluster.Conf.WorkingDir + "/" + cluster.Name + ".json"
 	os.Remove(path)
+	cluster.ResetCrashes()
 	if cluster.Conf.Enterprise {
 		err = cluster.OpenSVCProvisionCluster()
 	} else {
@@ -128,7 +129,7 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 }
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
-
+	cluster.ResetCrashes()
 	if cluster.Conf.Enterprise {
 		cluster.OpenSVCUnprovisionDatabaseService(server)
 	} else {

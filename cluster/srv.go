@@ -147,7 +147,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
-
+	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.SetCredential(url, user, pass)
 	server.TestConfig = conf
 

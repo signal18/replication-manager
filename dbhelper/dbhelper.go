@@ -76,7 +76,7 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	ConnectionName       sql.NullString `db:"Connection_Name" json:"connectionName"`
+	ConnectionName       sql.NullString `db:"Connection_name" json:"connectionName"`
 	MasterHost           sql.NullString `db:"Master_Host" json:"masterHost"`
 	MasterUser           sql.NullString `db:"Master_User" json:"masterUser"`
 	MasterPort           sql.NullString `db:"Master_Port" json:"masterPort"`
