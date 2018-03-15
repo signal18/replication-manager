@@ -98,12 +98,13 @@ func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
 			if vars["backupMethod"] == "logicalbackup" {
 				node.JobReseedMysqldump()
 			}
+			if vars["backupMethod"] == "logicalmaster" {
+				node.RejoinMysqldump()
+			}
 			if vars["backupMethod"] == "physicalbackup" {
 				node.JobReseedXtraBackup()
 			}
-			if vars["backupMethod"] == "mysqldump" {
-				node.RejoinMysqldump()
-			}
+
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
