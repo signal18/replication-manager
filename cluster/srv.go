@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -297,7 +298,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	var ss dbhelper.SlaveStatus
 	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 	// We have no replicatieon can this be the old master
-	if errss == sql.ErrNoRows {
+	//  1617 is no multi source channel found
+	noChannel := false
+	if errss != nil {
+		if strings.Contains(errss.Error(), "1617") {
+			noChannel = true
+		}
+	}
+	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
@@ -489,6 +497,9 @@ func (server *ServerMonitor) Refresh() error {
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 	}
+
+	// Set channel source name is dangerous with multi cluster
+
 	// SHOW SLAVE STATUS
 
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
@@ -683,7 +694,7 @@ func (server *ServerMonitor) StopSlaveSQLThread() error {
 }
 
 func (server *ServerMonitor) ResetSlave() error {
-	return dbhelper.ResetSlave(server.Conn, true)
+	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) FlushTables() error {

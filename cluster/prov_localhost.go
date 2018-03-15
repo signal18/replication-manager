@@ -31,6 +31,7 @@ func (cluster *Cluster) LocalhostProvisionCluster() error {
 	if err != nil {
 		return err
 	}
+
 	err = cluster.LocalhostProvisionProxies()
 	if err != nil {
 		return err

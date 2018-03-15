@@ -648,14 +648,11 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		if err != nil {
 			return err
 		}
-		if myver.IsMariaDB() {
-			err = ResetSlave(db, true)
-		}
-		if myver.IsMySQL() {
-			err = StopSlave(db, "", false, false)
-			err = ResetSlave(db, true)
 
+		if myver.IsMySQL() {
+			err = StopSlave(db, src.ConnectionName.String, false, true)
 		}
+		err = ResetSlave(db, true, src.ConnectionName.String, myver.IsMariaDB(), myver.IsMySQL())
 		if err != nil {
 			return err
 		}
@@ -1070,10 +1067,16 @@ func StartSlave(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error
 	return err
 }
 
-func ResetSlave(db *sqlx.DB, all bool) error {
+func ResetSlave(db *sqlx.DB, all bool, Channel string, IsMariaDB bool, IsMySQL bool) error {
 	stmt := "RESET SLAVE"
+	if IsMariaDB && Channel != "" {
+		stmt += " '" + Channel + "'"
+	}
 	if all == true {
 		stmt += " ALL"
+		if IsMySQL && Channel != "" {
+			stmt += " FOR CHANNEL '" + Channel + "'"
+		}
 	}
 	_, err := db.Exec(stmt)
 	return err
