@@ -267,17 +267,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		}
 
 	}
-	// Possible that we can't found the master because the replication host and configurartion host missmatch:  hostname vs IP
-	// Lookup for reverse DNS IP match
-	/*	if cluster.master != nil {
-		is, err := dbhelper.IsSlaveof(s.Conn, s.Host, cluster.master.IP, cluster.master.Port)
-		if err != nil {
-			return nil, nil
-		}
-		if is {
-			return cluster.master, nil
-		}
-	}*/
+
 	return nil, nil
 }
 

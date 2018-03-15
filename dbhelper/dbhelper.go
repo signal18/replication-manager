@@ -420,11 +420,21 @@ func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, error) {
 	return false, nil
 }
 
-func GetSlaveStatus(db *sqlx.DB) (SlaveStatus, error) {
+func GetSlaveStatus(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) (SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
+	var err error
 	udb := db.Unsafe()
 	ss := SlaveStatus{}
-	err := udb.Get(&ss, "SHOW SLAVE STATUS")
+	if Channel == "" {
+		err = udb.Get(&ss, "SHOW SLAVE  STATUS")
+	} else {
+		if IsMariaDB {
+			err = udb.Get(&ss, "SHOW SLAVE '"+Channel+"' STATUS")
+		} else {
+			err = udb.Get(&ss, "SHOW SLAVE STATUS FOR CHANNEL '"+Channel+"'")
+		}
+	}
+
 	return ss, err
 }
 
@@ -446,7 +456,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 		ss, err = GetAllSlavesStatus(db)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db)
+		s, err = GetSlaveStatus(db, conn, myver.IsMariaDB(), myver.IsMySQL())
 		ss = append(ss, s)
 	}
 
@@ -627,7 +637,7 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		ss, err = GetAllSlavesStatus(db)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db)
+		s, err = GetSlaveStatus(db, "", myver.IsMariaDB(), myver.IsMySQL())
 		ss = append(ss, s)
 	}
 	if err != nil {
@@ -1132,25 +1142,6 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
 	} else {
 		return false
 	}
-}
-
-/* Check if server is connected to declared master */
-func IsSlaveof(db *sqlx.DB, s string, m string, p string) (bool, error) {
-	ss, err := GetSlaveStatus(db)
-	if err != nil {
-		return false, errors.New("Cannot get SHOW SLAVE STATUS")
-	}
-	masterHost, err := CheckHostAddr(ss.MasterHost.String)
-	if err != nil {
-		// Could not resolve master hostname
-	}
-	if masterHost != m {
-		return false, fmt.Errorf("Hosts not identical (%s:%s)", masterHost, m)
-	}
-	if ss.MasterPort.String != p {
-		return false, errors.New("Master port differs")
-	}
-	return true, nil
 }
 
 func GetEventScheduler(dbM *sqlx.DB) bool {

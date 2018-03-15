@@ -295,7 +295,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	var ss dbhelper.SlaveStatus
-	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 	// We have no replicatieon can this be the old master
 	if errss == sql.ErrNoRows {
 		// If we reached this stage with a previously failed server, reintroduce
@@ -602,7 +602,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
 			server.Refresh()
-			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
+			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn)
 			if err != nil {
 				return err
 			}
@@ -613,12 +613,12 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, err := dbhelper.GetSlaveStatus(server.Conn)
+		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 		if err != nil {
 			return err
 		}
 		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
-			ss, err = dbhelper.GetSlaveStatus(server.Conn)
+			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 			if err != nil {
 				return err
 			}
