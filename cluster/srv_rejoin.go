@@ -174,6 +174,9 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logfile:   crash.NewMasterLogFile,
 			Logpos:    crash.NewMasterLogPos,
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:   server.ClusterGroup.Conf.MasterConn,
+			IsMariaDB: server.DBVersion.IsMariaDB(),
+			IsMySQL:   server.DBVersion.IsMySQL(),
 		})
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
@@ -181,7 +184,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		}
 	}
 
-	dbhelper.StartSlave(server.Conn)
+	server.StartSlave()
 	return err
 }
 
@@ -365,7 +368,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				//		master_gtid := crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//	if slave_gtid < master_gtid {
 				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave via GTID")
-				err := dbhelper.StopSlave(server.Conn)
+				err := server.StopSlave()
 				if err == nil {
 					err = server.SetReplicationGTIDSlavePosFromServer(realmaster)
 					if err == nil {
@@ -397,6 +400,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 								Mode:      "POSITIONAL",
 								SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+								Channel:   server.ClusterGroup.Conf.MasterConn,
+								IsMariaDB: server.DBVersion.IsMariaDB(),
+								IsMySQL:   server.DBVersion.IsMySQL(),
 							})
 							if changeMasterErr != nil {
 								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.URL)
@@ -548,8 +554,7 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 	}
 	dumpCmd.Wait()
 	cluster.LogPrintf(LvlInfo, "Start slave after dump")
-
-	dbhelper.StartSlave(dest.Conn)
+	dest.StartSlave()
 	return nil
 }
 

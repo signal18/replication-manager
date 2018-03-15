@@ -490,10 +490,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 	}
 	// SHOW SLAVE STATUS
-	err = server.SetReplicationChannel(server.ClusterGroup.Conf.MasterConn)
-	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Could not set replication channel")
-	}
+
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
@@ -669,19 +666,20 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) StopSlave() error {
-	return dbhelper.StopSlave(server.Conn)
+	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) StartSlave() error {
-	return dbhelper.StartSlave(server.Conn)
+	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+
 }
 
 func (server *ServerMonitor) StopSlaveIOThread() error {
-	return dbhelper.StopSlaveIOThread(server.Conn)
+	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) StopSlaveSQLThread() error {
-	return dbhelper.StopSlaveSQLThread(server.Conn)
+	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) ResetSlave() error {
@@ -702,6 +700,6 @@ func (server *ServerMonitor) Provision() {
 
 func (server *ServerMonitor) SkipReplicationEvent() {
 	server.StopSlave()
-	dbhelper.SkipBinlogEvent(server.Conn)
+	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 	server.StartSlave()
 }

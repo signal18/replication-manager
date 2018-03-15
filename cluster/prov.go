@@ -484,7 +484,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		if server.DBVersion.IsMariaDB() {
 			err = dbhelper.StopAllSlaves(server.Conn)
 		} else {
-			err = dbhelper.StopSlave(server.Conn)
+			err = server.StopSlave()
 		}
 		if err != nil {
 			cluster.sme.RemoveFailoverState()

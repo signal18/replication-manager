@@ -139,13 +139,13 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		server.ClusterGroup.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
 	}
 	if server.ClusterGroup.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
-		dbhelper.SetSlaveHeartbeat(sl.Conn, "1")
+		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 		server.ClusterGroup.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
 		server.ClusterGroup.sme.AddState("WARN0050", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO"})
 	}
 	if server.ClusterGroup.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
-		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos")
+		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
 		server.ClusterGroup.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO"})

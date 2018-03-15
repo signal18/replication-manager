@@ -126,12 +126,9 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
-	// Initialize the state machine at this stage where everything is fine.
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
-	//cluster.changetableChan = make(chan state.State, 100)
-
 	cluster.errorChan = make(chan error)
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()
@@ -142,7 +139,6 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
-	cluster.Conf = conf
 	cluster.tlog = tlog
 	cluster.htlog = httplog
 	cluster.termlength = termlength
@@ -151,76 +147,71 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
-	cluster.sme = new(state.StateMachine)
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
-	cluster.DBTags = cluster.GetDatabaseTags()
-	cluster.ProxyTags = cluster.GetProxyTags()
 
+	// Initialize the state machine at this stage where everything is fine.
+	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
-	if cluster.Conf.MonitorScheduler {
-		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
-		cluster.scheduler = cron.New()
 
-		if cluster.Conf.SchedulerBackupLogical {
-			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
-			cluster.scheduler.AddFunc(conf.BackupLogicalCron, func() {
-				cluster.master.JobBackupLogical()
-			})
-		}
-		if cluster.Conf.SchedulerBackupPhysical {
-			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
-			cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
-				cluster.master.JobBackupPhysical()
-			})
-		}
-		if cluster.Conf.SchedulerBackupPhysical {
-			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", conf.BackupDatabaseLogCron)
-			cluster.scheduler.Start()
-			cluster.scheduler.AddFunc(conf.BackupDatabaseLogCron, func() {
-				cluster.BackupLogs()
-			})
-		}
-		if cluster.Conf.SchedulerDatabaseOptimize {
-			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", conf.BackupDatabaseOptimizeCron)
-			cluster.scheduler.Start()
-			cluster.scheduler.AddFunc(conf.BackupDatabaseOptimizeCron, func() {
-				cluster.Optimize()
-			})
-		}
-	}
-	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
-	err := cluster.loadDBCertificate()
-	if err != nil {
-		cluster.haveDBTLSCert = false
-		cluster.LogPrintf(LvlInfo, "Don't Have database TLS certificates")
-	} else {
-		cluster.haveDBTLSCert = true
-		cluster.LogPrintf(LvlInfo, "Have database TLS certificates")
-	}
-	cluster.newServerList()
+	cluster.Conf = conf
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
 	} else {
 		cluster.LogPrintf(LvlInfo, "Failover in automatic mode")
 	}
-	err = cluster.newProxyList()
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
+		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
+	}
+
+	// createKeys do nothing yet
+	cluster.createKeys()
+	cluster.initScheduler()
+	cluster.newServerList()
+	err := cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
-	cluster.ReloadFromSave()
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
-		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
-		cluster.CreateKey()
-	}
+	// Reload SLA and crashes
+	cluster.GetPersitentState()
 
 	return nil
 }
 
-func (cluster *Cluster) Stop() {
-	cluster.scheduler.Stop()
-	cluster.exit = true
+func (cluster *Cluster) initScheduler() {
+	if cluster.Conf.MonitorScheduler {
+		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
+		cluster.scheduler = cron.New()
+
+		if cluster.Conf.SchedulerBackupLogical {
+			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
+			cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
+				cluster.master.JobBackupLogical()
+			})
+		}
+		if cluster.Conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
+			cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
+				cluster.master.JobBackupPhysical()
+			})
+		}
+		if cluster.Conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
+				cluster.BackupLogs()
+			})
+		}
+		if cluster.Conf.SchedulerDatabaseOptimize {
+			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
+				cluster.Optimize()
+			})
+		}
+	}
 }
+
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
@@ -256,11 +247,8 @@ func (cluster *Cluster) Run() {
 						cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
-
 			}
-
 			cluster.TopologyDiscover()
-
 			if cluster.runOnceAfterTopology {
 				if cluster.GetMaster() != nil {
 					cluster.initProxies()
@@ -278,9 +266,9 @@ func (cluster *Cluster) Run() {
 			// switchover / failover only on Active
 			cluster.CheckFailed()
 			if !cluster.sme.IsInFailover() {
+				// trigger action on resolving states
 				cstates := cluster.sme.GetResolvedStates()
 				for _, s := range cstates {
-
 					if s.ErrKey == "WARN0074" {
 						cluster.LogPrintf(LvlInfo, "Sending physical backup to reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
@@ -316,6 +304,11 @@ func (cluster *Cluster) Run() {
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}
+}
+
+func (cluster *Cluster) Stop() {
+	cluster.scheduler.Stop()
+	cluster.exit = true
 }
 
 func (cluster *Cluster) Save() error {
@@ -355,33 +348,6 @@ func (cluster *Cluster) Save() error {
 		}
 	}
 
-	return nil
-}
-
-func (cluster *Cluster) ReloadFromSave() error {
-
-	type Save struct {
-		Servers string    `json:"servers"`
-		Crashes crashList `json:"crashes"`
-		SLA     state.Sla `json:"sla"`
-	}
-
-	var clsave Save
-	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
-	if err != nil {
-		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
-		return err
-	}
-	err = json.Unmarshal(file, &clsave)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "File error: %v\n", err)
-		return err
-	}
-	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
-	}
-	cluster.Crashes = clsave.Crashes
-	cluster.sme.SetSla(clsave.SLA)
 	return nil
 }
 
@@ -473,6 +439,7 @@ func (cluster *Cluster) SwitchOver() {
 	cluster.switchoverChan <- true
 }
 
+// Deprecated tentative to auto generate self signed certificates
 func (cluster *Cluster) loadDBCertificate() error {
 
 	if cluster.Conf.HostsTLSCA == "" {

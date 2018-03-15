@@ -494,7 +494,8 @@ func handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
 		case "db-servers-hosts":
 		case "db-servers-credential":
 			mycluster.SetClusterCredential(vars["settingValue"])
-
+		case "replication-credential":
+			mycluster.SetReplicationCredential(vars["settingValue"])
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

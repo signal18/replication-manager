@@ -7,12 +7,41 @@
 package cluster
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/state"
 )
+
+func (cluster *Cluster) GetPersitentState() error {
+
+	type Save struct {
+		Servers string    `json:"servers"`
+		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
+	}
+
+	var clsave Save
+	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
+	if err != nil {
+		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
+		return err
+	}
+	err = json.Unmarshal(file, &clsave)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "File error: %v\n", err)
+		return err
+	}
+	if len(clsave.Crashes) > 0 {
+		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
+	}
+	cluster.Crashes = clsave.Crashes
+	cluster.sme.SetSla(clsave.SLA)
+	return nil
+}
 
 func (cluster *Cluster) GetMaster() *ServerMonitor {
 	if cluster.master == nil {
