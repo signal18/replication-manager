@@ -251,17 +251,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	// Phase 3: Prepare new master
 	if cluster.Conf.MultiMaster == false {
-		cluster.LogPrintf(LvlInfo, "Stopping slave thread on new master")
+		cluster.LogPrintf(LvlInfo, "Stopping slave threads on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
 			err = cluster.master.StopSlave()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Stopping slave failed on new master")
-			} else {
-				// if server is mysql 5.7 we just need to stop the IO thread
-				err = cluster.master.StopSlaveIOThread()
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Stopping IO thread failed on new master")
-				}
 			}
 		}
 	}
