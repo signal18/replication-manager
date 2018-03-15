@@ -23,11 +23,8 @@ import (
 	"time"
 )
 
-//type router struct {
-//	PKI *easypki.EasyPKI
-//}
-
-func (cluster *Cluster) CreateKey() error {
+//Deprecate tentative to generate cluster keys
+func (cluster *Cluster) createKeys() error {
 
 	//	local := r.PKI.Store.(*store.Local)
 

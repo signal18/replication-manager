@@ -39,6 +39,7 @@ func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
 	var err error
+	cluster.SetClusterVariablesFromConfig()
 	err = cluster.isValidConfig()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)

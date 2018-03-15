@@ -7,7 +7,11 @@
 package cluster
 
 import (
+	"strings"
+
+	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/state"
 )
@@ -193,12 +197,45 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 	cluster.testStopCluster = check
 }
 
+func (cluster *Cluster) SetClusterVariablesFromConfig() {
+	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
+	err := cluster.loadDBCertificate()
+	if err != nil {
+		cluster.haveDBTLSCert = false
+		cluster.LogPrintf(LvlInfo, "Don't Have database TLS certificates")
+	} else {
+		cluster.haveDBTLSCert = true
+		cluster.LogPrintf(LvlInfo, "Have database TLS certificates")
+	}
+	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
+	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
+	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.Conf.RplUser)
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = cluster.dbPass
+		p.Decrypt()
+		cluster.dbPass = p.PlainText
+		p.CipherText = cluster.rplPass
+		p.Decrypt()
+		cluster.rplPass = p.PlainText
+	}
+	cluster.DBTags = cluster.GetDatabaseTags()
+	cluster.ProxyTags = cluster.GetProxyTags()
+}
+
 func (cluster *Cluster) SetClusterCredential(credential string) {
 	cluster.Conf.User = credential
-	cluster.isValidConfig()
+	cluster.SetClusterVariablesFromConfig()
 	for _, srv := range cluster.Servers {
 		srv.SetCredential(srv.URL, cluster.dbUser, cluster.dbPass)
 	}
+	cluster.SetUnDiscovered()
+}
+
+func (cluster *Cluster) SetReplicationCredential(credential string) {
+	cluster.Conf.RplUser = credential
+	cluster.SetClusterVariablesFromConfig()
 	cluster.SetUnDiscovered()
 }
 
