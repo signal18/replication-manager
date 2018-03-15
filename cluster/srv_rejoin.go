@@ -262,10 +262,8 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 		return err3
 	}
 	// dump here
-	err3 = server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-	if err3 != nil {
-		return err3
-	}
+	go server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+
 	return nil
 }
 

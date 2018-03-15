@@ -120,9 +120,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
         };
         $scope.dbreseedxtrabackup = function (server) {
-            if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/xtrabackup');
+            if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
         };
         $scope.dbreseedmysqldump = function (server) {
+            if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
+        };
+        $scope.dbreseedmysqldumpmaster = function (server) {
             if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/mysqldump');
         };
         $scope.dbxtrabackup = function (server) {
