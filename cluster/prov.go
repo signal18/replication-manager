@@ -593,6 +593,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 						Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 						Mode:      "SLAVE_POS",
+						Channel:   cluster.Conf.MasterConn,
+						IsMariaDB: server.DBVersion.IsMariaDB(),
+						IsMySQL:   server.DBVersion.IsMySQL(),
 					})
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 				} else if hasMyGTID {
@@ -605,6 +608,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 						Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 						Mode:      "MASTER_AUTO_POSITION",
+						Channel:   cluster.Conf.MasterConn,
+						IsMariaDB: server.DBVersion.IsMariaDB(),
+						IsMySQL:   server.DBVersion.IsMySQL(),
 					})
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.Servers[masterKey].URL)
@@ -622,6 +628,9 @@ func (cluster *Cluster) BootstrapReplication() error {
 						Mode:      "POSITIONAL",
 						Logfile:   cluster.Servers[masterKey].BinaryLogFile,
 						Logpos:    cluster.Servers[masterKey].BinaryLogPos,
+						Channel:   cluster.Conf.MasterConn,
+						IsMariaDB: server.DBVersion.IsMariaDB(),
+						IsMySQL:   server.DBVersion.IsMySQL(),
 					})
 
 					//  Missing  multi source cluster.Conf.MasterConn
@@ -632,9 +641,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 					cluster.LogPrintf(LvlErr, "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
 				}
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
-					_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-				} else {
-					_, err = server.Conn.Exec("START SLAVE")
+					server.StartSlave()
 				}
 
 				if err != nil {

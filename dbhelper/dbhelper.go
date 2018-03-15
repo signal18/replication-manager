@@ -983,7 +983,7 @@ func StopSlave(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error 
 func StopSlaveIOThread(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
 	cmd := "STOP SLAVE IO_THREAD"
 	if IsMariaDB && Channel != "" {
-		cmd += " '" + Channel + "'"
+		cmd = "STOP SLAVE '" + Channel + "'  IO_THREAD"
 	}
 	if IsMySQL && Channel != "" {
 		cmd += " FOR CHANNEL '" + Channel + "'"
@@ -994,7 +994,7 @@ func StopSlaveIOThread(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool
 func StopSlaveSQLThread(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
 	cmd := "STOP SLAVE SQL_THREAD"
 	if IsMariaDB && Channel != "" {
-		cmd += " '" + Channel + "'"
+		cmd = "STOP SLAVE '" + Channel + "' SQL_THREAD"
 	}
 	if IsMySQL && Channel != "" {
 		cmd += " FOR CHANNEL '" + Channel + "'"
