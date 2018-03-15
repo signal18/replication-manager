@@ -163,7 +163,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
-	cluster.SetClusterVariablesFromConfig()
+
 	// createKeys do nothing yet
 	cluster.createKeys()
 	cluster.initScheduler()
