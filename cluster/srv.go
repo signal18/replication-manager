@@ -294,12 +294,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
-			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected %s", server.URL)
+			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected ", server.URL)
 			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
 					if server.ClusterGroup.runStatus == "A" && server.ClusterGroup.master.Id != server.Id {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as actif monitor and other master dicovereds", server.URL)
 						server.SetReadOnly()
 					} else if server.ClusterGroup.runStatus == "S" {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
 						server.SetReadOnly()
 					}
 				}
@@ -315,6 +317,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and found replication", server.URL)
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
@@ -557,7 +560,7 @@ func (server *ServerMonitor) Refresh() error {
 
 /* Handles write freeze and existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
-	err := dbhelper.SetReadOnly(server.Conn, true)
+	err := server.SetReadOnly()
 	if err != nil {
 		server.ClusterGroup.LogPrintf("INFO", "Could not set %s as read-only: %s", server.URL, err)
 		return false
