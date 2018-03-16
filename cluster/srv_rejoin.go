@@ -263,7 +263,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	server.Refresh()
 	if server.ClusterGroup.conf.ReadOnly {
 		server.SetReadOnly()
-		server.ClusterGroup.LogPrintf("INFO", "Setting Read Only on rejoined %s", server.URL)
+		server.ClusterGroup.LogPrintf("INFO", "Setting Read Only on rejoin incremental on server %s", server.URL)
 	}
 
 	if crash.FailoverIOGtid != nil {
@@ -309,6 +309,8 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	realmaster := server.ClusterGroup.lastmaster
 	server.ClusterGroup.LogPrintf("INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
 	err := server.SetReadOnly()
+	server.ClusterGroup.LogPrintf("INFO", "Set Read Only on rejoin server %s as different existing master %s", server.URL, realmaster.URL)
+
 	if err == nil {
 		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
 		if err == nil {
