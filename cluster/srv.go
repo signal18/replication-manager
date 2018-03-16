@@ -311,7 +311,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.PrevState == stateFailed {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected %s", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				server.SetReadOnly()
+				if server.ClusterGroup.master != nil {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id {
+						server.SetReadOnly()
+					} else if server.ClusterGroup.Status == ConstMonitorStandby {
+						server.SetReadOnly()
+					}
+				}
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
