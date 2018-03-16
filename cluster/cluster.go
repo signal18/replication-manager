@@ -32,27 +32,28 @@ import (
 )
 
 type Cluster struct {
-	Name                 string        `json:"name"`
-	Servers              serverList    `json:"-"`
-	ServerIdList         []string      `json:"dbServers"`
-	Crashes              crashList     `json:"dbServersCrashes"`
-	Proxies              proxyList     `json:"-"`
-	ProxyIdList          []string      `json:"proxyServers"`
-	FailoverCtr          int           `json:"failoverCounter"`
-	FailoverTs           int64         `json:"failoverLastTime"`
-	Status               string        `json:"activePassiveStatus"`
-	Conf                 config.Config `json:"config"`
-	CleanAll             bool          `json:"cleanReplication"` //used in testing
-	IsDown               bool          `json:"isDown"`
-	IsProvisionned       bool          `json:"isProvisionned"`
-	Schedule             []CronEntry   `json:"schedule"`
-	DBTags               []string      `json:"dbServersTags"`
-	ProxyTags            []string      `json:"proxyServersTags"`
-	Topology             string        `json:"topology"`
-	Uptime               string        `json:"uptime"`
-	UptimeFailable       string        `json:"uptimeFailable"`
-	UptimeSemiSync       string        `json:"uptimeSemisync"`
-	MonitorSpin          string        `json:"monitorSpin"`
+	Name                 string          `json:"name"`
+	Servers              serverList      `json:"-"`
+	ServerIdList         []string        `json:"dbServers"`
+	Crashes              crashList       `json:"dbServersCrashes"`
+	Proxies              proxyList       `json:"-"`
+	ProxyIdList          []string        `json:"proxyServers"`
+	FailoverCtr          int             `json:"failoverCounter"`
+	FailoverTs           int64           `json:"failoverLastTime"`
+	Status               string          `json:"activePassiveStatus"`
+	Conf                 config.Config   `json:"config"`
+	CleanAll             bool            `json:"cleanReplication"` //used in testing
+	IsDown               bool            `json:"isDown"`
+	IsProvisionned       bool            `json:"isProvisionned"`
+	Schedule             []CronEntry     `json:"schedule"`
+	DBTags               []string        `json:"dbServersTags"`
+	ProxyTags            []string        `json:"proxyServersTags"`
+	Topology             string          `json:"topology"`
+	Uptime               string          `json:"uptime"`
+	UptimeFailable       string          `json:"uptimeFailable"`
+	UptimeSemiSync       string          `json:"uptimeSemisync"`
+	MonitorSpin          string          `json:"monitorSpin"`
+	Log                  httplog.HttpLog `json:"log"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -125,7 +126,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, repmanlog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
@@ -140,7 +141,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.tlog = tlog
-	cluster.htlog = httplog
+	cluster.htlog = repmanlog
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.runUUID = runUUID
@@ -149,7 +150,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.key = key
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
-
+	cluster.Log = httplog.NewHttpLog(200)
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()

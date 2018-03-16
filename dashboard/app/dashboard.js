@@ -156,8 +156,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm Active Status?")) httpGetWithoutResponse(getClusterUrl() + '/api/setactive');
         };
 
-        $scope.bootstrap = function () {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap');
+        $scope.bootstrap = function (topo) {
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/'+topo);
         };
 
         $scope.provision = function () {
