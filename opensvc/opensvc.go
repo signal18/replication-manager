@@ -96,6 +96,7 @@ type Collector struct {
 	ProvNetMask                 string
 	ProvNetGateway              string
 	ProvNetIface                string
+	ProvNetCNI                  bool
 	ProvMicroSrv                string
 	ProvFSType                  string
 	ProvFSPool                  string
@@ -118,7 +119,8 @@ type Collector struct {
 	ProvProxDockerShardproxyImg string
 	ProvProxTags                string
 	ProvCores                   string
-	Verbose                     int
+
+	Verbose int
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]

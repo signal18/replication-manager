@@ -272,6 +272,7 @@ type Config struct {
 	ProvSSLCaUUID                      string `mapstructure:"prov-tls-server-ca-uuid" toml:"-" json:"-"`
 	ProvSSLCertUUID                    string `mapstructure:"prov-tls-server-cert-uuid" toml:"-" json:"-"`
 	ProvSSLKeyUUID                     string `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
+	ProvNetCNI                         bool   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	APIUser                            string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
 	APIPort                            string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                            string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
