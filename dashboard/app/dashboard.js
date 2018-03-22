@@ -227,15 +227,18 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         };
 
         $scope.openClusterDialog = function() {
+          $scope.menuOpened = true;
+          $scope.openedAt = new Date().toLocaleString();
           $mdDialog.show({
           contentElement: '#myClusterDialog',
           parent: angular.element(document.body),
          });
+
        };
        $scope.closeClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myClusterDialog', });
+        $scope.menuOpened = false;
         $mdSidenav('left').close();
-
        };
 
        $scope.newClusterDialog = function() {
@@ -243,9 +246,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          contentElement: '#myNewClusterDialog',
          parent: angular.element(document.body),
         });
-      };
-
-
+       };
        $scope.closeNewClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
          $mdSidenav('left').close();
@@ -253,13 +254,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          callServices();
          $scope.selectedClusterName=$scope.dlgClusterName;
        };
-
        $scope.cancelNewClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
         $mdSidenav('left').close();
        };
-
-
 
        $scope.newServerDialog = function() {
          $mdDialog.show({
@@ -267,17 +265,41 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          parent: angular.element(document.body),
         });
       };
-
-
        $scope.closeNewServerDialog = function() {
          $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
-          if (confirm("Confirm adding new server "+ $scope.dlgServerName +":"+ $scope.dlgServerPort )) httpGetWithoutResponse(getClusterUrl() + '/actions/addaddserver/' +$scope.dlgServerName+'/'+$scope.dlgServerPort);
-
-
+          if (confirm("Confirm adding new server "+ $scope.dlgServerName +":"+ $scope.dlgServerPort )) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' +$scope.dlgServerName+'/'+$scope.dlgServerPort);
+       };
+       $scope.cancelNewServerDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
        };
 
-       $scope.cancelNewClusterDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
+
+       $scope.setClusterCredentialDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myClusterCredentialDialog',
+         parent: angular.element(document.body),
+        });
+      };
+       $scope.closeClusterCredentialDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
+          if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' +$scope.dlgClusterUser+':'+$scope.dlgClusterPassword);
+       };
+       $scope.cancelClusterCredentialDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
+       };
+
+       $scope.setRplCredentialDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myRplCredentialDialog',
+         parent: angular.element(document.body),
+        });
+      };
+       $scope.closeRplCredentialDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
+          if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/replication-credential/' +$scope.dlgRplUser+':'+$scope.dlgRplPassword);
+       };
+       $scope.cancelRplCredentialDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
        };
 
         $scope.selectUserIndex = function (index) {

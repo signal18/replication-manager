@@ -47,7 +47,7 @@
  <div class="md-dialog-container" id="myClusterDialog">
    <md-dialog style="padding: 20px 20px 20px 20px;">
 <h2 class="md-title">Choose a Cluster</h2>
-<md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+<md-select  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName" >
                 <md-option ng-selected="{{element == selectedClusterName}}" ng-repeat="element in settings.clusters" value="{{element}}">
                     {{element}}</option>
             </md-select>
@@ -91,26 +91,60 @@
 </md-dialog>
 </div>
 </div>
+<div style="visibility: hidden"  >
+ <div class="md-dialog-container" id="myClusterCredentialDialog">
+   <md-dialog style="padding: 20px 20px 20px 20px;">
+<h2 class="md-title">Database Server Credential</h2>
+ <form>
+ User: <input type="text"  ng-model="dlgClusterUser"><BR>
+ Password: <input type="password"  ng-model="dlgClusterPassword">
+</form>
+ <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
+          Cancel
+</md-button>
+<md-button ng-click="closeClusterCredentialDialog()" class="md-primary">
+         Ok
+</md-button>
+</md-dialog>
+</div>
+</div>
+<div style="visibility: hidden"  >
+ <div class="md-dialog-container" id="myRplCredentialDialog">
+   <md-dialog style="padding: 20px 20px 20px 20px;">
+<h2 class="md-title">Replication Credential</h2>
+ <form>
+ User: <input type="text"  ng-model="dlgRplUser"><BR>
+ Password: <input type="password"  ng-model="dlgRplPassword">
+</form>
+ <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
+          Cancel
+</md-button>
+<md-button ng-click="closeRplCredentialDialog()" class="md-primary">
+         Ok
+</md-button>
+</md-dialog>
+</div>
+</div>
 
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="" >
                 <md-tab label="Dashboard">
-                    <div style=" min-height: 400px;" ng-include src="'static/dash.html'"></div>
+                    <div style="min-height:800px;position:relative;height:auto;" ng-include src="'static/dash.html'"></div>
                 </md-tab>
-                <md-tab label="Alerts ^{{alerts.errors.length}}">
+                <md-tab ng-if="selectedCluster" label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
 
-                <md-tab label="Proxies">
+                <md-tab ng-if="selectedCluster" label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
-                <md-tab label="Settings">
+                <md-tab  ng-if="selectedCluster" label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab label="Jobs">
+                <md-tab  ng-if="selectedCluster" label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
+                <md-tab ng-if="selectedCluster" label="Graphs" ng-if="settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
                 <md-tab label="Agents" ng-if="settings.config.enterprise" >
