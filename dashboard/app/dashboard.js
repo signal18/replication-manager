@@ -27,9 +27,11 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (!AppService.hasAuthHeaders()) return;
             Monitor.query({}, function (data) {
                 if (data) {
-                    $scope.settings = data;
-                    if (data.logs.buffer) $scope.logs = data.logs.buffer;
-                    $scope.agents = data.agents;
+                    if (!$scope.menuOpened) {
+                      $scope.settings = data;
+                      if (data.logs.buffer) $scope.logs = data.logs.buffer;
+                      $scope.agents = data.agents;
+                    }
                 }
             }, function () {
                 $scope.reserror = true;
@@ -37,8 +39,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
             if ($scope.selectedClusterName) {
                 Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
+
                     $scope.selectedCluster = data;
                     $scope.reserror = false;
+
                 }, function () {
                     $scope.reserror = true;
                 });
