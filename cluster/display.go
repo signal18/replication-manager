@@ -114,6 +114,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				Text:      fmt.Sprintf(cliformat, args...),
 			}
 			cluster.htlog.Add(msg)
+			cluster.Log.Add(msg)
 		}
 	}
 

@@ -102,19 +102,14 @@ func (server *ServerMonitor) RejoinPreviousSnapshot() error {
 func (server *ServerMonitor) RejoinMasterSST() error {
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
-		err := server.rejoinMasterDump()
+		err := server.RejoinMasterDump()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
+			return errors.New("Dump from master failed")
 		}
-	} else {
-		server.ClusterGroup.LogPrintf("INFO", "No mysqldump rejoin: binlog capture failed or wrong version %t , autorejoin-mysqldump %t", server.ClusterGroup.canFlashBack, server.ClusterGroup.Conf.AutorejoinMysqldump)
-		if server.ClusterGroup.Conf.AutorejoinZFSFlashback == true {
-			server.RejoinPreviousSnapshot()
-		} else {
-			server.ClusterGroup.LogPrintf("INFO", "No rejoin method found, old master says: leave me alone, I'm ahead")
-		}
-	}
-	if server.ClusterGroup.Conf.RejoinScript != "" {
+	} else if server.ClusterGroup.Conf.AutorejoinZFSFlashback {
+		server.RejoinPreviousSnapshot()
+	} else if server.ClusterGroup.Conf.RejoinScript != "" {
 		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
 		var out []byte
 		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, server.Host, server.ClusterGroup.master.Host).CombinedOutput()
@@ -122,7 +117,11 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
+	} else {
+		server.ClusterGroup.LogPrintf("INFO", "No SST rejoin method found")
+		return errors.New("No SST rejoin method found")
 	}
+
 	return nil
 }
 
@@ -235,7 +234,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterDump() error {
+func (server *ServerMonitor) RejoinMasterDump() error {
 	var err3 error
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
@@ -262,10 +261,8 @@ func (server *ServerMonitor) rejoinMasterDump() error {
 		return err3
 	}
 	// dump here
-	err3 = server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
-	if err3 != nil {
-		return err3
-	}
+	go server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+
 	return nil
 }
 
@@ -529,15 +526,17 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 }
 
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Rejoining via Dump Master")
+	cluster.LogPrintf(LvlInfo, "Rejoining via master mysqldump ")
 	usegtid := ""
 
 	if dest.HasGTIDReplication() {
+
 		usegtid = "--gtid"
 	}
 	dumpCmd := exec.Command(cluster.Conf.ShareDir+"/"+cluster.Conf.GoArch+"/"+cluster.Conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	clientCmd := exec.Command(cluster.Conf.ShareDir+"/"+cluster.Conf.GoArch+"/"+cluster.Conf.GoOS+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
+	cluster.LogPrintf(LvlInfo, "Command: %s ", dumpCmd.Path)
 	var err error
 	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {

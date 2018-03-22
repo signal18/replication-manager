@@ -1,5 +1,5 @@
 
-  <md-content class="md-padding">
+  <md-content ng-if="selectedCluster" class="md-padding">
     <md-toolbar style="background-color:transparent">
       <div class="md-toolbar-tools" >
         <h2><span>
@@ -53,14 +53,56 @@
             Toogle Traffic
             </md-button>
           </md-menu-item>
+          <md-menu-item>
+             <md-menu >
+                <md-button ng-click="$mdMenu.open($event)">
+                   <span md-menu-align-target>
+                     Replication Bootsrap
+                   </span>
+                   <md-icon class="fas fa-arrow-right"></md-icon>
+                </md-button>
+                <md-menu-content>
+                   <md-menu-item ng-click="boostrap('master-slave')">
+                      <md-button>
+                         <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                         Master Slave
+                      </md-button>
+                   </md-menu-item>
+                   <md-menu-item  ng-click="boostrap('master-slave-no-gtid')">
+                      <md-button>
+                         <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                         Master Slave Positional
+                      </md-button>
+                   </md-menu-item>
+                   <md-menu-item ng-if="server.id!=master.id" ng-click="boostrap('multi-master')">
+                      <md-button>
+                         <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                         Multi Master
+                      </md-button>
+                   </md-menu-item>
+                   <md-menu-item  ng-click="boostrap('multi-master-ring')">
+                      <md-button>
+                         <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                        Multi Master Ring
+                      </md-button>
+                   </md-menu-item>
+                   <md-menu-item  ng-click="boostrap('multi-tier-slave')">
+                      <md-button>
+                         <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                        Multi Tier Slave
+                      </md-button>
+                   </md-menu-item>
+                </md-menu-content>
+             </md-menu>
+          </md-menu-item>
 
 
         </md-menu-content>
       </md-menu>
 
-        <md-button class="md-raised" ng-if="master.State !='Failed'" ng-click="switch(false)" aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
+        <md-button class="md-raised" ng-if="master.state !='Failed'" ng-click="switch(false)" aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Switchover</md-button>
-        <md-button class="md-raised md-warn" ng-if="master.State =='Failed'" ng-click="switch(true)" aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
+        <md-button class="md-raised md-warn" ng-if="master.state =='Failed'" ng-click="switch(true)" aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Failover</md-button>
 
       </span></h2>
@@ -77,7 +119,7 @@
 
 <div layout="column" layout-gt-xs="row">
 <div flex-gt-xs="20" class="col-lg-20">
-  <md-card>
+  <md-card ng-if="selectedCluster">
       <table class="table">
 
           <tr>
@@ -96,7 +138,7 @@
   </md-card>
   <BR>
 
-  <md-card>
+  <md-card ng-if="selectedCluster">
 
       <table ng-if="settings"  md-table class="table md-primary md-data-table">
                <tr md-row><th colspan=2>SLA</th></tr>
@@ -109,7 +151,7 @@
         <BR>
   <div ng-repeat="tag in selectedCluster.dbServersTags"> <span class="label label-success">{{ tag }}<span></div>
 <BR>
-<md-card ng-if="settings.config.test==true">
+<md-card ng-if="settings.config.test==true && selectedCluster">
 <table class="table">
 <tr>
 <td>
@@ -134,7 +176,7 @@
 </div>
     <div flex-gt-xs="5" class="col-lg-5"></div>
 <div flex-gt-xs="75" class="col-lg-75">
-  <md-card>
+  <md-card ng-if="selectedCluster">
 
       <table ng-if="settings" class="table">
           <tr>
@@ -154,7 +196,7 @@
       </table>
   </md-card>
   <BR>
-  <md-card>
+  <md-card ng-if="selectedCluster">
 
   <div class="alert alert-warning" ng-if="menuOpened">
     <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
@@ -257,16 +299,23 @@
                    Logical Backup
                 </md-button>
              </md-menu-item>
+
              <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
                 <md-button>
                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-                   Reseed Logical Backup
+                   Reseed Logical From Backup
                 </md-button>
              </md-menu-item>
              <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
                 <md-button>
                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-                   Reseed Physical Backup
+                   Reseed Physical From Backup
+                </md-button>
+             </md-menu-item>
+             <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                   Reseed Logical From Master
                 </md-button>
              </md-menu-item>
           </md-menu-content>
@@ -353,7 +402,7 @@
   </table>
   </md-card>
   <BR><RB>
-<md-card>
+<md-card ng-if="selectedCluster">
 <table ng-if="servers" class="table">
 
       <tr>
@@ -361,7 +410,7 @@
 <md-card-content style="height: 600px; overflow-y: auto">
 
 <table class="log">
-<tr ng-repeat="logline in logs" ng-if="logline.timestamp">
+<tr ng-repeat="logline in selectedCluster.log.buffer" ng-if="logline.timestamp">
 <td class="stamp">{{ logline.timestamp }}</td>
 <td ng-switch="logline.level">
 <span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>

@@ -509,7 +509,6 @@ func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
 func handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-
 	RepMan.AddCluster(vars["clusterName"])
 
 }

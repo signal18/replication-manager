@@ -31,6 +31,7 @@ func (cluster *Cluster) LocalhostProvisionCluster() error {
 	if err != nil {
 		return err
 	}
+
 	err = cluster.LocalhostProvisionProxies()
 	if err != nil {
 		return err
@@ -53,19 +54,10 @@ func (cluster *Cluster) LocalhostProvisionProxies() error {
 func (cluster *Cluster) LocalhostProvisionDatabases() error {
 	for _, server := range cluster.Servers {
 		cluster.LogPrintf(LvlInfo, "Starting Server %s", server.URL)
-		/*if server.Conn.Ping() == nil {
-			cluster.LogPrintf(LvlInfo, "DB Server is not stop killing now %s", server.URL)
-			if server.Id == "" {
-				pidfile, _ := dbhelper.GetVariableByName(server.Conn, "PID_FILE")
-				pid, _ := readPidFromFile(pidfile)
-				pidint, _ := strconv.Atoi(pid)
-				server.Process, _ = os.FindProcess(pidint)
-			}
 
-			cluster.LocalhostStopDatabaseService(server)
-		}*/
-
-		cluster.LocalhostProvisionDatabaseService(server)
+		if server.State == stateFailed || server.State == stateSuspect {
+			cluster.LocalhostProvisionDatabaseService(server)
+		}
 	}
 	return nil
 

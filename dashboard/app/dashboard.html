@@ -1,5 +1,5 @@
-<div class="col-lg-12">
-    <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
+<div class="col-lg-12" >
+    <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard" >
         <div style="padding: 20px 0px 20px 20px;" >
         <table  width="100%">
             <tr>
@@ -7,7 +7,6 @@
                   <span  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
                 </td>
                 <td>
-
                 </td>
                 <td width="40" align="center">
                 <span ng-if="isLoggedIn" ng-click="logout()">
@@ -19,17 +18,84 @@
             </tr>
 
         </table>
+
 </div>
-        <md-sidenav class="md-sidenav-left" md-component-id="left" md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
-          <md-radio-group width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
-              <md-radio-button ng-selected="{{element == settings.clusters}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                  {{element}}</md-radio-button>
-          </md-radio-group>
-        </md-sidenav>
+<md-sidenav class="md-sidenav-left" md-component-id="left" layout="column" layout-align="top center"  md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
+ <ul class="nav navbar-nav"   >
+   <md-nav-list>
+     <md-list-item>
+        <li class="text-center">
+          <a ng-click="openClusterDialog()" href="#" data-toggle="collapse" data-target="#two"><i  class="fa fa-3x fa-folder-open"></i><br>Open Cluster<BR><BR></a>
+        </li>
+      </md-list-item>
+    <md-list-item >
+       <li width="100%" class="text-center">
+         <a ng-click="newClusterDialog()" href="#" data-toggle="collapse" data-target="#one"><i class="fa fa-3x fa-plus-circle"></i><br>New Cluster<BR><BR></a>
+       </li>
+    </md-list-item>
+  <md-list-item>
+   <li class="text-center">
+     <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Cluster Settins<BR><BR></a>
+   </li>
+ </md-list-item>
+</md-nav-list>
+ </ul>
+
+
+</md-sidenav>
+<div style="visibility: hidden"  >
+ <div class="md-dialog-container" id="myClusterDialog">
+   <md-dialog style="padding: 20px 20px 20px 20px;">
+<h2 class="md-title">Choose a Cluster</h2>
+<md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                <md-option ng-selected="{{element == selectedClusterName}}" ng-repeat="element in settings.clusters" value="{{element}}">
+                    {{element}}</option>
+            </md-select>
+ <md-button ng-click="closeClusterDialog()" class="md-primary">
+          Ok
+      </md-button>
+
+</md-dialog>
+</div>
+</div>
+<div style="visibility: hidden"  >
+ <div class="md-dialog-container" id="myNewClusterDialog">
+   <md-dialog style="padding: 20px 20px 20px 20px;">
+<h2 class="md-title">New Cluster</h2>
+ <form>
+ <input type="text"  ng-model="dlgClusterName">
+</form>
+ <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
+          Cancel
+</md-button>
+<md-button ng-click="closeNewClusterDialog()" class="md-primary">
+         Ok
+</md-button>
+</md-dialog>
+</div>
+</div>
+<div style="visibility: hidden"  >
+ <div class="md-dialog-container" id="myNewServerDialog">
+   <md-dialog style="padding: 20px 20px 20px 20px;">
+<h2 class="md-title">New Server</h2>
+ <form>
+ Host: <input type="text"  ng-model="dlgServerName"><BR>
+ Port: <input type="text"  ng-model="dlgServerPort">
+</form>
+ <md-button ng-click="cancelNewServerDialog()" class="md-primary">
+          Cancel
+</md-button>
+<md-button ng-click="closeNewServerDialog()" class="md-primary">
+         Ok
+</md-button>
+</md-dialog>
+</div>
+</div>
+
         <md-content layout="column">
-            <md-tabs md-dynamic-height="" md-border-bottom="">
+            <md-tabs md-dynamic-height="" md-border-bottom="" >
                 <md-tab label="Dashboard">
-                    <div ng-include src="'static/dash.html'"></div>
+                    <div style=" min-height: 400px;" ng-include src="'static/dash.html'"></div>
                 </md-tab>
                 <md-tab label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>

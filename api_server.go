@@ -95,12 +95,16 @@ func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			if vars["backupMethod"] == "mysqldump" {
-				node.RejoinMasterSST()
+			if vars["backupMethod"] == "logicalbackup" {
+				node.JobReseedMysqldump()
 			}
-			if vars["backupMethod"] == "xtrabackup" {
+			if vars["backupMethod"] == "logicalmaster" {
+				node.RejoinMasterDump()
+			}
+			if vars["backupMethod"] == "physicalbackup" {
 				node.JobReseedXtraBackup()
 			}
+
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

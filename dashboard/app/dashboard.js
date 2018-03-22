@@ -1,5 +1,5 @@
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', '$mdSidenav', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
+app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', '$mdSidenav','$mdDialog', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav,$mdDialog, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
@@ -120,10 +120,13 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
         };
         $scope.dbreseedxtrabackup = function (server) {
-            if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/xtrabackup');
+            if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
         };
         $scope.dbreseedmysqldump = function (server) {
-            if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/mysqldump');
+            if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
+        };
+        $scope.dbreseedmysqldumpmaster = function (server) {
+            if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalmaster');
         };
         $scope.dbxtrabackup = function (server) {
             if (confirm("Confirm sending xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
@@ -153,8 +156,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm Active Status?")) httpGetWithoutResponse(getClusterUrl() + '/api/setactive');
         };
 
-        $scope.bootstrap = function () {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap');
+        $scope.bootstrap = function (topo) {
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/'+topo);
         };
 
         $scope.provision = function () {
@@ -223,6 +226,60 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
         };
 
+        $scope.openClusterDialog = function() {
+          $mdDialog.show({
+          contentElement: '#myClusterDialog',
+          parent: angular.element(document.body),
+         });
+       };
+       $scope.closeClusterDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myClusterDialog', });
+        $mdSidenav('left').close();
+
+       };
+
+       $scope.newClusterDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myNewClusterDialog',
+         parent: angular.element(document.body),
+        });
+      };
+
+
+       $scope.closeNewClusterDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
+         $mdSidenav('left').close();
+         if (confirm("Confirm Creating Cluster "+ $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' +$scope.dlgClusterName);
+         callServices();
+         $scope.selectedClusterName=$scope.dlgClusterName;
+       };
+
+       $scope.cancelNewClusterDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
+        $mdSidenav('left').close();
+       };
+
+
+
+       $scope.newServerDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myNewServerDialog',
+         parent: angular.element(document.body),
+        });
+      };
+
+
+       $scope.closeNewServerDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
+          if (confirm("Confirm adding new server "+ $scope.dlgServerName +":"+ $scope.dlgServerPort )) httpGetWithoutResponse(getClusterUrl() + '/actions/addaddserver/' +$scope.dlgServerName+'/'+$scope.dlgServerPort);
+
+
+       };
+
+       $scope.cancelNewClusterDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
+       };
+
         $scope.selectUserIndex = function (index) {
             var r = confirm("Confirm select Index  " + index);
             if ($scope.selectedUserIndex !== index) {
@@ -240,7 +297,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             return function () {
                 $mdSidenav(componentId).toggle();
             };
-        }
+        };
 
 
         $scope.$on('$mdMenuOpen', function (event, menu) {
