@@ -172,7 +172,11 @@ func (cluster *Cluster) StartAllNodes() error {
 }
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
-	cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
+	if len(cluster.hostList) > 0 {
+		cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
+	} else {
+		cluster.Conf.Hosts = srv
+	}
 	cluster.sme.SetFailoverState()
 	cluster.newServerList()
 	cluster.TopologyDiscover()

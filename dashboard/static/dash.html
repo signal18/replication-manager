@@ -14,6 +14,24 @@
           Reset Failover Counter
             </md-button>
           </md-menu-item>
+          <md-menu-item  ng-if="master.State !='Failed'" ng-click="newServerDialog()">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+          New Server Monitor
+            </md-button>
+          </md-menu-item>
+          <md-menu-item  ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+          Set Datababse Credentials
+            </md-button>
+          </md-menu-item>
+          <md-menu-item  ng-if="master.State !='Failed'" ng-click="setRplCredentialDialog()">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+          Set Replication Credentials
+            </md-button>
+          </md-menu-item>
           <md-menu-item ng-if="master.state !='Failed'"  ng-click="optimizeAll()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
