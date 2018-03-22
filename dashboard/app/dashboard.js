@@ -236,8 +236,9 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
 
        };
        $scope.closeClusterDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myClusterDialog', });
+        $mdDialog.hide(  {contentElement: '#myClusterDialog', });
         $scope.menuOpened = false;
+        $scope.menuOpened = "";
         $mdSidenav('left').close();
        };
 
@@ -328,7 +329,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             $scope.openedAt = new Date().toLocaleString();
         });
         $scope.$on('$mdMenuClose', function (event, menu) {
-            console.log('Olosing menu refresh servers will resume...', event, menu);
+            console.log('Closing menu refresh servers will resume...', event, menu);
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
