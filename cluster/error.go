@@ -98,6 +98,8 @@ var clusterError = map[string]string{
 	"WARN0071": "No replication crash-safe settings on master %s",
 	"WARN0072": "Optimize running on server %s",
 	"WARN0073": "Physical backup running on server %s",
-	"WARN0074": "Physical backup reseeding running on server %s",
-	"WARN0075": "Logical backup reseeding running on server %s",
+	"WARN0074": "Physical backup from master reseeding running on server %s",
+	"WARN0075": "Logical backup from master reseeding running on server %s",
+	"WARN0076": "Physical backup for flashback reseeding running on server %s",
+	"WARN0077": "Logical backup for flashback reseeding running on server %s",
 }

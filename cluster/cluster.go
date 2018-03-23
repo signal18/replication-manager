@@ -271,7 +271,7 @@ func (cluster *Cluster) Run() {
 				cstates := cluster.sme.GetResolvedStates()
 				for _, s := range cstates {
 					if s.ErrKey == "WARN0074" {
-						cluster.LogPrintf(LvlInfo, "Sending physical backup to reseed %s", s.ServerUrl)
+						cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 						m := cluster.GetMaster()
 						if m != nil {
@@ -281,7 +281,7 @@ func (cluster *Cluster) Run() {
 						}
 					}
 					if s.ErrKey == "WARN0075" {
-						cluster.LogPrintf(LvlInfo, "Sending logical backup to reseed %s", s.ServerUrl)
+						cluster.LogPrintf(LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 						m := cluster.GetMaster()
 						if m != nil {
@@ -289,6 +289,18 @@ func (cluster *Cluster) Run() {
 						} else {
 							cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
 						}
+					}
+					if s.ErrKey == "WARN0076" {
+						cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+
+						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_xtrabackup.xbtream", servertoreseed)
+
+					}
+					if s.ErrKey == "WARN0077" {
+						cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_mysqldump.sql.gz", servertoreseed)
 					}
 					//		cluster.statecloseChan <- s
 				}

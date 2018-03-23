@@ -23,7 +23,7 @@
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
-          Set Datababse Credentials
+          Set Database Credentials
             </md-button>
           </md-menu-item>
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="setRplCredentialDialog()">
@@ -156,7 +156,7 @@
   </md-card>
   <BR>
 
-  <md-card ng-if="selectedCluster">
+  <md-card ng-if="selectedCluster && servers">
 
       <table ng-if="settings"  md-table class="table md-primary md-data-table">
                <tr md-row><th colspan=2>SLA</th></tr>
@@ -214,7 +214,7 @@
       </table>
   </md-card>
   <BR>
-  <md-card ng-if="selectedCluster">
+  <md-card ng-if="servers">
 
   <div class="alert alert-warning" ng-if="menuOpened">
     <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.

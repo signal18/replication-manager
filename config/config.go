@@ -82,13 +82,15 @@ type Config struct {
 	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsepositiveExternalPort"`
 	Autorejoin                         bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`
-	RejoinScript                       string `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump" toml:"autorejoin-mysqldump" json:"autorejoinMysqldump"`
+	AutorejoinZFSFlashback             bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
+	AutorejoinPhysicalBackup           bool   `mapstructure:"autorejoin-physical-backup" toml:"autorejoin-physical-backup" json:"autorejoinPhysicalBackup"`
+	AutorejoinLogicalBackup            bool   `mapstructure:"autorejoin-logical-backup" toml:"autorejoin-logical-backup" json:"autorejoinLogicalBackup"`
+	RejoinScript                       string `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
 	AutorejoinNoSemisync               bool   `mapstructure:"autorejoin-flashback-on-unsync" toml:"autorejoin-flashback-on-unsync" json:"autorejoinFlashbackOnUnsync"`
 	AutorejoinSlavePositionalHearbeat  bool   `mapstructure:"autorejoin-slave-positional-hearbeat" toml:"autorejoin-slave-positional-hearbeat" json:"autorejoinSlavePositionalHearbeat"`
-	AutorejoinZFSFlashback             bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
 	CheckType                          string `mapstructure:"check-type" toml:"check-type" json:"checkType"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters" toml:"check-binlog-filters" json:"checkBinlogFilters"`
