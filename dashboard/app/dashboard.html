@@ -1,133 +1,140 @@
-<div class="col-lg-12" >
-    <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard" >
-        <div style="padding: 20px 0px 20px 20px;" >
-        <table  width="100%">
-            <tr>
-                <td>
-                  <span  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png" alt="Replication Manager"/></span>
-                </td>
-                <td>
-                </td>
-                <td width="40" align="center">
+<div class="col-lg-12">
+    <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
+        <div style="padding: 20px 0px 20px 20px;">
+            <table width="100%">
+                <tr>
+                    <td>
+                        <span ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"
+                                                                         alt="Replication Manager"/></span>
+                    </td>
+                    <td>
+                    </td>
+                    <td width="40" align="center">
                 <span ng-if="isLoggedIn" ng-click="logout()">
                   <md-icon class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
                 </span>
-                </td>
+                    </td>
 
 
-            </tr>
+                </tr>
 
-        </table>
+            </table>
 
-</div>
-<md-sidenav class="md-sidenav-left" md-component-id="left" layout="column" layout-align="top center"  md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
- <ul class="nav navbar-nav"   >
-   <md-nav-list>
-     <md-list-item>
-        <li class="text-center">
-          <a ng-click="openClusterDialog()" href="#" data-toggle="collapse" data-target="#two"><i  class="fa fa-3x fa-folder-open"></i><br>Open Cluster<BR><BR></a>
-        </li>
-      </md-list-item>
-    <md-list-item >
-       <li width="100%" class="text-center">
-         <a ng-click="newClusterDialog()" href="#" data-toggle="collapse" data-target="#one"><i class="fa fa-3x fa-plus-circle"></i><br>New Cluster<BR><BR></a>
-       </li>
-    </md-list-item>
-  <md-list-item>
-   <li class="text-center">
-     <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Cluster Settins<BR><BR></a>
-   </li>
- </md-list-item>
-</md-nav-list>
- </ul>
+        </div>
+        <md-sidenav class="md-sidenav-left" md-component-id="left" layout="column" layout-align="top center"
+                    md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
+            <ul class="nav navbar-nav">
+                <md-nav-list>
+                    <md-list-item>
+                        <li class="text-center">
+                            <a ng-click="openClusterDialog()" href="#" data-toggle="collapse" data-target="#two"><i
+                                    class="fa fa-3x fa-folder-open"></i><br>Open Cluster<BR><BR></a>
+                        </li>
+                    </md-list-item>
+                    <md-list-item>
+                        <li width="100%" class="text-center">
+                            <a ng-click="newClusterDialog()" href="#" data-toggle="collapse" data-target="#one"><i
+                                    class="fa fa-3x fa-plus-circle"></i><br>New Cluster<BR><BR></a>
+                        </li>
+                    </md-list-item>
+                    <md-list-item>
+                        <li class="text-center">
+                            <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Cluster
+                                Settins<BR><BR></a>
+                        </li>
+                    </md-list-item>
+                </md-nav-list>
+            </ul>
 
 
-</md-sidenav>
-<div style="visibility: hidden"  >
- <div class="md-dialog-container" id="myClusterDialog">
-   <md-dialog style="padding: 20px 20px 20px 20px;">
-<h2 class="md-title">Choose a Cluster</h2>
-<md-select width="100px"  name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
-                <md-option ng-selected="{{element == selectedClusterName}}" ng-repeat="element in settings.clusters" value="{{element}}">
-                    {{element}}</option>
-            </md-select>
- <md-button ng-click="closeClusterDialog()" class="md-primary">
-          Ok
-      </md-button>
+        </md-sidenav>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myClusterDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">Choose a Cluster</h2>
+                    <md-select width="100px" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                        <md-option ng-selected="{{element == selectedClusterName}}"
+                                   ng-repeat="element in settings.clusters" ng-value="element"
+                                   selected="{{ element === ctrl.selectedClusterName ? 'selected' : '' }}">
+                                        {{element}}</option>
+                        </md-select>
+                    <md-button ng-click="closeClusterDialog()" class="md-primary">
+                        Ok
+                    </md-button>
 
-</md-dialog>
-</div>
-</div>
-<div style="visibility: hidden"  >
- <div class="md-dialog-container" id="myNewClusterDialog">
-   <md-dialog style="padding: 20px 20px 20px 20px;">
-<h2 class="md-title">New Cluster</h2>
- <form>
- <input type="text"  ng-model="dlgClusterName">
-</form>
- <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
-          Cancel
-</md-button>
-<md-button ng-click="closeNewClusterDialog()" class="md-primary">
-         Ok
-</md-button>
-</md-dialog>
-</div>
-</div>
-<div style="visibility: hidden"  >
- <div class="md-dialog-container" id="myNewServerDialog">
-   <md-dialog style="padding: 20px 20px 20px 20px;">
-<h2 class="md-title">New Server</h2>
- <form>
- Host: <input type="text"  ng-model="dlgServerName"><BR>
- Port: <input type="text"  ng-model="dlgServerPort">
-</form>
- <md-button ng-click="cancelNewServerDialog()" class="md-primary">
-          Cancel
-</md-button>
-<md-button ng-click="closeNewServerDialog()" class="md-primary">
-         Ok
-</md-button>
-</md-dialog>
-</div>
-</div>
-<div style="visibility: hidden"  >
- <div class="md-dialog-container" id="myClusterCredentialDialog">
-   <md-dialog style="padding: 20px 20px 20px 20px;">
-<h2 class="md-title">Database Server Credential</h2>
- <form>
- User: <input type="text"  ng-model="dlgClusterUser"><BR>
- Password: <input type="password"  ng-model="dlgClusterPassword">
-</form>
- <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
-          Cancel
-</md-button>
-<md-button ng-click="closeClusterCredentialDialog()" class="md-primary">
-         Ok
-</md-button>
-</md-dialog>
-</div>
-</div>
-<div style="visibility: hidden"  >
- <div class="md-dialog-container" id="myRplCredentialDialog">
-   <md-dialog style="padding: 20px 20px 20px 20px;">
-<h2 class="md-title">Replication Credential</h2>
- <form>
- User: <input type="text"  ng-model="dlgRplUser"><BR>
- Password: <input type="password"  ng-model="dlgRplPassword">
-</form>
- <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
-          Cancel
-</md-button>
-<md-button ng-click="closeRplCredentialDialog()" class="md-primary">
-         Ok
-</md-button>
-</md-dialog>
-</div>
-</div>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myNewClusterDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">New Cluster</h2>
+                    <form>
+                        <input type="text" ng-model="dlgClusterName">
+                    </form>
+                    <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
+                        Cancel
+                    </md-button>
+                    <md-button ng-click="closeNewClusterDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myNewServerDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">New Server</h2>
+                    <form>
+                        Host: <input type="text" ng-model="dlgServerName"><BR>
+                        Port: <input type="text" ng-model="dlgServerPort">
+                    </form>
+                    <md-button ng-click="cancelNewServerDialog()" class="md-primary">
+                        Cancel
+                    </md-button>
+                    <md-button ng-click="closeNewServerDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myClusterCredentialDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">Database Server Credential</h2>
+                    <form>
+                        User: <input type="text" ng-model="dlgClusterUser"><BR>
+                        Password: <input type="password" ng-model="dlgClusterPassword">
+                    </form>
+                    <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
+                        Cancel
+                    </md-button>
+                    <md-button ng-click="closeClusterCredentialDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myRplCredentialDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">Replication Credential</h2>
+                    <form>
+                        User: <input type="text" ng-model="dlgRplUser"><BR>
+                        Password: <input type="password" ng-model="dlgRplPassword">
+                    </form>
+                    <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
+                        Cancel
+                    </md-button>
+                    <md-button ng-click="closeRplCredentialDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
 
         <md-content layout="column">
-            <md-tabs md-dynamic-height="" md-border-bottom="" >
+            <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/dash.html'"></div>
                 </md-tab>
@@ -138,16 +145,16 @@
                 <md-tab ng-if="selectedClusterName" label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
-                <md-tab  ng-if="selectedClusterName" label="Settings">
+                <md-tab ng-if="selectedClusterName" label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab  ng-if="selectedClusterName" label="Jobs">
+                <md-tab ng-if="selectedClusterName" label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab  label="Graphs" ng-if="settings.config.graphiteMetrics && selectedClusterName">
+                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics && selectedClusterName">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab label="Agents" ng-if="settings.config.enterprise" >
+                <md-tab label="Agents" ng-if="settings.config.enterprise">
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>
