@@ -261,6 +261,9 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          if (confirm("Confirm Creating Cluster "+ $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' +$scope.dlgClusterName);
          callServices();
          $scope.selectedClusterName=$scope.dlgClusterName;
+         setClusterCredentialDialog();
+         setRplCredentialDialog();
+
        };
        $scope.cancelNewClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
