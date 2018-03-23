@@ -29,6 +29,9 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 if (data) {
                     if (!$scope.menuOpened) {
                       $scope.settings = data;
+                      if (($scope.settings.clusters !== undefined) && $scope.settings.clusters.length === 1){
+                          $scope.selectedClusterName = $scope.settings.clusters[0];
+                      }
                       if (data.logs.buffer) $scope.logs = data.logs.buffer;
                       $scope.agents = data.agents;
                     }
