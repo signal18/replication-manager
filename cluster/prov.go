@@ -172,7 +172,7 @@ func (cluster *Cluster) StartAllNodes() error {
 }
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
-	if len(cluster.hostList) > 0 {
+	if cluster.Conf.Hosts != "" {
 		cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
 	} else {
 		cluster.Conf.Hosts = srv

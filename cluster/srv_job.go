@@ -115,6 +115,35 @@ func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 	return jobid, err
 }
 
+func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
+	jobid, err := server.JobInsertTaks("flashbackxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
+		return jobid, err
+	}
+	server.StopSlave()
+	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		Host:      server.ClusterGroup.master.Host,
+		Port:      server.ClusterGroup.master.Port,
+		User:      server.ClusterGroup.rplUser,
+		Password:  server.ClusterGroup.rplPass,
+		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+	})
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		return jobid, err
+	}
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed physical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+
+	return jobid, err
+}
+
 func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 	jobid, err := server.JobInsertTaks("reseedmysqldump", "4444", server.ClusterGroup.Conf.BindAddr)
 
@@ -141,6 +170,33 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
 
+	return jobid, err
+}
+
+func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
+	jobid, err := server.JobInsertTaks("flashbackmysqldump", "4444", server.ClusterGroup.Conf.BindAddr)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
+		return jobid, err
+	}
+	server.StopSlave()
+	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		Host:      server.ClusterGroup.master.Host,
+		Port:      server.ClusterGroup.master.Port,
+		User:      server.ClusterGroup.rplUser,
+		Password:  server.ClusterGroup.rplPass,
+		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+	})
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		return jobid, err
+	}
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
 	return jobid, err
 }
 
@@ -263,6 +319,10 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmysqldump" {
 					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "flashbackxtrabackup" {
+					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "flashbackmysqldump" {
+					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				}
 			}
 		}
@@ -395,7 +455,5 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 			return out, err
 		}
 	}
-	// never reached
-	panic(true)
-	return nil, nil
+
 }
