@@ -169,8 +169,8 @@
 <md-card ng-if="settings.config.enterprise==true && selectedCluster">
   <table ng-if="settings"  md-table class="table md-primary md-data-table">
            <tr md-row><th>Database tags</th></tr>
-           <tr md-row><td>
-   <span ng-repeat="tag in selectedCluster.dbServersTags" class="label label-success">{{ tag }} <span>
+           <tr md-row><td style="word-wrap: break-word">
+   <span ng-repeat="tag in selectedCluster.dbServersTags" class="label label-success">{{ tag }} </span>
   </td></tr>
 </table>
 </md-card>
