@@ -19,9 +19,9 @@ func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers 
 [DEFAULT]
 nodes = {env.nodes}
 flex_primary = {env.nodes[0]}
-cluster_type = flex
+topology = flex
 rollback = false
-show_disabled = false
+orchestrate = start
 `
 	conf = conf + cluster.GetDockerDiskTemplate(collector)
 	i := 0

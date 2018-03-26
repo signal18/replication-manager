@@ -167,15 +167,15 @@ func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, ser
 nodes = {env.nodes}
 cluster_type = failover
 rollback = true
+orchestrate = start
 `
 	} else {
 		conf = `
 [DEFAULT]
 nodes = {env.nodes}
 flex_primary = {env.nodes[0]}
-cluster_type = flex
+topology = flex
 rollback = false
-show_disabled = false
 `
 	}
 	conf = conf + server.ClusterGroup.GetDockerDiskTemplate(collector)
