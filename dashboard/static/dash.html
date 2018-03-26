@@ -16,19 +16,19 @@
           </md-menu-item>
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="newServerDialog()">
             <md-button>
-              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+              <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
           New Server Monitor
             </md-button>
           </md-menu-item>
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
             <md-button>
-              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+              <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
           Set Database Credentials
             </md-button>
           </md-menu-item>
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="setRplCredentialDialog()">
             <md-button>
-              <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+              <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
           Set Replication Credentials
             </md-button>
           </md-menu-item>
@@ -36,13 +36,6 @@
             <md-button>
               <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
           Rolling Optimize
-            </md-button>
-            </md-menu-item>
-
-            <md-menu-item ng-if="master.state !='Failed'"  ng-click="backupphysical()">
-            <md-button >
-            <md-icon md-menu-align-target class="fas fa-save"></md-icon>
-          Physical Backup
             </md-button>
             </md-menu-item>
 
@@ -113,6 +106,12 @@
                 </md-menu-content>
              </md-menu>
           </md-menu-item>
+          <md-menu-item ng-click="openDebugDialog()">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+            Debug
+            </md-button>
+          </md-menu-item>
 
 
         </md-menu-content>
@@ -167,7 +166,9 @@
       </table>
         </md-card>
         <BR>
+<md-card ng-if="settings.config.enterprise==true && selectedCluster">
   <div ng-repeat="tag in selectedCluster.dbServersTags"> <span class="label label-success">{{ tag }}<span></div>
+</md-card>
 <BR>
 <md-card ng-if="settings.config.test==true && selectedCluster">
 <table class="table">
@@ -201,6 +202,8 @@
               <th>Manager Status</th>
               <th>Failover Count</th>
               <th>Last Failover Time</th>
+              <th>Table Size</th>
+              <th>Index Size</th>
           </tr>
           <tr>
               <td><span ng-if="selectedCluster.activePassiveStatus=='A'"
@@ -210,6 +213,8 @@
               </td>
               <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
               <td>{{selectedCluster.failoverLastTime}}</td>
+              <td>{{selectedCluster.dbTableSize}}</td>
+              <td>{{selectedCluster.dbIndexSize}}</td>
           </tr>
       </table>
   </md-card>
@@ -324,18 +329,19 @@
                    Reseed Logical From Backup
                 </md-button>
              </md-menu-item>
+             <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
+                <md-button>
+                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                   Reseed Logical From Master
+                </md-button>
+             </md-menu-item>
              <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
                 <md-button>
                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                    Reseed Physical From Backup
                 </md-button>
              </md-menu-item>
-             <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
-                <md-button>
-                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
-                   Reseed Logical From Master
-                </md-button>
-             </md-menu-item>
+
           </md-menu-content>
        </md-menu>
     </md-menu-item>
@@ -356,7 +362,7 @@
              </md-menu-item>
              <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
                 <md-button>
-                   <md-icon md-menu-align-target class="fas fa-code-merge"></md-icon>
+                   <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
                    Skip Replication Event
                 </md-button>
              </md-menu-item>

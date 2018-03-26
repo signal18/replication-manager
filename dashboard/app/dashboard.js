@@ -261,8 +261,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          if (confirm("Confirm Creating Cluster "+ $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' +$scope.dlgClusterName);
          callServices();
          $scope.selectedClusterName=$scope.dlgClusterName;
-         setClusterCredentialDialog();
-         setRplCredentialDialog();
+         $scope.setClusterCredentialDialog();
+         $scope.setRplCredentialDialog();
 
        };
        $scope.cancelNewClusterDialog = function() {
@@ -284,13 +284,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
        };
 
-
        $scope.setClusterCredentialDialog = function() {
          $mdDialog.show({
          contentElement: '#myClusterCredentialDialog',
          parent: angular.element(document.body),
         });
-      };
+       };
        $scope.closeClusterCredentialDialog = function() {
          $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
           if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' +$scope.dlgClusterUser+':'+$scope.dlgClusterPassword);
@@ -312,6 +311,17 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
        $scope.cancelRplCredentialDialog = function() {
          $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
        };
+
+       $scope.openDebugDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myClusterDebugDialog',
+         parent: angular.element(document.body),
+        });
+       };
+       $scope.closeDebugDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myClusterDebugDialog', });
+       };
+
 
         $scope.selectUserIndex = function (index) {
             var r = confirm("Confirm select Index  " + index);

@@ -31,7 +31,7 @@
                                     class="fa fa-3x fa-plus-circle"></i><br>New<BR><BR></a>
                         </li>
                     </md-list-item>
-                    <md-list-item>
+                    <md-list-item ng-if="selectedClusterName">
                         <li class="text-center">
                             <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Settins<BR><BR></a>
                         </li>
@@ -128,7 +128,21 @@
                 </md-dialog>
             </div>
         </div>
-
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myClusterDebugDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{selectedCluster}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeDebugDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
