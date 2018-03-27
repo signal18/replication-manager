@@ -295,7 +295,7 @@ func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) 
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
