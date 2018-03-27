@@ -1243,7 +1243,7 @@ func handlerMuxServersSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.GetConf().PRXReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -1263,7 +1263,7 @@ func handlerMuxServersPortSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.GetConf().PRXReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {

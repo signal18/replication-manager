@@ -38,6 +38,7 @@ type Config struct {
 	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path"`
 	DBServersLocality                  string `mapstructure:"db-servers-locality"`
+	PRXReadOnMaster                    bool   `mapstructure:"proxy-servers-read-on-master"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry"`
 	RplUser                            string `mapstructure:"replication-credential"`
 	MasterConn                         string `mapstructure:"replication-source-name"`

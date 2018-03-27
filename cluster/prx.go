@@ -327,6 +327,11 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 			}
 		}
 	}
+	cluster.initConsul()
+}
+
+func (cluster *Cluster) backendStateChangeProxies() {
+	cluster.initConsul()
 }
 
 func (cluster *Cluster) refreshProxies() {

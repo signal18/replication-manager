@@ -10,7 +10,6 @@
 package cluster
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 
@@ -20,34 +19,55 @@ import (
 func (cluster *Cluster) initConsul() error {
 	var opt registry.Options
 	//opt := consul.DefaultConfig()
-	if cluster.conf.RegistryConsul == false {
+	if cluster.conf.RegistryConsul == false || cluster.IsActive() == false {
 		return nil
 	}
 	opt.Addrs = strings.Split(cluster.conf.RegistryHosts, ",")
 	//DefaultRegistry()
 	//opt := registry.DefaultRegistry
+	reg := registry.NewRegistry()
+	if cluster.GetMaster() != nil {
 
-	if cluster.GetMaster() == nil {
-		return errors.New("No master discovered")
-	}
-	port, _ := strconv.Atoi(cluster.GetMaster().Port)
-	writesrv := map[string][]*registry.Service{
-		"write": []*registry.Service{
-			{
-				Name:    "write_" + cluster.GetName(),
-				Version: "0.0.0",
-				Nodes: []*registry.Node{
-					{
-						Id:      "write_" + cluster.GetName(),
-						Address: cluster.GetMaster().Host,
-						Port:    port,
+		port, _ := strconv.Atoi(cluster.GetMaster().Port)
+		writesrv := map[string][]*registry.Service{
+			"write": []*registry.Service{
+				{
+					Name:    "write_" + cluster.GetName(),
+					Version: "0.0.0",
+					Nodes: []*registry.Node{
+						{
+							Id:      "write_" + cluster.GetName(),
+							Address: cluster.GetMaster().Host,
+							Port:    port,
+						},
 					},
 				},
 			},
-		},
+		}
+
+		cluster.LogPrintf(LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().URL)
+		delservice, err := reg.GetService("write_" + cluster.GetName())
+		if err != nil {
+			for _, service := range delservice {
+
+				if err := reg.Deregister(service); err != nil {
+					cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
+				}
+			}
+		}
+		//reg := registry.NewRegistry()
+		for _, v := range writesrv {
+			for _, service := range v {
+
+				if err := reg.Register(service); err != nil {
+					cluster.LogPrintf(LvlErr, "Unexpected register error: %v", err)
+				}
+
+			}
+		}
+
 	}
 
-	reg := registry.NewRegistry()
 	for _, srv := range cluster.servers {
 		var readsrv registry.Service
 		readsrv.Name = "read_" + cluster.GetName()
@@ -56,37 +76,21 @@ func (cluster *Cluster) initConsul() error {
 		var node registry.Node
 		node.Id = srv.Id
 		node.Address = srv.Host
-		port, _ = strconv.Atoi(srv.Port)
+		port, _ := strconv.Atoi(srv.Port)
 		node.Port = port
 		readnodes = append(readnodes, &node)
 		readsrv.Nodes = readnodes
-		cluster.LogPrintf(LvlInfo, "Register consul read service  %s", srv.Id)
+
 		if err := reg.Deregister(&readsrv); err != nil {
-			cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
+			cluster.LogPrintf(LvlErr, "Unexpected consul deregister error for server %s: %v", srv.URL, err)
 		}
-		if err := reg.Register(&readsrv); err != nil {
-			cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
-		}
-
-	}
-	cluster.LogPrintf(LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().URL)
-	delservice, err := reg.GetService("write_" + cluster.GetName())
-	if err != nil {
-		for _, service := range delservice {
-
-			if err := reg.Deregister(service); err != nil {
-				cluster.LogPrintf(LvlErr, "Unexpected deregister error: %v", err)
+		if srv.State != stateFailed && srv.State != stateMaintenance && srv.State != stateUnconn {
+			if (srv.IsSlave && srv.HasReplicationIssue() == false) || (srv.IsMaster() && cluster.conf.PRXReadOnMaster) {
+				cluster.LogPrintf(LvlInfo, "Register consul read service  %s %s", srv.Id, srv.URL)
+				if err := reg.Register(&readsrv); err != nil {
+					cluster.LogPrintf(LvlErr, "Unexpected consul register error for server %s: %v", srv.URL, err)
+				}
 			}
-		}
-	}
-	//reg := registry.NewRegistry()
-	for _, v := range writesrv {
-		for _, service := range v {
-
-			if err := reg.Register(service); err != nil {
-				cluster.LogPrintf(LvlErr, "Unexpected register error: %v", err)
-			}
-
 		}
 	}
 

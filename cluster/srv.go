@@ -269,6 +269,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			//if cluster.conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			//}
+			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
 		}
 		if server.PrevState != server.State {
