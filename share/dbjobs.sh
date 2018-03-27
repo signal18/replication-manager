@@ -44,7 +44,7 @@ partialRestore()
   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/
  done
  cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set global gtid_slave_pos=/g' | /usr/bin/mysql -p$PASSWORD -u$USER
- /usr/bin/mysql -p$PASSWORD -u$USER  -e"start slave;"
+ /usr/bin/mysql -p$PASSWORD -u$USER  -e"flush privileges;start slave;"
 }
 
 for job in "${JOBS[@]}"

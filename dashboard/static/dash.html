@@ -166,13 +166,13 @@
       </table>
         </md-card>
         <BR>
-<md-card ng-if="settings.config.enterprise==true && selectedCluster">
-  <table ng-if="settings"  md-table class="table md-primary md-data-table">
+<md-card ng-if="settings.config.enterprise    && selectedCluster">
+  <table style=""  ng-if="settings"  md-table class="table md-primary md-data-table">
            <tr md-row><th>Database tags</th></tr>
-           <tr md-row><td style="word-wrap: break-word">
-   <span ng-repeat="tag in selectedCluster.dbServersTags" class="label label-success">{{ tag }} </span>
-  </td></tr>
+
 </table>
+<div style="padding: 0px 20px 10px 4px;"><span style="display:inline-block;" ng-repeat="tag in selectedCluster.dbServersTags" class="label label-success">{{ tag }}</span></div><BR>
+
 </md-card>
 <BR>
 <md-card ng-if="settings.config.test==true && selectedCluster">
