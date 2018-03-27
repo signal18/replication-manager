@@ -360,8 +360,15 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 			}
 		}
 	}
+	cluster.initConsul()
 }
 
+// called  by server monitor if state change
+func (cluster *Cluster) backendStateChangeProxies() {
+	cluster.initConsul()
+}
+
+// Used to monitor proxies call by main monitor loop
 func (cluster *Cluster) refreshProxies() {
 
 	for _, pr := range cluster.Proxies {
