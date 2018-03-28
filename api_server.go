@@ -300,7 +300,7 @@ func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) 
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))
+			w.Write([]byte("503 -Not a Valid Slave!"))
 		}
 
 	} else {

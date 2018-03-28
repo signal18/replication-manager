@@ -132,6 +132,14 @@ func httpserver() {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsSlaveStatus)),
 	))
 
+	router.Handle("/clusters/{clusterName}/sphinx-indexes", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxSphinxIndexes)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/sphinx-indexes", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxSphinxIndexes)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortBackup)),
 	))
