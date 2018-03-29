@@ -9,7 +9,7 @@
 
 
                                         <tr valign="middle">
-
+                                            <th>Actions</th>
                                             <th>Id</th>
                                             <th>Host</th>
                                             <th>Port</th>
@@ -21,6 +21,37 @@
                                             <th>ReadWritePort</th>
                                         </tr>
                                         <tr>
+                                          <td>
+                                            <md-menu >
+                                     <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
+                                        <md-span md-menu-origin class="fas fa-ellipsis-h"></md-span>
+                                     </md-button>
+                                     <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+                                        <md-menu >
+                                           <md-button ng-click="$mdMenu.open($event)">
+                                              <span md-menu-align-target>
+                                                 Provision
+                                                 <md-icon  class="fas fa-arrow-right"></md-icon>
+                                              </span>
+                                           </md-button>
+                                           <md-menu-content>
+                                              <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxprovision(proxy.id)">
+                                                 <md-button>
+                                                    <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                                    Provision Proxy
+                                                 </md-button>
+                                              </md-menu-item>
+                                              <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxunprovision(proxy.id)">
+                                                 <md-button>
+                                                    <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                                                    Unprovision Proxy
+                                                 </md-button>
+                                              </md-menu-item>
+                                           </md-menu-content>
+                                        </md-menu>
+                                     </md-menu-item>
+                                   </md-menu-content>
+                                </md-menu>
                                             <td>{{proxy.id}}</td>
                                             <td>{{proxy.host}}</td>
                                             <td>{{proxy.port}}</td>

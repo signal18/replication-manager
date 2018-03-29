@@ -126,6 +126,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.dbunprovision = function (server) {
             if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
         };
+        $scope.prxprovision = function (id) {
+            if (confirm("Confirm provision server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+        };
+        $scope.prxunprovision = function (id) {
+            if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+        };
         $scope.dbreseedxtrabackup = function (server) {
             if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
         };
@@ -154,6 +160,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.toggletraffic = function () {
             if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-hearbeat');
         };
+
+
 
         $scope.resetfail = function () {
             if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
