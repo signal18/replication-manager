@@ -143,6 +143,9 @@
                 </md-dialog>
             </div>
         </div>
+        <div class="alert alert-warning" ng-if="menuOpened">
+          <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
+        </div>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">

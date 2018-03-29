@@ -72,7 +72,11 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 });
 
                 Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    $scope.proxies = data;
+                  if (!$scope.menuOpened) {
+                      $scope.proxies = data;
+                      $scope.reserror = false;
+                  }
+              
                 }, function () {
                     $scope.reserror = true;
                 });
