@@ -428,6 +428,8 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 
 	// In case of state change, reintroduce the server in the slave list
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn || server.PrevState == stateSuspect {
+		server.ClusterGroup.LogPrintf(LvlInfo, " StateSlave from rejoin slave", server.URL)
+
 		server.State = stateSlave
 		server.FailCount = 0
 		if server.PrevState != stateSuspect {
