@@ -76,7 +76,7 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                       $scope.proxies = data;
                       $scope.reserror = false;
                   }
-              
+
                 }, function () {
                     $scope.reserror = true;
                 });
@@ -131,10 +131,10 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
         };
         $scope.prxprovision = function (id) {
-            if (confirm("Confirm provision server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+            if (confirm("Confirm provision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
         };
         $scope.prxunprovision = function (id) {
-            if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+            if (confirm("Confirm unprovision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
         };
         $scope.dbreseedxtrabackup = function (server) {
             if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
