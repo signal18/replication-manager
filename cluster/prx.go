@@ -160,6 +160,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.ExtProxyOn {
+		cluster.LogPrintf(LvlInfo, "Loading External Route...")
 		prx := new(Proxy)
 		prx.Type = proxyExternal
 		prx.Host, prx.Port = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
@@ -167,11 +168,10 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadPort = prx.WritePort
 		prx.ReadWritePort = prx.WritePort
 		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-
+		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
 	if cluster.Conf.ProxysqlOn {
-
 		for _, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
 			cluster.LogPrintf(LvlInfo, "Loading ProxySQL...")
@@ -199,12 +199,9 @@ func (cluster *Cluster) newProxyList() error {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
-
 			ctproxy++
 		}
-
 	}
-
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			cluster.LogPrintf(LvlInfo, "Loading MdbShardProxy...")
