@@ -17,7 +17,7 @@
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="newServerDialog()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
-          New Server Monitor
+          New Database Monitor
             </md-button>
           </md-menu-item>
           <md-menu-item  ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
@@ -106,24 +106,38 @@
                 </md-menu-content>
              </md-menu>
           </md-menu-item>
-          <md-menu-item ng-click="openDebugDialog()">
+          <md-menu-item>
+             <md-menu >
+                <md-button ng-click="$mdMenu.open($event)">
+                   <span md-menu-align-target>
+                     Debug
+                   </span>
+                   <md-icon class="fas fa-arrow-right"></md-icon>
+                </md-button>
+                <md-menu-content>
+          <md-menu-item ng-click="openDebugClusterDialog()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
-            Debug
+            Cluster
+            </md-button>
+          </md-menu-item>
+          <md-menu-item ng-click="openDebugServerDialog()">
+            <md-button>
+              <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+            Servers
             </md-button>
           </md-menu-item>
 
-
+        </md-menu-content>
+     </md-menu>
+  </md-menu-item>
         </md-menu-content>
       </md-menu>
-
         <md-button class="md-raised" ng-if="master.state !='Failed'" ng-click="switch(false)" aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Switchover</md-button>
         <md-button class="md-raised md-warn" ng-if="master.state =='Failed'" ng-click="switch(true)" aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
         Failover</md-button>
-
       </span></h2>
-
         </div>
     </md-toolbar>
     <md-card>
@@ -226,7 +240,7 @@
   <BR>
   <md-card ng-if="servers">
 
-  
+
   <table ng-if="servers" class="table">
 
       <tr>
@@ -375,7 +389,7 @@
                    Toogle InnoDB Monitor
                 </md-button>
              </md-menu-item>
-          </md-menu-content>
+
        </md-menu>
     </md-menu-item>
  </md-menu-content>

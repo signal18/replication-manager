@@ -137,7 +137,22 @@
                         {{selectedCluster}}
                       </textarea>
                     </form>
-                    <md-button ng-click="closeDebugDialog()" class="md-primary">
+                    <md-button ng-click="closeDebugClusterDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myServerDebugDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{servers}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeDebugServerDialog()" class="md-primary">
                         Ok
                     </md-button>
                 </md-dialog>

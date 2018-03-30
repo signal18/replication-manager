@@ -324,14 +324,23 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
        };
 
-       $scope.openDebugDialog = function() {
+       $scope.openDebugClusterDialog = function() {
          $mdDialog.show({
          contentElement: '#myClusterDebugDialog',
          parent: angular.element(document.body),
         });
        };
-       $scope.closeDebugDialog = function() {
+       $scope.closeDebugClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myClusterDebugDialog', });
+       };
+       $scope.openDebugServerDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myServerDebugDialog',
+         parent: angular.element(document.body),
+        });
+       };
+       $scope.closeDebugServerDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myServerDebugDialog', });
        };
 
 
