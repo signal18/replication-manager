@@ -51,7 +51,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	if err != nil {
 		return "Not a slave"
 	}
-	if ss.SecondsBehindMaster.Valid == false && server.ClusterGroup.sme.CanMonitor() {
+	if ss.SecondsBehindMaster.Valid == false {
 
 		//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 		if ss.SlaveSQLRunning.String == "Yes" && ss.SlaveIORunning.String == "No" {
