@@ -137,6 +137,6 @@ func (psql *ProxySQL) AddUser(User string, Password string) error {
 	if err != nil {
 		return err
 	}
-	_, err = psql.Connection.Exec("LOAD USERS TO RUNTIME")
+	_, err = psql.Connection.Exec("LOAD MYSQL USERS TO RUNTIME")
 	return err
 }
