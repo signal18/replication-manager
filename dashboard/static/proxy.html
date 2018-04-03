@@ -59,8 +59,10 @@
                                             <td>{{proxy.host}}</td>
                                             <td>{{proxy.port}}</td>
                                             <td>{{proxy.version}}</td>
-                                            <td>{{proxy.writePort}}</td>
-                                            <td>{{proxy.readPort}}</td>
+                                            <td ng-if="proxy.Type!='proxysql'">{{proxy.WritePort}}</td>
+                                            <td ng-if="proxy.Type!='proxysql'">{{proxy.ReadPort}}</td>
+                                            <td ng-if="proxy.Type=='proxysql'">{{proxy.WriterHostgroup}}</td>
+                                            <td ng-if="proxy.Type=='proxysql'">{{proxy.ReaderHostgroup}}</td>
                                             <td>{{proxy.readWritePort}}</td>
 
                                         </tr>
