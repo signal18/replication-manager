@@ -591,7 +591,6 @@ func (cluster *Cluster) schemaMonitor() {
 	}
 	cluster.DBIndexSize = totindexsize
 	cluster.DBTableSize = tottablesize
-
 	cluster.master.DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
 }
