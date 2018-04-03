@@ -251,17 +251,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	// Phase 3: Prepare new master
 	if cluster.Conf.MultiMaster == false {
-		cluster.LogPrintf(LvlInfo, "Stopping slave thread on new master")
+		cluster.LogPrintf(LvlInfo, "Stopping slave threads on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
 			err = cluster.master.StopSlave()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Stopping slave failed on new master")
-			} else {
-				// if server is mysql 5.7 we just need to stop the IO thread
-				err = cluster.master.StopSlaveIOThread()
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Stopping IO thread failed on new master")
-				}
 			}
 		}
 	}
@@ -334,7 +328,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
-		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
+		oldMaster.StopSlave() // This is helpful because in some cases the old master can have an old configuration running
 		if cluster.Conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
@@ -361,11 +355,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "POSITIONAL",
 				SSL:       cluster.Conf.ReplicationSSL,
+				Channel:   cluster.Conf.MasterConn,
+				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+				IsMySQL:   oldMaster.DBVersion.IsMySQL(),
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
 			}
-			err = dbhelper.StartSlave(oldMaster.Conn)
+			err = oldMaster.StartSlave()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master, reason: %s", err)
 			}
@@ -381,16 +378,20 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
 				SSL:       cluster.Conf.ReplicationSSL,
+				Channel:   cluster.Conf.MasterConn,
+				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+				IsMySQL:   oldMaster.DBVersion.IsMySQL(),
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
 			}
-			err = dbhelper.StartSlave(oldMaster.Conn)
+			err = oldMaster.StartSlave()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master %s", err)
 			}
 		} else if cluster.Conf.MxsBinlogOn == false {
 			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
+			// current pos is needed on old master as  writes diverges from slave pos
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -398,13 +399,16 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "SLAVE_POS",
+				Mode:      "CURRENT_POS",
 				SSL:       cluster.Conf.ReplicationSSL,
+				Channel:   cluster.Conf.MasterConn,
+				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+				IsMySQL:   oldMaster.DBVersion.IsMySQL(),
 			})
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
 			}
-			err = dbhelper.StartSlave(oldMaster.Conn)
+			err = oldMaster.StartSlave()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master %s", err)
 			}
@@ -421,6 +425,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
 					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
 				})
 			} else {
 				err = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -434,6 +441,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Logfile:   crash.FailoverMasterLogFile,
 					Logpos:    crash.FailoverMasterLogPos,
 					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
 				})
 			}
 		}
@@ -481,7 +491,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 		cluster.LogPrintf(LvlInfo, "Change master on slave %s", sl.URL)
-		err = dbhelper.StopSlave(sl.Conn)
+		err = sl.StopSlave()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not stop slave on server %s, %s", sl.URL, err)
 		}
@@ -542,6 +552,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "POSITIONAL",
 					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: sl.DBVersion.IsMariaDB(),
+					IsMySQL:   sl.DBVersion.IsMySQL(),
 				})
 			} else {
 				sl.SetMaintenance()
@@ -558,6 +571,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "",
 				SSL:       cluster.Conf.ReplicationSSL,
+				Channel:   cluster.Conf.MasterConn,
+				IsMariaDB: sl.DBVersion.IsMariaDB(),
+				IsMySQL:   sl.DBVersion.IsMySQL(),
 			})
 		} else if cluster.Conf.MxsBinlogOn == false {
 			//MariaDB all cases use GTID
@@ -571,6 +587,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:      "SLAVE_POS",
 				SSL:       cluster.Conf.ReplicationSSL,
+				Channel:   cluster.Conf.MasterConn,
+				IsMariaDB: sl.DBVersion.IsMariaDB(),
+				IsMySQL:   sl.DBVersion.IsMySQL(),
 			})
 		} else { // We deduct we are in maxscale binlog server , but can heve support for GTID or not
 
@@ -585,6 +604,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "SLAVE_POS",
 					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: sl.DBVersion.IsMariaDB(),
+					IsMySQL:   sl.DBVersion.IsMySQL(),
 				})
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -602,14 +624,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if changeMasterErr != nil {
 			cluster.LogPrintf(LvlErr, "Change master failed on slave %s, %s", sl.URL, err)
 		}
-		err = dbhelper.StartSlave(sl.Conn)
+		err = sl.StartSlave()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not start slave on server %s, %s", sl.URL, err)
 		}
 		// now start the old master as relay is ready
 		if cluster.Conf.MxsBinlogOn && fail == false {
 			cluster.LogPrintf(LvlInfo, "Restarting old master replication relay server ready")
-			dbhelper.StartSlave(oldMaster.Conn)
+			oldMaster.StartSlave()
 		}
 		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false {
 
@@ -1265,6 +1287,9 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "",
 			SSL:       cluster.Conf.ReplicationSSL,
+			Channel:   cluster.Conf.MasterConn,
+			IsMariaDB: child.DBVersion.IsMariaDB(),
+			IsMySQL:   child.DBVersion.IsMySQL(),
 		})
 	} else {
 		//MariaDB all cases use GTID
@@ -1278,12 +1303,15 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "SLAVE_POS",
 			SSL:       cluster.Conf.ReplicationSSL,
+			Channel:   cluster.Conf.MasterConn,
+			IsMariaDB: child.DBVersion.IsMariaDB(),
+			IsMySQL:   child.DBVersion.IsMySQL(),
 		})
 	}
 	if changeMasterErr != nil {
 		cluster.LogPrintf(LvlErr, "Could not change masteron server %s, %s", child.URL, changeMasterErr)
 	}
-	err = dbhelper.StartSlave(child.Conn)
+	err = child.StartSlave()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not start slave on server %s, %s", child.URL, err)
 	}

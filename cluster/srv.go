@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -146,7 +147,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
-
+	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.SetCredential(url, user, pass)
 	server.TestConfig = conf
 
@@ -167,7 +168,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.PrevState = stateSuspect
 
 	crcTable := crc64.MakeTable(crc64.ECMA)
-	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
+	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.URL), crcTable), 10)
 	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
 	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
@@ -275,7 +276,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			//}
+			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
 		}
 		if server.PrevState != server.State {
@@ -295,15 +296,30 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	var ss dbhelper.SlaveStatus
-	ss, errss := dbhelper.GetSlaveStatus(server.Conn)
+	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 	// We have no replicatieon can this be the old master
-	if errss == sql.ErrNoRows {
+	//  1617 is no multi source channel found
+	noChannel := false
+	if errss != nil {
+		if strings.Contains(errss.Error(), "1617") {
+			noChannel = true
+		}
+	}
+	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
 		if server.PrevState == stateFailed {
-			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected %s", server.URL)
+			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				server.SetReadOnly()
+				if server.ClusterGroup.master != nil {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as actif monitor and other master dicovereds", server.URL)
+						server.SetReadOnly()
+					} else if server.ClusterGroup.Status == ConstMonitorStandby {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
+						server.SetReadOnly()
+					}
+				}
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
@@ -316,6 +332,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and found replication", server.URL)
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
@@ -489,11 +506,11 @@ func (server *ServerMonitor) Refresh() error {
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 	}
+
+	// Set channel source name is dangerous with multi cluster
+
 	// SHOW SLAVE STATUS
-	err = server.SetReplicationChannel(server.ClusterGroup.Conf.MasterConn)
-	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Could not set replication channel")
-	}
+
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
 	} else {
@@ -605,7 +622,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
 			server.Refresh()
-			ss, err = dbhelper.GetMSlaveStatus(server.Conn, "")
+			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn)
 			if err != nil {
 				return err
 			}
@@ -616,12 +633,12 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, err := dbhelper.GetSlaveStatus(server.Conn)
+		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 		if err != nil {
 			return err
 		}
 		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
-			ss, err = dbhelper.GetSlaveStatus(server.Conn)
+			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 			if err != nil {
 				return err
 			}
@@ -669,23 +686,24 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) StopSlave() error {
-	return dbhelper.StopSlave(server.Conn)
+	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) StartSlave() error {
-	return dbhelper.StartSlave(server.Conn)
+	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+
 }
 
 func (server *ServerMonitor) StopSlaveIOThread() error {
-	return dbhelper.StopSlaveIOThread(server.Conn)
+	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) StopSlaveSQLThread() error {
-	return dbhelper.StopSlaveSQLThread(server.Conn)
+	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) ResetSlave() error {
-	return dbhelper.ResetSlave(server.Conn, true)
+	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 }
 
 func (server *ServerMonitor) FlushTables() error {
@@ -698,4 +716,10 @@ func (server *ServerMonitor) Uprovision() {
 
 func (server *ServerMonitor) Provision() {
 	server.ClusterGroup.OpenSVCProvisionDatabaseService(server)
+}
+
+func (server *ServerMonitor) SkipReplicationEvent() {
+	server.StopSlave()
+	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+	server.StartSlave()
 }

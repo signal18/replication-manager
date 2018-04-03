@@ -26,7 +26,7 @@ type Config struct {
 	MonitorSchemaChangeScript          string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`
-	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryQcript"`
+	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
@@ -45,6 +45,7 @@ type Config struct {
 	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path" toml:"db-servers-binary-path" json:"dbServersBinaryPath"`
 	DBServersLocality                  string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
+	PRXReadOnMaster                    bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                            string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	MasterConn                         string `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
@@ -82,13 +83,15 @@ type Config struct {
 	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsepositiveExternalPort"`
 	Autorejoin                         bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`
-	RejoinScript                       string `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinMysqldump                bool   `mapstructure:"autorejoin-mysqldump" toml:"autorejoin-mysqldump" json:"autorejoinMysqldump"`
+	AutorejoinZFSFlashback             bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
+	AutorejoinPhysicalBackup           bool   `mapstructure:"autorejoin-physical-backup" toml:"autorejoin-physical-backup" json:"autorejoinPhysicalBackup"`
+	AutorejoinLogicalBackup            bool   `mapstructure:"autorejoin-logical-backup" toml:"autorejoin-logical-backup" json:"autorejoinLogicalBackup"`
+	RejoinScript                       string `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
 	AutorejoinNoSemisync               bool   `mapstructure:"autorejoin-flashback-on-unsync" toml:"autorejoin-flashback-on-unsync" json:"autorejoinFlashbackOnUnsync"`
 	AutorejoinSlavePositionalHearbeat  bool   `mapstructure:"autorejoin-slave-positional-hearbeat" toml:"autorejoin-slave-positional-hearbeat" json:"autorejoinSlavePositionalHearbeat"`
-	AutorejoinZFSFlashback             bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
 	CheckType                          string `mapstructure:"check-type" toml:"check-type" json:"checkType"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters" toml:"check-binlog-filters" json:"checkBinlogFilters"`
@@ -272,6 +275,8 @@ type Config struct {
 	ProvSSLCaUUID                      string `mapstructure:"prov-tls-server-ca-uuid" toml:"-" json:"-"`
 	ProvSSLCertUUID                    string `mapstructure:"prov-tls-server-cert-uuid" toml:"-" json:"-"`
 	ProvSSLKeyUUID                     string `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
+	ProvNetCNI                         bool   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
+	ProvDockerDaemonPrivate            bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	APIUser                            string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
 	APIPort                            string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                            string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`

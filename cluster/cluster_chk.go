@@ -18,10 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/maxscale"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -361,10 +359,9 @@ func (cluster *Cluster) isValidConfig() error {
 			cluster.Conf.LogFile = ""
 		}
 	}
+
 	// if slaves option has been supplied, split into a slice.
-	if cluster.Conf.Hosts != "" {
-		cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
-	} else {
+	if cluster.Conf.Hosts == "" {
 		cluster.LogPrintf(LvlErr, "No hosts list specified")
 		return errors.New("No hosts list specified")
 	}
@@ -374,22 +371,10 @@ func (cluster *Cluster) isValidConfig() error {
 		cluster.LogPrintf(LvlErr, "No master user/pair specified")
 		return errors.New("No master user/pair specified")
 	}
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
 
 	if cluster.Conf.RplUser == "" {
 		cluster.LogPrintf(LvlErr, "No replication user/pair specified")
 		return errors.New("No replication user/pair specified")
-	}
-	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.Conf.RplUser)
-
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.dbPass
-		p.Decrypt()
-		cluster.dbPass = p.PlainText
-		p.CipherText = cluster.rplPass
-		p.Decrypt()
-		cluster.rplPass = p.PlainText
 	}
 
 	// Check if ignored servers are included in Host List

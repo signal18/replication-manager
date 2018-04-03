@@ -56,7 +56,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxDockerHaproxyImg = cluster.Conf.ProvProxHaproxyImg
 	svc.ProvProxDockerProxysqlImg = cluster.Conf.ProvProxProxysqlImg
 	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
-
+	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
 	svc.Verbose = 1
 
@@ -66,21 +66,10 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 func (cluster *Cluster) OpenSVCUnprovision() {
 	//opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
-	//for _, node := range agents {
-	//	for _, svc := range node.Svc {
+
 	for _, db := range cluster.Servers {
 		go cluster.OpenSVCUnprovisionDatabaseService(db)
-		/*		if db.Id == svc.Svc_name {
-				idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", db.Id, err)
-				} else {
-					err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", db.Id, err)
-					}
-				}
-		*/
+
 	}
 	for _, db := range cluster.Servers {
 		select {
@@ -92,21 +81,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 			}
 		}
 	}
-	//}
+
 	for _, prx := range cluster.Proxies {
 		go cluster.OpenSVCUnprovisionProxyService(prx)
-		/*		if prx.Id == svc.Svc_name {
-					idaction, err := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
-					} else {
-						err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-						if err != nil {
-							cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
-						}
-					}
-				}
-			}*/
 
 	}
 	for _, prx := range cluster.Proxies {
@@ -119,7 +96,7 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 			}
 		}
 	}
-	//	}
+
 }
 
 func (cluster *Cluster) OpenSVCProvisionCluster() error {
@@ -141,7 +118,7 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 			cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			return nil
@@ -154,74 +131,6 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 	}
 	return errors.New("Waiting to long more 400s for OpenSVC dequeue")
 }
-
-/*func (cluster *Cluster) OpenSVCProvisionOneSrv() error {
-
-	svc := cluster.OpenSVCConnect()
-	servers := cluster.GetServers()
-	var iplist []string
-	var portlist []string
-	for _, s := range servers {
-		iplist = append(iplist, s.Host)
-		portlist = append(portlist, s.Port)
-	}
-
-	srvStatus, err := svc.GetServiceStatus(cluster.GetName())
-	if err != nil {
-		return err
-	}
-	if srvStatus == 0 {
-		// create template && bootstrap
-		agents := svc.GetNodes()
-		var clusteragents []opensvc.Host
-
-		for _, node := range agents {
-			if strings.Contains(svc.ProvAgents, node.Node_name) {
-				clusteragents = append(clusteragents, node)
-			}
-		}
-		res, err := cluster.GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
-		if err != nil {
-			return err
-		}
-
-		idtemplate, _ := svc.CreateTemplate(cluster.GetName(), res)
-
-		for _, node := range agents {
-			if strings.Contains(svc.ProvAgents, node.Node_name) {
-				idaction, _ := svc.ProvisionTemplate(idtemplate, node.Node_id, cluster.GetName())
-				ct := 0
-				for {
-					time.Sleep(2 * time.Second)
-					status := svc.GetActionStatus(strconv.Itoa(idaction))
-					if status == "Q" {
-						cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
-					}
-					if status == "W" {
-						cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
-					}
-					if status == "T" {
-						break
-					}
-					ct++
-					if ct > 200 {
-						break
-					}
-
-				}
-
-				task := svc.GetAction(strconv.Itoa(idaction))
-				if task != nil {
-					cluster.LogPrintf(LvlInfo, "%s", task.Stderr)
-				} else {
-					cluster.LogPrintf(LvlErr, "Can't fetch task")
-				}
-			}
-		}
-	}
-
-	return nil
-}*/
 
 // OpenSVCSeviceStatus 0 not provision , 1 prov and up ,2 on error error
 func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
@@ -275,26 +184,40 @@ sync_max_delay = 1440
 
 func (cluster *Cluster) GetPodNetTemplate(collector opensvc.Collector, pod string, i int) string {
 	var net string
-	ipdev := collector.ProvNetIface
+
 	net = net + `
 [ip#` + pod + `]
 tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
 `
-	if collector.ProvMicroSrv == "docker" {
+	if collector.ProvNetCNI {
+		net = net + `type = cni
+	ipdev = eth12
+	container_rid = container#00` + pod + `
+	ipname = {svcname}
+	network = repman
+`
+		// if proxy
+		// expose = port/tcp
+		// repman to get variable backend-network
+		return net
+		//expose = {env.port_pod01}/tcp:8000
+	} else if collector.ProvMicroSrv == "docker" {
 		net = net + `type = docker
-ipdev = ` + collector.ProvNetIface + `
+
 container_rid = container#00` + pod + `
 `
-	} else {
-		net = net + `ipdev = ` + ipdev + `
-`
+
 	}
 	net = net + `
+ipdev = ` + collector.ProvNetIface + `
 ipname = {env.ip_pod` + fmt.Sprintf("%02d", i+1) + `}
 netmask = {env.netmask}
 network = {env.network}
 gateway = {env.gateway}
 `
+
+	//network = <cni net name>
+
 	//Use in gcloud
 	//del_net_route = true
 
@@ -312,7 +235,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 type = loop
 file = ` + collector.ProvFSPath + `/{svcname}_pod` + pod + `.dsk
 size = {env.size}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -322,7 +245,7 @@ always_on = nodes
 name = {svcname}_` + pod + `
 type = lvm
 pvs = {disk#` + pod + `.file}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -332,7 +255,7 @@ always_on = nodes
 name = zp{svcname}_pod` + pod + `
 type = zpool
 vdev  = {disk#` + pod + `.file}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -381,7 +304,7 @@ size = {env.size}
 		}
 		fs = fs + `
 mnt = {env.base_dir}/pod` + pod + `
-always_on = nodes
+standby = true
 `
 
 	}
@@ -394,8 +317,17 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	if collector.ProvMicroSrv != "docker" {
 		return string("")
 	}
-	conf = conf + `
+	if cluster.Conf.ProvDockerDaemonPrivate {
+		conf = conf + `
 docker_daemon_private = true
+`
+	} else {
+		conf = conf + `
+docker_daemon_private = false
+`
+	}
+	conf = conf + `
+
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m `
 	if collector.ProvFSPool == "zpool" {

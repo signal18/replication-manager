@@ -71,34 +71,73 @@ func httpserver() {
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterMasterPhysicalBackup)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerProcesslist)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
 
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slowlog", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/tables", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerTables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/schemas", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSchemas)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/innodb-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerInnoDBStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/all-slaves-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerAllSlavesStatus)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerMasterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-master", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsMasterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortMasterStatus)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-slave", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsSlaveStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsMasterStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsSlaveStatus)),
 	))
 	// handle API 2.0 compatibility for external checks
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersMasterStatus)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsMasterStatus)),
 	))
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersSlaveStatus)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsSlaveStatus)),
 	))
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortMasterStatus)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsMasterStatus)),
 	))
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortSlaveStatus)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsSlaveStatus)),
+	))
+
+	router.Handle("/clusters/{clusterName}/sphinx-indexes", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxSphinxIndexes)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/sphinx-indexes", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxSphinxIndexes)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
@@ -234,7 +273,7 @@ func httpserver() {
 	))
 
 	//PROTECTED ENDPOINTS FOR SERVERS
-	router.Handle("/api/clusters/{clusterName}/servers/actions/add/{host}/{port}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
 	))
@@ -250,7 +289,6 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerMaintenance)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
@@ -259,12 +297,14 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupPhysical)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-logical", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupLogical)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-error-log", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupErrorLog)),
@@ -274,13 +314,26 @@ func httpserver() {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/optimize", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
 	))
 
-	//PROTECTED ENDPOINTS FOR PROXIES
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSetInnoDBMonitor)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-eventr", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
+	))
+
+	//PROXIES PROTECTED ENDPOINTS
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),

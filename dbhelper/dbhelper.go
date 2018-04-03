@@ -76,7 +76,7 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	ConnectionName       sql.NullString `db:"Connection_Name" json:"connectionName"`
+	ConnectionName       sql.NullString `db:"Connection_name" json:"connectionName"`
 	MasterHost           sql.NullString `db:"Master_Host" json:"masterHost"`
 	MasterUser           sql.NullString `db:"Master_User" json:"masterUser"`
 	MasterPort           sql.NullString `db:"Master_Port" json:"masterPort"`
@@ -252,6 +252,9 @@ type ChangeMasterOpt struct {
 	Logfile   string
 	Logpos    string
 	Mode      string
+	IsMySQL   bool
+	IsMariaDB bool
+	Channel   string
 	//	SSLCa     string
 	//	SSLCert   string
 	//	SSLKey    string
@@ -259,7 +262,11 @@ type ChangeMasterOpt struct {
 
 func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	myver, _ := GetDBVersion(db)
-	cm := "CHANGE MASTER TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+	cm := "CHANGE MASTER "
+	if opt.IsMariaDB && opt.Channel != "" {
+		cm += " '" + opt.Channel + "'"
+	}
+	cm += " TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
 	switch opt.Mode {
 	case "SLAVE_POS":
 		cm += ", MASTER_USE_GTID=SLAVE_POS"
@@ -278,6 +285,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt) error {
 	if opt.SSL {
 		cm += ", MASTER_SSL=1"
 		//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
+	}
+	if opt.IsMySQL && opt.Channel != "" {
+		cm += " FOR CHANNEL '" + opt.Channel + "'"
 	}
 	_, err := db.Exec(cm)
 	if err != nil {
@@ -410,11 +420,21 @@ func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, error) {
 	return false, nil
 }
 
-func GetSlaveStatus(db *sqlx.DB) (SlaveStatus, error) {
+func GetSlaveStatus(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) (SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
+	var err error
 	udb := db.Unsafe()
 	ss := SlaveStatus{}
-	err := udb.Get(&ss, "SHOW SLAVE STATUS")
+	if Channel == "" {
+		err = udb.Get(&ss, "SHOW SLAVE  STATUS")
+	} else {
+		if IsMariaDB {
+			err = udb.Get(&ss, "SHOW SLAVE '"+Channel+"' STATUS")
+		} else {
+			err = udb.Get(&ss, "SHOW SLAVE STATUS FOR CHANNEL '"+Channel+"'")
+		}
+	}
+
 	return ss, err
 }
 
@@ -436,7 +456,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string) (SlaveStatus, error) {
 		ss, err = GetAllSlavesStatus(db)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db)
+		s, err = GetSlaveStatus(db, conn, myver.IsMariaDB(), myver.IsMySQL())
 		ss = append(ss, s)
 	}
 
@@ -526,6 +546,30 @@ func SetBinlogAnnotate(db *sqlx.DB) error {
 	return nil
 }
 
+func SetInnoDBLockMonitor(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL innodb_status_output=ON")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL innodb_status_output_locks=ON")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnsetInnoDBLockMonitor(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL innodb_status_output_locks=0")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("SET GLOBAL innodb_status_output=0")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
 	_, err := db.Exec("SET GLOBAL relay_log_space_limit=" + size)
 	if err != nil {
@@ -593,7 +637,7 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		ss, err = GetAllSlavesStatus(db)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db)
+		s, err = GetSlaveStatus(db, "", myver.IsMariaDB(), myver.IsMySQL())
 		ss = append(ss, s)
 	}
 	if err != nil {
@@ -604,14 +648,11 @@ func ResetAllSlaves(db *sqlx.DB) error {
 		if err != nil {
 			return err
 		}
-		if myver.IsMariaDB() {
-			err = ResetSlave(db, true)
-		}
-		if myver.IsMySQL() {
-			err = StopSlave(db)
-			err = ResetSlave(db, true)
 
+		if myver.IsMySQL() {
+			err = StopSlave(db, src.ConnectionName.String, false, true)
 		}
+		err = ResetSlave(db, true, src.ConnectionName.String, myver.IsMariaDB(), myver.IsMySQL())
 		if err != nil {
 			return err
 		}
@@ -924,17 +965,76 @@ func UnlockTables(db *sqlx.DB) error {
 	return err
 }
 
-func StopSlave(db *sqlx.DB) error {
-	_, err := db.Exec("STOP SLAVE")
+func StopSlave(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	cmd := "STOP SLAVE"
+	if IsMariaDB && Channel != "" {
+		cmd += " '" + Channel + "'"
+	}
+	if IsMySQL && Channel != "" {
+		cmd += " FOR CHANNEL '" + Channel + "'"
+	}
+	_, err := db.Exec(cmd)
 	return err
 }
 
-func StopSlaveIOThread(db *sqlx.DB) error {
-	_, err := db.Exec("STOP SLAVE IO_THREAD")
+func StopSlaveIOThread(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	cmd := "STOP SLAVE IO_THREAD"
+	if IsMariaDB && Channel != "" {
+		cmd = "STOP SLAVE '" + Channel + "'  IO_THREAD"
+	}
+	if IsMySQL && Channel != "" {
+		cmd += " FOR CHANNEL '" + Channel + "'"
+	}
+	_, err := db.Exec(cmd)
 	return err
 }
-func StopSlaveSQLThread(db *sqlx.DB) error {
-	_, err := db.Exec("STOP SLAVE SQL_THREAD")
+func StopSlaveSQLThread(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	cmd := "STOP SLAVE SQL_THREAD"
+	if IsMariaDB && Channel != "" {
+		cmd = "STOP SLAVE '" + Channel + "' SQL_THREAD"
+	}
+	if IsMySQL && Channel != "" {
+		cmd += " FOR CHANNEL '" + Channel + "'"
+	}
+	_, err := db.Exec(cmd)
+	return err
+}
+
+func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	var err error
+
+	err = StopSlave(db, Channel, IsMariaDB, IsMySQL)
+	if err != nil {
+		return err
+	}
+	stmt := "change master to MASTER_HEARTBEAT_PERIOD=" + interval
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	err = StartSlave(db, Channel, IsMariaDB, IsMySQL)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	var err error
+
+	err = StopSlave(db, Channel, IsMariaDB, IsMySQL)
+	if err != nil {
+		return err
+	}
+	stmt := "change master to master_use_gtid=" + mode
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	err = StartSlave(db, Channel, IsMariaDB, IsMySQL)
+	if err != nil {
+		return err
+	}
 	return err
 }
 
@@ -943,15 +1043,40 @@ func StopAllSlaves(db *sqlx.DB) error {
 	return err
 }
 
-func StartSlave(db *sqlx.DB) error {
-	_, err := db.Exec("START SLAVE")
+func SkipBinlogEvent(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	if IsMariaDB {
+		stmt := "SET @@default_master_connection='" + Channel + "'"
+		_, err := db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec("SET GLOBAL sql_slave_skip_counter=1")
 	return err
 }
 
-func ResetSlave(db *sqlx.DB, all bool) error {
+func StartSlave(db *sqlx.DB, Channel string, IsMariaDB bool, IsMySQL bool) error {
+	cmd := "START SLAVE"
+	if IsMariaDB && Channel != "" {
+		cmd += " '" + Channel + "'"
+	}
+	if IsMySQL && Channel != "" {
+		cmd += " FOR CHANNEL '" + Channel + "'"
+	}
+	_, err := db.Exec(cmd)
+	return err
+}
+
+func ResetSlave(db *sqlx.DB, all bool, Channel string, IsMariaDB bool, IsMySQL bool) error {
 	stmt := "RESET SLAVE"
+	if IsMariaDB && Channel != "" {
+		stmt += " '" + Channel + "'"
+	}
 	if all == true {
 		stmt += " ALL"
+		if IsMySQL && Channel != "" {
+			stmt += " FOR CHANNEL '" + Channel + "'"
+		}
 	}
 	_, err := db.Exec(stmt)
 	return err
@@ -1022,25 +1147,6 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB) bool {
 	}
 }
 
-/* Check if server is connected to declared master */
-func IsSlaveof(db *sqlx.DB, s string, m string, p string) (bool, error) {
-	ss, err := GetSlaveStatus(db)
-	if err != nil {
-		return false, errors.New("Cannot get SHOW SLAVE STATUS")
-	}
-	masterHost, err := CheckHostAddr(ss.MasterHost.String)
-	if err != nil {
-		// Could not resolve master hostname
-	}
-	if masterHost != m {
-		return false, fmt.Errorf("Hosts not identical (%s:%s)", masterHost, m)
-	}
-	if ss.MasterPort.String != p {
-		return false, errors.New("Master port differs")
-	}
-	return true, nil
-}
-
 func GetEventScheduler(dbM *sqlx.DB) bool {
 
 	sES, _ := GetVariableByName(dbM, "EVENT_SCHEDULER")
@@ -1060,44 +1166,6 @@ func SetEventScheduler(db *sqlx.DB, state bool) error {
 		_, err = db.Exec(stmt)
 	}
 
-	return err
-}
-
-func SetSlaveHeartbeat(db *sqlx.DB, interval string) error {
-	var err error
-
-	err = StopSlave(db)
-	if err != nil {
-		return err
-	}
-	stmt := "change master to MASTER_HEARTBEAT_PERIOD=" + interval
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
-	}
-	err = StartSlave(db)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-func SetSlaveGTIDMode(db *sqlx.DB, mode string) error {
-	var err error
-
-	err = StopSlave(db)
-	if err != nil {
-		return err
-	}
-	stmt := "change master to master_use_gtid=" + mode
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return err
-	}
-	err = StartSlave(db)
-	if err != nil {
-		return err
-	}
 	return err
 }
 

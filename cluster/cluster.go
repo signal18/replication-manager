@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/cron"
+	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/maxscale"
 	"github.com/signal18/replication-manager/state"
@@ -31,27 +32,30 @@ import (
 )
 
 type Cluster struct {
-	Name                 string        `json:"name"`
-	Servers              serverList    `json:"-"`
-	ServerIdList         []string      `json:"dbServers"`
-	Crashes              crashList     `json:"dbServersCrashes"`
-	Proxies              proxyList     `json:"-"`
-	ProxyIdList          []string      `json:"proxyServers"`
-	FailoverCtr          int           `json:"failoverCounter"`
-	FailoverTs           int64         `json:"failoverLastTime"`
-	Status               string        `json:"activePassiveStatus"`
-	Conf                 config.Config `json:"config"`
-	CleanAll             bool          `json:"cleanReplication"` //used in testing
-	IsDown               bool          `json:"isDown"`
-	IsProvisionned       bool          `json:"isProvisionned"`
-	Schedule             []CronEntry   `json:"schedule"`
-	DBTags               []string      `json:"dbServersTags"`
-	ProxyTags            []string      `json:"proxyServersTags"`
-	Topology             string        `json:"topology"`
-	Uptime               string        `json:"uptime"`
-	UptimeFailable       string        `json:"uptimeFailable"`
-	UptimeSemiSync       string        `json:"uptimeSemisync"`
-	MonitorSpin          string        `json:"monitorSpin"`
+	Name                 string          `json:"name"`
+	Servers              serverList      `json:"-"`
+	ServerIdList         []string        `json:"dbServers"`
+	Crashes              crashList       `json:"dbServersCrashes"`
+	Proxies              proxyList       `json:"-"`
+	ProxyIdList          []string        `json:"proxyServers"`
+	FailoverCtr          int             `json:"failoverCounter"`
+	FailoverTs           int64           `json:"failoverLastTime"`
+	Status               string          `json:"activePassiveStatus"`
+	Conf                 config.Config   `json:"config"`
+	CleanAll             bool            `json:"cleanReplication"` //used in testing
+	IsDown               bool            `json:"isDown"`
+	IsProvisionned       bool            `json:"isProvisionned"`
+	Schedule             []CronEntry     `json:"schedule"`
+	DBTags               []string        `json:"dbServersTags"`
+	ProxyTags            []string        `json:"proxyServersTags"`
+	Topology             string          `json:"topology"`
+	Uptime               string          `json:"uptime"`
+	UptimeFailable       string          `json:"uptimeFailable"`
+	UptimeSemiSync       string          `json:"uptimeSemisync"`
+	MonitorSpin          string          `json:"monitorSpin"`
+	DBTableSize          int64           `json:"dbTableSize"`
+	DBIndexSize          int64           `json:"dbIndexSize"`
+	Log                  httplog.HttpLog `json:"log"`
 	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
@@ -81,6 +85,8 @@ type Cluster struct {
 	switchoverCond       *nbc.NonBlockingChan
 	rejoinCond           *nbc.NonBlockingChan
 	bootstrapCond        *nbc.NonBlockingChan
+	altertableCond       *nbc.NonBlockingChan
+	addtableCond         *nbc.NonBlockingChan
 	statecloseChan       chan state.State
 	switchoverChan       chan bool
 	errorChan            chan error
@@ -122,97 +128,93 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, httplog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
-	// Initialize the state machine at this stage where everything is fine.
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, repmanlog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)
-	cluster.statecloseChan = make(chan state.State)
+	// should use buffered channels or it will block
+	cluster.statecloseChan = make(chan state.State, 100)
 	cluster.errorChan = make(chan error)
 	cluster.failoverCond = nbc.New()
 	cluster.switchoverCond = nbc.New()
 	cluster.rejoinCond = nbc.New()
+	cluster.addtableCond = nbc.New()
+	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
-	cluster.Conf = conf
 	cluster.tlog = tlog
-	cluster.htlog = httplog
+	cluster.htlog = repmanlog
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
-	cluster.sme = new(state.StateMachine)
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
-	cluster.DBTags = cluster.GetDatabaseTags()
-	cluster.ProxyTags = cluster.GetProxyTags()
-
+	cluster.Log = httplog.NewHttpLog(200)
+	// Initialize the state machine at this stage where everything is fine.
+	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
-	if cluster.Conf.MonitorScheduler {
-		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
-		cluster.scheduler = cron.New()
 
-		if cluster.Conf.SchedulerBackupLogical {
-			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", conf.BackupLogicalCron)
-			cluster.scheduler.AddFunc(conf.BackupLogicalCron, func() {
-				cluster.master.JobBackupLogical()
-			})
-		}
-		if cluster.Conf.SchedulerBackupPhysical {
-			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", conf.BackupPhysicalCron)
-			cluster.scheduler.AddFunc(conf.BackupPhysicalCron, func() {
-				cluster.master.JobBackupPhysical()
-			})
-		}
-		if cluster.Conf.SchedulerBackupPhysical {
-			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", conf.BackupDatabaseLogCron)
-			cluster.scheduler.Start()
-			cluster.scheduler.AddFunc(conf.BackupDatabaseLogCron, func() {
-				cluster.BackupLogs()
-			})
-		}
-		if cluster.Conf.SchedulerDatabaseOptimize {
-			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", conf.BackupDatabaseOptimizeCron)
-			cluster.scheduler.Start()
-			cluster.scheduler.AddFunc(conf.BackupDatabaseOptimizeCron, func() {
-				cluster.Optimize()
-			})
-		}
-	}
-	cluster.LogPrintf(LvlInfo, "Loading database TLS certificates")
-	err := cluster.loadDBCertificate()
-	if err != nil {
-		cluster.haveDBTLSCert = false
-		cluster.LogPrintf(LvlInfo, "Don't Have database TLS certificates")
-	} else {
-		cluster.haveDBTLSCert = true
-		cluster.LogPrintf(LvlInfo, "Have database TLS certificates")
-	}
-	cluster.newServerList()
+	cluster.Conf = conf
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
 	} else {
 		cluster.LogPrintf(LvlInfo, "Failover in automatic mode")
 	}
-	err = cluster.newProxyList()
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
+		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
+	}
+
+	// createKeys do nothing yet
+	cluster.createKeys()
+	cluster.initScheduler()
+	cluster.newServerList()
+	err := cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
-	cluster.ReloadFromSave()
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
-		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
-		cluster.CreateKey()
-	}
+	// Reload SLA and crashes
+	cluster.GetPersitentState()
 
 	return nil
 }
 
-func (cluster *Cluster) Stop() {
-	cluster.scheduler.Stop()
-	cluster.exit = true
+func (cluster *Cluster) initScheduler() {
+	if cluster.Conf.MonitorScheduler {
+		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
+		cluster.scheduler = cron.New()
+
+		if cluster.Conf.SchedulerBackupLogical {
+			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
+			cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
+				cluster.master.JobBackupLogical()
+			})
+		}
+		if cluster.Conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
+			cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
+				cluster.master.JobBackupPhysical()
+			})
+		}
+		if cluster.Conf.SchedulerBackupPhysical {
+			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
+				cluster.BackupLogs()
+			})
+		}
+		if cluster.Conf.SchedulerDatabaseOptimize {
+			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
+				cluster.Optimize()
+			})
+		}
+	}
 }
+
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
@@ -235,17 +237,7 @@ func (cluster *Cluster) Run() {
 					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
 				}
 			}
-		case st := <-cluster.statecloseChan:
-			if st.ErrKey == "WARN0074" {
-				cluster.LogPrintf(LvlInfo, "Sending Physical Backup to reseed %s", st.ServerUrl)
-				servertoreseed := cluster.GetServerFromURL(st.ServerUrl)
-				m := cluster.GetMaster()
-				if m != nil {
-					go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_xtrabackup.xbtream", servertoreseed)
-				} else {
-					cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", st.ServerUrl)
-				}
-			}
+
 		default:
 			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Monitoring server loop")
@@ -258,11 +250,8 @@ func (cluster *Cluster) Run() {
 						cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
 				}
-
 			}
-
 			cluster.TopologyDiscover()
-
 			if cluster.runOnceAfterTopology {
 				if cluster.GetMaster() != nil {
 					cluster.initProxies()
@@ -270,6 +259,9 @@ func (cluster *Cluster) Run() {
 				}
 			} else {
 				cluster.refreshProxies()
+				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
+					go cluster.schemaMonitor()
+				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHearbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
@@ -277,13 +269,46 @@ func (cluster *Cluster) Run() {
 			// switchover / failover only on Active
 			cluster.CheckFailed()
 			if !cluster.sme.IsInFailover() {
+				// trigger action on resolving states
+				cstates := cluster.sme.GetResolvedStates()
+				for _, s := range cstates {
+					if s.ErrKey == "WARN0074" {
+						cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+						m := cluster.GetMaster()
+						if m != nil {
+							go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_xtrabackup.xbtream", servertoreseed)
+						} else {
+							cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
+						}
+					}
+					if s.ErrKey == "WARN0075" {
+						cluster.LogPrintf(LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+						m := cluster.GetMaster()
+						if m != nil {
+							go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_mysqldump.sql.gz", servertoreseed)
+						} else {
+							cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
+						}
+					}
+					if s.ErrKey == "WARN0076" {
+						cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+
+						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_xtrabackup.xbtream", servertoreseed)
+
+					}
+					if s.ErrKey == "WARN0077" {
+						cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
+						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_mysqldump.sql.gz", servertoreseed)
+					}
+					//		cluster.statecloseChan <- s
+				}
 				states := cluster.sme.GetStates()
 				for i := range states {
 					cluster.LogPrintf("STATE", states[i])
-				}
-				cstates := cluster.sme.GetResolvedStates()
-				for _, s := range cstates {
-					cluster.statecloseChan <- s
 				}
 				cluster.sme.ClearState()
 				if cluster.sme.GetHeartbeats()%60 == 0 {
@@ -294,6 +319,11 @@ func (cluster *Cluster) Run() {
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}
+}
+
+func (cluster *Cluster) Stop() {
+	cluster.scheduler.Stop()
+	cluster.exit = true
 }
 
 func (cluster *Cluster) Save() error {
@@ -333,33 +363,6 @@ func (cluster *Cluster) Save() error {
 		}
 	}
 
-	return nil
-}
-
-func (cluster *Cluster) ReloadFromSave() error {
-
-	type Save struct {
-		Servers string    `json:"servers"`
-		Crashes crashList `json:"crashes"`
-		SLA     state.Sla `json:"sla"`
-	}
-
-	var clsave Save
-	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
-	if err != nil {
-		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
-		return err
-	}
-	err = json.Unmarshal(file, &clsave)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "File error: %v\n", err)
-		return err
-	}
-	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
-	}
-	cluster.Crashes = clsave.Crashes
-	cluster.sme.SetSla(clsave.SLA)
 	return nil
 }
 
@@ -451,6 +454,7 @@ func (cluster *Cluster) SwitchOver() {
 	cluster.switchoverChan <- true
 }
 
+// Deprecated tentative to auto generate self signed certificates
 func (cluster *Cluster) loadDBCertificate() error {
 
 	if cluster.Conf.HostsTLSCA == "" {
@@ -517,9 +521,76 @@ func (cluster *Cluster) BackupLogs() {
 	}
 }
 
+func (cluster *Cluster) ResetCrashes() {
+	cluster.Crashes = nil
+}
 func (cluster *Cluster) Optimize() {
 	for _, s := range cluster.slaves {
 		jobid, _ := s.JobOptimize()
 		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
+}
+
+func (cluster *Cluster) schemaMonitor() {
+	if !cluster.Conf.MonitorSchemaChange && !cluster.Conf.MdbsProxyOn {
+		return
+	}
+	if cluster.master == nil {
+		return
+	}
+	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance {
+		return
+	}
+	cluster.sme.SetMonitorSchemaState()
+
+	tables, err := dbhelper.GetTables(cluster.master.Conn)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
+	}
+	var duplicates []*ServerMonitor
+	var tottablesize, totindexsize int64
+	for _, t := range tables {
+		tottablesize += t.Data_length
+		totindexsize += t.Index_length
+		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
+		duplicates = nil
+		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+		haschanged := false
+		if err != nil {
+			if err.Error() == "Empty" {
+				cluster.LogPrintf(LvlDbg, "Init table %s", t.Table_schema+"."+t.Table_name)
+				haschanged = true
+			} else {
+				cluster.LogPrintf(LvlDbg, "New table %s", t.Table_schema+"."+t.Table_name)
+				haschanged = true
+			}
+		} else if oldtable.Table_crc != t.Table_crc {
+			haschanged = true
+			cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+		}
+		if haschanged {
+
+			for _, cl := range cluster.clusterList {
+				if cl.GetName() != cluster.GetName() {
+					m := cl.GetMaster()
+					if m != nil {
+						cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+						if cltbldef.Table_name == t.Table_name {
+							duplicates = append(duplicates, cl.GetMaster())
+							cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+						}
+					}
+				}
+			}
+			for _, pr := range cluster.Proxies {
+				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+					cluster.createMdbsproxyVTable(pr, t, duplicates)
+				}
+			}
+		}
+	}
+	cluster.DBIndexSize = totindexsize
+	cluster.DBTableSize = tottablesize
+	cluster.master.DictTables = tables
+	cluster.sme.RemoveMonitorSchemaState()
 }

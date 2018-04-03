@@ -148,15 +148,15 @@ func (sst *SST) stream_copy() <-chan int {
 
 func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 
-	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.IP, 4444))
+	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, 4444))
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port 4444 server %s %s ", sv.IP, err)
+		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port 4444 server %s %s ", sv.Host, err)
 		return
 	}
 	defer client.Close()
 	file, err := os.Open(backupfile)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port 4444 server %s %s ", sv.IP, err)
+		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
 	}
 	/*fileInfo, err := file.Stat()
@@ -174,6 +174,6 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 		}
 		client.Write(sendBuffer)
 	}
-	cluster.LogPrintf(LvlErr, "File has been sent, closing connection!")
+	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
 
 }

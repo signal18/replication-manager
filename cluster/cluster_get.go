@@ -7,12 +7,41 @@
 package cluster
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/state"
 )
+
+func (cluster *Cluster) GetPersitentState() error {
+
+	type Save struct {
+		Servers string    `json:"servers"`
+		Crashes crashList `json:"crashes"`
+		SLA     state.Sla `json:"sla"`
+	}
+
+	var clsave Save
+	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
+	if err != nil {
+		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
+		return err
+	}
+	err = json.Unmarshal(file, &clsave)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "File error: %v\n", err)
+		return err
+	}
+	if len(clsave.Crashes) > 0 {
+		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
+	}
+	cluster.Crashes = clsave.Crashes
+	cluster.sme.SetSla(clsave.SLA)
+	return nil
+}
 
 func (cluster *Cluster) GetMaster() *ServerMonitor {
 	if cluster.master == nil {
@@ -197,11 +226,20 @@ func (cluster *Cluster) GetServerFromName(name string) *ServerMonitor {
 }
 
 func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
-	for _, server := range cluster.Servers {
-		if server.Host+":"+server.Port == url {
-			return server
+	if strings.Contains(url, ":") {
+		for _, server := range cluster.Servers {
+			if server.Host+":"+server.Port == url {
+				return server
+			}
+		}
+	} else {
+		for _, server := range cluster.Servers {
+			if server.Host == url {
+				return server
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -229,17 +267,7 @@ func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonit
 		}
 
 	}
-	// Possible that we can't found the master because the replication host and configurartion host missmatch:  hostname vs IP
-	// Lookup for reverse DNS IP match
-	/*	if cluster.master != nil {
-		is, err := dbhelper.IsSlaveof(s.Conn, s.Host, cluster.master.IP, cluster.master.Port)
-		if err != nil {
-			return nil, nil
-		}
-		if is {
-			return cluster.master, nil
-		}
-	}*/
+
 	return nil, nil
 }
 

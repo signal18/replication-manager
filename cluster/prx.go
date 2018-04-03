@@ -127,7 +127,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadWritePort = cluster.Conf.MxsReadWritePort
 
 			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -150,7 +150,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort = cluster.Conf.HaproxyWritePort
 			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
 
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -160,16 +160,18 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.ExtProxyOn {
+		cluster.LogPrintf(LvlInfo, "Loading External Route...")
 		prx := new(Proxy)
 		prx.Type = proxyExternal
 		prx.Host, prx.Port = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 		prx.WritePort, _ = strconv.Atoi(prx.Port)
 		prx.ReadPort = prx.WritePort
 		prx.ReadWritePort = prx.WritePort
+		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
 	if cluster.Conf.ProxysqlOn {
-
 		for _, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
 			cluster.LogPrintf(LvlInfo, "Loading ProxySQL...")
@@ -192,17 +194,14 @@ func (cluster *Cluster) newProxyList() error {
 				p.Decrypt()
 				prx.Pass = p.PlainText
 			}
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
 			}
-
 			ctproxy++
 		}
-
 	}
-
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
 		for _, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			cluster.LogPrintf(LvlInfo, "Loading MdbShardProxy...")
@@ -213,7 +212,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -234,7 +233,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -255,7 +254,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadWritePort = cluster.Conf.MyproxyPort
 		prx.User = cluster.Conf.MyproxyUser
 		prx.Pass = cluster.Conf.MyproxyPassword
-		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Host+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 
 		ctproxy++
@@ -360,8 +359,15 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
 			}
 		}
 	}
+	cluster.initConsul()
 }
 
+// called  by server monitor if state change
+func (cluster *Cluster) backendStateChangeProxies() {
+	cluster.initConsul()
+}
+
+// Used to monitor proxies call by main monitor loop
 func (cluster *Cluster) refreshProxies() {
 
 	for _, pr := range cluster.Proxies {

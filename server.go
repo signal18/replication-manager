@@ -135,6 +135,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 
+	monitorCmd.Flags().BoolVar(&conf.PRXReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
+
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Switchover wait this many milliseconds before killing threads on demoted master")
 	monitorCmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Switchover is canceled if a write query is running for this time")
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Switchover is cancel after this timeout in second if can't aquire FTWRL")
@@ -169,14 +171,16 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	monitorCmd.Flags().IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
 
-	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatically rejoin a failed server to the current master")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "Automatically backup ahead binlogs when old master rejoin")
+	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatic rejoin a failed master")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "backup ahead binlogs events when old master rejoin")
 	monitorCmd.Flags().StringVar(&conf.RejoinScript, "autorejoin-script", "", "Path of old master rejoin script")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinFlashback, "autorejoin-flashback", false, "Automatically rejoin a failed server to the current master and flashback at the time of election if new master was delayed")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinSemisync, "autorejoin-flashback-on-sync", true, "Automatically rejoin a failed server to the current master when elected semisync status is SYNC ")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinNoSemisync, "autorejoin-flashback-on-unsync", false, "Automatically rejoin a failed server to the current master when elected semisync status is NOT SYNC ")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatically rejoin a failed server to the current master using mysqldump")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinZFSFlashback, "autorejoin-zfs-flashback", false, "Automatically failover service via ZFS send receive")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinSemisync, "autorejoin-flashback-on-sync", true, "Automatic rejoin flashback if election status is semisync SYNC ")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinNoSemisync, "autorejoin-flashback-on-unsync", false, "Automatic rejoin flashback if election status is semisync NOT SYNC ")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinFlashback, "autorejoin-flashback", false, "Automatic rejoin ahead failed master via binlog flashback")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinZFSFlashback, "autorejoin-zfs-flashback", false, "Automatic rejoin ahead failed master via previous ZFS snapshot")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed master via direct current master dump")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed master via reseed previous phyiscal backup")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinLogicalBackup, "autorejoin-logical-backup", false, "Automatic rejoin ahead failed master via reseed previous logical backup")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinSlavePositionalHearbeat, "autorejoin-slave-positional-hearbeat", false, "Automatically rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 
 	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
@@ -454,6 +458,8 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvSSLCa, "prov-tls-server-ca", "", "server TLS ca")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLCert, "prov-tls-server-cert", "", "server TLS cert")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
+			monitorCmd.Flags().BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
+			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 
 		}
 	}

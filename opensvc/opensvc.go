@@ -96,6 +96,7 @@ type Collector struct {
 	ProvNetMask                 string
 	ProvNetGateway              string
 	ProvNetIface                string
+	ProvNetCNI                  bool
 	ProvMicroSrv                string
 	ProvFSType                  string
 	ProvFSPool                  string
@@ -118,7 +119,8 @@ type Collector struct {
 	ProvProxDockerShardproxyImg string
 	ProvProxTags                string
 	ProvCores                   string
-	Verbose                     int
+
+	Verbose int
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
@@ -1521,7 +1523,13 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
 	log.Println("INFO ", urlpost)
 
-	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "unprovision"}]`)
+	var jsonStr = []byte(`[{"svc_id":"` + serviceid + `", "action": "delete", "options": [{"option": "unprovision"}]}]`)
+	//	1.8 syntax
+	//	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "unprovision"}]`)
+
+	//	1.9 syntax
+	//	delete --unprovision --foo=bar
+	//{"action": "delete", "options": [{"option": "unprovision"}, {"option": "foo", "value": "bar"}]}
 	req, err := http.NewRequest("PUT", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		return 0, err
