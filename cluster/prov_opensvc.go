@@ -317,8 +317,17 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	if collector.ProvMicroSrv != "docker" {
 		return string("")
 	}
-	conf = conf + `
+	if cluster.Conf.ProvDockerDaemonPrivate {
+		conf = conf + `
 docker_daemon_private = true
+`
+	} else {
+		conf = conf + `
+docker_daemon_private = false
+`
+	}
+	conf = conf + `
+
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m `
 	if collector.ProvFSPool == "zpool" {
