@@ -459,7 +459,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvSSLCert, "prov-tls-server-cert", "", "server TLS cert")
 			monitorCmd.Flags().StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 			monitorCmd.Flags().BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
-			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker_daemon_private", true, "Use global or private registry per service")
+			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 
 		}
 	}
