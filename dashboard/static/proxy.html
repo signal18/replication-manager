@@ -1,122 +1,152 @@
+<md-content class="md-padding">
+   <md-card ng-repeat="proxy in proxies">
 
-                        <md-content class="md-padding">
-                            <md-card ng-repeat="proxy in proxies">
-                                <md-card-content>
-                                    <p class="sectionheader">{{proxy.type}}</p>
-                                </md-card-content>
-                                <table ng-if="proxies" class="table">
-                                    <tbody>
+         <md-menu >
+              <md-button aria-label="Open proxy interactions menu" class="md-raised" ng-click="$mdMenu.open($event)">
+                 <md-icon md-menu-origin class="fa fa-bars "></md-icon>
+              </md-button>
+              <md-menu-content>
+                 <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+                    <md-menu >
+                       <md-button ng-click="$mdMenu.open($event)">
+                          <span md-menu-align-target>
+                             Provision
+                             <md-icon  class="fas fa-arrow-right"></md-icon>
+                          </span>
+                       </md-button>
+                       <md-menu-content>
+                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxprovision(proxy.id)">
+                             <md-button>
+                                <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                Provision Proxy
+                             </md-button>
+                          </md-menu-item>
+                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxunprovision(proxy.id)">
+                             <md-button>
+                                <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                                Unprovision Proxy
+                             </md-button>
+                          </md-menu-item>
+                       </md-menu-content>
+                    </md-menu>
+                 </md-menu-item>
+              </md-menu-content>
+           </md-menu>
 
+      <div layout="column" layout-gt-xs="row">
+      <div flex-gt-xs="30" class="col-lg-30">
+        <md-card>
+         <table border=0 ng-if="proxies" class="table">
+            <tr valign="middle">
+               <th colspan=2> <p class="sectionheader">{{proxy.type}}  </p></th>
 
-                                        <tr valign="middle">
-                                            <th>Actions</th>
-                                            <th>Id</th>
-                                            <th>Host</th>
-                                            <th>Port</th>
-                                            <th>Version</th>
-                                            <th ng-if="proxy.type!='proxysql'">WritePort</th>
-                                            <th ng-if="proxy.type=='proxysql'">WriterHG</th>
-                                            <th ng-if="proxy.type!='proxysql'">ReadPort</th>
-                                            <th ng-if="proxy.type=='proxysql'">ReaderHG</th>
-                                            <th>ReadWritePort</th>
-                                        </tr>
-                                        <tr>
-                                            <td>
-                                              <md-menu >
-                                                 <md-button aria-label="Open proxy interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
-                                                    <md-span md-menu-origin class="fas fa-ellipsis-h"></md-span>
-                                                 </md-button>
-                                                 <md-menu-content>
-                                                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
-                                                       <md-menu >
-                                                          <md-button ng-click="$mdMenu.open($event)">
-                                                             <span md-menu-align-target>
-                                                                Provision
-                                                                <md-icon  class="fas fa-arrow-right"></md-icon>
-                                                             </span>
-                                                          </md-button>
-                                                          <md-menu-content>
-                                                             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxprovision(proxy.id)">
-                                                                <md-button>
-                                                                   <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
-                                                                   Provision Proxy
-                                                                </md-button>
-                                                             </md-menu-item>
-                                                             <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxunprovision(proxy.id)">
-                                                                <md-button>
-                                                                   <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                                                                   Unprovision Proxy
-                                                                </md-button>
-                                                             </md-menu-item>
-                                                          </md-menu-content>
-                                                       </md-menu>
-                                                 </md-menu-item>
-                                                 </md-menu-content>
-                                              </md-menu>
-
-                                            </td>
-                                            <td>{{proxy.id}}</td>
-                                            <td>{{proxy.host}}</td>
-                                            <td>{{proxy.port}}</td>
-                                            <td>{{proxy.version}}</td>
-                                            <td ng-if="proxy.Type!='proxysql'">{{proxy.WritePort}}</td>
-                                            <td ng-if="proxy.Type!='proxysql'">{{proxy.ReadPort}}</td>
-                                            <td ng-if="proxy.Type=='proxysql'">{{proxy.WriterHostgroup}}</td>
-                                            <td ng-if="proxy.Type=='proxysql'">{{proxy.ReaderHostgroup}}</td>
-                                            <td>{{proxy.readWritePort}}</td>
-
-                                        </tr>
-                                        <tr>
-
-                                            <td colspan="7">
-
-                                                <table  class="table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Role</th>
-                                                            <th>Host</th>
-                                                            <th>Port</th>
-                                                            <th>Status</th>
-                                                            <th>Proxy Name</th>
-                                                            <th>Proxy Status</th>
-                                                            <th>Proxy Connections</th>
-                                                            <th>Proxy Bytes Out</th>
-                                                            <th>Proxy Bytes In</th>
-                                                            <th>Proxy Session Avg Time</th>
-                                                            <th ng-if="proxy.type=='proxysql'">Proxy Hostgroup</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
-                                                        <th>Write</th>
-                                                        <td>{{server.host}}</td>
-                                                        <td>{{server.port}}</td>
-                                                        <td>{{server.status}}</td>
-                                                        <td>{{server.prxName}}</td>
-                                                        <td>{{server.prxStatus}}</td>
-                                                        <td>{{server.prxConnections}}</td>
-                                                        <td>{{server.prxByteOut}}</td>
-                                                        <td>{{server.prxByteIn}}</td>
-                                                        <td>{{server.prxLatency}}</td>
-                                                        <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
-                                                    </tr>
-                                                    <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
-                                                        <th>Read</th>
-                                                        <td>{{server.host}}</td>
-                                                        <td>{{server.port}}</td>
-                                                        <td>{{server.status}}</td>
-                                                        <td>{{server.prxName}}</td>
-                                                        <td>{{server.prxStatus}}</td>
-                                                        <td>{{server.prxConnections}}</td>
-                                                        <td>{{server.prxByteOut}}</td>
-                                                        <td>{{server.prxByteIn}}</td>
-                                                        <td>{{server.prxLatency}}</td>
-                                                        <td ng-if="proxy.type=='proxysql'">{{server.PrxHostgroup}}</td>
-                                                    </tr>
-                                                </table>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </md-card>
-
-                        </md-content>
+            </tr>
+            <tr>
+               <td>Id</td>
+               <td>{{proxy.id}}</td>
+            </tr>
+            <tr>
+               <td>Proxy Server</td>
+               <td>{{proxy.host}}:{{proxy.port}}({{proxy.version}})</td>
+            </tr>
+            <tr>
+               <td ng-if="proxy.type!='proxysql'">Write Port</td>
+               <td ng-if="proxy.Type!='proxysql'">{{proxy.writePort}}</td>
+            </tr>
+            <tr>
+               <td ng-if="proxy.type=='proxysql'">Writer HG</td>
+               <td ng-if="proxy.Type=='proxysql'">{{proxy.writerHostgroup}}</td>
+            </tr>
+            <tr>
+               <td ng-if="proxy.type!='proxysql'">Read Port</td>
+               <td ng-if="proxy.Type!='proxysql'">{{proxy.readPort}}</td>
+            </tr>
+            <tr>
+               <td ng-if="proxy.type=='proxysql'">Reader HG</td>
+               <td ng-if="proxy.Type=='proxysql'">{{proxy.readerHostgroup}}</td>
+            </tr>
+            <tr>
+               <td>Read Write Port</td>
+               <td>{{proxy.readWritePort}}</td>
+            </tr>
+         </table>
+       </md-card>
+      </div>
+      <div flex-gt-xs="5" class="col-lg-5"></div>
+      <div flex-gt-xs="65" class="col-lg-65">
+        <md-card>
+         <table  border=0 class="table">
+            <thead>
+               <tr>
+                  <th>Host Group</th>
+                  <th>Database Servers</th>
+                  <th>Db Status</th>
+                  <th>Proxy Name</th>
+                  <th>Proxy Status</th>
+                  <th>Proxy Connections</th>
+                  <th>Proxy Bytes Out</th>
+                  <th>Proxy Bytes In</th>
+                  <th>Proxy Session Avg Time</th>
+                  <th ng-if="proxy.type=='proxysql'">Proxy Hostgroup</th>
+               </tr>
+            </thead>
+            <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
+               <td>Write</td>
+               <td>{{server.host}}:{{server.port}}</td>
+               <td ng-switch="server.status">
+                  <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
+                     ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
+                     ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+               </td>
+               <td>{{server.prxName}}</td>
+               <td>{{server.prxStatus}}</td>
+               <td>{{server.prxConnections}}</td>
+               <td>{{server.prxByteOut}}</td>
+               <td>{{server.prxByteIn}}</td>
+               <td>{{server.prxLatency}}</td>
+               <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
+            </tr>
+            <tr>
+               <th>Host Group</th>
+               <th>Database Servers</th>
+               <th>Db Status</th>
+               <th>Proxy Name</th>
+               <th>Proxy Status</th>
+               <th>Proxy Connections</th>
+               <th>Proxy Bytes Out</th>
+               <th>Proxy Bytes In</th>
+               <th>Proxy Session Avg Time</th>
+               <th ng-if="proxy.type=='proxysql'">Proxy Hostgroup</th>
+            </tr>
+            <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
+               <td>Read</td>
+               <td>{{server.host}}:{{server.port}}</td>
+               <td ng-switch="server.status">
+                  <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
+                     ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
+                     ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+               </td>
+               <td>{{server.prxName}}</td>
+               <td>{{server.prxStatus}}</td>
+               <td>{{server.prxConnections}}</td>
+               <td>{{server.prxByteOut}}</td>
+               <td>{{server.prxByteIn}}</td>
+               <td>{{server.prxLatency}}</td>
+               <td ng-if="proxy.type=='proxysql'">{{server.PrxHostgroup}}</td>
+            </tr>
+         </table>
+       </md-card>
+      </div>
+      </div>
+   </md-card>
+</md-content>
