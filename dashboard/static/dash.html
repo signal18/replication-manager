@@ -244,26 +244,26 @@
   <table ng-if="servers" class="table">
 
       <tr>
-          <th>Actions</th>
-          <th>Host</th>
-          <th>Port</th>
-          <th>Version</th>
+          <th></th>
+          <th>Db Servers</th>
           <th>Status</th>
-          <th>Priority</th>
+
           <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</th>
           <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</th>
-          <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID Pos</th>
+          <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</th>
           <th ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</th>
           <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</th>
           <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</th>
-          <th>IO Thread</th>
-          <th>SQL Thread</th>
-          <th>Delay</th>
-          <th>Read Only</th>
-          <th>Fail Count</th>
-          <th>Scheduler</th>
-          <th>Master Sync</th>
-          <th>Slave Sync</th>
+
+          <th width="60px">Repl Delay</th>
+          <th width="60px">Fail Count</th>
+          <th width="60px">Pref Ignor</th>
+          <th width="60px">IO Thread</th>
+          <th width="60px">SQL Thread</th>
+          <th width="60px">Read Only</th>
+          <th width="60px">Event Sched</th>
+          <th width="60px">Master Sync</th>
+          <th width="60px">Slave Sync</th>
 
       </tr>
 
@@ -272,6 +272,7 @@
       ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
       <td>
         <md-menu >
+
  <md-button aria-label="Open server interactions menu" class="md-icon-button" ng-click="$mdMenu.open($event)">
     <md-span md-menu-origin class="fas fa-ellipsis-h"></md-span>
  </md-button>
@@ -395,9 +396,8 @@
  </md-menu-content>
 </md-menu>
       </td>
-      <td>{{server.host}}</td>
-      <td>{{server.port}}</td>
-      <td>{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}</td>
+      <td>{{server.host}}:{{server.port}}({{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}})</td>
+
       <td ng-switch="server.state">
           <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
           <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -408,9 +408,7 @@
                   ng-if="server.isVirtualMaster==true">-VMaster</label></span>
           <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
       </td>
-      <td ng-if="server.ignored==true"><i class="fa fa-2x fa-thumbs-down text-danger"/></td>
-      <td ng-if="server.prefered==true"><i class="fa fa-2x fa-thumbs-up text-success"/></td>
-      <td ng-if="server.prefered==false && server.ignored==false"></td>
+
   <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</td>
   <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</td>
   <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</td>
@@ -420,22 +418,36 @@
   <th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</th>
   <th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</th>
 
-  <td>{{server.replications[0].slaveIoRunning.String}}</td>
-  <td>{{server.replications[0].slaveIoRunning.String}}</td>
+
   <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
-  <td>{{server.readOnly}}</td>
   <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
-      <td ng-if="server.eventScheduler==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+  <td ng-if="server.ignored==true"><i class="fa fa-1x fa-thumbs-down text-danger"/></td>
+  <td ng-if="server.prefered==true"><i class="fa fa-1x fa-thumbs-up text-success"/></td>
+  <td ng-if="server.prefered==false && server.ignored==false"></td>
+  <td ng-if="server.replications[0].slaveIoRunning.String=='Yes'"><i class="fa fa-1x fa-check-circle text-success"></i>
+  </td>
+  <td ng-if="server.replications[0].slaveIoRunning.String!='Yes'"><i class="fa fa-1x fa-times-circle text-danger"></i>
+  </td>
+  <td ng-if="server.replications[0].slaveSqlRunning.String=='Yes'"><i class="fa fa-1x fa-check-circle text-success"></i>
+  </td>
+  <td ng-if="server.replications[0].slaveSqlRunning.String!='Yes'"><i class="fa fa-1x fa-times-circle text-danger"></i>
+  </td>
+
+    <td ng-if="server.readOnly=='ON'"><i class="fa fa-1x fa-check-circle text-success"></i>
+    </td>
+    <td ng-if="server.readOnly=='OFF'"><i class="fa fa-1x fa-times-circle text-danger"></i>
+    </td>
+      <td ng-if="server.eventScheduler==true"><i class="fa fa-1x fa-check-circle text-success"></i>
       </td>
-      <td ng-if="server.eventScheduler==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+      <td ng-if="server.eventScheduler==false"><i class="fa fa-1x fa-times-circle text-danger"></i>
       </td>
-      <td ng-if="server.semiSyncMasterStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+      <td ng-if="server.semiSyncMasterStatus==true"><i class="fa fa-1x fa-check-circle text-success"></i>
       </td>
-      <td ng-if="server.semiSyncMasterStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+      <td ng-if="server.semiSyncMasterStatus==false"><i class="fa fa-1x fa-times-circle text-danger"></i>
       </td>
-      <td ng-if="server.semiSyncSlaveStatus==true"><i class="fa fa-2x fa-check-circle text-success"></i>
+      <td ng-if="server.semiSyncSlaveStatus==true"><i class="fa fa-1x fa-check-circle text-success"></i>
       </td>
-      <td ng-if="server.semiSyncSlaveStatus==false"><i class="fa fa-2x fa-times-circle text-danger"></i>
+      <td ng-if="server.semiSyncSlaveStatus==false"><i class="fa fa-1x fa-times-circle text-danger"></i>
       </td>
 
   </tr>
