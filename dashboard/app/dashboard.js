@@ -1,4 +1,4 @@
-app.controller('DashboardController', 
+app.controller('DashboardController',
     function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
@@ -251,6 +251,8 @@ app.controller('DashboardController',
           $mdDialog.show({
           contentElement: '#myClusterDialog',
           parent: angular.element(document.body),
+          clickOutsideToClose: false,
+          escapeToClose: false,
          });
 
        };
@@ -328,11 +330,14 @@ app.controller('DashboardController',
          $mdDialog.show({
          contentElement: '#myClusterDebugDialog',
          parent: angular.element(document.body),
-        });
+         });
+          $scope.menuOpened = true;
        };
        $scope.closeDebugClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myClusterDebugDialog', });
+         $scope.menuOpened = false;
        };
+
        $scope.openDebugServerDialog = function() {
          $mdDialog.show({
          contentElement: '#myServerDebugDialog',
@@ -360,8 +365,12 @@ app.controller('DashboardController',
         function buildToggler(componentId) {
             return function () {
                 $mdSidenav(componentId).toggle();
+
             };
         };
+
+
+
 
 
         $scope.$on('$mdMenuOpen', function (event, menu) {

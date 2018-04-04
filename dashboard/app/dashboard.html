@@ -161,6 +161,9 @@
         <div class="alert alert-warning" ng-if="menuOpened">
           <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
         </div>
+        <div class="alert alert-warning" ng-if="!selectedCluster">
+          <strong>Warning!</strong> Multiple clusters use menu to open!
+        </div>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
