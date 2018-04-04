@@ -248,7 +248,7 @@ app.controller('DashboardController',
         $scope.openClusterDialog = function() {
           $scope.menuOpened = true;
           $scope.openedAt = new Date().toLocaleString();
-          await sleep(500);
+            
           $mdDialog.show({
           contentElement: '#myClusterDialog',
           parent: angular.element(document.body),
