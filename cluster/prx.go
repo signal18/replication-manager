@@ -49,7 +49,7 @@ type Proxy struct {
 
 type Backend struct {
 	Host           string `json:"host"`
-	Port           string `json:"Port"`
+	Port           string `json:"port"`
 	Status         string `json:"status"`
 	PrxName        string `json:"prxName"`
 	PrxStatus      string `json:"prxStatus"`
