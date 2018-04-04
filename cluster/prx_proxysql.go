@@ -43,7 +43,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		if cluster.Conf.ProxysqlBootstrap {
 			err = psql.AddServer(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s (%s)", s.URL, err)
+				cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
 			}
 		}
 		if s.State == stateUnconn {

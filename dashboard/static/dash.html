@@ -244,8 +244,8 @@
   <table ng-if="servers" class="table">
 
       <tr>
-          <th></th>
-          <th>Db Servers</th>
+
+          <th colspan=2>Database Servers</th>
           <th>Status</th>
 
           <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</th>
