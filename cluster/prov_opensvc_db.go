@@ -167,15 +167,15 @@ func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, ser
 nodes = {env.nodes}
 cluster_type = failover
 rollback = true
+orchestrate = start
 `
 	} else {
 		conf = `
 [DEFAULT]
 nodes = {env.nodes}
 flex_primary = {env.nodes[0]}
-cluster_type = flex
+topology = flex
 rollback = false
-show_disabled = false
 `
 	}
 	conf = conf + server.ClusterGroup.GetDockerDiskTemplate(collector)
@@ -207,7 +207,7 @@ show_disabled = false
 schedule = @1
 command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/trigger-dbjobs
 user = root
-run_requires = fs#01(up,stdby up)
+run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 
 `
 

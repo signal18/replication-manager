@@ -19,9 +19,9 @@ func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers s
 [DEFAULT]
 nodes = {env.nodes}
 flex_primary = {env.nodes[0]}
-cluster_type = flex
+topology = flex
 rollback = false
-show_disabled = false
+orchestrate = start
 `
 	conf = conf + cluster.GetDockerDiskTemplate(collector)
 	i := 0
@@ -32,15 +32,14 @@ show_disabled = false
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerSphinxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
-
 	conf = conf + `[task0]
-   schedule = ` + cluster.Conf.ProvSphinxCron + `
-	 command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/reindex.sh
-	 user = root
-	 run_requires = fs#01(up,stdby up)
+schedule = ` + cluster.Conf.ProvSphinxCron + `
+command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/reindex.sh
+user = root
+run_requires = fs#01(up,stdby up)
 
-	`
+`
+	conf = conf + cluster.GetProxiesEnv(collector, servers, agent, prx)
 
 	log.Println(conf)
 	return conf, nil

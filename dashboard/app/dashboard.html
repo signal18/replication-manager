@@ -1,25 +1,19 @@
 <div class="col-lg-12">
     <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
-        <div style="padding: 20px 0px 20px 20px;">
-            <table width="100%">
+        <div style="padding: 10px 5px 10px 4px;">
+            <table width="100%" border=0>
                 <tr>
-                    <td>
-                        <span ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"
-                                                                         alt="Replication Manager"/></span>
+                  <td align="left">
+                    <span style="padding: 0px 0px 10px 0px"  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"  alt="Replication Manager"/></span>
+                  </td>
+                    <td align="right" >
+                      <span style="padding: 0px -0px 0px 0px"   ng-click="toggleLeft()">
+                       <md-icon  md-menu-origin class="fa fa-2x fa-bars" style="color:#468cc5"></md-icon>
+                     </span>
                     </td>
-                    <td>
-                    </td>
-                    <td width="40" align="center">
-                <span ng-if="isLoggedIn" ng-click="logout()">
-                  <md-icon class="fa fa-sign-out fa-2x" aria-hidden="true"></md-icon>
-                </span>
-                    </td>
-
 
                 </tr>
-
             </table>
-
         </div>
         <md-sidenav class="md-sidenav-left" md-component-id="left" layout="column" layout-align="top center"
                     md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
@@ -28,25 +22,27 @@
                     <md-list-item>
                         <li class="text-center">
                             <a ng-click="openClusterDialog()" href="#" data-toggle="collapse" data-target="#two"><i
-                                    class="fa fa-3x fa-folder-open"></i><br>Open Cluster<BR><BR></a>
+                                    class="fa fa-3x fa-folder-open"></i><br>Open<BR><BR></a>
                         </li>
                     </md-list-item>
                     <md-list-item>
                         <li width="100%" class="text-center">
                             <a ng-click="newClusterDialog()" href="#" data-toggle="collapse" data-target="#one"><i
-                                    class="fa fa-3x fa-plus-circle"></i><br>New Cluster<BR><BR></a>
+                                    class="fa fa-3x fa-plus-circle"></i><br>New<BR><BR></a>
                         </li>
                     </md-list-item>
-                    <md-list-item>
+                    <md-list-item ng-if="selectedClusterName">
                         <li class="text-center">
-                            <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Cluster
-                                Settins<BR><BR></a>
+                            <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Settins<BR><BR></a>
                         </li>
                     </md-list-item>
+                    <li ng-if="isLoggedIn" class="text-center">
+                        <a ng-click="logout()" href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-sign-out"></i><br>Logout
+                            <BR><BR></a>
+                    </li>
+
                 </md-nav-list>
             </ul>
-
-
         </md-sidenav>
         <div style="visibility: hidden">
             <div class="md-dialog-container" id="myClusterDialog">
@@ -132,7 +128,59 @@
                 </md-dialog>
             </div>
         </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myClusterDebugDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{selectedCluster}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeDebugClusterDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myServerDebugDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{servers}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeDebugServerDialog()" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myProcessListDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{selectedCluster}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeProcessListDialog" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
 
+
+        <div class="alert alert-warning" ng-if="menuOpened">
+          <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
+        </div>
+        <div class="alert alert-warning" ng-if="!selectedCluster">
+          <strong>Warning!</strong> Multiple clusters use menu to open!
+        </div>
         <md-content layout="column">
             <md-tabs md-dynamic-height="" md-border-bottom="">
                 <md-tab label="Dashboard">
@@ -161,8 +209,8 @@
         </md-content>
     </div>
     <footer class="footer">
-        <div class="container">
-            <span class="text-muted">Replication-Manager {{settings.version}} © 2017 SIGNAL 18 SARL</span>
+        <div >
+            <span align="right" class="text-muted">Replication-Manager {{settings.version}} © 2017 SIGNAL 18 SARL</span>
         </div>
     </footer>
 </div>

@@ -118,7 +118,7 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 			cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.sme.AddState("ERR0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+			cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			return nil
@@ -188,22 +188,28 @@ func (cluster *Cluster) GetPodNetTemplate(collector opensvc.Collector, pod strin
 	net = net + `
 [ip#` + pod + `]
 tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
-ipdev = ` + collector.ProvNetIface + `
 `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
+	ipdev = eth12
 	container_rid = container#00` + pod + `
 	ipname = {svcname}
+	network = repman
 `
+		// if proxy
+		// expose = port/tcp
+		// repman to get variable backend-network
+		return net
 		//expose = {env.port_pod01}/tcp:8000
 	} else if collector.ProvMicroSrv == "docker" {
 		net = net + `type = docker
 
 container_rid = container#00` + pod + `
 `
-	}
 
+	}
 	net = net + `
+ipdev = ` + collector.ProvNetIface + `
 ipname = {env.ip_pod` + fmt.Sprintf("%02d", i+1) + `}
 netmask = {env.netmask}
 network = {env.network}
@@ -229,7 +235,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 type = loop
 file = ` + collector.ProvFSPath + `/{svcname}_pod` + pod + `.dsk
 size = {env.size}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -239,7 +245,7 @@ always_on = nodes
 name = {svcname}_` + pod + `
 type = lvm
 pvs = {disk#` + pod + `.file}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -249,7 +255,7 @@ always_on = nodes
 name = zp{svcname}_pod` + pod + `
 type = zpool
 vdev  = {disk#` + pod + `.file}
-always_on = nodes
+standby = true
 
 `
 	}
@@ -298,7 +304,7 @@ size = {env.size}
 		}
 		fs = fs + `
 mnt = {env.base_dir}/pod` + pod + `
-always_on = nodes
+standby = true
 `
 
 	}
@@ -311,8 +317,17 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	if collector.ProvMicroSrv != "docker" {
 		return string("")
 	}
-	conf = conf + `
+	if cluster.Conf.ProvDockerDaemonPrivate {
+		conf = conf + `
 docker_daemon_private = true
+`
+	} else {
+		conf = conf + `
+docker_daemon_private = false
+`
+	}
+	conf = conf + `
+
 docker_data_dir = {env.base_dir}/docker
 docker_daemon_args = --log-opt max-size=1m `
 	if collector.ProvFSPool == "zpool" {

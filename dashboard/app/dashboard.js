@@ -1,5 +1,5 @@
-app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$http', '$location', '$mdSidenav','$mdDialog', 'Servers', 'Monitor', 'Alerts', 'Master', 'Proxies', 'Slaves', 'Cluster', 'AppService',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav,$mdDialog, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
+app.controller('DashboardController',
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
@@ -72,7 +72,11 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
                 });
 
                 Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    $scope.proxies = data;
+                  if (!$scope.menuOpened) {
+                      $scope.proxies = data;
+                      $scope.reserror = false;
+                  }
+
                 }, function () {
                     $scope.reserror = true;
                 });
@@ -126,6 +130,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.dbunprovision = function (server) {
             if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
         };
+        $scope.prxprovision = function (id) {
+            if (confirm("Confirm provision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+        };
+        $scope.prxunprovision = function (id) {
+            if (confirm("Confirm unprovision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+        };
         $scope.dbreseedxtrabackup = function (server) {
             if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
         };
@@ -154,6 +164,8 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.toggletraffic = function () {
             if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-hearbeat');
         };
+
+
 
         $scope.resetfail = function () {
             if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
@@ -236,9 +248,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         $scope.openClusterDialog = function() {
           $scope.menuOpened = true;
           $scope.openedAt = new Date().toLocaleString();
+            
           $mdDialog.show({
           contentElement: '#myClusterDialog',
           parent: angular.element(document.body),
+          clickOutsideToClose: false,
+          escapeToClose: false,
          });
 
        };
@@ -261,6 +276,9 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          if (confirm("Confirm Creating Cluster "+ $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' +$scope.dlgClusterName);
          callServices();
          $scope.selectedClusterName=$scope.dlgClusterName;
+         $scope.setClusterCredentialDialog();
+         $scope.setRplCredentialDialog();
+
        };
        $scope.cancelNewClusterDialog = function() {
          $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
@@ -281,13 +299,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
        };
 
-
        $scope.setClusterCredentialDialog = function() {
          $mdDialog.show({
          contentElement: '#myClusterCredentialDialog',
          parent: angular.element(document.body),
         });
-      };
+       };
        $scope.closeClusterCredentialDialog = function() {
          $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
           if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' +$scope.dlgClusterUser+':'+$scope.dlgClusterPassword);
@@ -310,6 +327,29 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
          $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
        };
 
+       $scope.openDebugClusterDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myClusterDebugDialog',
+         parent: angular.element(document.body),
+         });
+          $scope.menuOpened = true;
+       };
+       $scope.closeDebugClusterDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myClusterDebugDialog', });
+         $scope.menuOpened = false;
+       };
+
+       $scope.openDebugServerDialog = function() {
+         $mdDialog.show({
+         contentElement: '#myServerDebugDialog',
+         parent: angular.element(document.body),
+        });
+       };
+       $scope.closeDebugServerDialog = function() {
+         $mdDialog.hide(  {contentElement: '#myServerDebugDialog', });
+       };
+
+
         $scope.selectUserIndex = function (index) {
             var r = confirm("Confirm select Index  " + index);
             if ($scope.selectedUserIndex !== index) {
@@ -326,8 +366,12 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
         function buildToggler(componentId) {
             return function () {
                 $mdSidenav(componentId).toggle();
+
             };
         };
+
+
+
 
 
         $scope.$on('$mdMenuOpen', function (event, menu) {
@@ -341,4 +385,4 @@ app.controller('DashboardController', ['$scope', '$routeParams', '$interval', '$
             $scope.openedAt = "";
         });
 
-    }]);
+    });

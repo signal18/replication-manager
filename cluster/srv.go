@@ -44,10 +44,6 @@ type ServerMonitor struct {
 	IP                          string                    `json:"ip"`
 	Strict                      string                    `json:"strict"`
 	ServerID                    uint                      `json:"serverId"`
-	ErrorLogTailer              *tail.Tail                `json:"-"`
-	ErrorLog                    httplog.HttpLog           `json:"errorLog"`
-	SlowLogTailer               *tail.Tail                `json:"-"`
-	SlowLog                     slowlog.SlowLog           `json:"slowLog"`
 	LogBin                      string                    `json:"logBin"`
 	GTIDBinlogPos               *gtid.List                `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                `json:"currentGtid"`
@@ -65,7 +61,7 @@ type ServerMonitor struct {
 	RplMasterStatus             bool                      `json:"rplMasterStatus"`
 	EventScheduler              bool                      `json:"eventScheduler"`
 	EventStatus                 []dbhelper.Event          `json:"eventStatus"`
-	FullProcessList             []dbhelper.Processlist    `json:"fullProcessList"`
+	FullProcessList             []dbhelper.Processlist    `json:"-"`
 	ClusterGroup                *Cluster                  `json:"-"` //avoid recusive json
 	BinaryLogFile               string                    `json:"binaryLogFile"`
 	BinaryLogPos                string                    `json:"binaryLogPos"`
@@ -87,7 +83,6 @@ type ServerMonitor struct {
 	HaveMariaDBGTID             bool                      `json:"haveMariadbGtid"`
 	HaveWsrep                   bool                      `json:"haveWsrep"`
 	HaveReadOnly                bool                      `json:"haveReadOnly"`
-	Version                     int                       `json:"-"`
 	IsWsrepSync                 bool                      `json:"isWsrepSync"`
 	IsWsrepDonor                bool                      `json:"isWsrepDonor"`
 	IsMaxscale                  bool                      `json:"isMaxscale"`
@@ -108,14 +103,23 @@ type ServerMonitor struct {
 	MasterStatus                dbhelper.MasterStatus     `json:"masterStatus"`
 	ReplicationSourceName       string                    `json:"replicationSourceName"`
 	DBVersion                   *dbhelper.MySQLVersion    `json:"dbVersion"`
-	Status                      map[string]string         `json:"status"`
-	Variables                   map[string]string         `json:"variables"`
-	EngineInnoDB                map[string]string         `json:"engineInnodb"`
-	Queries                     map[string]string         `json:"queries"`
+	QPS                         int64                     `json:"qps"`
 	ReplicationHealth           string                    `json:"replicationHealth"`
 	TestConfig                  string                    `json:"testConfig"`
+	Variables                   map[string]string         `json:"variables"`
+	EngineInnoDB                map[string]string         `json:"engineInnodb"`
+	ErrorLog                    httplog.HttpLog           `json:"errorLog"`
+	SlowLog                     slowlog.SlowLog           `json:"slowLog"`
+	Status                      map[string]string         `json:"-"`
+	Queries                     map[string]string         `json:"-"` //PFS queries
 	DictTables                  map[string]dbhelper.Table `json:"-"`
 	Users                       map[string]dbhelper.Grant `json:"-"`
+	ErrorLogTailer              *tail.Tail                `json:"-"`
+	SlowLogTailer               *tail.Tail                `json:"-"`
+	PrevStatus                  map[string]string         `json:"-"`
+	PrevMonitorTime             int64                     `json:"-"`
+	MonitorTime                 int64                     `json:"-"`
+	Version                     int                       `json:"-"`
 }
 
 type serverList []*ServerMonitor
@@ -168,7 +172,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.PrevState = stateSuspect
 
 	crcTable := crc64.MakeTable(crc64.ECMA)
-	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
+	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.URL), crcTable), 10)
 	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
 	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
@@ -276,7 +280,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			//}
+			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
 		}
 		if server.PrevState != server.State {
@@ -381,7 +385,8 @@ func (server *ServerMonitor) Refresh() error {
 
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) {
 		// maxscale don't support show variables
-
+		server.PrevMonitorTime = server.MonitorTime
+		server.MonitorTime = time.Now().Unix()
 		server.Variables, err = dbhelper.GetVariables(server.Conn)
 
 		if err != nil {
@@ -541,6 +546,7 @@ func (server *ServerMonitor) Refresh() error {
 	if server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
+	server.PrevStatus = server.Status
 	server.Status, _ = dbhelper.GetStatus(server.Conn)
 	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
 	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
@@ -568,6 +574,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsWsrepDonor = true
 	} else {
 		server.IsWsrepDonor = false
+	}
+	if len(server.PrevStatus) > 0 {
+		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
+		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
+		server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 	}
 
 	// Initialize graphite monitoring

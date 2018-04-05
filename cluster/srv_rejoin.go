@@ -107,6 +107,10 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
 			return errors.New("Dump from master failed")
 		}
+	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
+		server.JobFlashbackMysqldump()
+	} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
+		server.JobFlashbackXtraBackup()
 	} else if server.ClusterGroup.Conf.AutorejoinZFSFlashback {
 		server.RejoinPreviousSnapshot()
 	} else if server.ClusterGroup.Conf.RejoinScript != "" {
@@ -424,6 +428,8 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 
 	// In case of state change, reintroduce the server in the slave list
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn || server.PrevState == stateSuspect {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Set stateSlave from rejoin slave %s", server.URL)
+
 		server.State = stateSlave
 		server.FailCount = 0
 		if server.PrevState != stateSuspect {

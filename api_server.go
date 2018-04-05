@@ -233,7 +233,7 @@ func handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+
 			w.Write([]byte("503 -Not a Valid Master!"))
 		}
 	} else {
@@ -251,7 +251,7 @@ func handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request)
 		if node == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Node not Found!"))
-
+			return
 		}
 		if node != nil && mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
 			w.Write([]byte("200 -Valid Master!"))
@@ -260,7 +260,7 @@ func handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Master!"))
-
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -274,7 +274,7 @@ func handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -295,12 +295,14 @@ func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) 
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && node.HasReplicationIssue() == false {
+		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))
+			//	w.WriteHeader(http.StatusInternalServerError)
+			http.Error(w, "-Not a Valid Slave!", 503)
+			//	w.Write([]byte("503 -Not a Valid Slave!"))
+			return
 		}
 
 	} else {

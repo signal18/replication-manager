@@ -347,7 +347,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				allslavefailed = false
 			}
 		}
-		if allslavefailed {
+		if allslavefailed && cluster.IsDiscovered() {
 			if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
 				// forget the master if safe mode
 				cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)

@@ -76,7 +76,7 @@
                         </td>
                     </tr>
                     <tr>
-                        <th>SemiSync Failover Only On State Sync</th>
+                        <th>Failover Only On Semi-sync State Sync</th>
                     </tr>
                     <tr>
                         <td>
@@ -91,7 +91,23 @@
                         </td>
                     </tr>
                     <tr>
-                        <th>SemiSync Switchover Only On State Sync</th>
+                        <th>Failover Using Pseudo GTID</th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <md-switch ng-true-value="true" ng-false-value="false"
+                                       ng-model="selectedCluster.config.autorejoinSlavePositionalHearbeat"
+                                       ng-click="switchsettings('autorejoin-slave-positional-hearbeat')"
+                                       aria-label="Auto rejoin using pseudo GTID">
+                                <span ng-if="selectedCluster.config.autorejoinSlavePositionalHearbeat"
+                                      class="label label-primary">On</span><span
+                                    ng-if="!selectedCluster.config.autorejoinSlavePositionalHearbeat" class="label label-warning">Off</span>
+                        </td>
+                        </md-switch>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Switchover Only On Semi-sync State Sync</th>
                     </tr>
                     <tr>
                         <td>
@@ -128,7 +144,7 @@
             <md-card>
                 <table ng-if="settings" class="table">
                     <tr>
-                        <th>Auto Rejoin</th>
+                        <th>Failback</th>
                     </tr>
                     <tr>
                         <td>
@@ -142,7 +158,7 @@
                     </tr>
 
                     <tr>
-                        <th>Auto Rejoin Backup ahead events</th>
+                        <th>Failback Backup Extra Events</th>
                     </tr>
                     <tr>
                         <td>
@@ -158,14 +174,14 @@
                     </tr>
 
                     <tr>
-                        <th>Auto Rejoin Semisync SYNC state</th>
+                        <th>Failback Fashback when Semi-sync status Sync</th>
                     </tr>
                     <tr>
                         <td>
                             <md-switch ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinFlashbackOnSync"
                                        ng-click="switchsettings('autorejoin-flashback-on-sync')"
-                                       aria-label="Auto rejoin with binlog flashback only if semisync ">
+                                       aria-label="Failback with binlog flashback only if semisync ">
                                 <span ng-if="selectedCluster.config.autorejoinFlashbackOnSync" class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.autorejoinFlashbackOnSync" class="label label-warning">Off</span>
                         </td>
@@ -174,14 +190,14 @@
                     </tr>
 
                     <tr>
-                        <th>Auto Rejoin Flashback</th>
+                        <th>Failback Binlog Flashback</th>
                     </tr>
                     <tr>
                         <td>
                             <md-switch ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinFlashback"
                                        ng-click="switchsettings('autorejoin-flashback')"
-                                       aria-label="Auto rejoin with binlog flashback">
+                                       aria-label="Failback with binlog flashback">
                                 <span ng-if="selectedCluster.config.autorejoinFlashback"
                                       class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.autorejoinFlashback" class="label label-warning">Off</span>
@@ -191,7 +207,7 @@
                     </tr>
 
                     <tr>
-                        <th>Auto Rejoin Dump</th>
+                        <th>Failback Master Dump</th>
                     </tr>
                     <tr>
                         <td>
@@ -204,22 +220,7 @@
                         </md-switch>
                         </td>
                     </tr>
-                    <tr>
-                        <th>Auto Rejoin Pseudo GTID</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-true-value="true" ng-false-value="false"
-                                       ng-model="selectedCluster.config.autorejoinSlavePositionalHearbeat"
-                                       ng-click="switchsettings('autorejoin-slave-positional-hearbeat')"
-                                       aria-label="Auto rejoin using pseudo GTID">
-                                <span ng-if="selectedCluster.config.autorejoinSlavePositionalHearbeat"
-                                      class="label label-primary">On</span><span
-                                    ng-if="!selectedCluster.config.autorejoinSlavePositionalHearbeat" class="label label-warning">Off</span>
-                        </td>
-                        </md-switch>
-                        </td>
-                    </tr>
+
                 </table>
             </md-card>
         </div>

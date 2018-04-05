@@ -71,7 +71,7 @@ var clusterError = map[string]string{
 	"ERR00061": "No user:password credential specified",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
-	"WARN0046": "Provision task is working",
+	"WARN0046": "Provision task is waiting",
 	"WARN0047": "Entreprise provision of MariaDB Sharding Cluster not yet implemented",
 	"WARN0048": "No semisync settings on slave %s",
 	"WARN0049": "No binlog format ROW on slave %s and flashback activated",

@@ -53,6 +53,8 @@ type Cluster struct {
 	UptimeFailable       string          `json:"uptimeFailable"`
 	UptimeSemiSync       string          `json:"uptimeSemisync"`
 	MonitorSpin          string          `json:"monitorSpin"`
+	DBTableSize          int64           `json:"dbTableSize"`
+	DBIndexSize          int64           `json:"dbIndexSize"`
 	Log                  httplog.HttpLog `json:"log"`
 	hostList             []string
 	proxyList            []string
@@ -546,7 +548,10 @@ func (cluster *Cluster) schemaMonitor() {
 		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
 	}
 	var duplicates []*ServerMonitor
+	var tottablesize, totindexsize int64
 	for _, t := range tables {
+		tottablesize += t.Data_length
+		totindexsize += t.Index_length
 		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
 		duplicates = nil
 		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
@@ -584,6 +589,8 @@ func (cluster *Cluster) schemaMonitor() {
 			}
 		}
 	}
+	cluster.DBIndexSize = totindexsize
+	cluster.DBTableSize = tottablesize
 	cluster.master.DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
 }

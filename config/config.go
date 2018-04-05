@@ -45,6 +45,7 @@ type Config struct {
 	ReadTimeout                        int    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	MariaDBBinaryPath                  string `mapstructure:"db-servers-binary-path" toml:"db-servers-binary-path" json:"dbServersBinaryPath"`
 	DBServersLocality                  string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
+	PRXReadOnMaster                    bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                            string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	MasterConn                         string `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
@@ -275,6 +276,7 @@ type Config struct {
 	ProvSSLCertUUID                    string `mapstructure:"prov-tls-server-cert-uuid" toml:"-" json:"-"`
 	ProvSSLKeyUUID                     string `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
 	ProvNetCNI                         bool   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
+	ProvDockerDaemonPrivate            bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	APIUser                            string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
 	APIPort                            string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                            string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
