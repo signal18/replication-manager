@@ -77,7 +77,7 @@ func (cluster *Cluster) CleanupBench() error {
 	}
 	if cluster.benchmarkType == "sysbench" {
 		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
-		cluster.LogPrintf("BENCHMARK : %s", cleanup)
+		cluster.LogPrintf("BENCH", "%s", cleanup)
 		var cmdcls *exec.Cmd
 		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
 		var outcls bytes.Buffer
