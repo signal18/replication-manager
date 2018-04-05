@@ -114,8 +114,13 @@
                <td>{{server.prxByteOut}}</td>
                <td>{{server.prxByteIn}}</td>
                <td>{{server.prxLatency}}</td>
-               <td ng-if="proxy.Type=='proxysql'">{{server.PrxHostgroup}}</td>
+               <td ng-if="proxy.Type=='proxysql'">{{server.prxHostgroup}}</td>
             </tr>
+          </table>
+        </md-card>
+          <BR>
+              <md-card>
+         <table>
             <tr>
               <th>Host Group</th>
               <th>Db Name</th>
@@ -128,6 +133,7 @@
               <th>Bck Session Time</th>
               <th ng-if="proxy.type=='proxysql'">Prx Host Group</th>
             </tr>
+
             <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
                <td>Read</td>
                <td>{{server.host}}:{{server.port}}</td>
@@ -153,7 +159,7 @@
        </md-card>
       </div>
       </div>
-   
+
    <BR>
  </diV>
 
