@@ -158,6 +158,23 @@
                 </md-dialog>
             </div>
         </div>
+        <div style="visibility: hidden">
+            <div class="md-dialog-container" id="myProcessListDialog">
+                <md-dialog style="padding: 20px 20px 20px 20px;">
+                    <h2 class="md-title">JSON</h2>
+                    <form>
+                      <textarea name="message" rows="30" cols="150">
+                        {{selectedCluster}}
+                      </textarea>
+                    </form>
+                    <md-button ng-click="closeProcessListDialog" class="md-primary">
+                        Ok
+                    </md-button>
+                </md-dialog>
+            </div>
+        </div>
+
+
         <div class="alert alert-warning" ng-if="menuOpened">
           <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
         </div>

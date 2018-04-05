@@ -221,6 +221,7 @@
               <th>Manager Status</th>
               <th>Failover Count</th>
               <th>Last Failover Time</th>
+              <th>Qps</th>
               <th>Table Size</th>
               <th>Index Size</th>
           </tr>
@@ -232,6 +233,7 @@
               </td>
               <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
               <td>{{selectedCluster.failoverLastTime}}</td>
+              <td>{{master.qps}}</td>
               <td>{{selectedCluster.dbTableSize}}</td>
               <td>{{selectedCluster.dbIndexSize}}</td>
           </tr>
