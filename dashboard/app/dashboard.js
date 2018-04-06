@@ -257,8 +257,9 @@ app.controller('DashboardController',
          });
 
        };
+
        $scope.closeClusterDialog = function() {
-        $mdDialog.hide(  {contentElement: '#myClusterDialog', });
+        $mdDialog.hide(  { contentElement: '#myClusterDialog' });
         $scope.menuOpened = false;
         $scope.menuOpened = "";
         $mdSidenav('left').close();
