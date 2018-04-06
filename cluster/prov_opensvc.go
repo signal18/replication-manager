@@ -191,10 +191,10 @@ tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
 `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
-	ipdev = eth12
-	container_rid = container#00` + pod + `
-	ipname = {svcname}
-	network = repman
+ipdev = eth12
+container_rid = container#00` + pod + `
+ipname = {svcname}
+network = repman
 `
 		// if proxy
 		// expose = port/tcp
