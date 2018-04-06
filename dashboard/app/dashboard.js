@@ -29,10 +29,10 @@ app.controller('DashboardController',
                 if (data) {
                     if (!$scope.menuOpened) {
                         $scope.settings = data;
-                        if (($scope.settings.clusters !== undefined)){
+                        if ($scope.settings.clusters !== undefined) {
                             if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
-                            } else {
+                            } else if ($scope.settings.clusters.length > 1){
                                 $scope.openClusterDialog();
                             }
                         }
