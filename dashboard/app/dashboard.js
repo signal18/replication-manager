@@ -28,12 +28,17 @@ app.controller('DashboardController',
             Monitor.query({}, function (data) {
                 if (data) {
                     if (!$scope.menuOpened) {
-                      $scope.settings = data;
-                      if (($scope.settings.clusters !== undefined) && $scope.settings.clusters.length === 1){
-                          $scope.selectedClusterName = $scope.settings.clusters[0];
-                      }
-                      if (data.logs.buffer) $scope.logs = data.logs.buffer;
-                      $scope.agents = data.agents;
+                        $scope.settings = data;
+                        if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
+                            if ($scope.settings.clusters.length === 1) {
+                                $scope.selectedClusterName = $scope.settings.clusters[0];
+                            } else if ($scope.settings.clusters.length > 1){
+                                $scope.openClusterDialog();
+                            }
+                        }
+
+                        if (data.logs.buffer) $scope.logs = data.logs.buffer;
+                        $scope.agents = data.agents;
                     }
                 }
             }, function () {
@@ -72,10 +77,10 @@ app.controller('DashboardController',
                 });
 
                 Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
-                  if (!$scope.menuOpened) {
-                      $scope.proxies = data;
-                      $scope.reserror = false;
-                  }
+                    if (!$scope.menuOpened) {
+                        $scope.proxies = data;
+                        $scope.reserror = false;
+                    }
 
                 }, function () {
                     $scope.reserror = true;
@@ -166,7 +171,6 @@ app.controller('DashboardController',
         };
 
 
-
         $scope.resetfail = function () {
             if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
         };
@@ -176,7 +180,7 @@ app.controller('DashboardController',
         };
 
         $scope.bootstrap = function (topo) {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/'+topo);
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/' + topo);
         };
 
         $scope.provision = function () {
@@ -245,109 +249,110 @@ app.controller('DashboardController',
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
         };
 
-        $scope.openClusterDialog = function() {
-          $scope.menuOpened = true;
-          $scope.openedAt = new Date().toLocaleString();
-            
-          $mdDialog.show({
-          contentElement: '#myClusterDialog',
-          parent: angular.element(document.body),
-          clickOutsideToClose: false,
-          escapeToClose: false,
-         });
+        $scope.openClusterDialog = function () {
+            $scope.menuOpened = true;
+            $scope.openedAt = new Date().toLocaleString();
 
-       };
-       $scope.closeClusterDialog = function() {
-        $mdDialog.hide(  {contentElement: '#myClusterDialog', });
-        $scope.menuOpened = false;
-        $scope.menuOpened = "";
-        $mdSidenav('left').close();
-       };
+            $mdDialog.show({
+                contentElement: '#myClusterDialog',
+                parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
+            });
 
-       $scope.newClusterDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myNewClusterDialog',
-         parent: angular.element(document.body),
-        });
-       };
-       $scope.closeNewClusterDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
-         $mdSidenav('left').close();
-         if (confirm("Confirm Creating Cluster "+ $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' +$scope.dlgClusterName);
-         callServices();
-         $scope.selectedClusterName=$scope.dlgClusterName;
-         $scope.setClusterCredentialDialog();
-         $scope.setRplCredentialDialog();
+        };
 
-       };
-       $scope.cancelNewClusterDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myNewClusterDialog', });
-        $mdSidenav('left').close();
-       };
+        $scope.closeClusterDialog = function () {
+            $mdDialog.hide({contentElement: '#myClusterDialog'});
+            $scope.menuOpened = false;
+            $scope.menuOpened = "";
+            $mdSidenav('left').close();
+        };
 
-       $scope.newServerDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myNewServerDialog',
-         parent: angular.element(document.body),
-        });
-      };
-       $scope.closeNewServerDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
-          if (confirm("Confirm adding new server "+ $scope.dlgServerName +":"+ $scope.dlgServerPort )) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' +$scope.dlgServerName+'/'+$scope.dlgServerPort);
-       };
-       $scope.cancelNewServerDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myNewServerDialog', });
-       };
+        $scope.newClusterDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myNewClusterDialog',
+                parent: angular.element(document.body),
+            });
+        };
+        $scope.closeNewClusterDialog = function () {
+            $mdDialog.hide({contentElement: '#myNewClusterDialog',});
+            $mdSidenav('left').close();
+            if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
+            callServices();
+            $scope.selectedClusterName = $scope.dlgClusterName;
+            $scope.setClusterCredentialDialog();
+            $scope.setRplCredentialDialog();
 
-       $scope.setClusterCredentialDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myClusterCredentialDialog',
-         parent: angular.element(document.body),
-        });
-       };
-       $scope.closeClusterCredentialDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
-          if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' +$scope.dlgClusterUser+':'+$scope.dlgClusterPassword);
-       };
-       $scope.cancelClusterCredentialDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myClusterCredentialDialog', });
-       };
+        };
+        $scope.cancelNewClusterDialog = function () {
+            $mdDialog.hide({contentElement: '#myNewClusterDialog',});
+            $mdSidenav('left').close();
+        };
 
-       $scope.setRplCredentialDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myRplCredentialDialog',
-         parent: angular.element(document.body),
-        });
-      };
-       $scope.closeRplCredentialDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
-          if (confirm("Confirm set user/password" )) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/replication-credential/' +$scope.dlgRplUser+':'+$scope.dlgRplPassword);
-       };
-       $scope.cancelRplCredentialDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myRplCredentialDialog', });
-       };
+        $scope.newServerDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myNewServerDialog',
+                parent: angular.element(document.body),
+            });
+        };
+        $scope.closeNewServerDialog = function () {
+            $mdDialog.hide({contentElement: '#myNewServerDialog',});
+            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort);
+        };
+        $scope.cancelNewServerDialog = function () {
+            $mdDialog.hide({contentElement: '#myNewServerDialog',});
+        };
 
-       $scope.openDebugClusterDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myClusterDebugDialog',
-         parent: angular.element(document.body),
-         });
-          $scope.menuOpened = true;
-       };
-       $scope.closeDebugClusterDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myClusterDebugDialog', });
-         $scope.menuOpened = false;
-       };
+        $scope.setClusterCredentialDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myClusterCredentialDialog',
+                parent: angular.element(document.body),
+            });
+        };
+        $scope.closeClusterCredentialDialog = function () {
+            $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
+            if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' + $scope.dlgClusterUser + ':' + $scope.dlgClusterPassword);
+        };
+        $scope.cancelClusterCredentialDialog = function () {
+            $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
+        };
 
-       $scope.openDebugServerDialog = function() {
-         $mdDialog.show({
-         contentElement: '#myServerDebugDialog',
-         parent: angular.element(document.body),
-        });
-       };
-       $scope.closeDebugServerDialog = function() {
-         $mdDialog.hide(  {contentElement: '#myServerDebugDialog', });
-       };
+        $scope.setRplCredentialDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myRplCredentialDialog',
+                parent: angular.element(document.body),
+            });
+        };
+        $scope.closeRplCredentialDialog = function () {
+            $mdDialog.hide({contentElement: '#myRplCredentialDialog',});
+            if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/replication-credential/' + $scope.dlgRplUser + ':' + $scope.dlgRplPassword);
+        };
+        $scope.cancelRplCredentialDialog = function () {
+            $mdDialog.hide({contentElement: '#myRplCredentialDialog',});
+        };
+
+        $scope.openDebugClusterDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myClusterDebugDialog',
+                parent: angular.element(document.body),
+            });
+            $scope.menuOpened = true;
+        };
+        $scope.closeDebugClusterDialog = function () {
+            $mdDialog.hide({contentElement: '#myClusterDebugDialog',});
+            $scope.menuOpened = false;
+        };
+
+        $scope.openDebugServerDialog = function () {
+            $mdDialog.show({
+                contentElement: '#myServerDebugDialog',
+                parent: angular.element(document.body),
+            });
+        };
+        $scope.closeDebugServerDialog = function () {
+            $mdDialog.hide({contentElement: '#myServerDebugDialog',});
+        };
 
 
         $scope.selectUserIndex = function (index) {
@@ -368,17 +373,14 @@ app.controller('DashboardController',
                 $mdSidenav(componentId).toggle();
 
             };
-        };
-
-
-
-
+        }
 
         $scope.$on('$mdMenuOpen', function (event, menu) {
             console.log('Opening menu refresh server will stop...', event, menu);
             $scope.menuOpened = true;
             $scope.openedAt = new Date().toLocaleString();
         });
+
         $scope.$on('$mdMenuClose', function (event, menu) {
             console.log('Closing menu refresh servers will resume...', event, menu);
             $scope.menuOpened = false;
