@@ -33,7 +33,7 @@ app.controller('DashboardController',
                             if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
                             } else if ($scope.settings.clusters.length > 1){
-                                $scope.openClusterDialog();
+                                if (!$scope.selectedClusterName) $scope.openClusterDialog();
                             }
                         }
 
