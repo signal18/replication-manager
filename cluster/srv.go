@@ -34,6 +34,7 @@ import (
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Id                          string                    `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Name                        string                    `json:"Name"`
 	Conn                        *sqlx.DB                  `json:"-"`
 	User                        string                    `json:"user"`
 	Pass                        string                    `json:"-"`
@@ -147,14 +148,22 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
-
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string, name string) (*ServerMonitor, error) {
+	crcTable := crc64.MakeTable(crc64.ECMA)
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
-	server.ReplicationSourceName = cluster.Conf.MasterConn
-	server.SetCredential(url, user, pass)
-	server.TestConfig = conf
+	server.Name = name
+	if server.Name == "" {
+		server.Name = server.URL
+	}
+	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
+	if url == "" {
+		url = server.Id + ".default:3306"
+	}
 
+	server.SetCredential(url, user, pass)
+	server.ReplicationSourceName = cluster.Conf.MasterConn
+	server.TestConfig = conf
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveSyncBinLog = true
@@ -171,8 +180,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.State = stateSuspect
 	server.PrevState = stateSuspect
 
-	crcTable := crc64.MakeTable(crc64.ECMA)
-	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.URL), crcTable), 10)
 	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
 	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
