@@ -29,11 +29,11 @@ app.controller('DashboardController',
                 if (data) {
                     if (!$scope.menuOpened) {
                         $scope.settings = data;
-                        if ($scope.settings.clusters !== undefined) {
+                        if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
                             if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
                             } else if ($scope.settings.clusters.length > 1){
-                                if (!$scope.selectedClusterName) $scope.openClusterDialog();
+                                $scope.openClusterDialog();
                             }
                         }
 
