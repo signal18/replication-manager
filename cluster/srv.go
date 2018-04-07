@@ -158,7 +158,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
 	if url == "" {
-		url = server.Id + ".default:3306"
+		url = server.Id + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
 
 	server.SetCredential(url, user, pass)
