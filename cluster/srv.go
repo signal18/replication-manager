@@ -154,7 +154,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.Name = name
 	if server.Name == "" {
-		server.Name = server.URL
+		server.Name = url
 	}
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
 	if url == "" {
