@@ -34,7 +34,7 @@ import (
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Id                          string                    `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name                        string                    `json:"Name"`
+	Name                        string                    `json:"name"`
 	Conn                        *sqlx.DB                  `json:"-"`
 	User                        string                    `json:"user"`
 	Pass                        string                    `json:"-"`
