@@ -15,12 +15,156 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/codegangsta/negroni"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
 )
+
+func apiClusterUnprotectedHandler(router *mux.Router) {
+	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterMasterPhysicalBackup)),
+	))
+
+}
+
+func apiClusterProtectedHandler(router *mux.Router) {
+	//PROTECTED ENDPOINTS FOR SETTINGS
+	router.Handle("/api/monitor", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxCluster)),
+	))
+
+	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
+	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSettings)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSetSettings)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/reset-failover-control", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterResetFailoverControl)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchover)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/failover", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxFailover)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplication)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/replication/cleanup", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxBootstrapReplicationCleanup)),
+	))
+	router.Handle("/api/clusters/{clusterName}/services/actions/provision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServicesProvision)),
+	))
+	router.Handle("/api/clusters/{clusterName}/services/actions/unprovision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServicesUnprovision)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStopTraffic)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/start-traffic", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxStartTraffic)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/optimize", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterOptimize)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/sysbench", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSysbench)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
+	))
+
+	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
+
+	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterAdd)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServers)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/master", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxMaster)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/slaves", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSlaves)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/logs", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/proxies", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxies)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxAlerts)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/crashes", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxCrashes)),
+	))
+	//PROTECTED ENDPOINTS FOR TESTS
+
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/all", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxTests)),
+	))
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxOneTest)),
+	))
+}
 
 func handlerMuxServers(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc

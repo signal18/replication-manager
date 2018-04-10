@@ -26,6 +26,7 @@ topology = flex
 rollback = false
 orchestrate = start
 `
+	conf += "app = " + cluster.Conf.ProvCodeApp
 	conf = conf + cluster.GetDockerDiskTemplate(collector)
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)

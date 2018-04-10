@@ -12,8 +12,23 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 )
+
+func apiProxyProtectedHandler(router *mux.Router) {
+	//PROTECTED ENDPOINTS FOR PROXIES
+
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
+	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
+	))
+
+}
 
 func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -380,8 +380,8 @@ func init() {
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
-			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "ci.signal18.io:9443", "OpenSVC collector API")
-			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@localhost.localdomain:opensvc", "OpenSVC collector admin user")
+			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
+			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")
 			monitorCmd.Flags().BoolVar(&conf.ProvRegister, "opensvc-register", false, "Register user codeapp to collector, load compliance")
 
 			dbConfig := viper.New()
@@ -397,7 +397,7 @@ func init() {
 			log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))
 			conf.ProvUser = dbConfig.Get("email").(string) + ":" + dbConfig.Get("hashed_password").(string)
 			crcTable := crc64.MakeTable(crc64.ECMA)
-			conf.ProvCodeApp = "Signal" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
+			conf.ProvCodeApp = "APP" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
 			log.Printf("OpenSVC code application: %s", conf.ProvCodeApp)
 
 			//	} else {
@@ -637,14 +637,17 @@ func (repman *ReplicationManager) Run() error {
 	if conf.Enterprise {
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(conf.ProvHost)
 		repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(conf.ProvAdminUser)
-		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(conf.ProvUser)
+		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(conf.ProvUser) //yaml licence
+		repman.OpenSVC.RplMgrCodeApp = conf.ProvCodeApp
 		//don't Bootstrap opensvc to speedup test
 		if conf.ProvRegister {
 			err := repman.OpenSVC.Bootstrap(conf.ShareDir + "/opensvc/")
 			if err != nil {
 				log.Fatalf("%s", err)
 			}
-			log.Fatalf("Registration to %s SAS collector done", conf.ProvHost)
+			log.Fatalf("Registration to %s collector done", conf.ProvHost)
+		} else {
+			repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(conf.ProvUser)
 		}
 		repman.Agents = repman.OpenSVC.GetNodes()
 		if RepMan.Agents == nil {

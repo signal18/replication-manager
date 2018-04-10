@@ -16,6 +16,20 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
+	svc := cluster.OpenSVCConnect()
+	agent, err := cluster.FoundDatabaseAgent(s)
+	if err != nil {
+		cluster.errorChan <- err
+		return ""
+	}
+	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
+	if err != nil {
+		return ""
+	}
+	return res
+}
+
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	svc := cluster.OpenSVCConnect()
@@ -178,6 +192,8 @@ topology = flex
 rollback = false
 `
 	}
+	conf += "app = " + server.ClusterGroup.Conf.ProvCodeApp
+
 	conf = conf + server.ClusterGroup.GetDockerDiskTemplate(collector)
 	//main loop over db instances
 	for i, host := range servers {
