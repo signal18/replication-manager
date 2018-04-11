@@ -356,7 +356,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 			cluster.LogPrintf(LvlInfo, "Waiting for database start %s", server.URL)
 			exitloop++
 
-			_, err := dbhelper.GetStatus(server.Conn)
+			err := server.Refresh()
 			if err == nil {
 				exitloop = 100
 			}
