@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
@@ -356,8 +357,9 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 			cluster.LogPrintf(LvlInfo, "Waiting for database start %s", server.URL)
 			exitloop++
 
-			err := server.Refresh()
+			c, err := sqlx.Open("mysql", server.DSN)
 			if err == nil {
+				c.Close()
 				exitloop = 100
 			}
 
