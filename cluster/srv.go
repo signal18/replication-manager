@@ -156,7 +156,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	if server.Name == "" {
 		server.Name = url
 	}
-	server.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
+	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
 	if url == "" {
 		url = server.Id + "." + server.ClusterGroup.Conf.ProvCodeApp + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}

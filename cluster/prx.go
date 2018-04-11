@@ -77,6 +77,7 @@ type proxyList []*Proxy
 
 func (cluster *Cluster) newProxyList() error {
 	nbproxies := 0
+	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
 		nbproxies += len(strings.Split(cluster.Conf.MxsHost, ","))
 	}
@@ -128,12 +129,12 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadWritePort = cluster.Conf.MxsReadWritePort
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 				prx.Host = prx.Id + ".svc." + cluster.Conf.ProvNetCNICluster
 			} else {
 				prx.Name = proxyHost
 				prx.Host = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			}
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -156,15 +157,14 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort = cluster.Conf.HaproxyWritePort
 			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
 
-			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 				prx.Host = prx.Id + ".svc." + cluster.Conf.ProvNetCNICluster
 			} else {
 				prx.Name = proxyHost
 				prx.Host = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			}
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -187,7 +187,7 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
@@ -215,15 +215,14 @@ func (cluster *Cluster) newProxyList() error {
 				p.Decrypt()
 				prx.Pass = p.PlainText
 			}
-			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 				prx.Host = prx.Id + ".svc." + cluster.Conf.ProvNetCNICluster
 			} else {
 				prx.Name = proxyHost
 				prx.Host = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			}
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -251,7 +250,7 @@ func (cluster *Cluster) newProxyList() error {
 			} else {
 				prx.Name = prx.Host
 			}
-			prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -273,15 +272,15 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
-			crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
+
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 				prx.Host = prx.Id + ".svc." + cluster.Conf.ProvNetCNICluster
 			} else {
 				prx.Name = proxyHost
 				prx.Host = proxyHost
-				prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			}
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -307,7 +306,7 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.Id = strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		if prx.Host == "" {
 			prx.Host = prx.Id + ".svc." + cluster.Conf.ProvNetCNICluster
 		}

@@ -397,7 +397,7 @@ func init() {
 			log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))
 			conf.ProvUser = dbConfig.Get("email").(string) + ":" + dbConfig.Get("hashed_password").(string)
 			crcTable := crc64.MakeTable(crc64.ECMA)
-			conf.ProvCodeApp = "APP" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
+			conf.ProvCodeApp = "ns" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
 			log.Printf("OpenSVC code application: %s", conf.ProvCodeApp)
 
 			//	} else {
