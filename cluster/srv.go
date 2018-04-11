@@ -294,6 +294,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
+	}
+	// reaffect the connection if we lost it
+	if server.Conn == nil {
+		server.Conn = conn
 	} else {
 		defer conn.Close()
 	}
@@ -364,7 +368,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
-
+	if server.Conn == nil {
+		//	server.State = stateFailed
+		return errors.New("Connection is closed, server unreachable")
+	}
 	if server.Conn.Unsafe() == nil {
 		//	server.State = stateFailed
 		return errors.New("Connection is closed, server unreachable")
@@ -585,7 +592,9 @@ func (server *ServerMonitor) Refresh() error {
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
 		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
-		server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
+		if server.MonitorTime-server.PrevMonitorTime > 0 {
+			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
+		}
 	}
 
 	// Initialize graphite monitoring
