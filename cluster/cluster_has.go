@@ -8,20 +8,20 @@ package cluster
 
 import "strings"
 
-func (cluster *Cluster) IsInIgnoredHosts(host string) bool {
+func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
 	for _, ihost := range ihosts {
-		if host == ihost {
+		if server.URL == ihost || server.Name == ihost {
 			return true
 		}
 	}
 	return false
 }
 
-func (cluster *Cluster) IsInPreferedHosts(host string) bool {
+func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.PrefMaster, ",")
 	for _, ihost := range ihosts {
-		if host == ihost {
+		if server.URL == ihost || server.Name == ihost {
 			return true
 		}
 	}

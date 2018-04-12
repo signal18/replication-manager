@@ -196,8 +196,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SlowLog = slowlog.NewSlowLog(20)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
-	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
-	server.SetPrefered(cluster.IsInPreferedHosts(server.URL))
+	server.SetIgnored(cluster.IsInIgnoredHosts(server))
+	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
