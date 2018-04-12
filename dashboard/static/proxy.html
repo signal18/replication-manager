@@ -38,6 +38,10 @@
       <div flex-gt-xs="30" class="col-lg-30">
         <md-card>
          <table style="table-layout: fixed;width: 100%;" border=0 ng-if="proxies" class="table">
+           <colgroup>
+    <col style="width: 30%;">
+    <col style="width: 70%;">
+</colgroup>
             <tr valign="middle">
                <th colspan=2>{{proxy.type}}</th>
 
@@ -47,14 +51,8 @@
                <td>{{proxy.id}}</td>
             </tr>
             <tr>
-               <td>Server
-
-               </td>
-               <td style="overflow: hidden;">
-                 <span title="{{proxy.host}}">
-              {{proxy.host}}
-            </span>
-               </td>
+               <td>Server</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{proxy.host}}</td>
             </tr>
             <td>Port</td>
             <td>{{proxy.port}}</td>
