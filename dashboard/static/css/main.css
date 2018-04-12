@@ -143,6 +143,7 @@ h2, h3 {
 }
 
 .log td {
+  vertical-align :top;
   padding-right: 10px;
 }
 

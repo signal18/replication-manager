@@ -389,16 +389,16 @@
         </table>
     <md-card-content style="height: 600px; overflow-y: auto">
 
-<table class="log">
+<table style="table-layout: fixed;width: 100%;" class="log">
 <tr ng-repeat="logline in selectedCluster.log.buffer" ng-if="logline.timestamp">
-<td class="stamp">{{ logline.timestamp }}</td>
-<td ng-switch="logline.level">
+<td width="150px" class="stamp">{{ logline.timestamp }}</td>
+<td width="70px" ng-switch="logline.level">
 <span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
 <span ng-switch-when="WARN" class="label label-warning">{{ logline.level }}</span>
 <span ng-switch-when="ERROR" class="label label-danger">{{ logline.level }}</span>
 <span ng-switch-when="DEBUG" class="label label-primary">{{ logline.level }}</span>
 <span ng-switch-default class="label label-default">{{ logline.level }}</span>
-<td class="text">{{ logline.text }}</td>
+<td class="text" style="word-wrap:break-word;white-space: normal;" >{{ logline.text }}</td>
 </tr>
 </table>
     </md-pre>
