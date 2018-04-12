@@ -250,7 +250,7 @@ mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
 safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
 safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
 safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
-crc32_id = ` + string(server.Id[0:7]) + `
+crc32_id = ` + string(server.Id[2:10]) + `
 `
 	log.Println(conf)
 
