@@ -35,21 +35,32 @@
            </md-menu>
 
       <div layout="column" layout-gt-xs="row">
-      <div flex-gt-xs="20" class="col-lg-20">
+      <div flex-gt-xs="30" class="col-lg-30">
         <md-card>
-         <table border=0 ng-if="proxies" class="table">
+         <table style="table-layout: fixed;width: 100%;" border=0 ng-if="proxies" class="table">
             <tr valign="middle">
                <th colspan=2>{{proxy.type}}</th>
 
             </tr>
             <tr>
-               <td>Id</td>
+               <td style="min-width:40px;" >Id</td>
                <td>{{proxy.id}}</td>
             </tr>
             <tr>
-               <td>Server</td>
-               <td>{{proxy.host}}:{{proxy.port}}</td>
+               <td>Server <md-button  >
+                    <md-icon class="fas fa-info">
+                   <md-tooltip  md-direction="left">{{proxy.host}}</md-tooltip>
+                 </md-icon>
+                 </md-button>
+               </td>
+               <td style="overflow: hidden;">
+                 <span title="mon tooltip">
+              {{proxy.host}}
+            </span>
+               </td>
             </tr>
+            <td>Port</td>
+            <td>{{proxy.port}}</td>
             <tr>
                <td>Version</td>
                <td>{{proxy.version}}</td>
@@ -78,7 +89,7 @@
        </md-card>
       </div>
       <div flex-gt-xs="5" class="col-lg-5"></div>
-      <div flex-gt-xs="75" class="col-lg-75">
+      <div flex-gt-xs="65" class="col-lg-65">
         <md-card>
          <table  border=0 class="table">
             <thead>
