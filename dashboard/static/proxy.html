@@ -35,12 +35,12 @@
            </md-menu>
 
       <div layout="column" layout-gt-xs="row">
-      <div flex-gt-xs="30" class="col-lg-30">
+      <div flex-gt-xs="25" class="col-lg-25">
         <md-card>
          <table style="table-layout: fixed;width: 100%;" border=0 ng-if="proxies" class="table">
            <colgroup>
-    <col style="width: 30%;">
-    <col style="width: 70%;">
+    <col style="width: 35%;">
+    <col style="width: 65%;">
 </colgroup>
             <tr valign="middle">
                <th colspan=2>{{proxy.type}}</th>
@@ -84,21 +84,20 @@
        </md-card>
       </div>
       <div flex-gt-xs="5" class="col-lg-5"></div>
-      <div flex-gt-xs="65" class="col-lg-65">
+      <div flex-gt-xs="75" class="col-lg-75">
         <md-card>
          <table style="table-layout: fixed;width: 100%;"  border=0 class="table">
             <thead>
                <tr>
-                  <th>Host Group</th>
-                  <th>Db Name</th>
-                  <th>Db Status</th>
-                  <th>Bck Name</th>
-                  <th>Bck Status</th>
-                  <th>Bck Conns</th>
-                  <th>Bck Bytes Out</th>
-                  <th>Bck Bytes In</th>
-                  <th>Bck Session Time</th>
-                  <th ng-if="proxy.type=='proxysql'">Prx Host Group</th>
+                 <th width="100px">Host Group</th>
+                 <th >Db Name</th>
+                 <th width="90px">DB Status</th>
+                 <th width="90px">PX Status</th>
+                 <th width="85px">Conns</th>
+                 <th width="85px">Bytes Out</th>
+                 <th width="85px">Bytes In</th>
+                 <th width="90px">Sess Time</th>
+                 <th width="90px" ng-if="proxy.type=='proxysql'">Prx Host Group</th>
                </tr>
             </thead>
             <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
@@ -126,18 +125,17 @@
         </md-card>
           <BR>
               <md-card>
-         <table class="table">
+         <table style="table-layout: fixed;width: 100%;"  class="table">
             <tr>
-              <th>Host Group</th>
-              <th>Db Name</th>
-              <th>Db Status</th>
-              <th>Bck Name</th>
-              <th>Bck Status</th>
-              <th>Bck Conns</th>
-              <th>Bck Bytes Out</th>
-              <th>Bck Bytes In</th>
-              <th>Bck Session Time</th>
-              <th ng-if="proxy.type=='proxysql'">Prx Host Group</th>
+              <th width="100px">Host Group</th>
+              <th >Db Name</th>
+              <th width="90px">DB Status</th>
+              <th width="90px">PX Status</th>
+              <th width="85px">Conns</th>
+              <th width="85px">Bytes Out</th>
+              <th width="85px">Bytes In</th>
+              <th width="90px">Sess Time</th>
+              <th width="90px" ng-if="proxy.type=='proxysql'">Prx Host Group</th>
             </tr>
 
             <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
