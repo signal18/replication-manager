@@ -102,7 +102,7 @@
             </thead>
             <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
                <td>Write</td>
-               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td ng-switch="server.status">
                   <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -113,13 +113,12 @@
                      ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                </td>
-               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td>{{server.prxStatus}}</td>
                <td>{{server.prxConnections}}</td>
                <td>{{server.prxByteOut}}</td>
                <td>{{server.prxByteIn}}</td>
                <td>{{server.prxLatency}}</td>
-               <td ng-if="proxy.Type=='proxysql'">{{server.prxHostgroup}}</td>
+               <td ng-if="proxy.type=='proxysql'">{{server.prxHostgroup}}</td>
             </tr>
           </table>
         </md-card>
@@ -140,7 +139,7 @@
 
             <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
                <td>Read</td>
-               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td ng-switch="server.status">
                   <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -151,7 +150,6 @@
                      ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                </td>
-               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td>{{server.prxStatus}}</td>
                <td>{{server.prxConnections}}</td>
                <td>{{server.prxByteOut}}</td>
