@@ -178,30 +178,40 @@
     <br/>
     <md-card ng-if="servers">
         <table style="table-layout: fixed;width: 100%;" border=0 ng-if="servers" class="table">
-          <colgroup style="width: 40%;">
+          <colgroup >
    <col style="width: 30px;">
    <col>
-   <col  style="width: 48px;"
+   <col style="width: 48px;">
 </colgroup>
-            <tr>
 
+   <col >
+  
+
+
+            <tr>
             <th colspan=3  >Database Servers</th>
             <th width="60px">Status</th>
-            <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</th>
-            <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</th>
-            <th ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</th>
-            <th ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</th>
-            <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</th>
-            <th ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</th>
-            <th width="60px">Repl Delay</th>
-            <th width="60px">Fail Count</th>
-            <th width="60px">Pref Ignor</th>
-            <th width="60px">IO Thread</th>
-            <th width="60px">SQL Thread</th>
-            <th width="60px">Read Only</th>
-            <th width="60px">Event Sched</th>
-            <th width="60px">Master Sync</th>
-            <th width="60px">Slave Sync</th>
+            <th  style="width: 10%;">
+              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</div>
+              <div ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</div>
+            </th>
+            <th style="width: 10%;">
+              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</div>
+              <div ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</div>
+            </th>
+            <th style="width: 10%;" >
+              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</div>
+              <div ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</div>
+            </th>
+            <th width="60px">Delay</th>
+            <th width="40px">Fail Cnt</th>
+            <th width="40px">Prf Ign</th>
+            <th width="40px">IO Thx</th>
+            <th width="40px">SQL Thx</th>
+            <th width="40px">RO Sts</th>
+            <th width="40px">Evt Sch</th>
+            <th width="40px">Mst Syn</th>
+            <th width="40px">Rep Syn</th>
 
         </tr>
 
@@ -361,16 +371,9 @@
             <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
         </td>
 
-    <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</td>
-    <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</td>
-    <td ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</td>
-    <td ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true ">{{server.gtidExecuted}}</td>
-    <th ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</th>
-    <th ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</th>
-    <th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</th>
-    <th ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</th>
-
-
+    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</div><div ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</div></td>
+    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</div><div ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</div><div ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</div><div ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</div></td>
+    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</div><div ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</div></td>
     <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
     <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
         <td><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
