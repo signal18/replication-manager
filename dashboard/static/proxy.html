@@ -89,7 +89,7 @@
          <table style="table-layout: fixed;width: 100%;"  border=0 class="table">
             <thead>
                <tr>
-                 <th width="100px">Host Group</th>
+                 <th width="70px">Group</th>
                  <th >Db Name</th>
                  <th width="90px">DB Status</th>
                  <th width="90px">PX Status</th>
@@ -97,7 +97,7 @@
                  <th width="85px">Bytes Out</th>
                  <th width="85px">Bytes In</th>
                  <th width="90px">Sess Time</th>
-                 <th width="90px" ng-if="proxy.type=='proxysql'">Prx Host Group</th>
+                 <th width="90px" ng-if="proxy.type=='proxysql'">Id Group</th>
                </tr>
             </thead>
             <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
@@ -126,7 +126,7 @@
               <md-card>
          <table style="table-layout: fixed;width: 100%;"  class="table">
             <tr>
-              <th width="100px">Host Group</th>
+              <th width="80px">Group</th>
               <th >Db Name</th>
               <th width="90px">DB Status</th>
               <th width="90px">PX Status</th>
@@ -134,7 +134,7 @@
               <th width="85px">Bytes Out</th>
               <th width="85px">Bytes In</th>
               <th width="90px">Sess Time</th>
-              <th width="90px" ng-if="proxy.type=='proxysql'">Prx Host Group</th>
+              <th width="90px" ng-if="proxy.type=='proxysql'">Id Group</th>
             </tr>
 
             <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
