@@ -180,12 +180,13 @@
         <table style="table-layout: fixed;width: 100%;" border=0 ng-if="servers" class="table">
           <colgroup >
    <col style="width: 30px;">
-   <col>
    <col style="width: 48px;">
+   <col>
+
 </colgroup>
 
    <col >
-  
+
 
 
             <tr>
@@ -206,9 +207,9 @@
             <th width="60px">Delay</th>
             <th width="40px">Fail Cnt</th>
             <th width="40px">Prf Ign</th>
-            <th width="40px">IO Thx</th>
-            <th width="40px">SQL Thx</th>
-            <th width="40px">RO Sts</th>
+            <th width="40px">Io Thx</th>
+            <th width="40px">Sql Thx</th>
+            <th width="40px">Ro Sts</th>
             <th width="40px">Evt Sch</th>
             <th width="40px">Mst Syn</th>
             <th width="40px">Rep Syn</th>
@@ -349,7 +350,6 @@
                 </md-menu-content>
             </md-menu>
         </td>
-        <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
         <td >
         <div>
           <img ng-if="server.dbVersion.flavor=='MariaDB'" style=" width:50%;" src="static/img/mariadb.png"/>
@@ -359,6 +359,8 @@
              <div class="centered">{{server.dbVersion.major}}.{{server.dbVersion.minor}}</div>
           </div>
         </td>
+        <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
+
 
         <td ng-switch="server.state">
             <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -391,7 +393,7 @@
     <md-card ng-if="selectedCluster">
         <table ng-if="servers" class="table">
             <tr>
-                <th>LOGS</th>
+                <th>Cluster Logs</th>
             </tr>
         </table>
     <md-card-content style="height: 600px; overflow-y: auto">
@@ -436,7 +438,7 @@
 <md-card ng-if="selectedCluster && servers">
 <table ng-if="settings" md-table class="table md-primary md-data-table">
     <tr md-row>
-        <th colspan=2>SLA</th>
+        <th colspan=2>Cluster SLA</th>
     </tr>
 <tr md-row>
     <td>Monitor Tickers</td>
