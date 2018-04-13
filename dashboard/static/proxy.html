@@ -86,7 +86,7 @@
       <div flex-gt-xs="5" class="col-lg-5"></div>
       <div flex-gt-xs="65" class="col-lg-65">
         <md-card>
-         <table  border=0 class="table">
+         <table style="table-layout: fixed;width: 100%;"  border=0 class="table">
             <thead>
                <tr>
                   <th>Host Group</th>
@@ -103,7 +103,7 @@
             </thead>
             <tr ng-repeat="server in proxy.backendsWrite" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
                <td>Write</td>
-               <td>{{server.host}}:{{server.port}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
                <td ng-switch="server.status">
                   <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -114,7 +114,7 @@
                      ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                </td>
-               <td>{{server.prxName}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td>{{server.prxStatus}}</td>
                <td>{{server.prxConnections}}</td>
                <td>{{server.prxByteOut}}</td>
@@ -142,7 +142,7 @@
 
             <tr ng-repeat="server in proxy.backendsRead" ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
                <td>Read</td>
-               <td>{{server.host}}:{{server.port}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
                <td ng-switch="server.status">
                   <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -153,7 +153,7 @@
                      ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   <span ng-switch-default class="label label-default">{{server.status}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                </td>
-               <td>{{server.prxName}}</td>
+               <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.prxName}}</td>
                <td>{{server.prxStatus}}</td>
                <td>{{server.prxConnections}}</td>
                <td>{{server.prxByteOut}}</td>
