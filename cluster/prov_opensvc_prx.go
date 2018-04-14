@@ -234,8 +234,12 @@ func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
 func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) string {
 	i := 0
 	ipPods := ""
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+	if !cluster.Conf.ProvNetCNI {
+		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
 	`
+	} else {
+		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
+	}
 	ips := strings.Split(collector.ProvProxNetGateway, ".")
 	masks := strings.Split(collector.ProvProxNetMask, ".")
 	for i, mask := range masks {
