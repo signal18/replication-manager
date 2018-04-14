@@ -457,6 +457,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
 			server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
 			server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+			server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
 		}
 
 		var sid uint64
