@@ -366,7 +366,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master, reason: %s", err)
 			}
-		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
+		} else if hasMyGTID == true {
 			// We can do MySQL 5.7 style failover
 			cluster.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -843,6 +843,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		if errss == nil {
 			if cluster.master.State != stateFailed {
+				// Need MySQL GTID support
 				seqnos = sl.SlaveGtid.GetSeqNos()
 			} else {
 				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqNos()
