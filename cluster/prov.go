@@ -570,7 +570,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 	//	if err != nil {
 	//		cluster.LogPrintf(LvlInfo, "RESET MASTER failed on master"
 	//	}
-	// Assume master-slave if nothing else is declared && mariadb >10
+	// Assume master-slave if nothing else is declared
 	if cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
 
 		for key, server := range cluster.Servers {
@@ -582,9 +582,10 @@ func (cluster *Cluster) BootstrapReplication() error {
 				server.SetReadWrite()
 				continue
 			} else {
+				// A slave
 				var hasMyGTID bool
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
-
+				//mariadb
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					cluster.Servers[masterKey].Refresh()
 					_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.Servers[masterKey].CurrentGtid.Sprint() + "\"")
@@ -604,7 +605,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 						IsMySQL:   server.DBVersion.IsMySQL(),
 					})
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
-				} else if hasMyGTID {
+				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.Servers[masterKey].Host,
@@ -644,15 +645,14 @@ func (cluster *Cluster) BootstrapReplication() error {
 
 				}
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				}
-				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
-					server.StartSlave()
+					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
+				} else if server.State != stateFailed {
+					err = server.StartSlave()
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
+					}
 				}
 
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				}
 				server.SetReadOnly()
 			}
 
