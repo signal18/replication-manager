@@ -30,7 +30,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 
-	err = cluster.BootstrapReplication()
+	err = cluster.BootstrapReplication(true)
 	if err != nil {
 		return err
 	}
@@ -522,7 +522,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapReplication() error {
+func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
@@ -531,7 +531,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
-	if cluster.CleanAll {
+	if clean {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cleanup error %s", err)

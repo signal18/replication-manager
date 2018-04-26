@@ -400,7 +400,7 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 			mycluster.SetMultiMasterWsrep(true)
 
 		}
-		err := mycluster.BootstrapReplication()
+		err := mycluster.BootstrapReplication(true)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
