@@ -102,4 +102,6 @@ var clusterError = map[string]string{
 	"WARN0075": "Logical backup from master reseeding running on server %s",
 	"WARN0076": "Physical backup for flashback reseeding running on server %s",
 	"WARN0077": "Logical backup for flashback reseeding running on server %s",
+	"WARN0078": "Haproxy version to old to get statistics",
+	"WARN0079": "Haproxy can't get statistics from stats fromtend",
 }

@@ -169,7 +169,11 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 		} else if error != nil {
 			cluster.LogPrintf(LvlErr, "Could not read csv from haproxy response")
 		}
+		if len(line) < 73 {
+			cluster.sme.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
+		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {
+
 			srv := cluster.GetServerFromURL(line[73])
 			if srv != nil {
 
