@@ -473,16 +473,14 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
 			}
-			cluster.sme.RemoveFailoverState()
-			return err
+			continue
 		}
-		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "ResetMaster on server %s ", server.URL)
-		}
+
+		cluster.LogPrintf(LvlInfo, "Reset Master on server %s ", server.URL)
+
 		err = dbhelper.ResetMaster(server.Conn)
 		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
+			cluster.LogPrintf(LvlErr, "Reset Master on server %s %s", server.URL, err)
 		}
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
@@ -492,28 +490,28 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		} else {
 			err = server.StopSlave()
 		}
+
 		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
+			cluster.LogPrintf(LvlErr, "Stop all slaves or just slave %s %s", server.URL, err)
 		}
-		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "Reset all slaves", server.URL)
-		}
-		err = dbhelper.ResetAllSlaves(server.Conn)
-		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
-		}
+
 		if server.DBVersion.IsMariaDB() {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
 			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
 			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
+				cluster.LogPrintf(LvlErr, "SET GLOBAL gtid_slave_pos='' %s %s", server.URL, err)
 			}
 		}
+		// redondante code with previous code missing reset MariaDB GTID or PURGE MySQL GTID
+
+		/*	err = dbhelper.ResetAllSlaves(server.Conn)
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				return err
+			}*/
+
 	}
 	cluster.master = nil
 	cluster.vmaster = nil
