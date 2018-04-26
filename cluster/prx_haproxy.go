@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"io"
@@ -168,9 +169,11 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 			break
 		} else if error != nil {
 			cluster.LogPrintf(LvlErr, "Could not read csv from haproxy response")
+			return err
 		}
 		if len(line) < 73 {
 			cluster.sme.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
+			return errors.New(clusterError["WARN0078"])
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {
 
