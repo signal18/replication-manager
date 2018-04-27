@@ -329,11 +329,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
 		oldMaster.StopSlave() // This is helpful in some cases the old master can have an old replication running
+		one_shoot_slave_pos := false
 		if oldMaster.DBVersion.IsMariaDB() && oldMaster.HaveMariaDBGTID == false && oldMaster.DBVersion.Major >= 10 {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set gtid_slave_pos on old master, reason: %s", err)
 			}
+			one_shoot_slave_pos = true
 		}
 		hasMyGTID, err := dbhelper.HasMySQLGTID(oldMaster.Conn)
 		if err != nil {
@@ -391,20 +393,37 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		} else if cluster.Conf.MxsBinlogOn == false {
 			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
-			// current pos is needed on old master as  writes diverges from slave pos
-			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.Host,
-				Port:      cluster.master.Port,
-				User:      cluster.rplUser,
-				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "CURRENT_POS",
-				SSL:       cluster.Conf.ReplicationSSL,
-				Channel:   cluster.Conf.MasterConn,
-				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
-				IsMySQL:   oldMaster.DBVersion.IsMySQL(),
-			})
+			// current pos is needed on old master as writes diverges from slave pos
+			// if gtid_slave_pos was forced use slave_pos : positional to GTID promotion
+			if one_shoot_slave_pos {
+				changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+					Mode:      "SLAVE_POS",
+					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
+				})
+			} else {
+				changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+					Mode:      "CURRENT_POS",
+					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
+				})
+			}
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
 			}
