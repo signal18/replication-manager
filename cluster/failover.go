@@ -335,7 +335,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
 		dbhelper.StopSlave(oldMaster.Conn) // This is helpful because in some cases the old master can have an old configuration running
-		if cluster.conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
+		if oldMaster.DBVersion.IsMariaDB() && oldMaster.HaveMariaDBGTID == false && oldMaster.DBVersion.Major >= 10 {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set gtid_slave_pos on old master, reason: %s", err)
