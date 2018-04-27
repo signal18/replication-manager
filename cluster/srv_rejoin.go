@@ -346,7 +346,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		}
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
-
+	if mycurrentmaster == nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "No master found from replication")
+		return errors.New("No master found from replication")
+	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
 
 		if server.ClusterGroup.Conf.Verbose {
