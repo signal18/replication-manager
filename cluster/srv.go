@@ -592,7 +592,7 @@ func (server *ServerMonitor) freeze() bool {
 func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 	server.ClusterGroup.LogPrintf("INFO", "Reading all relay logs on %s", server.URL)
-	if server.DBVersion.IsMariaDB() {
+	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
 		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "")
 		if err != nil {
 			return err
