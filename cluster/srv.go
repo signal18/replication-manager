@@ -358,6 +358,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		return
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
+
 		server.rejoinSlave(ss)
 	}
 
