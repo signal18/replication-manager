@@ -95,9 +95,28 @@ app.controller('DashboardController',
         };
 
         var refreshInterval = 2000;
-        $interval(function () {
+        var promise;
+        $scope.start = function() {
+          $scope.cancel();
+          promise = $interval(function () {
             callServices();
         }, refreshInterval);
+        };
+
+        $scope.cancel = function () {
+             $interval.cancel(promise);
+        };
+        // stops the interval when the scope is destroyed,
+    // this usually happens when a route is changed and
+    // the ItemsController $scope gets destroyed. The
+    // destruction of the ItemsController scope does not
+    // guarantee the stopping of any intervals, you must
+    // be responsible for stopping it when the scope is
+    // is destroyed.
+        $scope.$on('$destroy', function() {
+            $scope.cancel();
+        });
+        $scope.start();
 
         $scope.selectedUserIndex = undefined;
 
