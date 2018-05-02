@@ -177,7 +177,7 @@
     <md-card ng-if="selectedCluster && servers">
     <table ng-if="settings" md-table class="table md-primary md-data-table">
         <tr md-row>
-            <th colspan=2>Cluster Availability</th>
+            <th colspan="2">Cluster Availability</th>
         </tr>
     <tr md-row>
         <td>Monitor Tickers</td>
@@ -231,56 +231,51 @@
 
 </div>
 </div>
+
+
+  <!-- Server List -->
   <div>
     <md-card ng-if="servers">
-        <table style="table-layout: fixed;width: 100%;" border=0 ng-if="servers" class="table">
-          <colgroup >
-   <col style="width: 30px;">
-   <col style="width: 48px;">
-   <col>
-
-</colgroup>
-
-   <col >
-
-
-
+        <table ng-if="servers" class="table table-condensed fixed">
             <tr>
-            <th colspan=3  >Database Servers</th>
-            <th width="60px">Status</th>
-            <th  style="width: 10%;">
-              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true ">Using GTID</div>
-              <div ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</div>
+            <th class="rowicon"><!-- Actions Menu --></th>
+            <th class="rowicon"><!-- Version --></th>
+            <th class="nowrap">Database Servers</th>
+            <th>Status</th>
+            <th class="gtid">
+              <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Using GTID</span>
+              <span ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</span>
             </th>
-            <th style="width: 10%;">
-              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</div>
-              <div ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</div>
+            <th class="gtid">
+              <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</span>
+              <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</span>
             </th>
-            <th style="width: 10%;" >
-              <div ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</div>
-              <div ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</div>
+            <th class="gtid">
+              <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</span>
+              <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</span>
             </th>
-            <th width="60px">Delay</th>
-            <th width="40px">Fail Cnt</th>
-            <th width="40px">Prf Ign</th>
-            <th width="40px">Io Thx</th>
-            <th width="40px">Sql Thx</th>
-            <th width="40px">Ro Sts</th>
-            <th width="40px">Evt Sch</th>
-            <th width="40px">Mst Syn</th>
-            <th width="40px">Rep Syn</th>
+            <th>Delay</th>
+            <th>Fail Cnt</th>
+            <th class="rowicon">Prf Ign</th>
+            <th class="rowicon">IO Thr</th>
+            <th class="rowicon">SQL Thr</th>
+            <th class="rowicon">Ro Sts</th>
+            <th class="rowicon">Evt Sch</th>
+            <th class="rowicon">Mst Syn</th>
+            <th class="rowicon">Rep Syn</th>
 
         </tr>
 
     <tbody>
     <tr ng-repeat="server in servers"
         ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
-        <td >
-            <md-menu>
 
+        <!-- Start Menu Actions -->
+        <td>
+            <md-menu>
                 <md-button  aria-label="Open server interactions menu"
                            ng-click="$mdMenu.open($event)" style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" >
-                    <md-span  md-menu-origin class="fas  fa-1x fa-ellipsis-v"></md-span>
+                    <md-span md-menu-origin class="fas fa-1x fa-ellipsis-h"></md-span>
                 </md-button>
                 <md-menu-content >
                     <md-menu-item ng-click="dbmaintenance(server.id)">
@@ -406,18 +401,17 @@
                 </md-menu-content>
             </md-menu>
         </td>
-        <td >
-        <div>
-          <img ng-if="server.dbVersion.flavor=='MariaDB'" style=" width:50%;" src="static/img/mariadb.png"/>
-          <img ng-if="server.dbVersion.flavor=='MySQL'" style=" width:50%;" src="static/img/mysql.png"/>
-          <img ng-if="server.dbVersion.flavor=='Percona'" style=" width:50%;" src="static/img/percona.png"/>
-
-             <div class="centered">{{server.dbVersion.major}}.{{server.dbVersion.minor}}</div>
-          </div>
+        <!-- End menu actions -->
+        <td class="rowicon">
+        <span title="{{server.dbVersion.major}}.{{server.dbVersion.minor}}">
+          <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb48.png" class="vicon"/>
+          <img ng-if="server.dbVersion.flavor=='MySQL'" src="static/img/mysql.png" class="vicon"/>
+          <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png" class="vicon"/>
+        </span>
         </td>
-        <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{server.host}}:{{server.port}}</td>
-
-
+        <td class="longname">
+          {{server.host}}:{{server.port}}
+        </td>
         <td ng-switch="server.state">
             <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
             <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
@@ -429,23 +423,26 @@
             <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
         </td>
 
-    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</div><div ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</div></td>
-    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</div><div ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</div><div ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</div><div ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</div></td>
-    <td style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;"><div ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</div><div ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</div></td>
+    <td><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</span><span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span></td>
+    <td class="longname gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.currentGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</span></td>
+    <td class="longname gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{gtidstring(server.slaveGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</span></td>
     <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
     <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
-        <td><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
-        <td ><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.replications[0].slaveIoRunning.String!='Yes'" class="fa fa-1x fa-times-circle text-danger"></i></td>
-        <td><i ng-if="server.replications[0].slaveSqlRunning.String=='Yes'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.replications[0].slaveSqlRunning.String!='Yes'" class="fa fa-1x fa-times-circle text-danger"></i></td>
-        <td><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
-        <td><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
-        <td><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.semiSyncMasterStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
-        <td><i ng-if="server.semiSyncSlaveStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.semiSyncSlaveStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
+        <td class="state"><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.replications[0].slaveIoRunning.String!='Yes'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.replications[0].slaveSqlRunning.String=='Yes'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.replications[0].slaveSqlRunning.String!='Yes'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.semiSyncMasterStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td class="state"><i ng-if="server.semiSyncSlaveStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.semiSyncSlaveStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+
     </tr>
     </tbody>
     </table>
     </md-card>
+
     <br/><br/>
+
     <md-card ng-if="selectedCluster">
         <table ng-if="servers" class="table">
             <tr>
