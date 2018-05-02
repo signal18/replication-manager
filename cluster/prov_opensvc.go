@@ -228,78 +228,83 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 
 	var disk string
 	var fs string
+	fs = ""
+	disk = ""
+	//cluster.LogPrintf(LvlErr, "%s", collector.ProvFSMode)
+	//cluster.LogPrintf(LvlErr, "%s", collector.ProvFSPool)
 	if collector.ProvFSMode == "loopback" {
 
-		disk = disk + `\n`
-		disk = disk + `[disk#` + pod + `]\n`
-		disk = disk + `type = loop\n`
-		disk = disk + `file = ` + collector.ProvFSPath + `/{svcname}_pod` + pod + `.dsk\n`
-		disk = disk + `size = {env.size}\n`
-		disk = disk + `standby = true\n`
-		disk = disk + `\n`
+		disk = disk + "\n"
+		disk = disk + "[disk#" + pod + "]\n"
+		disk = disk + "type = loop\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{svcname}_pod" + pod + ".dsk\n"
+		disk = disk + "size = {env.size}\n"
+		disk = disk + "standby = true\n"
+		disk = disk + "\n"
 
 		if collector.ProvFSPool == "lvm" {
-			disk = disk + `\n`
-			disk = disk + `[disk#10` + pod + `]\n`
-			disk = disk + `name = {svcname}_` + pod + `\n`
-			disk = disk + `type = lvm\n`
-			disk = disk + `pvs = {disk#` + pod + `.file}\n`
-			disk = disk + `standby = true\n`
-			disk = disk + `\n`
+			disk = disk + "\n"
+			disk = disk + "[disk#10" + pod + "]\n"
+			disk = disk + "name = {svcname}_" + pod + "\n"
+			disk = disk + "type = lvm\n"
+			disk = disk + "pvs = {disk#" + pod + ".file}\n"
+			disk = disk + "standby = true\n"
+			disk = disk + "\n"
 
 		}
 		if collector.ProvFSPool == "zpool" {
-			disk = disk + `\n`
-			disk = disk + `[disk#10` + pod + `]\n`
-			disk = disk + `name = zp{svcname}_pod` + pod + `\n`
-			disk = disk + `type = zpool\n`
-			disk = disk + `vdev  = {disk#` + pod + `.file}\n`
-			disk = disk + `standby = true\n`
-			disk = disk + `\n`
+			disk = disk + "\n"
+			disk = disk + "[disk#10" + pod + "]\n"
+			disk = disk + "name = zp{svcname}_pod" + pod + "\n"
+			disk = disk + "type = zpool\n"
+			disk = disk + "vdev  = {disk#" + pod + ".file}\n"
+			disk = disk + "standby = true\n"
+			disk = disk + "\n"
 
 		}
 	}
 
 	if collector.ProvFSType == "directory" {
-		fs = fs + `\n`
-		fs = fs + `[fs#` + pod + `]\n`
-		fs = fs + `type = directory\n`
-		fs = fs + `path = {env.base_dir}/pod` + pod + `\n`
-		fs = fs + `pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}\n`
-		fs = fs + `\n`
-		fs = fs + `\n`
+		fs = fs + "\n"
+		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "type = directory\n"
+		fs = fs + "path = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}\n"
+		fs = fs + "\n"
+		fs = fs + "\n"
 	} else {
 		podpool := pod
 		if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
 			podpool = "10" + pod
 		}
-		fs = fs + `\n`
-		fs = fs + `[fs#` + pod + `]\n`
-		fs = fs + `type = ` + collector.ProvFSType + `\n`
-		fs = fs + `\n`
+		fs = fs + "\n"
+		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "type = " + collector.ProvFSType + "\n"
+		fs = fs + "\n"
 		if collector.ProvFSPool == "lvm" {
 			re := regexp.MustCompile("[0-9]+")
 			strlvsize := re.FindAllString(collector.ProvDisk, 1)
 			lvsize, _ := strconv.Atoi(strlvsize[0])
 			lvsize--
-			fs = fs + `dev = /dev/{svcname}_` + pod + `/pod` + pod + `\n`
-			fs = fs + `vg = {svcname}_` + pod + `\n`
-			fs = fs + `size = 100%FREE\n`
+			fs = fs + "dev = /dev/{svcname}_" + pod + "/pod" + pod + "\n"
+			fs = fs + "vg = {svcname}_" + pod + "\n"
+			fs = fs + "size = 100%FREE\n"
 		} else if collector.ProvFSPool == "zpool" {
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
-				fs = fs + `dev = {disk#` + podpool + `.name}/pod` + pod + `\n`
+				fs = fs + "dev = {disk#" + podpool + ".name}/pod" + pod + "\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + `dev =` + cluster.Conf.ProvDiskDevice + `/pod` + pod + `\n`
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/pod" + pod + "\n"
 			}
-			fs = fs + `size = {env.size}\n`
-			fs = fs + `mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n`
+			fs = fs + "size = {env.size}\n"
+			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n"
 		} else { //no pool
-			fs = fs + `dev = {disk#` + podpool + `.file}\n`
-			fs = fs + `size = {env.size}\n`
+			fs = fs + "dev = {disk#" + podpool + ".file}\n"
+			fs = fs + "size = {env.size}\n"
 		}
-		fs = fs + `mnt = {env.base_dir}/pod` + pod + `\n`
-		fs = fs + `standby = true\n`
+		fs = fs + "mnt = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "standby = true\n"
 	} // not a directory
+	//cluster.LogPrintf(LvlErr, "%s", disk+fs)
 	return disk + fs
 }
 
@@ -307,60 +312,63 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	var conf string
 	var disk string
 	var fs string
+	fs = ""
+	disk = ""
+
 	if collector.ProvMicroSrv != "docker" {
 		return string("")
 	}
 	if cluster.Conf.ProvDockerDaemonPrivate {
-		conf = conf + `docker_daemon_private = true\n`
+		conf = conf + "docker_daemon_private = true\n"
 	} else {
-		conf = conf + `docker_daemon_private = false\n`
+		conf = conf + "docker_daemon_private = false\n"
 	}
-	conf = conf + `docker_data_dir = {env.base_dir}/docker\n`
-	conf = conf + `docker_daemon_args = --log-opt max-size=1m\n`
+	conf = conf + "docker_data_dir = {env.base_dir}/docker\n"
+	conf = conf + "docker_daemon_args = --log-opt max-size=1m\n"
 	if collector.ProvFSPool == "zpool" {
-		conf = conf + `--storage-driver=zfs\n`
+		conf = conf + "--storage-driver=zfs\n"
 	} else {
-		conf = conf + `--storage-driver=overlay\n`
+		conf = conf + "--storage-driver=overlay\n"
 	}
 	if collector.ProvFSMode == "loopback" {
-		disk = `\n`
-		disk = disk + `[disk#00]\n`
-		disk = disk + `type = loop\n`
-		disk = disk + `file = ` + collector.ProvFSPath + `/{svcname}_docker.dsk\n`
-		disk = disk + `size = 2g\n`
-		disk = disk + `\n`
+		disk = "\n"
+		disk = disk + "[disk#00]\n"
+		disk = disk + "type = loop\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{svcname}_docker.dsk\n"
+		disk = disk + "size = 2g\n"
+		disk = disk + "\n"
 
 		if collector.ProvFSPool == "zpool" {
-			disk = disk + `\n`
-			disk = disk + `[disk#0000]\n`
-			disk = disk + `name = zp{svcname}_00\n`
-			disk = disk + `type = zpool\n`
-			disk = disk + `vdev  = {disk#00.file}\n`
-			disk = disk + `standby = true\n`
-			disk = disk + `\n`
+			disk = disk + "\n"
+			disk = disk + "[disk#0000]\n"
+			disk = disk + "name = zp{svcname}_00\n"
+			disk = disk + "type = zpool\n"
+			disk = disk + "vdev  = {disk#00.file}\n"
+			disk = disk + "standby = true\n"
+			disk = disk + "\n"
 
 		}
 		if collector.ProvFSPool == "zpool" {
-			fs = `\n`
-			fs = fs + `[fs#00]\n`
-			fs = fs + `type = ` + collector.ProvFSType + `\n`
+			fs = "\n"
+			fs = fs + "[fs#00]\n"
+			fs = fs + "type = " + collector.ProvFSType + "\n"
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
-				fs = fs + `dev = {disk#0000.name}/docker\n`
+				fs = fs + "dev = {disk#0000.name}/docker\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + `dev =` + cluster.Conf.ProvDiskDevice + `/docker\n`
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/docker\n"
 			}
-			fs = fs + `mnt = {env.base_dir}/docker\n`
-			fs = fs + `size = 2g\n`
-			fs = fs + `\n`
+			fs = fs + "mnt = {env.base_dir}/docker\n"
+			fs = fs + "size = 2g\n"
+			fs = fs + "\n"
 
 		} else {
-			fs = `\n`
-			fs = fs + `[fs#00]\n`
-			fs = fs + `type = ` + collector.ProvFSType + `\n`
-			fs = fs + `dev = {disk#00.file}\n`
-			fs = fs + `mnt = {env.base_dir}/docker\n`
-			fs = fs + `size = 2g\n`
-			fs = fs + `\n`
+			fs = "\n"
+			fs = fs + "[fs#00]\n"
+			fs = fs + "type = " + collector.ProvFSType + "\n"
+			fs = fs + "dev = {disk#00.file}\n"
+			fs = fs + "mnt = {env.base_dir}/docker\n"
+			fs = fs + "size = 2g\n"
+			fs = fs + "\n"
 
 		}
 	}
