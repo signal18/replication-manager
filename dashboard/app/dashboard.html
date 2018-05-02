@@ -7,7 +7,7 @@
                     <span style="padding: 0px 0px 10px 0px"  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"  alt="Replication Manager"/></span>
                   </td>
                     <td align="right" >
-                      <span style="padding: 0px -0px 0px 0px"   ng-click="toggleLeft()">
+                      <span style="padding: 0px -0px 0px 0px"   ng-click="toggleRight()">
                        <md-icon  md-menu-origin class="fa fa-2x fa-bars" style="color:#468cc5"></md-icon>
                      </span>
                     </td>
@@ -15,7 +15,7 @@
                 </tr>
             </table>
         </div>
-        <md-sidenav class="md-sidenav-left" md-component-id="left" layout="column" layout-align="top center"
+        <md-sidenav class="md-sidenav-right" md-component-id="right" layout="column" layout-align="top center"
                     md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
             <ul class="nav navbar-nav">
                 <md-nav-list>
@@ -33,7 +33,7 @@
                     </md-list-item>
                     <md-list-item ng-if="selectedClusterName">
                         <li class="text-center">
-                            <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Settins<BR><BR></a>
+                            <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Settings<BR><BR></a>
                         </li>
                     </md-list-item>
                     <li ng-if="isLoggedIn" class="text-center">
