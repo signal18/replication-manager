@@ -25,9 +25,10 @@ app.controller('DashboardController',
 
         var callServices = function () {
             if (!AppService.hasAuthHeaders()) return;
+
             Monitor.query({}, function (data) {
                 if (data) {
-                    if (!$scope.menuOpened) {
+                  if (!$scope.menuOpened) {
                         $scope.settings = data;
                         if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
                             if ($scope.settings.clusters.length === 1) {
@@ -58,6 +59,7 @@ app.controller('DashboardController',
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (!$scope.menuOpened) {
                         $scope.servers = data;
+
                         $scope.reserror = false;
                     }
                 }, function () {
@@ -271,7 +273,12 @@ app.controller('DashboardController',
         $scope.openClusterDialog = function () {
             $scope.menuOpened = true;
             $scope.openedAt = new Date().toLocaleString();
-
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
             $mdDialog.show({
                 contentElement: '#myClusterDialog',
                 parent: angular.element(document.body),
@@ -289,6 +296,7 @@ app.controller('DashboardController',
         };
 
         $scope.newClusterDialog = function () {
+
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
                 parent: angular.element(document.body),
@@ -298,11 +306,18 @@ app.controller('DashboardController',
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
             $mdSidenav('left').close();
             if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
-            callServices();
+
             $scope.selectedClusterName = $scope.dlgClusterName;
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
+            callServices();
             $scope.setClusterCredentialDialog();
             $scope.setRplCredentialDialog();
-
+            
         };
         $scope.cancelNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});

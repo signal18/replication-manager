@@ -608,6 +608,8 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchTraffic()
 		case "test":
 			mycluster.SwitchTestMode()
+		case "prov-net-cni":
+			mycluster.SwitchProvNetCNI()
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
