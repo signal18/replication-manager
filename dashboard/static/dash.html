@@ -441,8 +441,6 @@
     </table>
     </md-card>
 
-    <br/><br/>
-
     <md-card ng-if="selectedCluster">
         <table ng-if="servers" class="table">
             <tr>
@@ -468,8 +466,7 @@
 
 </md-card>
 </div>
-    <br/>
-    <BR>
+
 <md-card ng-if="settings.config.enterprise    && selectedCluster">
     <table style="" ng-if="settings" md-table class="table md-primary md-data-table">
         <tr md-row>
@@ -480,10 +477,10 @@
 <div style="padding: 0px 20px 10px 4px;"><span style="display:inline-block;"
                                                ng-repeat="tag in selectedCluster.dbServersTags"
                                                class="label label-success">{{ tag }}</span></div>
-    <BR>
+
 
 </md-card>
-    <BR>
+
 <md-card ng-if="settings.config.test && selectedCluster">
 <table class="table">
 <tr>
@@ -491,7 +488,7 @@
     <labelfor
     ="test" action="/runonetest" >
     <p class="sectionheader">Tests</p>
-    </label><BR>
+    </label>
 <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()">
         <md-option ng-selected="{{element == settings.tests}}"
         ng-repeat="element in settings.tests" value="{{element}}">{{element}}</option>
