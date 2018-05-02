@@ -317,7 +317,7 @@ app.controller('DashboardController',
             callServices();
             $scope.setClusterCredentialDialog();
             $scope.setRplCredentialDialog();
-            
+
         };
         $scope.cancelNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});

@@ -199,9 +199,9 @@ td.longname {
     text-align: left;
 }
 
-th.nowrap {
+th.servers {
   white-space: nowrap;
-  width: 20%;
+  width: 15%
 }
 
 th.gtid {
