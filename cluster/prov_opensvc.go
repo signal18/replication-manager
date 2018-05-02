@@ -312,9 +312,7 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	var conf string
 	var disk string
 	var fs string
-	fs = ""
-	disk = ""
-
+	podpool := "00"
 	if collector.ProvMicroSrv != "docker" {
 		return string("")
 	}
@@ -324,11 +322,11 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		conf = conf + "\ndocker_daemon_private = false\n"
 	}
 	conf = conf + "docker_data_dir = {env.base_dir}/docker\n"
-	conf = conf + "docker_daemon_args = --log-opt max-size=1m\n"
+	conf = conf + "docker_daemon_args = --log-opt max-size=1m "
 	if collector.ProvFSPool == "zpool" {
-		conf = conf + "--storage-driver=zfs\n"
+		conf = conf + " --storage-driver=zfs"
 	} else {
-		conf = conf + "--storage-driver=overlay\n"
+		conf = conf + " --storage-driver=overlay"
 	}
 	if collector.ProvFSMode == "loopback" {
 		disk = "\n"
@@ -346,32 +344,26 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 			disk = disk + "vdev  = {disk#00.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
-		}
-		if collector.ProvFSPool == "zpool" {
-			fs = "\n"
-			fs = fs + "[fs#00]\n"
-			fs = fs + "type = " + collector.ProvFSType + "\n"
-			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
-				fs = fs + "dev = {disk#0000.name}/docker\n"
-			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{svcname}_docker\n"
-			}
-			fs = fs + "mnt = {env.base_dir}/docker\n"
-			fs = fs + "size = 2g\n"
-			fs = fs + "\n"
-
-		} else {
-			fs = "\n"
-			fs = fs + "[fs#00]\n"
-			fs = fs + "type = " + collector.ProvFSType + "\n"
-			fs = fs + "dev = {disk#00.file}\n"
-			fs = fs + "mnt = {env.base_dir}/docker\n"
-			fs = fs + "size = 2g\n"
-			fs = fs + "\n"
-
 		}
 	}
+
+	if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
+		podpool = "0000"
+	}
+	fs = "\n"
+	fs = fs + "[fs#00]\n"
+	fs = fs + "type = " + collector.ProvFSType + "\n"
+	if collector.ProvFSMode == "loopback" {
+		fs = fs + "dev = {disk#" + podpool + ".name}/docker\n"
+	} else if collector.ProvFSMode == "pool" {
+		fs = fs + "dev = " + cluster.Conf.ProvDiskDevice + "/{svcname}_docker\n"
+	} else if collector.ProvFSPool == "none" {
+		fs = fs + "dev = {disk" + podpool + ".file}\n"
+	}
+
+	fs = fs + "mnt = {env.base_dir}/docker\n"
+	fs = fs + "size = 2g\n"
+	fs = fs + "\n"
 
 	return conf + disk + fs
 }
