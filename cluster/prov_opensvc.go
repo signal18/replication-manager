@@ -319,9 +319,9 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		return string("")
 	}
 	if cluster.Conf.ProvDockerDaemonPrivate {
-		conf = conf + "docker_daemon_private = true\n"
+		conf = conf + "\ndocker_daemon_private = true\n"
 	} else {
-		conf = conf + "docker_daemon_private = false\n"
+		conf = conf + "\ndocker_daemon_private = false\n"
 	}
 	conf = conf + "docker_data_dir = {env.base_dir}/docker\n"
 	conf = conf + "docker_daemon_args = --log-opt max-size=1m\n"
