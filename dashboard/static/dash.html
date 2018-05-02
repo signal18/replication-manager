@@ -169,6 +169,7 @@
                 <td>Last Failover Time</td>
                 <td>{{selectedCluster.failoverLastTime}}</td>
             </tr>
+            <tr><td>Next Failover in</td><td></td></tr>
           </table>
         </md-card>
       </div>
@@ -202,14 +203,14 @@
 <table class="table">
 
   <tr>
-      <th>Cluster Name</th>
-      <th>Topology</th>
+      <th colspan="2">Cluster Infos</th>
   </tr>
 <tr>
-<td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span
-      ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span>
+<td>
+  Name and Topology
 </td>
-<td><span class="label label-info">{{selectedCluster.topology}}</span>
+<td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span
+      ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span><span class="label label-info">{{selectedCluster.topology}}</span>
 </td>
 </tr>
 <tr>
