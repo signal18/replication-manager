@@ -149,33 +149,88 @@
 
 
 
-<div layout="column" layout-gt-xs="row">
-    <div flex-gt-xs="82" class="col-lg-80">
+<div layout="row">
+    <div flex>
     <md-card ng-if="selectedCluster">
         <table ng-if="settings" class="table">
+          <tr><th colspan="2">Monitor Status</th></tr>
             <tr>
-                <th>Manager Status</th>
-                <th>Failover Count</th>
-                <th>Last Failover Time</th>
-                <th>Qps</th>
-                <th>Table Size</th>
-                <th>Index Size</th>
-            </tr>
-            <tr>
+                <td>Manager Status</td>
                 <td><span ng-if="selectedCluster.activePassiveStatus=='A'"
                           class="label label-success">ACTIVE</span><span
                         ng-if="selectedCluster.activePassiveStatus=='S'"
                         class="label label-warning">STANDBY</span>
                 </td>
-                <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
-                <td>{{selectedCluster.failoverLastTime}}</td>
-                <td>{{master.qps}}</td>
-                <td>{{selectedCluster.dbTableSize}}</td>
-                <td>{{selectedCluster.dbIndexSize}}</td>
             </tr>
-        </table>
+            <tr>
+              <td>Failover Count</td>
+              <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
+            </tr>
+                <td>Last Failover Time</td>
+                <td>{{selectedCluster.failoverLastTime}}</td>
+            </tr>
+          </table>
+        </md-card>
+      </div>
+  <div flex>
+    <md-card ng-if="selectedCluster && servers">
+    <table ng-if="settings" md-table class="table md-primary md-data-table">
+        <tr md-row>
+            <th colspan=2>Cluster Availability</th>
+        </tr>
+    <tr md-row>
+        <td>Monitor Tickers</td>
+    <td>{{selectedCluster.monitorSpin}}</td>
+    </tr>
+    <tr md-row>
+        <td>Master Available</td>
+    <td>{{selectedCluster.uptime}}</td>
+    </tr>
+    <tr md-row>
+        <td>Acceptable Data Loss</td>
+    <td>{{selectedCluster.uptimeFailable}}</td>
+    </tr>
+    <tr md-row>
+        <td>No Data Loss</td>
+    <td>{{selectedCluster.uptimeSemisync}}</td>
+    </tr>
+    </table>
     </md-card>
-    <br/>
+</div>
+<div flex>
+<md-card ng-if="selectedCluster">
+<table class="table">
+
+  <tr>
+      <th>Cluster Name</th>
+      <th>Topology</th>
+  </tr>
+<tr>
+<td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span
+      ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span>
+</td>
+<td><span class="label label-info">{{selectedCluster.topology}}</span>
+</td>
+</tr>
+<tr>
+    <td>QPS</td>
+    <td>{{master.qps}}</td>
+</tr>
+<tr>
+    <td>Table Size</td>
+    <td>{{selectedCluster.dbTableSize}}</td>
+</tr>
+<tr>
+    <td>Index Size</td>
+    <td>{{selectedCluster.dbIndexSize}}</td>
+</tr>
+</table>
+
+</md-card>
+
+</div>
+</div>
+  <div>
     <md-card ng-if="servers">
         <table style="table-layout: fixed;width: 100%;" border=0 ng-if="servers" class="table">
           <colgroup >
@@ -415,49 +470,7 @@
 
 </md-card>
 </div>
-    <div flex-gt-xs="1"></div>
-    <div flex-gt-xs="17" class="col-lg-15">
-<md-card ng-if="selectedCluster">
-<table class="table">
-
-    <tr>
-        <th>Cluster Name</th>
-        <th>Topology</th>
-    </tr>
-<tr>
-<td><span ng-if="!selectedClusterName" class="label label-primary">DEFAULT</span><span
-        ng-if="selectedClusterName" class="label label-info">{{selectedClusterName}}</span>
-</td>
-<td><span class="label label-info">{{selectedCluster.topology}}</span>
-</td>
-</tr>
-</table>
-
-</md-card>
     <br/>
-<md-card ng-if="selectedCluster && servers">
-<table ng-if="settings" md-table class="table md-primary md-data-table">
-    <tr md-row>
-        <th colspan=2>Cluster Sla</th>
-    </tr>
-<tr md-row>
-    <td>Monitor Tickers</td>
-<td>{{selectedCluster.monitorSpin}}</td>
-</tr>
-<tr md-row>
-    <td>Master Available</td>
-<td>{{selectedCluster.uptime}}</td>
-</tr>
-<tr md-row>
-    <td>Acceptable Data Loss</td>
-<td>{{selectedCluster.uptimeFailable}}</td>
-</tr>
-<tr md-row>
-    <td>No Data Loss</td>
-<td>{{selectedCluster.uptimeSemisync}}</td>
-</tr>
-</table>
-</md-card>
     <BR>
 <md-card ng-if="settings.config.enterprise    && selectedCluster">
     <table style="" ng-if="settings" md-table class="table md-primary md-data-table">
