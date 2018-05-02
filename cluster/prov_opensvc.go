@@ -293,7 +293,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
 				fs = fs + "dev = {disk#" + podpool + ".name}/pod" + pod + "\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/pod" + pod + "\n"
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{svcname}pod" + pod + "\n"
 			}
 			fs = fs + "size = {env.size}\n"
 			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n"
@@ -355,7 +355,7 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
 				fs = fs + "dev = {disk#0000.name}/docker\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/docker\n"
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{svcname}_docker\n"
 			}
 			fs = fs + "mnt = {env.base_dir}/docker\n"
 			fs = fs + "size = 2g\n"
