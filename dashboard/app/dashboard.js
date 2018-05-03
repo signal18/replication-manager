@@ -292,7 +292,7 @@ app.controller('DashboardController',
             $mdDialog.hide({contentElement: '#myClusterDialog'});
             $scope.menuOpened = false;
             $scope.menuOpened = "";
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
         };
 
         $scope.newClusterDialog = function () {
@@ -304,7 +304,7 @@ app.controller('DashboardController',
         };
         $scope.closeNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
             if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
 
             $scope.selectedClusterName = $scope.dlgClusterName;
@@ -321,7 +321,7 @@ app.controller('DashboardController',
         };
         $scope.cancelNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
         };
 
         $scope.newServerDialog = function () {
