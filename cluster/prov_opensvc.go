@@ -280,7 +280,6 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "\n"
 		fs = fs + "[fs#" + pod + "]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
-		fs = fs + "\n"
 		if collector.ProvFSPool == "lvm" {
 			re := regexp.MustCompile("[0-9]+")
 			strlvsize := re.FindAllString(collector.ProvDisk, 1)
@@ -350,7 +349,7 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
 		podpool = "0000"
 	}
-	fs = "\n"
+	fs = "\n\n"
 	fs = fs + "[fs#00]\n"
 	fs = fs + "type = " + collector.ProvFSType + "\n"
 	if collector.ProvFSMode == "loopback" {

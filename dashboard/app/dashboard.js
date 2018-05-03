@@ -25,6 +25,7 @@ app.controller('DashboardController',
 
         var callServices = function () {
             if (!AppService.hasAuthHeaders()) return;
+                  if ($scope.menuOpened) return;
 
             Monitor.query({}, function (data) {
                 if (data) {
