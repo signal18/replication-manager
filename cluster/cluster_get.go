@@ -231,10 +231,16 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 			if server.Host+":"+server.Port == url {
 				return server
 			}
+			if server.IP+":"+server.Port == url {
+				return server
+			}
 		}
 	} else {
 		for _, server := range cluster.Servers {
 			if server.Host == url {
+				return server
+			}
+			if server.IP == url {
 				return server
 			}
 		}
