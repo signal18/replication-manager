@@ -187,26 +187,27 @@ table.slowlog  {
 }
 
 th.rowicon {
-  min-width: 32px;
-  max-width: 48px;
+  width: 32px;
 }
 
-td.longname {
-    /* max-width: 0; */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
+td.servers {
+    word-wrap: break-word;
 }
 
 th.servers {
   white-space: nowrap;
-  width: 15%
+}
+
+th.status {
+  width: 64px;
 }
 
 th.gtid {
   white-space: nowrap;
-  width: 10%;
+}
+
+td.gtid {
+  white-space: normal;
 }
 
 td.cellicon {
@@ -216,9 +217,13 @@ td.cellicon {
 }
 
 table.fixed {
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 img.vicon {
   width: 16px;
+}
+
+span.cluster {
+  margin: 0 16px;
 }

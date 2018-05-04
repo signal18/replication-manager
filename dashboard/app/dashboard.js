@@ -226,7 +226,7 @@ app.controller('DashboardController',
                     gtid = arr[i].domainId + '-' + arr[i].serverId + '-' + arr[i].seqNo;
                     output.push(gtid);
                 }
-                return output.join(",");
+                return output.join(", ");
             }
             return '';
         };
