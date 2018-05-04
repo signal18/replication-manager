@@ -110,12 +110,12 @@ func (cluster *Cluster) Unprovision() {
 	} else {
 		cluster.LocalhostUnprovision()
 	}
-	cluster.Servers = nil
 	cluster.slaves = nil
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.sme.UnDiscovered()
-	cluster.newServerList()
+	//cluster.Servers = nil
+	//cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
 }
 
