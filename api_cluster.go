@@ -34,11 +34,6 @@ func apiClusterUnprotectedHandler(router *mux.Router) {
 }
 
 func apiClusterProtectedHandler(router *mux.Router) {
-	//PROTECTED ENDPOINTS FOR SETTINGS
-	router.Handle("/api/monitor", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
-	))
 
 	router.Handle("/api/clusters/{clusterName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
