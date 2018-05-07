@@ -403,11 +403,13 @@
         </td>
         <!-- End menu actions -->
         <td class="rowicon">
-        <span title="{{server.dbVersion.major}}.{{server.dbVersion.minor}}">
-          <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb48.png" class="vicon"/>
+        <md-button class="md-icon-button">
+          <md-tooltip>{{server.dbVersion.major}}.{{server.dbVersion.minor}}</md-tooltip>
+          <md-icon md-svg-src="static/img/mariadb.svg" ng-if="server.dbVersion.flavor=='MariaDB'">
+          </md-icon>
           <img ng-if="server.dbVersion.flavor=='MySQL'" src="static/img/mysql.png" class="vicon"/>
           <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png" class="vicon"/>
-        </span>
+        <md-button>
         </td>
         <td class="servers">
           {{server.host}}:{{server.port}}
