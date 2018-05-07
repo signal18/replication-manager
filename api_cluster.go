@@ -605,7 +605,10 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchTestMode()
 		case "prov-net-cni":
 			mycluster.SwitchProvNetCNI()
+		case "prov-docker-daemon-private":
+			mycluster.SwitchProvDockerDaemonPrivate()
 		}
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

@@ -14,6 +14,9 @@ func (cluster *Cluster) SwitchServerMaintenance(serverid uint) {
 func (cluster *Cluster) SwitchProvNetCNI() {
 	cluster.Conf.ProvNetCNI = !cluster.Conf.ProvNetCNI
 }
+func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
+	cluster.Conf.ProvDockerDaemonPrivate = !cluster.Conf.ProvDockerDaemonPrivate
+}
 
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive == true {
