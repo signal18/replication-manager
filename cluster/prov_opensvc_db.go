@@ -221,7 +221,7 @@ rollback = false
 
 	conf = conf + `[task#01]
 schedule = @1
-command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/trigger-dbjobs
+command = {env.base_dir}/pod01/init/trigger-dbjobs
 user = root
 run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 

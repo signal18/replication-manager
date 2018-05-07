@@ -174,7 +174,7 @@ sync_max_delay = 1440
 `
 		conf = conf + `[task2]
  schedule = @1
- command = ` + collector.ProvFSPath + `/{svcname}_pod01/init/snapback
+ command = {env.base_dir}/pod01/init/snapback
  user = root
 
 `
