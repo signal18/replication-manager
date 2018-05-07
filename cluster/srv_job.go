@@ -82,12 +82,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	jobid, err := server.JobInsertTaks("xtrabackup", port, server.ClusterGroup.Conf.BindAddr)
+	jobid, err := server.JobInsertTaks("xtrabackup", port, server.ClusterGroup.Conf.MonitorAddress)
 	return jobid, err
 }
 
 func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -116,7 +116,7 @@ func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("flashbackxtrabackup", "4444", server.ClusterGroup.Conf.BindAddr)
+	jobid, err := server.JobInsertTaks("flashbackxtrabackup", "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -145,7 +145,7 @@ func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
-	jobid, err := server.JobInsertTaks("reseedmysqldump", "4444", server.ClusterGroup.Conf.BindAddr)
+	jobid, err := server.JobInsertTaks("reseedmysqldump", "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -174,7 +174,7 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
-	jobid, err := server.JobInsertTaks("flashbackmysqldump", "4444", server.ClusterGroup.Conf.BindAddr)
+	jobid, err := server.JobInsertTaks("flashbackmysqldump", "4444", server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 
@@ -208,7 +208,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("error", port, server.ClusterGroup.Conf.BindAddr)
+	return server.JobInsertTaks("error", port, server.ClusterGroup.Conf.MonitorAddress)
 }
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
@@ -273,21 +273,21 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("slowquery", port, server.ClusterGroup.Conf.BindAddr)
+	return server.JobInsertTaks("slowquery", port, server.ClusterGroup.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobOptimize() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("optimize", "0", server.ClusterGroup.Conf.BindAddr)
+	return server.JobInsertTaks("optimize", "0", server.ClusterGroup.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("zfssnapback", "0", server.ClusterGroup.Conf.BindAddr)
+	return server.JobInsertTaks("zfssnapback", "0", server.ClusterGroup.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {

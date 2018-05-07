@@ -123,6 +123,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MonitorLongQueryTime, "monitoring-long-query-time", 10000, "Long query time in ms")
 	monitorCmd.Flags().StringVar(&conf.MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")
 	monitorCmd.Flags().BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", true, "Enable internal scheduler")
+	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
 
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
@@ -460,9 +461,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 			monitorCmd.Flags().BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 			monitorCmd.Flags().StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of OpenSVC agent cluster")
-
 			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
-
 		}
 	}
 	cobra.OnInitialize(initConfig)
@@ -723,7 +722,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster = new(cluster.Cluster)
 
 	myClusterConf := confs[clusterName]
-	myClusterConf.MonitorAddress = repman.resolveHostIp()
+	if myClusterConf.MonitorAddress == "localhost" {
+		myClusterConf.MonitorAddress = repman.resolveHostIp()
+	}
 	if myClusterConf.FailMode == "manual" {
 		myClusterConf.Interactive = true
 	} else {
