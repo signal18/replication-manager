@@ -249,6 +249,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+				return
 			}
 		}
 		if err != sql.ErrNoRows {

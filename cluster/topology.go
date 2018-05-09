@@ -65,6 +65,7 @@ func (cluster *Cluster) newServerList() error {
 	return nil
 }
 
+// DEAD CODE NO MORE CALLED
 func (cluster *Cluster) pingServerList() {
 	wg := new(sync.WaitGroup)
 	for _, sv := range cluster.Servers {
