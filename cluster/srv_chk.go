@@ -33,7 +33,8 @@ func (server *ServerMonitor) CheckReplication() string {
 			return "Galera Late"
 		}
 	}
-	if (server.State == stateSuspect || server.State == stateFailed) && server.IsSlave == false {
+	if (server.IsDown()) && server.IsSlave == false {
+		// to what is this looks like wrong no ?????
 		return "Master OK"
 	}
 

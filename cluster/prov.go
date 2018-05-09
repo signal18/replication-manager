@@ -423,7 +423,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 
 func (cluster *Cluster) AllDatabaseCanConn() bool {
 	for _, s := range cluster.Servers {
-		if s.State == stateFailed {
+		if !s.IsDown() {
 			return false
 		}
 	}
@@ -644,7 +644,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				}
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				} else if server.State != stateFailed {
+				} else if !server.IsDown() {
 					err = server.StartSlave()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)

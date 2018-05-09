@@ -343,7 +343,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 		//	if cluster.Conf.Interactive == false {
 		allslavefailed := true
 		for _, s := range cluster.slaves {
-			if s.State != stateFailed && s.IsIgnored() == false {
+			if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
 				allslavefailed = false
 			}
 		}
@@ -373,7 +373,7 @@ func (cluster *Cluster) PrintTopology() {
 func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 	failed := 0
 	for _, server := range cluster.Servers {
-		if server.State == stateFailed {
+		if server.State == stateFailed || server.State == stateErrorAuth {
 			failed = failed + 1
 		}
 	}
@@ -398,7 +398,7 @@ func (cluster *Cluster) FailedMasterDiscovery() {
 
 	smh := cluster.slaves[0].GetReplicationMasterHost()
 	for k, s := range cluster.Servers {
-		if s.State == stateFailed {
+		if s.State == stateFailed || s.State == stateErrorAuth {
 			if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
 				if cluster.Conf.FailRestartUnsafe || cluster.MultipleSlavesUp(s) {
 					cluster.master = cluster.Servers[k]
@@ -415,7 +415,7 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 	ct := 0
 	for _, s := range cluster.slaves {
 
-		if s.State != stateFailed && (candidate.Host == s.GetReplicationMasterHost() || candidate.IP == s.GetReplicationMasterHost()) && candidate.Port == s.GetReplicationMasterPort() {
+		if !s.IsDown() && (candidate.Host == s.GetReplicationMasterHost() || candidate.IP == s.GetReplicationMasterHost()) && candidate.Port == s.GetReplicationMasterPort() {
 			ct++
 		}
 	}
