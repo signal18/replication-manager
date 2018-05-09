@@ -771,7 +771,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 		UUID     string `json:"uuid"`
 	}
 	type Message struct {
-		Data Ret `json:"data"`
+		Data []Ret `json:"data"`
 	}
 	var r Message
 	err = json.Unmarshal(body, &r)
@@ -779,7 +779,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 		//	log.Println("ERROR ", err)
 		return "", err
 	}
-	return r.Data.UUID, nil
+	return r.Data[0].UUID, nil
 }
 
 // Dead code
