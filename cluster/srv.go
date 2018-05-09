@@ -93,6 +93,7 @@ type ServerMonitor struct {
 	IsMaintenance               bool                      `json:"isMaintenance"`
 	Ignored                     bool                      `json:"ignored"`
 	Prefered                    bool                      `json:"prefered"`
+	BinlogDumpThreads           int                       `json:"binlogDumpThreads"`
 	MxsVersion                  int                       `json:"maxscaleVersion"`
 	MxsHaveGtid                 bool                      `json:"maxscaleHaveGtid"`
 	MxsServerName               string                    `json:"maxscaleServerName"` //Unique server Name in maxscale conf
@@ -512,6 +513,11 @@ func (server *ServerMonitor) Refresh() error {
 			server.JobsCheckRunning()
 		}
 		server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
+	}
+
+	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ErrFrom: "CONF"})
 	}
 
 	// SHOW MASTER STATUS

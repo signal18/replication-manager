@@ -148,13 +148,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
-			var n int
-			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
-			if err != nil {
-				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
-				continue
-			}
-			if n == 0 && sv.State != stateMaster {
+
+			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.Conf.LogLevel > 2 {
