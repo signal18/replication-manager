@@ -135,6 +135,7 @@ const (
 	stateSlaveLate   string = "SlaveLate"
 	stateMaintenance string = "Maintenance"
 	stateUnconn      string = "StandAlone"
+	stateErrorAuth   string = "ErrorAuth"
 	stateSuspect     string = "Suspect"
 	stateShard       string = "Shard"
 	stateProv        string = "Provision"
@@ -245,7 +246,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
-				server.State = stateUnconn
+				server.State = stateErrorAuth
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
 			}
 		}
@@ -305,7 +306,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	server.Refresh()
 
 	// Reset FailCount
-	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
+	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}

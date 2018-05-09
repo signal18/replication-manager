@@ -79,7 +79,7 @@ func (cluster *Cluster) pingServerList() {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						// access denied
 						if driverErr.Number == 1045 {
-							sv.State = stateUnconn
+							sv.State = stateErrorAuth
 							cluster.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
 					} else {
