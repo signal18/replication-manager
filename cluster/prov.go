@@ -30,7 +30,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 
-	err = cluster.BootstrapReplication()
+	err = cluster.BootstrapReplication(true)
 	if err != nil {
 		return err
 	}
@@ -110,12 +110,12 @@ func (cluster *Cluster) Unprovision() {
 	} else {
 		cluster.LocalhostUnprovision()
 	}
-	cluster.Servers = nil
 	cluster.slaves = nil
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.sme.UnDiscovered()
-	cluster.newServerList()
+	//cluster.Servers = nil
+	//cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
 }
 
@@ -473,16 +473,14 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
 			}
-			cluster.sme.RemoveFailoverState()
-			return err
+			continue
 		}
-		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "ResetMaster on server %s ", server.URL)
-		}
+
+		cluster.LogPrintf(LvlInfo, "Reset Master on server %s ", server.URL)
+
 		err = dbhelper.ResetMaster(server.Conn)
 		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
+			cluster.LogPrintf(LvlErr, "Reset Master on server %s %s", server.URL, err)
 		}
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
@@ -492,28 +490,28 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		} else {
 			err = server.StopSlave()
 		}
+
 		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
+			cluster.LogPrintf(LvlErr, "Stop all slaves or just slave %s %s", server.URL, err)
 		}
-		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "Reset all slaves", server.URL)
-		}
-		err = dbhelper.ResetAllSlaves(server.Conn)
-		if err != nil {
-			cluster.sme.RemoveFailoverState()
-			return err
-		}
+
 		if server.DBVersion.IsMariaDB() {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
 			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
 			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
+				cluster.LogPrintf(LvlErr, "SET GLOBAL gtid_slave_pos='' %s %s", server.URL, err)
 			}
 		}
+		// redondante code with previous code missing reset MariaDB GTID or PURGE MySQL GTID
+
+		/*	err = dbhelper.ResetAllSlaves(server.Conn)
+			if err != nil {
+				cluster.sme.RemoveFailoverState()
+				return err
+			}*/
+
 	}
 	cluster.master = nil
 	cluster.vmaster = nil
@@ -522,7 +520,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapReplication() error {
+func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
@@ -531,7 +529,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
-	if cluster.CleanAll {
+	if clean {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cleanup error %s", err)
@@ -570,7 +568,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 	//	if err != nil {
 	//		cluster.LogPrintf(LvlInfo, "RESET MASTER failed on master"
 	//	}
-	// Assume master-slave if nothing else is declared && mariadb >10
+	// Assume master-slave if nothing else is declared
 	if cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
 
 		for key, server := range cluster.Servers {
@@ -582,9 +580,10 @@ func (cluster *Cluster) BootstrapReplication() error {
 				server.SetReadWrite()
 				continue
 			} else {
+				// A slave
 				var hasMyGTID bool
 				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
-
+				//mariadb
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					cluster.Servers[masterKey].Refresh()
 					_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.Servers[masterKey].CurrentGtid.Sprint() + "\"")
@@ -604,7 +603,7 @@ func (cluster *Cluster) BootstrapReplication() error {
 						IsMySQL:   server.DBVersion.IsMySQL(),
 					})
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
-				} else if hasMyGTID {
+				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 
 					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 						Host:      cluster.Servers[masterKey].Host,
@@ -644,15 +643,14 @@ func (cluster *Cluster) BootstrapReplication() error {
 
 				}
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Replication can't be bootstarp for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				}
-				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
-					server.StartSlave()
+					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
+				} else if server.State != stateFailed {
+					err = server.StartSlave()
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
+					}
 				}
 
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				}
 				server.SetReadOnly()
 			}
 

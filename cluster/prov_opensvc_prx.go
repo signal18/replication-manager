@@ -269,6 +269,7 @@ sphinx_max_children = ` + cluster.Conf.ProvSphinxMaxChildren + `
 haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
 proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
 maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
+maxscale_maxinfo_port =` + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + `
 vip_addr = ` + cluster.Conf.ProvProxRouteAddr + `
 vip_port  = ` + cluster.Conf.ProvProxRoutePort + `
 vip_netmask =  ` + cluster.Conf.ProvProxRouteMask + `
@@ -283,7 +284,7 @@ port_telnet = ` + prx.Port + `
 port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
-mrm_api_addr = ` + cluster.Conf.BindAddr + ":" + cluster.Conf.HttpPort + `
+mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	return conf

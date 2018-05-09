@@ -119,6 +119,11 @@ func apiserver() {
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
 	))
+	//PROTECTED ENDPOINTS FOR SETTINGS
+	router.Handle("/api/monitor", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
+	))
 
 	apiDatabaseUnprotectedHandler(router)
 	apiDatabaseProtectedHandler(router)

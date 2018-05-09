@@ -18,7 +18,7 @@ RUN mkdir -p \
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /usr/share/replication-manager/dashboard
-COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
 CMD ["replication-manager", "monitor", "--http-server"]

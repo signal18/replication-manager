@@ -328,12 +328,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not unlock tables on old master %s", err)
 		}
-		oldMaster.StopSlave() // This is helpful because in some cases the old master can have an old configuration running
-		if cluster.Conf.FailForceGtid && oldMaster.DBVersion.IsMariaDB() {
+		oldMaster.StopSlave() // This is helpful in some cases the old master can have an old replication running
+		one_shoot_slave_pos := false
+		if oldMaster.DBVersion.IsMariaDB() && oldMaster.HaveMariaDBGTID == false && oldMaster.DBVersion.Major >= 10 {
 			_, err = oldMaster.Conn.Exec("SET GLOBAL gtid_slave_pos='" + cluster.master.GTIDBinlogPos.Sprint() + "'")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not set gtid_slave_pos on old master, reason: %s", err)
 			}
+			one_shoot_slave_pos = true
 		}
 		hasMyGTID, err := dbhelper.HasMySQLGTID(oldMaster.Conn)
 		if err != nil {
@@ -366,7 +368,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Start slave failed on old master, reason: %s", err)
 			}
-		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
+		} else if hasMyGTID == true {
 			// We can do MySQL 5.7 style failover
 			cluster.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
 			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -391,20 +393,37 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		} else if cluster.Conf.MxsBinlogOn == false {
 			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
-			// current pos is needed on old master as  writes diverges from slave pos
-			changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
-				Host:      cluster.master.Host,
-				Port:      cluster.master.Port,
-				User:      cluster.rplUser,
-				Password:  cluster.rplPass,
-				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "CURRENT_POS",
-				SSL:       cluster.Conf.ReplicationSSL,
-				Channel:   cluster.Conf.MasterConn,
-				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
-				IsMySQL:   oldMaster.DBVersion.IsMySQL(),
-			})
+			// current pos is needed on old master as writes diverges from slave pos
+			// if gtid_slave_pos was forced use slave_pos : positional to GTID promotion
+			if one_shoot_slave_pos {
+				changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+					Mode:      "SLAVE_POS",
+					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
+				})
+			} else {
+				changeMasterErr = dbhelper.ChangeMaster(oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:      cluster.master.Host,
+					Port:      cluster.master.Port,
+					User:      cluster.rplUser,
+					Password:  cluster.rplPass,
+					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+					Mode:      "CURRENT_POS",
+					SSL:       cluster.Conf.ReplicationSSL,
+					Channel:   cluster.Conf.MasterConn,
+					IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
+					IsMySQL:   oldMaster.DBVersion.IsMySQL(),
+				})
+			}
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
 			}
@@ -843,6 +862,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		if errss == nil {
 			if cluster.master.State != stateFailed {
+				// Need MySQL GTID support
 				seqnos = sl.SlaveGtid.GetSeqNos()
 			} else {
 				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqNos()

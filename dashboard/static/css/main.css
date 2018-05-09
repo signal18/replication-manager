@@ -178,7 +178,52 @@ table.slowlog  {
   width: 250px;
 }
 
-
 .table {
  font-size: 1.2rem;
+}
+
+.servers td {
+  /* white-space: nowrap; */
+}
+
+th.rowicon {
+  width: 32px;
+}
+
+td.servers {
+    word-wrap: break-word;
+}
+
+th.servers {
+  white-space: nowrap;
+}
+
+th.status {
+  width: 64px;
+}
+
+th.gtid {
+  white-space: nowrap;
+}
+
+td.gtid {
+  white-space: normal;
+}
+
+td.cellicon {
+  width: 16px;
+  padding: 0;
+  margin: 0;
+}
+
+table.fixed {
+  table-layout: auto;
+}
+
+img.vicon {
+  width: 16px;
+}
+
+span.cluster {
+  margin: 0 16px;
 }

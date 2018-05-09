@@ -773,7 +773,7 @@ func handlerMuxGetDatabaseServiceConfig(w http.ResponseWriter, r *http.Request) 
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil {
 			res := mycluster.GetDatabaseServiceConfig(node)
 			w.Write([]byte(res))
 		} else {

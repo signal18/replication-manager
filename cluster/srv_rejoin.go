@@ -346,7 +346,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		}
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
-
+	if mycurrentmaster == nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "No master found from replication")
+		return errors.New("No master found from replication")
+	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
 
 		if server.ClusterGroup.Conf.Verbose {
@@ -381,13 +384,14 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					server.ClusterGroup.LogPrintf("ERROR", "Can't stop slave in rejoin slave %s", err)
 				}
 			} else {
-				if mycurrentmaster.State != stateFailed {
+				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
 					err := mycurrentmaster.StopSlave()
 					if err == nil {
 						err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
+
 							server.StopSlave()
 							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.URL)
 							changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{

@@ -123,6 +123,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MonitorLongQueryTime, "monitoring-long-query-time", 10000, "Long query time in ms")
 	monitorCmd.Flags().StringVar(&conf.MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")
 	monitorCmd.Flags().BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", true, "Enable internal scheduler")
+	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
 
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
@@ -414,10 +415,10 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvTags, "prov-db-tags", "semisync,innodb,noquerycache,threadpool,logslow,pfs,compressbinlog", "playbook configuration tags")
 			monitorCmd.Flags().StringVar(&conf.ProvDiskFS, "prov-db-disk-fs", "ext4", "[zfs|xfs|ext4]")
 			monitorCmd.Flags().StringVar(&conf.ProvDiskPool, "prov-db-disk-pool", "none", "[none|zpool|lvm]")
-			monitorCmd.Flags().StringVar(&conf.ProvDiskType, "prov-db-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
+			monitorCmd.Flags().StringVar(&conf.ProvDiskType, "prov-db-disk-type", "loopback", "[loopback|physical|pool|directory]")
+			monitorCmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "/srv", "loopback:path-to-loopfile|physical:/dev/xx|pool:pool-name|directory:/srv")
 			monitorCmd.Flags().BoolVar(&conf.ProvDiskSnapshot, "prov-db-disk-snapshot-prefered-master", false, "Take snapshoot of prefered master")
 			monitorCmd.Flags().IntVar(&conf.ProvDiskSnapshotKeep, "prov-db-disk-snapshot-keep", 7, "Keek this number of snapshoot of prefered master")
-			monitorCmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
 			monitorCmd.Flags().StringVar(&conf.ProvNetIface, "prov-db-net-iface", "eth0", "HBA Device to hold Ips")
 			monitorCmd.Flags().StringVar(&conf.ProvGateway, "prov-db-net-gateway", "192.168.0.254", "Micro Service network gateway")
 			monitorCmd.Flags().StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
@@ -460,9 +461,7 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 			monitorCmd.Flags().BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 			monitorCmd.Flags().StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of OpenSVC agent cluster")
-
 			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
-
 		}
 	}
 	cobra.OnInitialize(initConfig)
@@ -723,7 +722,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster = new(cluster.Cluster)
 
 	myClusterConf := confs[clusterName]
-	myClusterConf.MonitorAddress = repman.resolveHostIp()
+	if myClusterConf.MonitorAddress == "localhost" {
+		myClusterConf.MonitorAddress = repman.resolveHostIp()
+	}
 	if myClusterConf.FailMode == "manual" {
 		myClusterConf.Interactive = true
 	} else {

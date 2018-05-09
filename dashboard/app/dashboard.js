@@ -25,9 +25,11 @@ app.controller('DashboardController',
 
         var callServices = function () {
             if (!AppService.hasAuthHeaders()) return;
+                  if ($scope.menuOpened) return;
+
             Monitor.query({}, function (data) {
                 if (data) {
-                    if (!$scope.menuOpened) {
+                  if (!$scope.menuOpened) {
                         $scope.settings = data;
                         if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
                             if ($scope.settings.clusters.length === 1) {
@@ -58,6 +60,7 @@ app.controller('DashboardController',
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (!$scope.menuOpened) {
                         $scope.servers = data;
+
                         $scope.reserror = false;
                     }
                 }, function () {
@@ -95,9 +98,28 @@ app.controller('DashboardController',
         };
 
         var refreshInterval = 2000;
-        $interval(function () {
+        var promise;
+        $scope.start = function() {
+          $scope.cancel();
+          promise = $interval(function () {
             callServices();
         }, refreshInterval);
+        };
+
+        $scope.cancel = function () {
+             $interval.cancel(promise);
+        };
+        // stops the interval when the scope is destroyed,
+    // this usually happens when a route is changed and
+    // the ItemsController $scope gets destroyed. The
+    // destruction of the ItemsController scope does not
+    // guarantee the stopping of any intervals, you must
+    // be responsible for stopping it when the scope is
+    // is destroyed.
+        $scope.$on('$destroy', function() {
+            $scope.cancel();
+        });
+        $scope.start();
 
         $scope.selectedUserIndex = undefined;
 
@@ -204,7 +226,7 @@ app.controller('DashboardController',
                     gtid = arr[i].domainId + '-' + arr[i].serverId + '-' + arr[i].seqNo;
                     output.push(gtid);
                 }
-                return output.join(",");
+                return output.join(", ");
             }
             return '';
         };
@@ -252,7 +274,12 @@ app.controller('DashboardController',
         $scope.openClusterDialog = function () {
             $scope.menuOpened = true;
             $scope.openedAt = new Date().toLocaleString();
-
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
             $mdDialog.show({
                 contentElement: '#myClusterDialog',
                 parent: angular.element(document.body),
@@ -266,10 +293,11 @@ app.controller('DashboardController',
             $mdDialog.hide({contentElement: '#myClusterDialog'});
             $scope.menuOpened = false;
             $scope.menuOpened = "";
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
         };
 
         $scope.newClusterDialog = function () {
+
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
                 parent: angular.element(document.body),
@@ -277,17 +305,24 @@ app.controller('DashboardController',
         };
         $scope.closeNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
             if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
-            callServices();
+
             $scope.selectedClusterName = $scope.dlgClusterName;
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
+            callServices();
             $scope.setClusterCredentialDialog();
             $scope.setRplCredentialDialog();
 
         };
         $scope.cancelNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('left').close();
+            $mdSidenav('right').close();
         };
 
         $scope.newServerDialog = function () {

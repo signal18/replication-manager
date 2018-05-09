@@ -245,12 +245,15 @@ func (cluster *Cluster) newProxyList() error {
 
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+
 				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
 				prx.Port = "3306"
 			} else {
 				prx.Name = prx.Host
+				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+
 			}
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {

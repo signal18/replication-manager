@@ -34,11 +34,6 @@ func apiClusterUnprotectedHandler(router *mux.Router) {
 }
 
 func apiClusterProtectedHandler(router *mux.Router) {
-	//PROTECTED ENDPOINTS FOR SETTINGS
-	router.Handle("/api/monitor", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
-	))
 
 	router.Handle("/api/clusters/{clusterName}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
@@ -400,7 +395,7 @@ func handlerMuxBootstrapReplication(w http.ResponseWriter, r *http.Request) {
 			mycluster.SetMultiMasterWsrep(true)
 
 		}
-		err := mycluster.BootstrapReplication()
+		err := mycluster.BootstrapReplication(true)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -608,7 +603,12 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 			mycluster.SwitchTraffic()
 		case "test":
 			mycluster.SwitchTestMode()
+		case "prov-net-cni":
+			mycluster.SwitchProvNetCNI()
+		case "prov-docker-daemon-private":
+			mycluster.SwitchProvDockerDaemonPrivate()
 		}
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

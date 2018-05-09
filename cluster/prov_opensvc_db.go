@@ -221,7 +221,7 @@ rollback = false
 
 	conf = conf + `[task#01]
 schedule = @1
-command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/trigger-dbjobs
+command = {env.base_dir}/pod01/init/trigger-dbjobs
 user = root
 run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 
@@ -245,7 +245,7 @@ max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + server.ClusterGroup.GetGComm() + `
-mrm_api_addr = ` + server.ClusterGroup.Conf.BindAddr + ":" + server.ClusterGroup.Conf.HttpPort + `
+mrm_api_addr = ` + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort + `
 mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
 safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
 safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
