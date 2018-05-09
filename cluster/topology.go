@@ -137,7 +137,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.Servers {
-
+		// Isdown if supect or failed
 		if sv.IsDown() {
 			continue
 		}

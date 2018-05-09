@@ -35,7 +35,7 @@ orchestrate = start
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	conf = conf + `[task0]
 schedule = ` + cluster.Conf.ProvSphinxCron + `
-command = ` + collector.ProvFSPath + `/{svcname}/pod01/init/reindex.sh
+command = {env.base_dir}/{svcname}/pod01/init/reindex.sh
 user = root
 run_requires = fs#01(up,stdby up)
 
