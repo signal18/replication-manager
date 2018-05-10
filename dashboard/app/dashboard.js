@@ -202,7 +202,7 @@ app.controller('DashboardController',
         };
 
         $scope.bootstrap = function (topo) {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/' + topo);
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
         };
 
         $scope.provision = function () {
