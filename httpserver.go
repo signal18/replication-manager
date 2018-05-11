@@ -141,7 +141,7 @@ func httpserver() {
 	// main page
 
 	// page to view which does not need authorization
-
+	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 	router.HandleFunc("/servers", handlerServers)
 	router.HandleFunc("/stop", handlerStopServer)
 	router.HandleFunc("/start", handlerStartServer)

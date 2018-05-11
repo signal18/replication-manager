@@ -93,6 +93,7 @@ type ServerMonitor struct {
 	IsMaintenance               bool
 	Ignored                     bool
 	Prefered                    bool
+	BinlogDumpThreads           int
 	MxsVersion                  int
 	MxsHaveGtid                 bool
 	RelayLogSize                uint64
@@ -226,7 +227,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
-				server.State = stateUnconn
+				//server.State = stateUnconn
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
 			}
 		}
@@ -477,6 +478,12 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW MASTER STATUS
 	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn)
+
+	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ErrFrom: "CONF"})
+	}
+
 	if err != nil {
 		// binary log might be closed for that server
 	} else {
