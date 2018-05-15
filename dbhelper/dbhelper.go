@@ -587,6 +587,14 @@ func SetBinlogSlowqueries(db *sqlx.DB) error {
 	return nil
 }
 
+func SetLongQueryTime(db *sqlx.DB, querytime string) error {
+	_, err := db.Exec("SET GLOBAL long_query_time=" + querytime)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // SetSyncBinlog Enable Binlog Durability
 func SetSyncBinlog(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL sync_binlog=1")

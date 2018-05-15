@@ -112,6 +112,8 @@ type ServerMonitor struct {
 	EngineInnoDB                map[string]string         `json:"engineInnodb"`
 	ErrorLog                    httplog.HttpLog           `json:"errorLog"`
 	SlowLog                     slowlog.SlowLog           `json:"slowLog"`
+	LongQueryTimeSaved          string                    `json:"longQueryTimeSaved"`
+	SlowQueryCapture            bool                      `json:"slowQueryCapture"`
 	Status                      map[string]string         `json:"-"`
 	Queries                     map[string]string         `json:"-"` //PFS queries
 	DictTables                  map[string]dbhelper.Table `json:"-"`

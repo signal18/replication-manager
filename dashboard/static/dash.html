@@ -386,13 +386,19 @@
                                 <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
                                     <md-button>
                                         <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
-                                        Skip Replication Event
+                                        Skip 1 Replication Event
                                     </md-button>
                                 </md-menu-item>
                                 <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id)">
                                     <md-button>
                                         <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
                                         Toogle InnoDB Monitor
+                                    </md-button>
+                                </md-menu-item>
+                                <md-menu-item ng-click="dbtoogleslowquerycapture(server.id)">
+                                    <md-button>
+                                        <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                        Toogle Slow Query Capture
                                     </md-button>
                                 </md-menu-item>
 
