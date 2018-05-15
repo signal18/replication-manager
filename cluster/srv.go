@@ -300,8 +300,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		return
 	}
-	// reaffect the connection if we lost it
-	if server.Conn == nil {
+	// reaffect a connection if we lost it
+	if server.IsDown() {
 		server.Conn = conn
 	} else {
 		defer conn.Close()
