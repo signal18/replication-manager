@@ -353,15 +353,16 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting for database start %s", server.URL)
+
 			exitloop++
 
 			err := server.Refresh()
 			if err == nil {
 
 				exitloop = 100
+			} else {
+				cluster.LogPrintf(LvlInfo, "Waiting for database start on %s failed with error %s ", server.URL, err)
 			}
-
 		}
 	}
 	if exitloop == 100 {

@@ -304,6 +304,8 @@ app.controller('DashboardController',
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeNewClusterDialog = function () {
