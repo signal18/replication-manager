@@ -29,9 +29,9 @@ app.controller('DashboardController',
 
             Monitor.query({}, function (data) {
                 if (data) {
-                  if (!$scope.menuOpened) {
+
                         $scope.settings = data;
-                        if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
+                        if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
                             if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
                             } else if ($scope.settings.clusters.length > 1){
@@ -41,7 +41,7 @@ app.controller('DashboardController',
 
                         if (data.logs.buffer) $scope.logs = data.logs.buffer;
                         $scope.agents = data.agents;
-                    }
+
                 }
             }, function () {
                 $scope.reserror = true;
@@ -59,9 +59,10 @@ app.controller('DashboardController',
 
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (!$scope.menuOpened) {
+                        if (data) {
                         $scope.servers = data;
-
                         $scope.reserror = false;
+                        }
                     }
                 }, function () {
                     $scope.reserror = true;
@@ -90,7 +91,9 @@ app.controller('DashboardController',
                 });
 
                 Slaves.query({clusterName: $scope.selectedClusterName}, function (data) {
+                    if (data) {
                     $scope.slaves = data;
+                    }
                 }, function () {
                     $scope.reserror = true;
                 });
@@ -277,15 +280,11 @@ app.controller('DashboardController',
         $scope.openClusterDialog = function () {
             $scope.menuOpened = true;
             $scope.openedAt = new Date().toLocaleString();
-            $scope.servers={};
-            $scope.slaves={};
-            $scope.master={};
-            $scope.alerts={};
-            $scope.logs={};
-            $scope.proxies={};
+
             $mdDialog.show({
                 contentElement: '#myClusterDialog',
-                parent: angular.element(document.body),
+                scope: $scope,
+                preserveScope: true,
                 clickOutsideToClose: false,
                 escapeToClose: false,
             });
@@ -293,9 +292,16 @@ app.controller('DashboardController',
         };
 
         $scope.closeClusterDialog = function () {
+        
             $mdDialog.hide({contentElement: '#myClusterDialog'});
             $scope.menuOpened = false;
-            $scope.menuOpened = "";
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
+
             $mdSidenav('right').close();
         };
 
@@ -303,6 +309,8 @@ app.controller('DashboardController',
 
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
+                scope: $scope,
+                preserveScope: true,
                 parent: angular.element(document.body),
                 clickOutsideToClose: false,
                 escapeToClose: false,
@@ -310,7 +318,7 @@ app.controller('DashboardController',
         };
         $scope.closeNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('right').close();
+
             if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
 
             $scope.selectedClusterName = $scope.dlgClusterName;
@@ -323,6 +331,7 @@ app.controller('DashboardController',
             callServices();
             $scope.setClusterCredentialDialog();
             $scope.setRplCredentialDialog();
+            $mdSidenav('right').close();
 
         };
         $scope.cancelNewClusterDialog = function () {
@@ -419,6 +428,7 @@ app.controller('DashboardController',
             };
         }
 
+
         $scope.$on('$mdMenuOpen', function (event, menu) {
             console.log('Opening menu refresh server will stop...', event, menu);
             $scope.menuOpened = true;
@@ -430,5 +440,6 @@ app.controller('DashboardController',
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
+
 
     });
