@@ -348,6 +348,8 @@ app.controller('DashboardController',
             $mdDialog.show({
                 contentElement: '#myClusterCredentialDialog',
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeClusterCredentialDialog = function () {
@@ -362,6 +364,8 @@ app.controller('DashboardController',
             $mdDialog.show({
                 contentElement: '#myRplCredentialDialog',
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeRplCredentialDialog = function () {
