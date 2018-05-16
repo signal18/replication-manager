@@ -303,6 +303,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// reaffect a connection if we lost it
 	if server.IsDown() {
 		server.Conn = conn
+		server.ClusterGroup.LogPrintf("ERROR", "Assigning a global connection on server %s", server.URL)
 	} else {
 		defer conn.Close()
 	}
