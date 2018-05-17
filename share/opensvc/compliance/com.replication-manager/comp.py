@@ -197,6 +197,7 @@ class CompObject(object):
                 data = json.loads(s)
             except ValueError:
                 perror("failed to concatenate '%s=%s' to rules list" % (k, str(self.get_env(k))))
+                continue
             if type(data) == list:
                 for d in data:
                     rules += [(k, d)]
@@ -246,6 +247,24 @@ class CompObject(object):
             except EndRecursion:
                 break
 
+        p = re.compile('%%SAFE:\w+%%', re.IGNORECASE)
+
+        def _subst_safe(v):
+            matches = p.findall(v)
+            if len(matches) == 0:
+                raise EndRecursion
+            for m in matches:
+                s = m.strip("%").upper().replace('SAFE:', '')
+                _v = self.collector_rest_get("/safe/%s/download" % s, load_json=False)
+                v = v.replace(m, _v)
+            return v
+
+        for i in range(max_recursion):
+            try:
+                v = _subst_safe(v)
+            except EndRecursion:
+                break
+
         return v
 
     def collector_api(self):
@@ -272,6 +291,8 @@ class CompObject(object):
         data["url"] = config.get("node", "dbopensvc").replace("/feed/default/call/xmlrpc", "")
         data["url"] = data["url"].replace("/init/rest/api", "")
         data["url"] += "/init/rest/api"
+        if not data["url"].startswith("http"):
+            data["url"] = "https://%s" % data["url"]
         self.collector_api_cache = data
         return self.collector_api_cache
 
@@ -291,7 +312,7 @@ class CompObject(object):
         request.add_header("Authorization", "Basic %s" % base64string)
         return request
 
-    def collector_rest_get(self, path):
+    def collector_rest_get(self, path, load_json=True):
         api = self.collector_api()
         request = self.collector_request(path)
         if api["url"].startswith("https"):
@@ -311,8 +332,10 @@ class CompObject(object):
             except:
                 pass
             raise e
-        import json
-        data = json.loads(f.read())
+        if load_json:
+            data = json.loads(f.read())
+        else:
+            data = f.read()
         f.close()
         return data
 
@@ -344,7 +367,12 @@ class CompObject(object):
     def collector_safe_uri_to_uuid(self, uuid):
         if uuid.startswith("safe://"):
             uuid = uuid.replace("safe://", "")
-        if not uuid.startswith("safe"):
+        try:
+            int(uuid)
+            isint = True
+        except ValueError:
+            isint = False
+        if not uuid.startswith("safe") and not isint:
             raise ComplianceError("malformed safe file uri: %s" % uuid)
         return uuid
 

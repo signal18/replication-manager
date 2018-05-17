@@ -2,7 +2,7 @@
 
 data = {
   "default_prefix": "OSVC_COMP_FILE_",
-  "example_value": """ 
+  "example_value": """
 {
   "path": "/some/path/to/file",
   "fmt": "root@corp.com		%%HOSTNAME%%@corp.com",
@@ -100,6 +100,7 @@ import ssl
 import tempfile
 import pwd
 import grp
+import codecs
 from subprocess import *
 
 sys.path.append(os.path.dirname(__file__))
@@ -212,14 +213,12 @@ class CompFiles(CompObject):
         target_md5 = data.get("md5")
         current_md5 = self.md5(f["path"])
         if target_md5 == current_md5:
-            pinfo("file %s md5 verified" % f["path"])
+            if verbose:
+                pinfo("file %s md5 verified" % f["path"])
             return RET_OK
         else:
-            perror("file %s content md5 differs from its reference" % f["path"])
-            if verbose and data["size"] < 1000000:
-                tmpfname = self.get_safe_file(f["ref"])
-                self.check_file_diff(f, tmpfname, verbose=verbose)
-                os.unlink(tmpfname)
+            if verbose:
+                perror("file %s content md5 differs from its reference" % f["path"])
             return RET_ERR
 
     def get_safe_file(self, uuid):
@@ -236,14 +235,18 @@ class CompFiles(CompObject):
         tmpf = tempfile.NamedTemporaryFile()
         tmpfname = tmpf.name
         tmpf.close()
-        with open(tmpfname, 'w') as tmpf:
-            tmpf.write(f['fmt'])
+        if sys.version_info[0] >= 3:
+            with codecs.open(tmpfname, 'w', encoding="utf-8") as tmpf:
+                tmpf.write(f['fmt'])
+        else:
+            with open(tmpfname, 'w') as tmpf:
+                tmpf.write(f['fmt'])
         ret = self.check_file_diff(f, tmpfname, verbose=verbose)
         os.unlink(tmpfname)
         return ret
 
     def check_file_diff(self, f, refpath, verbose=False):
-        if "OSVC_COMP_NODES_OS_NAME" in os.environ and os.environ['OSVC_COMP_NODES_OS_NAME'] in ("Linux"):
+        if "OSVC_COMP_NODES_OS_NAME" in os.environ and os.environ['OSVC_COMP_NODES_OS_NAME'] in ("Linux", "Darwin", "FreeBSD"):
             cmd = ['diff', '-u', f['path'], refpath]
         else:
             cmd = ['diff', f['path'], refpath]
@@ -388,9 +391,14 @@ class CompFiles(CompObject):
            except Exception as e:
                perror("file:", e)
                pass
+        self.backup(f['path'])
         try:
-            with open(f['path'], 'w') as fi:
-                fi.write(f['fmt'])
+            if sys.version_info[0] >= 3:
+                with codecs.open(f['path'], 'w', encoding="utf-8") as fi:
+                    fi.write(f['fmt'])
+            else:
+                with open(f['path'], 'w') as fi:
+                    fi.write(f['fmt'])
         except Exception as e:
             perror("file:", e)
             return RET_ERR
@@ -413,4 +421,3 @@ class CompFiles(CompObject):
 
 if __name__ == "__main__":
     main(CompFiles)
-
