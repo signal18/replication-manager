@@ -297,12 +297,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		return
 	}
 	// reaffect a connection if we lost it
-	if server.IsDown() {
-		server.Conn = conn
-		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
-	} else {
-		defer conn.Close()
-	}
+	//if server.IsDown() {
+
+	//		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+	//	} else {
+	defer conn.Close()
+	//}
 	if server.ClusterGroup.sme.IsInFailover() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
@@ -378,17 +378,19 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 func (server *ServerMonitor) Refresh() error {
 	if server.Conn == nil {
 		//	server.State = stateFailed
-		return errors.New("Connection is closed, server unreachable")
+		return errors.New("Connection is nil, server unreachable")
 	}
 	if server.Conn.Unsafe() == nil {
 		//	server.State = stateFailed
-		return errors.New("Connection is closed, server unreachable")
+		return errors.New("Connection is unsafe, server unreachable")
 	}
-	conn, err := sqlx.Connect("mysql", server.DSN)
+	//conn, err := sqlx.Connect("mysql", server.DSN)
+	err := server.Conn.Ping()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+
+	//	defer conn.Close()
 	if server.ClusterGroup.Conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
