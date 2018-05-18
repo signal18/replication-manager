@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -98,6 +99,7 @@ type Cluster struct {
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
 	scheduler            *cron.Cron
+	sync.Mutex
 }
 
 type CronEntry struct {

@@ -287,10 +287,12 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetDBServerIdList() []string {
+	cluster.Lock()
 	ret := make([]string, len(cluster.Servers))
 	for i, server := range cluster.Servers {
 		ret[i] = server.Id
 	}
+	cluster.Unlock()
 	return ret
 }
 

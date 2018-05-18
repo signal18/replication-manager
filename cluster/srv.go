@@ -296,13 +296,19 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		return
 	}
-	// reaffect a connection if we lost it
-	//if server.IsDown() {
+	// reaffect a global DB object if we never get it , ex dynamic seeding
+	if server.Conn == nil {
+		server.Conn, err = sqlx.Open("mysql", server.DSN)
+		if err == nil {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+		} else {
+			defer conn.Close()
+			return
+		}
 
-	//		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
-	//	} else {
+	}
 	defer conn.Close()
-	//}
+
 	if server.ClusterGroup.sme.IsInFailover() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
@@ -377,8 +383,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	if server.Conn == nil {
-		//	server.State = stateFailed
+
 		return errors.New("Connection is nil, server unreachable")
+
 	}
 	if server.Conn.Unsafe() == nil {
 		//	server.State = stateFailed

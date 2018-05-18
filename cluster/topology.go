@@ -45,10 +45,11 @@ func (cluster *Cluster) newServerList() error {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
 	}
-
+	cluster.Lock()
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 
 	for k, url := range cluster.hostList {
+
 		if !cluster.Conf.ProvNetCNI {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf", "")
 		} else {
@@ -61,7 +62,7 @@ func (cluster *Cluster) newServerList() error {
 			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.Servers[k].URL)
 		}
 	}
-
+	cluster.Unlock()
 	return nil
 }
 
