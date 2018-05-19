@@ -109,6 +109,11 @@ func apiClusterProtectedHandler(router *mux.Router) {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
 
 	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
@@ -791,7 +796,15 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
-		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+		if vars["type"] == "" {
+			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+		} else {
+			if mycluster.MonitorType[vars["type"]] == "proxy" {
+				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"])
+			} else {
+				mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+			}
+		}
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return

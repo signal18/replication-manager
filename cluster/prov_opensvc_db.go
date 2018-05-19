@@ -199,7 +199,7 @@ rollback = false
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod, agent)
-		conf = conf + `post_provision =  {svcmgr} -s {svcname} push resinfo --sync;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db;
+		conf = conf + `post_provision =  {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db;
 	`
 		conf = conf + server.GetSnapshot(collector)
 		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)

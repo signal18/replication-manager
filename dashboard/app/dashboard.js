@@ -4,6 +4,19 @@ app.controller('DashboardController',
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
 
+        $scope.monitors = [
+    { id: 'mariadb', name: 'MariaDB' },
+    { id: 'mysql', name: 'MySQL' },
+    { id: 'percona', name: 'Percona' },
+    { id: 'proxysql', name: 'ProxySQL' },
+    { id: 'haproxy', name: 'HaProxy' },
+    { id: 'shardproxy', name: 'ShardProxy' },
+    { id: 'sphinx', name: 'SphinxProxy' },
+    { id: 'extvip', name: 'VIP' },
+
+   ];
+  $scope.selectedMonitor = { id: 1, name: 'Bob' };
+
         var getClusterUrl = function () {
             return AppService.getClusterUrl($scope.selectedClusterName);
         };
@@ -145,6 +158,10 @@ app.controller('DashboardController',
             }
         };
 
+        $scope.clbootstrap = function (topo) {
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
+        };
+
         $scope.dbmaintenance = function (server) {
             if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
         };
@@ -205,10 +222,6 @@ app.controller('DashboardController',
 
         $scope.setactive = function () {
             if (confirm("Confirm Active Status?")) httpGetWithoutResponse(getClusterUrl() + '/api/setactive');
-        };
-
-        $scope.bootstrap = function (topo) {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
         };
 
         $scope.provision = function () {
@@ -292,7 +305,7 @@ app.controller('DashboardController',
         };
 
         $scope.closeClusterDialog = function () {
-        
+
             $mdDialog.hide({contentElement: '#myClusterDialog'});
             $scope.menuOpened = false;
             $scope.servers={};
@@ -347,7 +360,7 @@ app.controller('DashboardController',
         };
         $scope.closeNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});
-            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort);
+            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort+"/"+$scope.selectedMonitor);
         };
         $scope.cancelNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});

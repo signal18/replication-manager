@@ -53,7 +53,7 @@
                         <md-option ng-selected="{{element == selectedClusterName}}"
                                    ng-repeat="element in settings.clusters" ng-value="element"
                                    selected="{{ element === ctrl.selectedClusterName ? 'selected' : '' }}">
-                                        {{element}}</option>
+                                        {{element}}</md-option>
                         </md-select>
                     <md-button ng-click="closeClusterDialog()" class="md-primary">
                         Ok
@@ -85,6 +85,9 @@
                     <form>
                         Host: <input type="text" ng-model="dlgServerName"><BR>
                         Port: <input type="text" ng-model="dlgServerPort">
+                        Type:  <md-select ng-model="selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
+    <md-option ng-value="monitor" ng-repeat="monitor in monitors">{{ monitor.name }}</md-option>
+  </md-select>
                     </form>
                     <md-button ng-click="cancelNewServerDialog()" class="md-primary">
                         Cancel

@@ -184,6 +184,38 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	return nil
 }
 
+func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string) error {
+	switch prx {
+	case proxyHaproxy:
+		cluster.Conf.HaproxyOn = true
+		if cluster.Conf.HaproxyHosts != "" {
+			cluster.Conf.HaproxyHosts = cluster.Conf.HaproxyHosts + "," + srv
+		} else {
+			cluster.Conf.HaproxyHosts = srv
+		}
+	case proxyMaxscale:
+		cluster.Conf.MxsOn = true
+		if cluster.Conf.MxsHost != "" {
+			cluster.Conf.MxsHost = cluster.Conf.MxsHost + "," + srv
+		} else {
+			cluster.Conf.MxsHost = srv
+		}
+	case proxySqlproxy:
+		cluster.Conf.ProxysqlOn = true
+		if cluster.Conf.ProxysqlHosts != "" {
+			cluster.Conf.ProxysqlHosts = cluster.Conf.ProxysqlHosts + "," + srv
+		} else {
+			cluster.Conf.ProxysqlHosts = srv
+		}
+	}
+	cluster.sme.SetFailoverState()
+	cluster.Lock()
+	cluster.newProxyList()
+	cluster.Unlock()
+	cluster.sme.RemoveFailoverState()
+	return nil
+}
+
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)

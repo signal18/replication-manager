@@ -16,7 +16,7 @@
           <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
-          New Database Monitor
+          New Monitor
             </md-button>
           </md-menu-item>
           <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
@@ -72,31 +72,31 @@
                    <md-icon class="fas fa-arrow-right"></md-icon>
                 </md-button>
                 <md-menu-content>
-                   <md-menu-item ng-click="boostrap('master-slave')">
+                   <md-menu-item ng-click="clbootstrap('master-slave')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Master Slave
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('master-slave-no-gtid')">
+                   <md-menu-item ng-click="clbootstrap('master-slave-no-gtid')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Master Slave Positional
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-if="server.id!=master.id" ng-click="boostrap('multi-master')">
+                   <md-menu-item ng-if="server.id!=master.id" ng-click="clboostrap('multi-master')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Multi Master
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('multi-master-ring')">
+                   <md-menu-item ng-click="clbootstrap('multi-master-ring')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                         Multi Master Ring
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('multi-tier-slave')">
+                   <md-menu-item ng-click="clbootstrap('multi-tier-slave')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                         Multi Tier Slave

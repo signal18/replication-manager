@@ -99,6 +99,7 @@ type Cluster struct {
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
 	scheduler            *cron.Cron
+	MonitorType          map[string]string `json:"monitorType"`
 	sync.Mutex
 }
 
@@ -156,6 +157,18 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.Status = ConstMonitorActif
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = httplog.NewHttpLog(200)
+	cluster.MonitorType = map[string]string{
+		"mariadb":    "database",
+		"mysql":      "database",
+		"percona":    "database",
+		"maxscale":   "proxy",
+		"sqlproxy":   "proxy",
+		"shardproxy": "proxy",
+		"haproxy":    "proxy",
+		"myproxy":    "proxy",
+		"extproxy":   "proxy",
+		"sphinx":     "proxy",
+	}
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
