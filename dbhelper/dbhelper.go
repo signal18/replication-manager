@@ -118,7 +118,7 @@ type SpiderTableNoSync struct {
 }
 
 type BinlogEvents struct {
-	Log_name    string `db:"log_name" json:"logName"`
+	Log_name    string `db:"Log_name" json:"logName"`
 	Pos         uint   `db:"Pos" json:"pos"`
 	Event_type  string `db:"Event_type" json:"eventType"`
 	Server_id   uint   `db:"Server_id" json:"serverId"`
