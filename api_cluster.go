@@ -795,7 +795,7 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
+		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		if vars["type"] == "" {
 			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {

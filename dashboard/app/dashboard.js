@@ -15,7 +15,7 @@ app.controller('DashboardController',
     { id: 'extvip', name: 'VIP' },
 
    ];
-  $scope.selectedMonitor = { id: 1, name: 'Bob' };
+  $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
 
         var getClusterUrl = function () {
             return AppService.getClusterUrl($scope.selectedClusterName);
@@ -360,7 +360,7 @@ app.controller('DashboardController',
         };
         $scope.closeNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});
-            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort+"/"+$scope.selectedMonitor);
+            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort+ "  "+ $scope.selectedMonitor.id)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort+"/"+$scope.selectedMonitor.id);
         };
         $scope.cancelNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});
