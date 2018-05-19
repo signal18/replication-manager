@@ -33,32 +33,33 @@ import (
 )
 
 type Cluster struct {
-	Name           string          `json:"name"`
-	Servers        serverList      `json:"-"`
-	ServerIdList   []string        `json:"dbServers"`
-	Crashes        crashList       `json:"dbServersCrashes"`
-	Proxies        proxyList       `json:"-"`
-	ProxyIdList    []string        `json:"proxyServers"`
-	FailoverCtr    int             `json:"failoverCounter"`
-	FailoverTs     int64           `json:"failoverLastTime"`
-	Status         string          `json:"activePassiveStatus"`
-	Conf           config.Config   `json:"config"`
-	CleanAll       bool            `json:"cleanReplication"` //used in testing
-	IsDown         bool            `json:"isDown"`
-	IsProvisionned bool            `json:"isProvisionned"`
-	Schedule       []CronEntry     `json:"schedule"`
-	DBTags         []string        `json:"dbServersTags"`
-	ProxyTags      []string        `json:"proxyServersTags"`
-	Topology       string          `json:"topology"`
-	Uptime         string          `json:"uptime"`
-	UptimeFailable string          `json:"uptimeFailable"`
-	UptimeSemiSync string          `json:"uptimeSemisync"`
-	MonitorSpin    string          `json:"monitorSpin"`
-	DBTableSize    int64           `json:"dbTableSize"`
-	DBIndexSize    int64           `json:"dbIndexSize"`
-	Log            httplog.HttpLog `json:"log"`
-	hostList       []string
-
+	Name                 string            `json:"name"`
+	Servers              serverList        `json:"-"`
+	ServerIdList         []string          `json:"dbServers"`
+	Crashes              crashList         `json:"dbServersCrashes"`
+	Proxies              proxyList         `json:"-"`
+	ProxyIdList          []string          `json:"proxyServers"`
+	FailoverCtr          int               `json:"failoverCounter"`
+	FailoverTs           int64             `json:"failoverLastTime"`
+	Status               string            `json:"activePassiveStatus"`
+	Conf                 config.Config     `json:"config"`
+	CleanAll             bool              `json:"cleanReplication"` //used in testing
+	IsDown               bool              `json:"isDown"`
+	IsProvisionned       bool              `json:"isProvisionned"`
+	Schedule             []CronEntry       `json:"schedule"`
+	DBTags               []string          `json:"dbServersTags"`
+	ProxyTags            []string          `json:"proxyServersTags"`
+	Topology             string            `json:"topology"`
+	Uptime               string            `json:"uptime"`
+	UptimeFailable       string            `json:"uptimeFailable"`
+	UptimeSemiSync       string            `json:"uptimeSemisync"`
+	MonitorSpin          string            `json:"monitorSpin"`
+	DBTableSize          int64             `json:"dbTableSize"`
+	DBIndexSize          int64             `json:"dbIndexSize"`
+	Log                  httplog.HttpLog   `json:"log"`
+	MonitorType          map[string]string `json:"monitorType"`
+	TopologyType         map[string]string `json:"topologyType"`
+	hostList             []string
 	proxyList            []string
 	clusterList          map[string]*Cluster
 	slaves               serverList
@@ -99,7 +100,6 @@ type Cluster struct {
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
 	scheduler            *cron.Cron
-	MonitorType          map[string]string `json:"monitorType"`
 	sync.Mutex
 }
 
@@ -168,6 +168,14 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		"myproxy":    "proxy",
 		"extproxy":   "proxy",
 		"sphinx":     "proxy",
+	}
+	cluster.TopologyType = map[string]string{
+		topoMasterSlave:      "master-slave",
+		topoBinlogServer:     "binlog-server",
+		topoMultiTierSlave:   "multi-tier-slave",
+		topoMultiMaster:      "multi-master",
+		topoMultiMasterRing:  "multi-master-ring",
+		topoMultiMasterWsrep: "multi-master-wsrep",
 	}
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)

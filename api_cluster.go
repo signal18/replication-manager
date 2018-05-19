@@ -802,6 +802,14 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 			if mycluster.MonitorType[vars["type"]] == "proxy" {
 				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"])
 			} else {
+				switch vars["type"] {
+				case "mariadb":
+					mycluster.Conf.ProvDbImg = "mariadb:latest"
+				case "percona":
+					mycluster.Conf.ProvDbImg = "percona:latest"
+				case "mysql":
+					mycluster.Conf.ProvDbImg = "mysql:latest"
+				}
 				mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 			}
 		}
