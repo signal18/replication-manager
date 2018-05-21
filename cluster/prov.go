@@ -207,6 +207,13 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string) erro
 		} else {
 			cluster.Conf.ProxysqlHosts = srv
 		}
+	case proxySpider:
+		cluster.Conf.MdbsProxyOn = true
+		if cluster.Conf.ProxysqlHosts != "" {
+			cluster.Conf.MdbsProxyHosts = cluster.Conf.MdbsProxyHosts + "," + srv
+		} else {
+			cluster.Conf.MdbsProxyHosts = srv
+		}
 	}
 	cluster.sme.SetFailoverState()
 	cluster.Lock()

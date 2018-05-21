@@ -11,6 +11,7 @@ app.controller('DashboardController',
     { id: 'proxysql', name: 'ProxySQL' },
     { id: 'haproxy', name: 'HaProxy' },
     { id: 'shardproxy', name: 'ShardProxy' },
+    { id: 'maxscale', name: 'MaxScale' },
     { id: 'sphinx', name: 'SphinxProxy' },
     { id: 'extvip', name: 'VIP' },
 

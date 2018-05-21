@@ -555,7 +555,7 @@ var showCmd = &cobra.Command{
 			var myObjects Objects
 			myObjects.Name = cluster
 			if strings.Contains(cliShowObjects, "settings") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/settings"
+				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster
 				res, err := cliAPICmd(urlpost, nil)
 				if err == nil {
 
@@ -979,7 +979,7 @@ func cliLogin() (string, error) {
 	var r Result
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in login", err)
 		return "", err
 	}
 	return r.Token, nil
@@ -1009,9 +1009,7 @@ func cliGetAllClusters() ([]string, error) {
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR", "ici")
-
-		log.Println("ERROR", err)
+		log.Println("ERROR in cluster list", err)
 		return res, err
 	}
 	return r.Clusters, nil
@@ -1019,7 +1017,7 @@ func cliGetAllClusters() ([]string, error) {
 
 func cliGetSettings() (Settings, error) {
 	var r Settings
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/settings"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + ""
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {
@@ -1028,13 +1026,13 @@ func cliGetSettings() (Settings, error) {
 	req.Header.Set("Authorization", bearer)
 	resp, err := cliConn.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in settings", err)
 		return r, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in settings", err)
 		return r, err
 	}
 	if resp.StatusCode == http.StatusForbidden {
@@ -1043,7 +1041,7 @@ func cliGetSettings() (Settings, error) {
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in settings", err)
 		return r, err
 	}
 	return r, nil
@@ -1076,7 +1074,7 @@ func cliGetServers() ([]cluster.ServerMonitor, error) {
 	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in getting servers", err)
 		return r, err
 	}
 	resp.Body.Close()
@@ -1105,7 +1103,7 @@ func cliGetMaster() (cluster.ServerMonitor, error) {
 	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR in getting master", err)
 		return r, err
 	}
 	resp.Body.Close()
@@ -1123,13 +1121,13 @@ func cliGetLogs() ([]string, error) {
 	req.Header.Set("Authorization", bearer)
 	resp, err := cliConn.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR on getting logs ", err)
 		return r, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR on getting logs", err)
 		return r, err
 	}
 	if resp.StatusCode == http.StatusForbidden {
@@ -1137,7 +1135,7 @@ func cliGetLogs() ([]string, error) {
 	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR on getting logs", err)
 		return r, err
 	}
 	resp.Body.Close()

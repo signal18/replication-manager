@@ -41,6 +41,11 @@ func apiClusterProtectedHandler(router *mux.Router) {
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
+	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSettings)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
@@ -899,6 +904,28 @@ func handlerMuxCluster(w http.ResponseWriter, r *http.Request) {
 		err := e.Encode(mycluster)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+func handlerMuxClusterSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.Conf)
+		if err != nil {
+			http.Error(w, "Encoding error in settings", 500)
 			return
 		}
 	} else {
