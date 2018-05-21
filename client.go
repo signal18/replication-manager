@@ -49,7 +49,8 @@ var (
 	cliTermlength                int
 	cliServers                   []cluster.ServerMonitor
 	cliMaster                    cluster.ServerMonitor
-	cliSettings                  Settings
+	cliSettings                  cluster.Cluster
+	cliMonitor                   ReplicationManager
 	cliUrl                       string
 	cliTTestRun                  string
 	cliTestShowTests             bool
@@ -457,8 +458,8 @@ var testCmd = &cobra.Command{
 		//cliGetTopology()
 
 		if cliTestShowTests == true {
-			cliSettings, _ = cliGetSettings()
-			log.Println(cliSettings.RegTests)
+			cliMonitor, _ = cliGetMonitor()
+			log.Println(cliMonitor.Tests)
 		}
 		if cliTestShowTests == false {
 
@@ -709,19 +710,19 @@ var clientCmd = &cobra.Command{
 						}
 					}
 					if event.Key == termbox.KeyCtrlR {
-						cliClusterCmd("settings/switch/readonly", nil)
+						cliClusterCmd("settings/actions/switch/failover-readonly-state", nil)
 					}
 					if event.Key == termbox.KeyCtrlW {
-						cliClusterCmd("settings/switch/readonly", nil)
+						cliClusterCmd("settings/actions/switch/failover-readonly-state", nil)
 					}
 					if event.Key == termbox.KeyCtrlI {
-						cliClusterCmd("settings/switch/interactive", nil)
+						cliClusterCmd("settings/actions/switch/failover-mode", nil)
 					}
 					if event.Key == termbox.KeyCtrlV {
-						cliClusterCmd("settings/switch/verbosity", nil)
+						cliClusterCmd("settings/actions/switch/verbosity", nil)
 					}
 					if event.Key == termbox.KeyCtrlE {
-						cliClusterCmd("settings/reset/failovercontrol", nil)
+						cliClusterCmd("actions/reset-failover-control", nil)
 					}
 					if event.Key == termbox.KeyCtrlH {
 						cliDisplayHelp()
@@ -785,7 +786,7 @@ func cliGetTopology() {
 	if cliClusters[cliClusterIndex] != "" {
 		headstr += fmt.Sprintf("| Group: %s", cliClusters[cliClusterIndex])
 	}
-	if cliSettings.Interactive == "false" {
+	if cliSettings.Conf.FailMode == "automatic" {
 		headstr += " |  Mode: Automatic "
 	} else {
 		headstr += " |  Mode: Manual "
@@ -822,7 +823,7 @@ func cliDisplay() {
 	if cliClusters[cliClusterIndex] != "" {
 		headstr += fmt.Sprintf("| Group: %s", cliClusters[cliClusterIndex])
 	}
-	if cliSettings.Interactive == "false" {
+	if cliSettings.Conf.Interactive == false {
 		headstr += " |  Mode: Automatic "
 	} else {
 		headstr += " |  Mode: Manual "
@@ -1015,8 +1016,8 @@ func cliGetAllClusters() ([]string, error) {
 	return r.Clusters, nil
 }
 
-func cliGetSettings() (Settings, error) {
-	var r Settings
+func cliGetSettings() (cluster.Cluster, error) {
+	var r cluster.Cluster
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + ""
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
@@ -1042,6 +1043,38 @@ func cliGetSettings() (Settings, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		log.Println("ERROR in settings", err)
+		return r, err
+	}
+	return r, nil
+}
+
+func cliGetMonitor() (ReplicationManager, error) {
+	var r ReplicationManager
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/monitor"
+	var bearer = "Bearer " + cliToken
+	req, err := http.NewRequest("GET", urlpost, nil)
+	if err != nil {
+		return r, err
+	}
+	req.Header.Set("Authorization", bearer)
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		log.Println("ERROR in monitor", err)
+		return r, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR in monitor", err)
+		return r, err
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return r, errors.New("Wrong credentential")
+	}
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR in monitor", err)
 		return r, err
 	}
 	return r, nil
