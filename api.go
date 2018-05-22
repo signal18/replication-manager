@@ -272,7 +272,7 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 		meuser := mycutinfo["Name"].(string)
 
 		for _, cluster := range RepMan.Clusters {
-			apiUser, apiPass = misc.SplitPair(conf.APIUser)
+			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
 
 			if strings.Contains(meuser, apiUser) {
 				cl = append(cl, cluster.Name)
