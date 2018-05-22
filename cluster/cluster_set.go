@@ -202,10 +202,10 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 	err := cluster.loadDBCertificate()
 	if err != nil {
 		cluster.haveDBTLSCert = false
-		cluster.LogPrintf(LvlInfo, "Don't Have database TLS certificates")
+		cluster.LogPrintf(LvlWarn, "TLS not started, certificates absent")
 	} else {
 		cluster.haveDBTLSCert = true
-		cluster.LogPrintf(LvlInfo, "Have database TLS certificates")
+		cluster.LogPrintf(LvlInfo, "TLS certificates correctly loaded")
 	}
 	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
