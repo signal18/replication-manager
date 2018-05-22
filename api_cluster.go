@@ -806,7 +806,7 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 		} else {
 			if mycluster.MonitorType[vars["type"]] == "proxy" {
 				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"])
-			} else {
+			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				switch vars["type"] {
 				case "mariadb":
 					mycluster.Conf.ProvDbImg = "mariadb:latest"

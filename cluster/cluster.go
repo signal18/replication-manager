@@ -162,7 +162,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		"mysql":      "database",
 		"percona":    "database",
 		"maxscale":   "proxy",
-		"sqlproxy":   "proxy",
+		"proxysql":   "proxy",
 		"shardproxy": "proxy",
 		"haproxy":    "proxy",
 		"myproxy":    "proxy",
