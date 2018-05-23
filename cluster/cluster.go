@@ -222,7 +222,7 @@ func (cluster *Cluster) initScheduler() {
 				cluster.master.JobBackupPhysical()
 			})
 		}
-		if cluster.Conf.SchedulerBackupPhysical {
+		if cluster.Conf.SchedulerDatabaseLogs {
 			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
 			cluster.scheduler.Start()
 			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
