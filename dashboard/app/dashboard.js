@@ -114,13 +114,61 @@ app.controller('DashboardController',
             }
         };
 
-        var refreshInterval = 2000;
+        function timer()
+        {
+            var timer = {
+                running: false,
+                iv: 5000,
+                timeout: false,
+                cb : function(){},
+                start : function(cb,iv,sd){
+                    var elm = this;
+                    clearInterval(this.timeout);
+                    this.running = true;
+                    if(cb) this.cb = cb;
+                    if(iv) this.iv = iv;
+                    if(sd) elm.execute(elm);
+                    else this.timeout = setTimeout(function(){elm.execute(elm)}, this.iv);
+                },
+                execute : function(e){
+                    if(!e.running) return false;
+                    e.cb();
+                    e.start();
+                },
+                stop : function(){
+                    this.running = false;
+                },
+                set_interval : function(iv){
+                    clearInterval(this.timeout);
+                    this.start(false, iv);
+                }
+            };
+            return timer;
+        }
+
+        $scope.refreshInterval = 2000;
         var promise;
+
+        var intervalTimer = new timer();
         $scope.start = function() {
           $scope.cancel();
-          promise = $interval(function () {
-            callServices();
-        }, refreshInterval);
+            intervalTimer.start(function(){
+                callServices();
+            }, $scope.refreshInterval, true);
+        };
+
+        $scope.calculateInterval = function(number) {
+            $scope.refreshInterval += Number(number);
+            //change the interval
+            intervalTimer.set_interval($scope.refreshInterval);
+        };
+
+        $scope.checkIfAllowedInterval = function(number){
+            if (number > 2000 && number < 600000) {
+                $scope.refreshInterval = number;
+            }else{
+                $scope.refreshInterval = 2000;
+            }
         };
 
         $scope.cancel = function () {

@@ -1,13 +1,10 @@
-app.config(function($mdThemingProvider) {
-  $mdThemingProvider.theme('default')
-    .primaryPalette('cyan');
+app.config(function($mdThemingProvider, $mdAriaProvider) {
+  $mdThemingProvider.theme('default').primaryPalette('cyan');
+  $mdAriaProvider.disableWarnings();
 });
 
 app.config(['$qProvider', function ($qProvider) {
     $qProvider.errorOnUnhandledRejections(false);
 }]);
 
-app.config(function($mdAriaProvider) {
-    // Globally disables all ARIA warnings.
-    $mdAriaProvider.disableWarnings();
-});
+
