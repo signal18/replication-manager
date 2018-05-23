@@ -184,6 +184,45 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	return nil
 }
 
+func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string) error {
+	switch prx {
+	case proxyHaproxy:
+		cluster.Conf.HaproxyOn = true
+		if cluster.Conf.HaproxyHosts != "" {
+			cluster.Conf.HaproxyHosts = cluster.Conf.HaproxyHosts + "," + srv
+		} else {
+			cluster.Conf.HaproxyHosts = srv
+		}
+	case proxyMaxscale:
+		cluster.Conf.MxsOn = true
+		if cluster.Conf.MxsHost != "" {
+			cluster.Conf.MxsHost = cluster.Conf.MxsHost + "," + srv
+		} else {
+			cluster.Conf.MxsHost = srv
+		}
+	case proxySqlproxy:
+		cluster.Conf.ProxysqlOn = true
+		if cluster.Conf.ProxysqlHosts != "" {
+			cluster.Conf.ProxysqlHosts = cluster.Conf.ProxysqlHosts + "," + srv
+		} else {
+			cluster.Conf.ProxysqlHosts = srv
+		}
+	case proxySpider:
+		cluster.Conf.MdbsProxyOn = true
+		if cluster.Conf.ProxysqlHosts != "" {
+			cluster.Conf.MdbsProxyHosts = cluster.Conf.MdbsProxyHosts + "," + srv
+		} else {
+			cluster.Conf.MdbsProxyHosts = srv
+		}
+	}
+	cluster.sme.SetFailoverState()
+	cluster.Lock()
+	cluster.newProxyList()
+	cluster.Unlock()
+	cluster.sme.RemoveFailoverState()
+	return nil
+}
+
 func (cluster *Cluster) WaitFailoverEndState() {
 	for cluster.sme.IsInFailover() {
 		time.Sleep(time.Second)
@@ -353,15 +392,16 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting for database start %s", server.URL)
+
 			exitloop++
 
 			err := server.Refresh()
 			if err == nil {
 
 				exitloop = 100
+			} else {
+				cluster.LogPrintf(LvlInfo, "Waiting for database start on %s failed with error %s ", server.URL, err)
 			}
-
 		}
 	}
 	if exitloop == 100 {
@@ -423,7 +463,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 
 func (cluster *Cluster) AllDatabaseCanConn() bool {
 	for _, s := range cluster.Servers {
-		if s.State == stateFailed {
+		if s.IsDown() {
 			return false
 		}
 	}
@@ -644,7 +684,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				}
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				} else if server.State != stateFailed {
+				} else if !server.IsDown() {
 					err = server.StartSlave()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)

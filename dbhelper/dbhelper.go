@@ -118,7 +118,7 @@ type SpiderTableNoSync struct {
 }
 
 type BinlogEvents struct {
-	Log_name    string `db:"log_name" json:"logName"`
+	Log_name    string `db:"Log_name" json:"logName"`
 	Pos         uint   `db:"Pos" json:"pos"`
 	Event_type  string `db:"Event_type" json:"eventType"`
 	Server_id   uint   `db:"Server_id" json:"serverId"`
@@ -581,6 +581,14 @@ func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
 // SetBinlogSlowqueries Enable queries in replication to be reported in slow queries
 func SetBinlogSlowqueries(db *sqlx.DB) error {
 	_, err := db.Exec("SET GLOBAL log_slow_slave_statements=ON")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetLongQueryTime(db *sqlx.DB, querytime string) error {
+	_, err := db.Exec("SET GLOBAL long_query_time=" + querytime)
 	if err != nil {
 		return err
 	}

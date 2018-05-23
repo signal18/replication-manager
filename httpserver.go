@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ func httpserver() {
 	initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 	router.HandleFunc("/", handlerApp)
 	// page to view which does not need authorization
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
@@ -353,6 +355,7 @@ func httpserver() {
 		log.Printf("Starting http monitor on port " + confs[currentClusterName].HttpPort)
 	}
 	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, router))
+
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {

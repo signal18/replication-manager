@@ -16,7 +16,7 @@
           <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
             <md-button>
               <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
-          New Database Monitor
+          New Monitor
             </md-button>
           </md-menu-item>
           <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
@@ -72,31 +72,31 @@
                    <md-icon class="fas fa-arrow-right"></md-icon>
                 </md-button>
                 <md-menu-content>
-                   <md-menu-item ng-click="boostrap('master-slave')">
+                   <md-menu-item ng-click="clbootstrap('master-slave')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Master Slave
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('master-slave-no-gtid')">
+                   <md-menu-item ng-click="clbootstrap('master-slave-no-gtid')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Master Slave Positional
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-if="server.id!=master.id" ng-click="boostrap('multi-master')">
+                   <md-menu-item ng-if="server.id!=master.id" ng-click="clboostrap('multi-master')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                          Multi Master
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('multi-master-ring')">
+                   <md-menu-item ng-click="clbootstrap('multi-master-ring')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                         Multi Master Ring
                       </md-button>
                    </md-menu-item>
-                   <md-menu-item ng-click="boostrap('multi-tier-slave')">
+                   <md-menu-item ng-click="clbootstrap('multi-tier-slave')">
                       <md-button>
                          <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                         Multi Tier Slave
@@ -386,13 +386,19 @@
                                 <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
                                     <md-button>
                                         <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
-                                        Skip Replication Event
+                                        Skip 1 Replication Event
                                     </md-button>
                                 </md-menu-item>
                                 <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id)">
                                     <md-button>
                                         <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
                                         Toogle InnoDB Monitor
+                                    </md-button>
+                                </md-menu-item>
+                                <md-menu-item ng-click="dbtoogleslowquerycapture(server.id)">
+                                    <md-button>
+                                        <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                        Toogle Slow Query Capture
                                     </md-button>
                                 </md-menu-item>
 
@@ -425,9 +431,9 @@
             <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
         </td>
 
-    <td><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</span><span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span></td>
-    <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.currentGtid)}}">{{gtidstring(server.currentGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</span></td>
-    <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.slaveGtid)}}">{{gtidstring(server.slaveGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</span></td>
+    <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</span><span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span></td>
+    <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.currentGtid)}}">{{gtidstring(server.currentGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</span></td>
+    <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.slaveGtid)}}">{{gtidstring(server.slaveGtid)}}</span><span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</span><span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</span></td>
     <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
     <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
         <td class="state"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>

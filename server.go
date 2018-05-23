@@ -45,38 +45,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Global variables
-type ReplicationManager struct {
-	OpenSVC     opensvc.Collector           `json:"-"`
-	Version     string                      `json:"version"`
-	Fullversion string                      `json:"fullVersion"`
-	Os          string                      `json:"os"`
-	Arch        string                      `json:"arch"`
-	Clusters    map[string]*cluster.Cluster `json:"-"`
-	Agents      []opensvc.Host              `json:"agents"`
-	UUID        string                      `json:"uuid"`
-	Hostname    string                      `json:"hostname"`
-	Status      string                      `json:"status"`
-	SplitBrain  bool                        `json:"spitBrain"`
-	ClusterList []string                    `json:"clusters"`
-	Tests       []string                    `json:"tests"`
-	Conf        config.Config               `json:"config"`
-	Logs        httplog.HttpLog             `json:"logs"`
-	tlog        termlog.TermLog
-	termlength  int
-	exitMsg     string
-	exit        bool
-
-	currentCluster *cluster.Cluster
-
-	isStarted bool
-}
-
-const (
-	ConstMonitorActif   string = "A"
-	ConstMonitorStandby string = "S"
-)
-
 var RepMan *ReplicationManager
 
 func init() {
@@ -252,7 +220,7 @@ func init() {
 		monitorCmd.Flags().MarkDeprecated("maxscale-monitor", "Deprecate disable maxscale monitoring for 2 nodes cluster")
 		monitorCmd.Flags().BoolVar(&conf.MxsDisableMonitor, "maxscale-disable-monitor", false, "Disable maxscale monitoring and fully drive server state")
 		monitorCmd.Flags().StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
-		monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-servers", "127.0.0.1", "MaxScale hosts ")
+		monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-servers", "", "MaxScale hosts ")
 		monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
 		monitorCmd.Flags().StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
 		monitorCmd.Flags().StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
@@ -283,7 +251,7 @@ func init() {
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
-		monitorCmd.Flags().StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
+		monitorCmd.Flags().StringVar(&conf.HaproxyHosts, "haproxy-servers", "", "HaProxy hosts")
 		monitorCmd.Flags().IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "HaProxy read-write port to leader")
 		monitorCmd.Flags().IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "HaProxy load balance read port to all nodes")
 		monitorCmd.Flags().IntVar(&conf.HaproxyStatPort, "haproxy-stat-port", 1988, "HaProxy statistics port")
@@ -298,7 +266,7 @@ func init() {
 
 	if WithProxysql == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "127.0.0.1", "ProxySQL hosts")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "6033", "ProxySQL read/write proxy port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
@@ -516,7 +484,7 @@ func initDeprecated() {
 	monitorCmd.Flags().MarkDeprecated("api-user", "Deprecate for 	api-credential")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "readonly", true, "Set slaves as read-only after switchover failover")
 	monitorCmd.Flags().MarkDeprecated("readonly", "Deprecate for failover-readonly-state")
-	monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "127.0.0.1", "MaxScale host IP")
+	monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-host", "", "MaxScale host IP")
 	monitorCmd.Flags().MarkDeprecated("maxscale-host", "Deprecate for maxscale-servers")
 	monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "mdbshardproxy-hosts", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
 	monitorCmd.Flags().MarkDeprecated("mdbshardproxy-hosts", "Deprecate for mdbshardproxy-servers")

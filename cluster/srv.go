@@ -93,6 +93,7 @@ type ServerMonitor struct {
 	IsMaintenance               bool                      `json:"isMaintenance"`
 	Ignored                     bool                      `json:"ignored"`
 	Prefered                    bool                      `json:"prefered"`
+	BinlogDumpThreads           int                       `json:"binlogDumpThreads"`
 	MxsVersion                  int                       `json:"maxscaleVersion"`
 	MxsHaveGtid                 bool                      `json:"maxscaleHaveGtid"`
 	MxsServerName               string                    `json:"maxscaleServerName"` //Unique server Name in maxscale conf
@@ -111,6 +112,8 @@ type ServerMonitor struct {
 	EngineInnoDB                map[string]string         `json:"engineInnodb"`
 	ErrorLog                    httplog.HttpLog           `json:"errorLog"`
 	SlowLog                     slowlog.SlowLog           `json:"slowLog"`
+	LongQueryTimeSaved          string                    `json:"longQueryTimeSaved"`
+	SlowQueryCapture            bool                      `json:"slowQueryCapture"`
 	Status                      map[string]string         `json:"-"`
 	Queries                     map[string]string         `json:"-"` //PFS queries
 	DictTables                  map[string]dbhelper.Table `json:"-"`
@@ -135,6 +138,7 @@ const (
 	stateSlaveLate   string = "SlaveLate"
 	stateMaintenance string = "Maintenance"
 	stateUnconn      string = "StandAlone"
+	stateErrorAuth   string = "ErrorAuth"
 	stateSuspect     string = "Suspect"
 	stateShard       string = "Shard"
 	stateProv        string = "Provision"
@@ -213,10 +217,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-	if server.ClusterGroup.sme.IsInFailover() {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skip server check")
-		return
-	}
 
 	if server.ClusterGroup.vmaster != nil {
 		if server.ClusterGroup.vmaster.ServerID == server.ServerID {
@@ -245,8 +245,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
-				server.State = stateUnconn
-				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+				server.State = stateErrorAuth
+				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+				return
 			}
 		}
 		if err != sql.ErrNoRows {
@@ -295,17 +296,29 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		return
 	}
-	// reaffect the connection if we lost it
+	// reaffect a global DB object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
-		server.Conn = conn
-	} else {
-		defer conn.Close()
+		server.Conn, err = sqlx.Open("mysql", server.DSN)
+		if err == nil {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+		} else {
+			defer conn.Close()
+			return
+		}
+
 	}
+	defer conn.Close()
+
+	if server.ClusterGroup.sme.IsInFailover() {
+		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
+		return
+	}
+
 	// from here we have connection
 	server.Refresh()
 
 	// Reset FailCount
-	if (server.State != stateFailed && server.State != stateUnconn && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
+	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -323,7 +336,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if server.PrevState == stateFailed {
+		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
@@ -370,22 +383,25 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	if server.Conn == nil {
-		//	server.State = stateFailed
-		return errors.New("Connection is closed, server unreachable")
+
+		return errors.New("Connection is nil, server unreachable")
+
 	}
 	if server.Conn.Unsafe() == nil {
 		//	server.State = stateFailed
-		return errors.New("Connection is closed, server unreachable")
+		return errors.New("Connection is unsafe, server unreachable")
 	}
-	conn, err := sqlx.Connect("mysql", server.DSN)
+	//conn, err := sqlx.Connect("mysql", server.DSN)
+	err := server.Conn.Ping()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+
+	//	defer conn.Close()
 	if server.ClusterGroup.Conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
-			server.ClusterGroup.LogPrintf("INFO", "Found Maxscale")
+			server.ClusterGroup.LogPrintf(LvlInfo, "Found Maxscale")
 			server.IsMaxscale = true
 			server.IsRelay = true
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
@@ -405,13 +421,13 @@ func (server *ServerMonitor) Refresh() error {
 		server.Variables, err = dbhelper.GetVariables(server.Conn)
 
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not get variables %s", err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not get variables %s", err)
 			return err
 		}
 		server.Version = dbhelper.MariaDBVersion(server.Variables["VERSION"]) // Deprecated
 		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not get database version")
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not get database version")
 		}
 
 		if server.Variables["EVENT_SCHEDULER"] != "ON" {
@@ -497,13 +513,13 @@ func (server *ServerMonitor) Refresh() error {
 		var sid uint64
 		sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not parse server_id, reason: %s", err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not parse server_id, reason: %s", err)
 		}
 		server.ServerID = uint(sid)
 
 		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not get events")
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not get events")
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
@@ -511,6 +527,11 @@ func (server *ServerMonitor) Refresh() error {
 			server.JobsCheckRunning()
 		}
 		server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
+	}
+
+	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ErrFrom: "CONF"})
 	}
 
 	// SHOW MASTER STATUS
@@ -538,7 +559,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn)
 	}
 	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Could not get slaves status %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
 		return err
 	}
 	// select a replication status get an err if repliciations array is empty
@@ -610,7 +631,7 @@ func (server *ServerMonitor) Refresh() error {
 func (server *ServerMonitor) freeze() bool {
 	err := dbhelper.SetReadOnly(server.Conn, true)
 	if err != nil {
-		server.ClusterGroup.LogPrintf("INFO", "Could not set %s as read-only: %s", server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
 	for i := server.ClusterGroup.Conf.SwitchWaitKill; i > 0; i -= 500 {
@@ -618,16 +639,16 @@ func (server *ServerMonitor) freeze() bool {
 		if threads == 0 {
 			break
 		}
-		server.ClusterGroup.LogPrintf("INFO", "Waiting for %d write threads to complete on %s", threads, server.URL)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
 	maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	if err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Could not get max_connections value on demoted leader")
+		server.ClusterGroup.LogPrintf(LvlErr, "Could not get max_connections value on demoted leader")
 	} else {
 		_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not set max_connections to 0 on demoted leader")
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 0 on demoted leader")
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
@@ -637,7 +658,7 @@ func (server *ServerMonitor) freeze() bool {
 
 func (server *ServerMonitor) ReadAllRelayLogs() error {
 
-	server.ClusterGroup.LogPrintf("INFO", "Reading all relay logs on %s", server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
 		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "")
 		if err != nil {
@@ -659,7 +680,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
 			myGtid_Slave_Pos = server.SlaveGtid
 
-			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
+			server.ClusterGroup.LogPrintf(LvlInfo, "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
@@ -679,7 +700,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 func (server *ServerMonitor) log() {
 	server.Refresh()
-	server.ClusterGroup.LogPrintf("INFO", "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
+	server.ClusterGroup.LogPrintf(LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
 	return
 }
 

@@ -41,6 +41,11 @@ func apiClusterProtectedHandler(router *mux.Router) {
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
+	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSettings)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSettingsReload)),
@@ -105,6 +110,11 @@ func apiClusterProtectedHandler(router *mux.Router) {
 	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
 	))
@@ -790,8 +800,24 @@ func handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	mycluster := RepMan.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new server to be added %s", vars["host"]+":"+vars["port"])
-		mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
+		if vars["type"] == "" {
+			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+		} else {
+			if mycluster.MonitorType[vars["type"]] == "proxy" {
+				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "database" {
+				switch vars["type"] {
+				case "mariadb":
+					mycluster.Conf.ProvDbImg = "mariadb:latest"
+				case "percona":
+					mycluster.Conf.ProvDbImg = "percona:latest"
+				case "mysql":
+					mycluster.Conf.ProvDbImg = "mysql:latest"
+				}
+				mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+			}
+		}
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -878,6 +904,28 @@ func handlerMuxCluster(w http.ResponseWriter, r *http.Request) {
 		err := e.Encode(mycluster)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+func handlerMuxClusterSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.Conf)
+		if err != nil {
+			http.Error(w, "Encoding error in settings", 500)
 			return
 		}
 	} else {

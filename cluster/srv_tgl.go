@@ -9,6 +9,8 @@
 
 package cluster
 
+import "github.com/signal18/replication-manager/dbhelper"
+
 func (server *ServerMonitor) SwitchMaintenance() error {
 	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep || server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 		if server.IsVirtualMaster && server.IsMaintenance == false {
@@ -26,4 +28,15 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 	server.ClusterGroup.failoverProxies()
 
 	return nil
+}
+
+func (server *ServerMonitor) SwitchSlowQueryCapture() {
+	if !server.SlowQueryCapture {
+		server.LongQueryTimeSaved = server.Variables["LONG_QUERY_TIME"]
+		server.SlowQueryCapture = true
+		dbhelper.SetLongQueryTime(server.Conn, "0")
+	} else {
+		server.SlowQueryCapture = false
+		dbhelper.SetLongQueryTime(server.Conn, server.LongQueryTimeSaved)
+	}
 }

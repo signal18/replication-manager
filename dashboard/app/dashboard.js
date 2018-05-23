@@ -4,6 +4,20 @@ app.controller('DashboardController',
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
 
+        $scope.monitors = [
+    { id: 'mariadb', name: 'MariaDB' },
+    { id: 'mysql', name: 'MySQL' },
+    { id: 'percona', name: 'Percona' },
+    { id: 'proxysql', name: 'ProxySQL' },
+    { id: 'haproxy', name: 'HaProxy' },
+    { id: 'shardproxy', name: 'ShardProxy' },
+    { id: 'maxscale', name: 'MaxScale' },
+    { id: 'sphinx', name: 'SphinxProxy' },
+    { id: 'extvip', name: 'VIP' },
+
+   ];
+  $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
+
         var getClusterUrl = function () {
             return AppService.getClusterUrl($scope.selectedClusterName);
         };
@@ -29,9 +43,9 @@ app.controller('DashboardController',
 
             Monitor.query({}, function (data) {
                 if (data) {
-                  if (!$scope.menuOpened) {
+
                         $scope.settings = data;
-                        if (($scope.settings.clusters !== undefined) && (!$scope.selectedClusterName)) {
+                        if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
                             if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
                             } else if ($scope.settings.clusters.length > 1){
@@ -41,7 +55,7 @@ app.controller('DashboardController',
 
                         if (data.logs.buffer) $scope.logs = data.logs.buffer;
                         $scope.agents = data.agents;
-                    }
+
                 }
             }, function () {
                 $scope.reserror = true;
@@ -59,9 +73,10 @@ app.controller('DashboardController',
 
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (!$scope.menuOpened) {
+                        if (data) {
                         $scope.servers = data;
-
                         $scope.reserror = false;
+                        }
                     }
                 }, function () {
                     $scope.reserror = true;
@@ -90,7 +105,9 @@ app.controller('DashboardController',
                 });
 
                 Slaves.query({clusterName: $scope.selectedClusterName}, function (data) {
+                    if (data) {
                     $scope.slaves = data;
+                    }
                 }, function () {
                     $scope.reserror = true;
                 });
@@ -142,6 +159,10 @@ app.controller('DashboardController',
             }
         };
 
+        $scope.clbootstrap = function (topo) {
+            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
+        };
+
         $scope.dbmaintenance = function (server) {
             if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
         };
@@ -182,7 +203,10 @@ app.controller('DashboardController',
             if (confirm("Confirm skip replication event for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
         };
         $scope.dbtoogleinnodbmonitor = function (server) {
-            if (confirm("Confirm toogle innodb monitor server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
+            if (confirm("Confirm toogle innodb monitor server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-innodb-monitor');
+        };
+        $scope.dbtoogleslowquerycapture = function (server) {
+            if (confirm("Confirm toogle slow query capture server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
         };
         $scope.dboptimize = function (server) {
             if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
@@ -199,10 +223,6 @@ app.controller('DashboardController',
 
         $scope.setactive = function () {
             if (confirm("Confirm Active Status?")) httpGetWithoutResponse(getClusterUrl() + '/api/setactive');
-        };
-
-        $scope.bootstrap = function (topo) {
-            if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/bootstrap/' + topo);
         };
 
         $scope.provision = function () {
@@ -274,15 +294,11 @@ app.controller('DashboardController',
         $scope.openClusterDialog = function () {
             $scope.menuOpened = true;
             $scope.openedAt = new Date().toLocaleString();
-            $scope.servers={};
-            $scope.slaves={};
-            $scope.master={};
-            $scope.alerts={};
-            $scope.logs={};
-            $scope.proxies={};
+
             $mdDialog.show({
                 contentElement: '#myClusterDialog',
-                parent: angular.element(document.body),
+                scope: $scope,
+                preserveScope: true,
                 clickOutsideToClose: false,
                 escapeToClose: false,
             });
@@ -290,9 +306,16 @@ app.controller('DashboardController',
         };
 
         $scope.closeClusterDialog = function () {
+
             $mdDialog.hide({contentElement: '#myClusterDialog'});
             $scope.menuOpened = false;
-            $scope.menuOpened = "";
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
+
             $mdSidenav('right').close();
         };
 
@@ -300,12 +323,16 @@ app.controller('DashboardController',
 
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
+                scope: $scope,
+                preserveScope: true,
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeNewClusterDialog = function () {
             $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-            $mdSidenav('right').close();
+
             if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
 
             $scope.selectedClusterName = $scope.dlgClusterName;
@@ -318,6 +345,7 @@ app.controller('DashboardController',
             callServices();
             $scope.setClusterCredentialDialog();
             $scope.setRplCredentialDialog();
+            $mdSidenav('right').close();
 
         };
         $scope.cancelNewClusterDialog = function () {
@@ -333,7 +361,7 @@ app.controller('DashboardController',
         };
         $scope.closeNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});
-            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort);
+            if (confirm("Confirm adding new server " + $scope.dlgServerName + ":" + $scope.dlgServerPort+ "  "+ $scope.selectedMonitor.id)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + $scope.dlgServerName + '/' + $scope.dlgServerPort+"/"+$scope.selectedMonitor.id);
         };
         $scope.cancelNewServerDialog = function () {
             $mdDialog.hide({contentElement: '#myNewServerDialog',});
@@ -343,6 +371,8 @@ app.controller('DashboardController',
             $mdDialog.show({
                 contentElement: '#myClusterCredentialDialog',
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeClusterCredentialDialog = function () {
@@ -357,6 +387,8 @@ app.controller('DashboardController',
             $mdDialog.show({
                 contentElement: '#myRplCredentialDialog',
                 parent: angular.element(document.body),
+                clickOutsideToClose: false,
+                escapeToClose: false,
             });
         };
         $scope.closeRplCredentialDialog = function () {
@@ -410,6 +442,7 @@ app.controller('DashboardController',
             };
         }
 
+
         $scope.$on('$mdMenuOpen', function (event, menu) {
             console.log('Opening menu refresh server will stop...', event, menu);
             $scope.menuOpened = true;
@@ -421,5 +454,6 @@ app.controller('DashboardController',
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
+
 
     });

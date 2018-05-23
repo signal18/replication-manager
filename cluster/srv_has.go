@@ -89,9 +89,9 @@ func (server *ServerMonitor) HasCycling() bool {
 	return false
 }
 
-// IsDown() returns true is the server is Failed or Suspect
+// IsDown() returns true is the server is Failed or Suspect or can't connect
 func (server *ServerMonitor) IsDown() bool {
-	if server.State == stateFailed || server.State == stateSuspect {
+	if server.State == stateFailed || server.State == stateSuspect || server.State == stateErrorAuth {
 		return true
 	}
 	return false

@@ -31,7 +31,7 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push service status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
+	conf = conf + `post_provision = {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerShardproxyTemplate(collector, pod)
@@ -89,7 +89,7 @@ tags = pod` + pod + `
 type = docker
 run_image = {env.shardproxy_img}
 run_args =  --net=container:{svcname}.container.00` + pod + `
- -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
+ -e SHARDPROXY_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw

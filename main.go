@@ -15,14 +15,46 @@ import (
 	"os"
 	"strings"
 
-	//toml "github.com/pelletier/go-toml"
-
-	log "github.com/sirupsen/logrus"
-
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/httplog"
+	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/termlog"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+)
+
+// Global variables
+type ReplicationManager struct {
+	OpenSVC     opensvc.Collector           `json:"-"`
+	Version     string                      `json:"version"`
+	Fullversion string                      `json:"fullVersion"`
+	Os          string                      `json:"os"`
+	Arch        string                      `json:"arch"`
+	Clusters    map[string]*cluster.Cluster `json:"-"`
+	Agents      []opensvc.Host              `json:"agents"`
+	UUID        string                      `json:"uuid"`
+	Hostname    string                      `json:"hostname"`
+	Status      string                      `json:"status"`
+	SplitBrain  bool                        `json:"spitBrain"`
+	ClusterList []string                    `json:"clusters"`
+	Tests       []string                    `json:"tests"`
+	Conf        config.Config               `json:"config"`
+	Logs        httplog.HttpLog             `json:"logs"`
+	tlog        termlog.TermLog
+	termlength  int
+	exitMsg     string
+	exit        bool
+
+	currentCluster *cluster.Cluster
+
+	isStarted bool
+}
+
+const (
+	ConstMonitorActif   string = "A"
+	ConstMonitorStandby string = "S"
 )
 
 var (
@@ -104,6 +136,7 @@ type Settings struct {
 	ProxyTags           []string            `json:"proxytags"`
 	Scheduler           []cluster.CronEntry `json:"scheduler"`
 }
+
 type heartbeat struct {
 	UUID    string `json:"uuid"`
 	Secret  string `json:"secret"`

@@ -45,10 +45,11 @@ func (cluster *Cluster) newServerList() error {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 		return err
 	}
-
+	cluster.Lock()
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 
 	for k, url := range cluster.hostList {
+
 		if !cluster.Conf.ProvNetCNI {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf", "")
 		} else {
@@ -61,10 +62,11 @@ func (cluster *Cluster) newServerList() error {
 			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.Servers[k].URL)
 		}
 	}
-
+	cluster.Unlock()
 	return nil
 }
 
+// DEAD CODE NO MORE CALLED
 func (cluster *Cluster) pingServerList() {
 	wg := new(sync.WaitGroup)
 	for _, sv := range cluster.Servers {
@@ -79,7 +81,7 @@ func (cluster *Cluster) pingServerList() {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
 						// access denied
 						if driverErr.Number == 1045 {
-							sv.State = stateUnconn
+							sv.State = stateErrorAuth
 							cluster.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
 						}
 					} else {
@@ -137,7 +139,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.Servers {
-
+		// Isdown if supect or failed
 		if sv.IsDown() {
 			continue
 		}
@@ -148,13 +150,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
-			var n int
-			err := sv.Conn.Get(&n, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
-			if err != nil {
-				cluster.SetState("ERR00014", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], sv.URL, err), ErrFrom: "CONF"})
-				continue
-			}
-			if n == 0 && sv.State != stateMaster {
+
+			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				sv.State = stateUnconn
 				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.Conf.LogLevel > 2 {
@@ -348,7 +345,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 		//	if cluster.Conf.Interactive == false {
 		allslavefailed := true
 		for _, s := range cluster.slaves {
-			if s.State != stateFailed && s.IsIgnored() == false {
+			if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
 				allslavefailed = false
 			}
 		}
@@ -378,7 +375,7 @@ func (cluster *Cluster) PrintTopology() {
 func (cluster *Cluster) CountFailed(s []*ServerMonitor) int {
 	failed := 0
 	for _, server := range cluster.Servers {
-		if server.State == stateFailed {
+		if server.State == stateFailed || server.State == stateErrorAuth {
 			failed = failed + 1
 		}
 	}
@@ -403,7 +400,7 @@ func (cluster *Cluster) FailedMasterDiscovery() {
 
 	smh := cluster.slaves[0].GetReplicationMasterHost()
 	for k, s := range cluster.Servers {
-		if s.State == stateFailed {
+		if s.State == stateFailed || s.State == stateErrorAuth {
 			if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
 				if cluster.Conf.FailRestartUnsafe || cluster.MultipleSlavesUp(s) {
 					cluster.master = cluster.Servers[k]
@@ -420,7 +417,7 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 	ct := 0
 	for _, s := range cluster.slaves {
 
-		if s.State != stateFailed && (candidate.Host == s.GetReplicationMasterHost() || candidate.IP == s.GetReplicationMasterHost()) && candidate.Port == s.GetReplicationMasterPort() {
+		if !s.IsDown() && (candidate.Host == s.GetReplicationMasterHost() || candidate.IP == s.GetReplicationMasterHost()) && candidate.Port == s.GetReplicationMasterPort() {
 			ct++
 		}
 	}
