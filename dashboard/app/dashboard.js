@@ -53,7 +53,7 @@ app.controller('DashboardController',
                             }
                         }
 
-                        if (data.logs.buffer) $scope.logs = data.logs.buffer;
+                        if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
                         $scope.agents = data.agents;
 
                 }
