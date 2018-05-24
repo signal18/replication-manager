@@ -69,6 +69,7 @@ var clusterError = map[string]string{
 	"ERR00059": "Ignored server %s not found in configured server list",
 	"ERR00060": "To many non closed task in scheduler, donor may not work on server %s",
 	"ERR00061": "No user:password credential specified",
+	"ERR00062": "DNS resolution for host %s error %s",
 	"WARN0023": "Failover number of master pings failure has been reached",
 	"WARN0045": "Provision task is in queue",
 	"WARN0046": "Provision task is waiting",

@@ -153,6 +153,7 @@ const (
 
 /* Initializes a server object */
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string, name string) (*ServerMonitor, error) {
+	var err error
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
@@ -164,7 +165,10 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	if url == "" {
 		url = server.Id + "." + server.ClusterGroup.Conf.ProvCodeApp + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
-
+	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
+	}
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.TestConfig = conf
@@ -202,12 +206,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
-	var err error
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
-		return server, errmsg
-	}
 
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
@@ -242,11 +240,18 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
+		var reserr error
+		// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
+		server.IP, reserr = dbhelper.CheckHostAddr(server.Host)
+		if reserr != nil {
+			server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, reserr.Error()), ErrFrom: "SRV"})
+		}
+		server.SetCredential(server.URL, server.User, server.Pass)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
-				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
 				return
 			}
 		}
