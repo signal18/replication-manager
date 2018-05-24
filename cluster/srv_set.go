@@ -16,6 +16,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/state"
 )
 
 func (server *ServerMonitor) SetIgnored(ignored bool) {
@@ -63,10 +64,15 @@ func (server *ServerMonitor) SetMaintenance() {
 }
 
 func (server *ServerMonitor) SetCredential(url string, user string, pass string) {
+	var err error
 	server.User = user
 	server.Pass = pass
 	server.URL = url
 	server.Host, server.Port = misc.SplitHostPort(url)
+	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
+	}
 	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.Conf.Timeout, server.ClusterGroup.Conf.ReadTimeout)
 
 	mydsn := func() string {

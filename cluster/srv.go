@@ -165,10 +165,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	if url == "" {
 		url = server.Id + "." + server.ClusterGroup.Conf.ProvCodeApp + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
-	if err != nil {
-		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
-	}
+
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.TestConfig = conf
@@ -240,12 +237,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
-		var reserr error
+
 		// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
-		server.IP, reserr = dbhelper.CheckHostAddr(server.Host)
-		if reserr != nil {
-			server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, reserr.Error()), ErrFrom: "SRV"})
-		}
 		server.SetCredential(server.URL, server.User, server.Pass)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
