@@ -165,31 +165,40 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Id = strconv.FormatUint(crc64.Checksum([]byte(server.URL), crcTable), 10)
 	server.SetIgnored(cluster.IsInIgnoredHosts(server.URL))
 	server.SetPrefered(cluster.IsInPreferedHosts(server.URL))
+	server.setDSN()
+	var err error
+	server.Conn, err = sqlx.Open("mysql", server.DSN)
+
+	return server, err
+}
+
+func (server *ServerMonitor) setDSN() {
+
 	var err error
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
-		return server, errmsg
+		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "SRV"})
 	}
-	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.conf.Timeout, cluster.conf.ReadTimeout)
+	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.conf.Timeout, server.ClusterGroup.conf.ReadTimeout)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
-			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			if server.IP != "" {
+				dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
+			} else {
+				dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			}
 		} else {
-			dsn += "unix(" + cluster.conf.Socket + ")/" + params
+			dsn += "unix(" + server.ClusterGroup.conf.Socket + ")/" + params
 		}
 		return dsn
 	}
 	server.DSN = mydsn()
-	if cluster.haveDBTLSCert {
-		mysql.RegisterTLSConfig("tlsconfig", cluster.tlsconf)
+	if server.ClusterGroup.haveDBTLSCert {
+		mysql.RegisterTLSConfig("tlsconfig", server.ClusterGroup.tlsconf)
 		server.DSN = server.DSN + "&tls=tlsconfig"
 	}
-	server.Conn, err = sqlx.Open("mysql", server.DSN)
-
-	return server, err
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
@@ -223,6 +232,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// Handle failure cases here
 	if err != nil {
+		server.setDSN()
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
