@@ -37,3 +37,19 @@ td {
     padding-top: 20px;
     padding-bottom: 20px;
 }
+
+.login-box {
+    width: 25em;
+    margin: 7% auto;
+    box-shadow: 0 10px 6px -6px #777;
+    background-color: #FFF;
+    border-radius: 5px;
+}
+.float-right{
+    float: right;
+}
+
+.login-logo {
+    text-align: center;
+}
+
