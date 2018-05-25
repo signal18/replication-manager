@@ -283,11 +283,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 		}
 		// Send alert if state has changed
-		if server.PrevState != server.State && server.State != stateSuspect {
+		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {
-			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			server.ClusterGroup.backendStateChangeProxies()
-			server.SendAlert()
+			server.ClusterGroup.LogPrintf(LvlWarn, "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+			if server.State != stateSuspect {
+				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+				server.ClusterGroup.backendStateChangeProxies()
+				server.SendAlert()
+			}
 		}
 		if server.PrevState != server.State {
 			server.PrevState = server.State
