@@ -139,8 +139,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.Servers {
-		// Isdown if supect or failed
-		if sv.IsDown() {
+		// if suspect server topology should no be impacted yet
+		if sv.State == stateFailed || sv.State == stateErrorAuth {
 			continue
 		}
 
