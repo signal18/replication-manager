@@ -233,13 +233,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
-
+	// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
+	server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
 
-		// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
-		server.SetCredential(server.URL, server.User, server.Pass)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
