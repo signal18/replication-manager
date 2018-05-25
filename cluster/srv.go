@@ -322,7 +322,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// from here we have connection
 	err = server.Refresh()
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Server refresh failed but ping connect %s", err)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
 	}
 	// Reset FailCount
