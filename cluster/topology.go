@@ -139,8 +139,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.Servers {
-		// if suspect server topology should no be impacted yet
-		if sv.State == stateFailed || sv.State == stateErrorAuth {
+		// Isdown if supect or failed
+		if sv.IsDown() {
 			continue
 		}
 
@@ -150,24 +150,23 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
-			if !sv.IsDown() {
-				if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-					sv.State = stateUnconn
-					// TODO: fix flapping in case slaves are reconnecting
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
-					}
-				} else {
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-					}
-					cluster.master = cluster.Servers[k]
-					cluster.master.State = stateMaster
-					cluster.master.SetReadWrite()
+
+			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
+				sv.State = stateUnconn
+				// TODO: fix flapping in case slaves are reconnecting
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
 				}
+			} else {
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
+				}
+				cluster.master = cluster.Servers[k]
+				cluster.master.State = stateMaster
+				cluster.master.SetReadWrite()
 			}
-			sv.CheckPrivileges()
 		}
+		sv.CheckPrivileges()
 	}
 
 	// If no cluster.slaves are detected, generate an error
