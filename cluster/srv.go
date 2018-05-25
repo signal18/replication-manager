@@ -320,8 +320,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	// from here we have connection
-	server.Refresh()
-
+	err = server.Refresh()
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlDbg, "Server refresh failed but ping connect %s", err)
+		return
+	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
