@@ -78,11 +78,11 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.Host != "" {
-			if server.IP != "" {
-				dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
-			} else {
-				dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
-			}
+			//	if server.IP != "" {
+			//		dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
+			//	} else {
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			//	}
 		} else {
 			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
 		}
