@@ -283,7 +283,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 		}
 		// Send alert if state has changed
-		if server.PrevState != server.State {
+		if server.PrevState != server.State && server.State != stateSuspect {
 			//if cluster.Conf.Verbose {
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			server.ClusterGroup.backendStateChangeProxies()
@@ -300,10 +300,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if err == nil {
 			server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
 		} else {
+
 			defer conn.Close()
 			return
 		}
 
+	} else {
+		//Refresh the pool so that it does not break on refresh
+		server.Conn.Ping()
 	}
 	defer conn.Close()
 
@@ -368,7 +372,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.PrevState = server.State
 		}
 		return
-	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
+	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 
 		server.rejoinSlave(ss)
 	}
