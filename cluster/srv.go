@@ -296,29 +296,24 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		return
 	}
-	// reaffect a global DB object if we never get it , ex dynamic seeding
+
+	// from here we have connection
+	defer conn.Close()
+	// reaffect a global DB pool object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
-		if err == nil {
-			server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
-		} else {
-
-			defer conn.Close()
+		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Assigning a global connection on server %s failed %s", server.URL, err)
 			return
 		}
-
-	} else {
-		//Refresh the pool so that it does not break on refresh
-		server.Conn.Ping()
 	}
-	defer conn.Close()
 
 	if server.ClusterGroup.sme.IsInFailover() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
 
-	// from here we have connection
 	err = server.Refresh()
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
@@ -373,10 +368,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 		}
 
-		if server.PrevState != server.State {
-			server.PrevState = server.State
-		}
-		return
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 
 		server.rejoinSlave(ss)
@@ -567,7 +558,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
-		return err
+
 	}
 	// select a replication status get an err if repliciations array is empty
 	slaveStatus, err := server.GetSlaveStatus(server.ReplicationSourceName)
