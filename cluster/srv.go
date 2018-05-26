@@ -192,7 +192,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		nofile.Close()
 	}
 	if _, err := os.Stat(slowLogFile); os.IsNotExist(err) {
-		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile, _ := os.OpenFile(slowLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
@@ -234,7 +234,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 	}
 	// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
-	server.SetCredential(server.URL, server.User, server.Pass)
+	//server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
