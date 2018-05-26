@@ -91,7 +91,7 @@ type Config struct {
 	AutorejoinBackupBinlog             bool   `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                 bool   `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
 	AutorejoinNoSemisync               bool   `mapstructure:"autorejoin-flashback-on-unsync" toml:"autorejoin-flashback-on-unsync" json:"autorejoinFlashbackOnUnsync"`
-	AutorejoinSlavePositionalHearbeat  bool   `mapstructure:"autorejoin-slave-positional-hearbeat" toml:"autorejoin-slave-positional-hearbeat" json:"autorejoinSlavePositionalHearbeat"`
+	AutorejoinSlavePositionalHeartbeat bool   `mapstructure:"autorejoin-slave-positional-heartbeat" toml:"autorejoin-slave-positional-heartbeat" json:"autorejoinSlavePositionalHeartbeat"`
 	CheckType                          string `mapstructure:"check-type" toml:"check-type" json:"checkType"`
 	CheckReplFilter                    bool   `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
 	CheckBinFilter                     bool   `mapstructure:"check-binlog-filters" toml:"check-binlog-filters" json:"checkBinlogFilters"`

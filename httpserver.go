@@ -70,6 +70,10 @@ func httpserver() {
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
 	))
+	router.Handle("/api/heartbeat", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxMonitorHeartbeat)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterStatus)),
 	))

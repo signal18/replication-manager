@@ -286,7 +286,7 @@ func (cluster *Cluster) Run() {
 				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
 					go cluster.schemaMonitor()
 				}
-				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHearbeat || cluster.Conf.MonitorWriteHeartbeat {
+				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
 			}

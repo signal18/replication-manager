@@ -326,3 +326,15 @@ func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(1200 * time.Second)
 	io.WriteString(w, `{"alive": "running"}`)
 }
+
+func handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var send heartbeat
+	send.UUID = RepMan.UUID
+	send.UID = conf.ArbitrationSasUniqueId
+	send.Secret = conf.ArbitrationSasSecret
+	send.Status = RepMan.Status
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if err := json.NewEncoder(w).Encode(send); err != nil {
+		panic(err)
+	}
+}

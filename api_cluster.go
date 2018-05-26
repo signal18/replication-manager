@@ -574,7 +574,7 @@ func handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 		case "autorejoin-flashback-on-sync":
 			mycluster.SwitchRejoinSemisync()
 		case "autorejoin-flashback-on-unsync": //?????
-		case "autorejoin-slave-positional-hearbeat":
+		case "autorejoin-slave-positional-heartbeat":
 			mycluster.SwitchRejoinPseudoGTID()
 		case "autorejoin-zfs-flashback":
 			mycluster.SwitchRejoinZFSFlashback()
