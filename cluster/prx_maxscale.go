@@ -69,7 +69,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 					server.MxsServerName = bke.PrxName
 
 				} else {
-					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.IP, server.Port, server.ClusterGroup.Conf.MxsServerMatchPort)
+					bke.PrxName, bke.PrxStatus, bke.PrxConnections = m.GetServer(server.Host, server.Port, server.ClusterGroup.Conf.MxsServerMatchPort)
 					server.MxsServerStatus = bke.PrxStatus
 					server.MxsServerName = bke.PrxName
 				}
