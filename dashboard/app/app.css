@@ -53,3 +53,10 @@ td {
     text-align: center;
 }
 
+.transparent{
+    background-color:transparent;
+}
+
+.padding20{
+    padding: 20px 20px 20px 20px;
+}

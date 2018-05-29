@@ -1,0 +1,172 @@
+<md-toolbar class="transparent">
+<div class="md-toolbar-tools">
+    <h2>
+                <span>
+                <md-menu>
+                <md-button class="md-raised" aria-label="Open server interactions menu" ng-click="$mdMenu.open($event)">
+                 <md-icon md-menu-origin class="fa fa-bars "></md-icon>
+                </md-button>
+                <md-menu-content>
+                  <md-menu-item ng-if="master.State !='Failed'" ng-click="resetfail()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+                  Reset Failover Counter
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
+                  New Monitor
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+                  Set Database Credentials
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-if="master.State !='Failed'" ng-click="setRplCredentialDialog()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+                  Set Replication Credentials
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-if="master.state !='Failed'" ng-click="optimizeAll()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
+                  Rolling Optimize
+                    </md-button>
+                    </md-menu-item>
+
+                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                  ng-click="provision()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                    Provision Cluster
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                ng-click="unprovision()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                    Unprovision Cluster
+                    </md-button>
+                  </md-menu-item>
+
+                  <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                    Physical Backup
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-click="toggletraffic()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-pencil-alt"></md-icon>
+                    Toogle Traffic
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item>
+                     <md-menu>
+                        <md-button ng-click="$mdMenu.open($event)">
+                           <span md-menu-align-target>
+                             Replication Bootsrap
+                           </span>
+                           <md-icon class="fas fa-arrow-right"></md-icon>
+                        </md-button>
+                        <md-menu-content>
+                           <md-menu-item ng-click="boostrap('master-slave')">
+                              <md-button>
+                                 <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                 Master Slave
+                              </md-button>
+                           </md-menu-item>
+                           <md-menu-item ng-click="boostrap('master-slave-no-gtid')">
+                              <md-button>
+                                 <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                 Master Slave Positional
+                              </md-button>
+                           </md-menu-item>
+                           <md-menu-item ng-if="server.id!=master.id" ng-click="boostrap('multi-master')">
+                              <md-button>
+                                 <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                 Multi Master
+                              </md-button>
+                           </md-menu-item>
+                           <md-menu-item ng-click="boostrap('multi-master-ring')">
+                              <md-button>
+                                 <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                Multi Master Ring
+                              </md-button>
+                           </md-menu-item>
+                           <md-menu-item ng-click="boostrap('multi-tier-slave')">
+                              <md-button>
+                                 <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                Multi Tier Slave
+                              </md-button>
+                           </md-menu-item>
+                        </md-menu-content>
+                     </md-menu>
+                  </md-menu-item>
+                  <md-menu-item>
+                     <md-menu>
+                        <md-button ng-click="$mdMenu.open($event)">
+                           <span md-menu-align-target>
+                             Debug
+                           </span>
+                           <md-icon class="fas fa-arrow-right"></md-icon>
+                        </md-button>
+                        <md-menu-content>
+                  <md-menu-item ng-click="openDebugClusterDialog()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+                    Cluster
+                    </md-button>
+                  </md-menu-item>
+                  <md-menu-item ng-click="openDebugServerDialog()">
+                    <md-button>
+                      <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+                    Servers
+                    </md-button>
+                  </md-menu-item>
+
+                </md-menu-content>
+             </md-menu>
+          </md-menu-item>
+                </md-menu-content>
+              </md-menu>
+                <md-button class="md-raised" ng-if="master.state !='Failed'" ng-click="switch(false)"
+                           aria-label="Switchover"><i
+                        class="fa fa-toggle-on" aria-hidden="true"></i>
+                Switchover</md-button>
+                <md-button class="md-raised md-warn" ng-if="master.state =='Failed'" ng-click="switch(true)"
+                           aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i>
+                Failover</md-button>
+              </span>
+    </h2>
+    <div class="col-xs-2">
+        <div class="input-group number-spinner">
+                            <span class="input-group-btn data-dwn">
+                                <button class="btn btn-default btn-info" data-dir="dwn"
+                                        ng-click="calculateInterval(-10000)"
+                                        ng-disabled="refreshInterval <= 2000">
+                                    <span class="glyphicon glyphicon-minus"></span></button>
+                            </span>
+            <input type="number" class="form-control text-center"
+                   name="refreshInterval"
+                   readonly="readonly"
+                   ng-model="refreshInterval"
+                   ng-change="checkIfAllowedInterval(refreshInterval)">
+            <span class="input-group-btn data-up">
+                                <button class="btn btn-default btn-info" data-dir="up"
+                                        ng-click="calculateInterval(10000)"
+                                        ng-disabled="refreshInterval > 600000"><span
+                                        class="glyphicon glyphicon-plus"></span></button>
+                            </span>
+
+        </div>
+    </div>
+    <div class="col-xs-2">
+        <h6>Auto reload every
+        <small>{{refreshInterval/1000}} seconds</small>.</h6></div>
+    </div>
+</md-toolbar>

@@ -340,31 +340,32 @@ app.controller('DashboardController',
         };
 
         $scope.openClusterDialog = function () {
-            $scope.menuOpened = true;
-            $scope.openedAt = new Date().toLocaleString();
-
-            $mdDialog.show({
-                contentElement: '#myClusterDialog',
-                scope: $scope,
-                preserveScope: true,
-                clickOutsideToClose: false,
-                escapeToClose: false,
-            });
-
+            if (!$scope.menuOpened){
+                $scope.menuOpened = true;
+                $scope.openedAt = new Date().toLocaleString();
+                $mdDialog.show({
+                    contentElement: '#myClusterDialog',
+                    scope: $scope,
+                    preserveScope: true,
+                    clickOutsideToClose: false,
+                    escapeToClose: false,
+                });
+            }
         };
 
         $scope.closeClusterDialog = function () {
-
-            $mdDialog.hide({contentElement: '#myClusterDialog'});
-            $scope.menuOpened = false;
-            $scope.servers={};
-            $scope.slaves={};
-            $scope.master={};
-            $scope.alerts={};
-            $scope.logs={};
-            $scope.proxies={};
-
-            $mdSidenav('right').close();
+            if ($scope.menuOpened) {
+                $mdDialog.hide({contentElement: '#myClusterDialog'});
+                $scope.menuOpened = false;
+                $scope.servers = {};
+                $scope.slaves = {};
+                $scope.master = {};
+                $scope.alerts = {};
+                $scope.logs = {};
+                $scope.proxies = {};
+                $mdSidenav('right').close();
+                $scope.menuOpened = false;
+            }
         };
 
         $scope.newClusterDialog = function () {
