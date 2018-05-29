@@ -495,7 +495,7 @@ func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) 
 func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	t := time.Now()
 	backupdir := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/crash-bin-" + t.Format("20060102150405")
-	server.ClusterGroup.LogPrintf("INFO", "New Master %s was not synced before failover, unsafe flashback, lost events backing up event to %s", crash.URL, backupdir)
+	server.ClusterGroup.LogPrintf("INFO", "Rejoin old Master %s , backing up lost event to %s", crash.URL, backupdir)
 	os.Mkdir(backupdir, 0777)
 	os.Rename(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile, backupdir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 	return nil
