@@ -14,21 +14,23 @@
                     </td>
                 </tr>
                 <tr>
+                    <td>Cluster Name</td>
+                    <td><span class="label label-default" ng-if="!selectedClusterName">Default</span><span
+                          class="label label-default"  ng-if="selectedClusterName">{{selectedClusterName}}</span> </td>
+                </tr>
+                <tr>
                     <td>Failover Count</td>
                     <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
                 </tr>
                 <td>Last Failover Time</td>
                 <td>{{selectedCluster.failoverLastTime}}</td>
                 </tr>
-                <tr>
-                    <td>Next Failover in</td>
-                    <td></td>
-                </tr>
+
             </table>
         </md-card>
     </div>
     <div flex>
-        <md-card ng-if="selectedCluster && servers">
+        <md-card ng-if="selectedCluster  && servers">
             <table ng-if="settings" md-table class="table md-primary md-data-table">
                 <tr md-row>
                     <th colspan="2">Cluster Availability</th>
@@ -53,12 +55,11 @@
         </md-card>
     </div>
     <div flex>
-        <md-card ng-if="selectedCluster">
+        <md-card ng-if="selectedCluster  && servers">
             <table class="table">
 
                 <tr>
-                    <th colspan="2"><span ng-if="!selectedClusterName">DEFAULT</span><span
-                            ng-if="selectedClusterName">{{selectedClusterName}}</span> Cluster Info
+                    <th colspan="2">Cluster Info
                     </th>
                 </tr>
                 <tr>

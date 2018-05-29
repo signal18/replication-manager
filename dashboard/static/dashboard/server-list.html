@@ -244,7 +244,7 @@
             <th>Cluster Logs</th>
         </tr>
     </table>
-<md-card-content style="height: 600px; overflow-y: auto">
+<md-card-content ng-if="selectedCluster" style="height: 600px; overflow-y: auto">
 
 <table style="table-layout: fixed;width: 100%;" class="log">
 <tr ng-repeat="logline in selectedCluster.log.buffer" ng-if="logline.timestamp">

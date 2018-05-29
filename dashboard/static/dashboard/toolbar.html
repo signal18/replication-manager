@@ -143,30 +143,5 @@
                 Failover</md-button>
               </span>
     </h2>
-    <div class="col-xs-2">
-        <div class="input-group number-spinner">
-                            <span class="input-group-btn data-dwn">
-                                <button class="btn btn-default btn-info" data-dir="dwn"
-                                        ng-click="calculateInterval(-10000)"
-                                        ng-disabled="refreshInterval <= 2000">
-                                    <span class="glyphicon glyphicon-minus"></span></button>
-                            </span>
-            <input type="number" class="form-control text-center"
-                   name="refreshInterval"
-                   readonly="readonly"
-                   ng-model="refreshInterval"
-                   ng-change="checkIfAllowedInterval(refreshInterval)">
-            <span class="input-group-btn data-up">
-                                <button class="btn btn-default btn-info" data-dir="up"
-                                        ng-click="calculateInterval(10000)"
-                                        ng-disabled="refreshInterval > 600000"><span
-                                        class="glyphicon glyphicon-plus"></span></button>
-                            </span>
-
-        </div>
-    </div>
-    <div class="col-xs-2">
-        <h6>Auto reload every
-        <small>{{refreshInterval/1000}} seconds</small>.</h6></div>
-    </div>
+  
 </md-toolbar>

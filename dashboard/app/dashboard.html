@@ -1,21 +1,51 @@
 <div class="col-lg-12">
 
-    <div ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
+    <div  ng-cloak="" class="tabsdemoDynamicHeight" ng-app="dashboard">
         <div style="padding: 10px 5px 10px 4px;">
             <table width="100%" border=0>
                 <tr>
                   <td align="left">
                     <span style="padding: 0px 0px 10px 0px"  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"  alt="Replication Manager"/></span>
                   </td>
+                  <td>
+
+                      <div class="col-xs-3">
+                          <div class="input-group number-spinner">
+                                              <span class="input-group-btn data-dwn">
+                                                  <button class="btn btn-default btn-info" data-dir="dwn"
+                                                          ng-click="calculateInterval(-10000)"
+                                                          ng-disabled="refreshInterval <= 2000">
+                                                      <span class="glyphicon glyphicon-minus"></span></button>
+                                              </span>
+                              <input type="number" class="form-control text-center"
+                                     name="refreshInterval"
+                                     readonly="readonly"
+                                     ng-model="refreshInterval"
+                                     ng-change="checkIfAllowedInterval(refreshInterval)">
+                              <span class="input-group-btn data-up">
+                                                  <button class="btn btn-default btn-info" data-dir="up"
+                                                          ng-click="calculateInterval(10000)"
+                                                          ng-disabled="refreshInterval > 600000"><span
+                                                          class="glyphicon glyphicon-plus"></span></button>
+                                              </span>
+
+                          </div>
+                      </div>
+                      <div class="col-xs-3">
+                          <h6>Auto reload every
+                          <small>{{refreshInterval/1000}} seconds</small>.</h6></div>
+                      </div>
+                  </td>
                     <td align="right" >
-                      <span style="padding: 0px -0px 0px 0px"   ng-click="toggleRight()">
-                       <md-icon  md-menu-origin class="fa fa-2x fa-bars" style="color:#468cc5"></md-icon>
+                        <span style="padding: 0px -0px 0px 0px"   ng-click="toggleRight()">
+                      <md-icon  md-menu-origin class="fa fa-2x fa-bars" style="color:#468cc5"></md-icon>
                      </span>
                     </td>
 
                 </tr>
             </table>
         </div>
+
         <md-sidenav class="md-sidenav-right" md-component-id="right" layout="column" layout-align="top center"
                     md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
             <ul class="nav navbar-nav">
@@ -180,28 +210,31 @@
         <div class="alert alert-warning" ng-if="menuOpened">
           <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
         </div>
-        <div class="alert alert-warning" ng-if="!selectedCluster">
-          <strong>Warning!</strong> Multiple clusters use menu to open!
-        </div>
+
         <md-content layout="column">
-            <md-tabs md-dynamic-height="" md-border-bottom="" >
-                <md-tab label="Dashboard">
+          <md-tabs ng-if="selectedClusterName=='Default' || !selectedCluster"  md-dynamic-height="" md-border-bottom="" >
+              <md-tab   label="Settings">
+                  <div ng-include src="'static/setting.html'"></div>
+              </md-tab>
+            </md-tabs>
+            <md-tabs ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
+                <md-tab   label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/dash.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedClusterName" label="Alerts ^{{alerts.errors.length}}">
+                <md-tab label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
 
-                <md-tab ng-if="selectedClusterName" label="Proxies">
+                <md-tab label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedClusterName" label="Settings">
+                <md-tab label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedClusterName" label="Jobs">
+                <md-tab label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics && selectedClusterName">
+                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
                 <md-tab label="Agents" ng-if="settings.config.enterprise">
