@@ -134,8 +134,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.FailSync, "failover-at-sync", false, "Failover only when state semisync is sync for last status")
 	monitorCmd.Flags().BoolVar(&conf.FailEventScheduler, "failover-event-scheduler", false, "Failover event scheduler")
 	monitorCmd.Flags().BoolVar(&conf.FailEventStatus, "failover-event-status", false, "Failover event status ENABLE OR DISABLE ON SLAVE")
-	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat", true, "Failover checks that slaves do not receive hearbeat")
-	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveHeartbeatTimeout, "failover-falsepositive-heartbeat-timeout", 3, "Failover checks that slaves do not receive hearbeat detection timeout ")
+	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveHeartbeat, "failover-falsepositive-heartbeat", true, "Failover checks that slaves do not receive heartbeat")
+	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveHeartbeatTimeout, "failover-falsepositive-heartbeat-timeout", 3, "Failover checks that slaves do not receive heartbeat detection timeout ")
 	monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveExternal, "failover-falsepositive-external", false, "Failover checks that http//master:80 does not reponse 200 OK header")
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	monitorCmd.Flags().IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
@@ -150,7 +150,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed master via direct current master dump")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed master via reseed previous phyiscal backup")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinLogicalBackup, "autorejoin-logical-backup", false, "Automatic rejoin ahead failed master via reseed previous logical backup")
-	monitorCmd.Flags().BoolVar(&conf.AutorejoinSlavePositionalHearbeat, "autorejoin-slave-positional-hearbeat", false, "Automatically rejoin extra slaves via pseudo gtid heartbeat for positional replication")
+	monitorCmd.Flags().BoolVar(&conf.AutorejoinSlavePositionalHeartbeat, "autorejoin-slave-positional-heartbeat", false, "Automatically rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 
 	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
 
@@ -319,7 +319,7 @@ func init() {
 
 	monitorCmd.Flags().StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * *", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
-	monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "scheduler-db-servers-logs-cron", "@every 10m", "Logs backup cron expression represents a set of times, using 6 space-separated fields.")
+	monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "scheduler-db-servers-logs-cron", "0/10 * * * *", "Logs backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseOptimizeCron, "scheduler-db-servers-optimize-cron", "0 0 3 1 * 5", "Optimize cron expression represents a set of times, using 6 space-separated fields.")
 
 	if WithBackup == "ON" {
@@ -755,7 +755,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	repman.SplitBrain = true
 	timeout := time.Duration(2 * time.Second)
 	for _, peer := range peerList {
-		url := "http://" + peer + "/heartbeat"
+		url := "http://" + peer + "/api/heartbeat"
 		client := &http.Client{
 			Timeout: timeout,
 		}

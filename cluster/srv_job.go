@@ -64,6 +64,8 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		if err == nil {
 			return res.LastInsertId()
 		}
+		server.ClusterGroup.LogPrintf(LvlErr, "Job can't insert job %s", err)
+		return 0, err
 	}
 	return 0, nil
 }

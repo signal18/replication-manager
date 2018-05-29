@@ -529,7 +529,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
 		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
 
-			if cluster.Conf.AutorejoinSlavePositionalHearbeat == true {
+			if cluster.Conf.AutorejoinSlavePositionalHeartbeat == true {
 
 				pseudoGTID, err := sl.GetLastPseudoGTID()
 				if err != nil {

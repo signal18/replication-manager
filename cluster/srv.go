@@ -153,6 +153,7 @@ const (
 
 /* Initializes a server object */
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string, name string) (*ServerMonitor, error) {
+	var err error
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
@@ -191,7 +192,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		nofile.Close()
 	}
 	if _, err := os.Stat(slowLogFile); os.IsNotExist(err) {
-		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile, _ := os.OpenFile(slowLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
@@ -202,12 +203,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
-	var err error
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
-	if err != nil {
-		errmsg := fmt.Errorf("ERROR: DNS resolution error for host %s", server.Host)
-		return server, errmsg
-	}
 
 	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
@@ -238,15 +233,17 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
-
+	// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
+	//server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
+
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
-				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "TOPO"})
+				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
 				return
 			}
 		}
@@ -287,36 +284,41 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// Send alert if state has changed
 		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {
-			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			server.ClusterGroup.backendStateChangeProxies()
-			server.SendAlert()
+			server.ClusterGroup.LogPrintf(LvlWarn, "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+			if server.State != stateSuspect {
+				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+				server.ClusterGroup.backendStateChangeProxies()
+				server.SendAlert()
+			}
 		}
 		if server.PrevState != server.State {
 			server.PrevState = server.State
 		}
 		return
 	}
-	// reaffect a global DB object if we never get it , ex dynamic seeding
+
+	// from here we have connection
+	defer conn.Close()
+	// reaffect a global DB pool object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
-		if err == nil {
-			server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
-		} else {
-			defer conn.Close()
+		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Assigning a global connection on server %s failed %s", server.URL, err)
 			return
 		}
-
 	}
-	defer conn.Close()
 
 	if server.ClusterGroup.sme.IsInFailover() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
 
-	// from here we have connection
-	server.Refresh()
-
+	err = server.Refresh()
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
+		return
+	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
@@ -341,10 +343,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
 					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id {
-						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as actif monitor and other master dicovereds", server.URL)
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
 					} else if server.ClusterGroup.Status == ConstMonitorStandby {
-						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
+						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor", server.URL)
 						server.SetReadOnly()
 					}
 				}
@@ -360,17 +362,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and found replication", server.URL)
+				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
 		}
 
-		if server.PrevState != server.State {
-			server.PrevState = server.State
-		}
-		return
-	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed || server.PrevState == stateSuspect) {
+	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 
 		server.rejoinSlave(ss)
 	}
@@ -560,7 +558,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
-		return err
+
 	}
 	// select a replication status get an err if repliciations array is empty
 	slaveStatus, err := server.GetSlaveStatus(server.ReplicationSourceName)

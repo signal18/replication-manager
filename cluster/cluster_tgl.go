@@ -77,7 +77,7 @@ func (cluster *Cluster) SwitchRejoinFlashback() {
 }
 
 func (cluster *Cluster) SwitchRejoinPseudoGTID() {
-	cluster.Conf.AutorejoinSlavePositionalHearbeat = !cluster.Conf.AutorejoinSlavePositionalHearbeat
+	cluster.Conf.AutorejoinSlavePositionalHeartbeat = !cluster.Conf.AutorejoinSlavePositionalHeartbeat
 }
 
 func (cluster *Cluster) SwitchCheckReplicationFilters() {

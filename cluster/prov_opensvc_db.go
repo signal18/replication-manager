@@ -279,7 +279,7 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
-
+ 
 `
 
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() && server.ClusterGroup.GetMaster().Id == server.Id {
