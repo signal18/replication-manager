@@ -39,7 +39,7 @@ app.controller('DashboardController',
 
         var callServices = function () {
             if (!AppService.hasAuthHeaders()) return;
-                  if ($scope.menuOpened) return;
+            if ($scope.menuOpened) return;
 
             Monitor.query({}, function (data) {
                 if (data) {
@@ -114,53 +114,26 @@ app.controller('DashboardController',
             }
         };
 
-        function timer()
-        {
-            var timer = {
-                running: false,
-                iv: 5000,
-                timeout: false,
-                cb : function(){},
-                start : function(cb,iv,sd){
-                    var elm = this;
-                    clearInterval(this.timeout);
-                    this.running = true;
-                    if(cb) this.cb = cb;
-                    if(iv) this.iv = iv;
-                    if(sd) elm.execute(elm);
-                    else this.timeout = setTimeout(function(){elm.execute(elm)}, this.iv);
-                },
-                execute : function(e){
-                    if(!e.running) return false;
-                    e.cb();
-                    e.start();
-                },
-                stop : function(){
-                    this.running = false;
-                },
-                set_interval : function(iv){
-                    clearInterval(this.timeout);
-                    this.start(false, iv);
-                }
-            };
-            return timer;
+        $scope.refreshInterval = 2000;
+        var promise = undefined;
+
+        function startPromise(){
+            promise = $interval(function() {
+                callServices()
+            }, $scope.refreshInterval);
         }
 
-        $scope.refreshInterval = 2000;
-        var promise;
-
-        var intervalTimer = new timer();
         $scope.start = function() {
-          $scope.cancel();
-            intervalTimer.start(function(){
-                callServices();
-            }, $scope.refreshInterval, true);
+            // Don't start if already defined
+            if ( angular.isDefined(promise) ) return;
+            startPromise();
         };
 
         $scope.calculateInterval = function(number) {
             $scope.refreshInterval += Number(number);
             //change the interval
-            intervalTimer.set_interval($scope.refreshInterval);
+            $interval.cancel(promise);
+            startPromise();
         };
 
         $scope.checkIfAllowedInterval = function(number){
@@ -172,19 +145,13 @@ app.controller('DashboardController',
         };
 
         $scope.cancel = function () {
-             $interval.cancel(promise);
+            $interval.cancel(promise);
+            promise = undefined;
         };
-        // stops the interval when the scope is destroyed,
-    // this usually happens when a route is changed and
-    // the ItemsController $scope gets destroyed. The
-    // destruction of the ItemsController scope does not
-    // guarantee the stopping of any intervals, you must
-    // be responsible for stopping it when the scope is
-    // is destroyed.
+
         $scope.$on('$destroy', function() {
             $scope.cancel();
         });
-        $scope.start();
 
         $scope.selectedUserIndex = undefined;
 
@@ -340,36 +307,30 @@ app.controller('DashboardController',
         };
 
         $scope.openClusterDialog = function () {
-            if (!$scope.menuOpened){
-                $scope.menuOpened = true;
-                $scope.openedAt = new Date().toLocaleString();
-                $mdDialog.show({
-                    contentElement: '#myClusterDialog',
-                    scope: $scope,
-                    preserveScope: true,
-                    clickOutsideToClose: false,
-                    escapeToClose: false,
-                });
-            }
+            $mdDialog.show({
+                contentElement: '#myClusterDialog',
+                scope: $scope,
+                preserveScope: true,
+                clickOutsideToClose: false,
+                escapeToClose: false
+            });
+            $scope.menuOpened = true;
+            $scope.openedAt = new Date().toLocaleString();
         };
 
         $scope.closeClusterDialog = function () {
-            if ($scope.menuOpened) {
-                $mdDialog.hide({contentElement: '#myClusterDialog'});
-                $scope.menuOpened = false;
-                $scope.servers = {};
-                $scope.slaves = {};
-                $scope.master = {};
-                $scope.alerts = {};
-                $scope.logs = {};
-                $scope.proxies = {};
-                $mdSidenav('right').close();
-                $scope.menuOpened = false;
-            }
+            $mdDialog.hide({contentElement: '#myClusterDialog'});
+            $scope.menuOpened = false;
+            $scope.servers = {};
+            $scope.slaves = {};
+            $scope.master = {};
+            $scope.alerts = {};
+            $scope.logs = {};
+            $scope.proxies = {};
+            $mdSidenav('right').close();
         };
 
         $scope.newClusterDialog = function () {
-
             $mdDialog.show({
                 contentElement: '#myNewClusterDialog',
                 scope: $scope,
@@ -492,17 +453,6 @@ app.controller('DashboardController',
         }
 
 
-        $scope.$on('$mdMenuOpen', function (event, menu) {
-            console.log('Opening menu refresh server will stop...', event, menu);
-            $scope.menuOpened = true;
-            $scope.openedAt = new Date().toLocaleString();
-        });
-
-        $scope.$on('$mdMenuClose', function (event, menu) {
-            console.log('Closing menu refresh servers will resume...', event, menu);
-            $scope.menuOpened = false;
-            $scope.openedAt = "";
-        });
-
+        $scope.start();
 
     });
