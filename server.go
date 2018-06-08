@@ -752,7 +752,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	}
 	repman.SplitBrain = true
 
-	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second)
+	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
 	for _, peer := range peerList {
 		url := "http://" + peer + "/api/heartbeat"
 		client := &http.Client{
