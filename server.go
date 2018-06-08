@@ -648,19 +648,17 @@ func (repman *ReplicationManager) Run() error {
 	if conf.HttpServ {
 		go httpserver()
 	}
-	interval := time.Second
-	ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
+
+	//	ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
 	repman.isStarted = true
 	for repman.exit == false {
-		select {
-		case <-ticker.C:
-			if conf.Arbitration {
-				repman.Heartbeat()
-			}
-			if conf.Enterprise {
-				//			agents = svc.GetNodes()
-			}
+		if conf.Arbitration {
+			repman.Heartbeat()
 		}
+		if conf.Enterprise {
+			//			agents = svc.GetNodes()
+		}
+		time.Sleep(time.Second * time.Duration(conf.MonitoringTicker))
 	}
 	if repman.exitMsg != "" {
 		log.Println(repman.exitMsg)
@@ -753,7 +751,8 @@ func (repman *ReplicationManager) Heartbeat() {
 		return
 	}
 	repman.SplitBrain = true
-	timeout := time.Duration(2 * time.Second)
+
+	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second)
 	for _, peer := range peerList {
 		url := "http://" + peer + "/api/heartbeat"
 		client := &http.Client{
@@ -813,109 +812,111 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 
 	} //end check all peers
-	if repman.SplitBrain {
-		if bcksplitbrain != repman.SplitBrain {
-			repman.currentCluster.LogPrintf("INFO", "Arbitrator: Splitbrain")
-		}
+	if !repman.SplitBrain {
+		return
+	}
 
-		// report to arbitrator
-		for _, cl := range repman.Clusters {
-			if cl.LostMajority() {
-				if bcksplitbrain != repman.SplitBrain {
-					repman.currentCluster.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
-				}
-			}
-			url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
-			var mst string
-			if cl.GetMaster() != nil {
-				mst = cl.GetMaster().URL
-			}
-			var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
-			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-			req.Header.Set("X-Custom-Header", "myvalue")
-			req.Header.Set("Content-Type", "application/json")
-
-			client := &http.Client{Timeout: timeout}
-			log.Debugf("Sending message to Arbitrator server")
-			resp, err := client.Do(req)
-			if err != nil {
-				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
-				cl.SetActiveStatus(ConstMonitorStandby)
-				repman.Status = ConstMonitorStandby
-				return
-			}
-			defer resp.Body.Close()
-
-		}
-		// give a chance to other partitions to report if just happened
-		if bcksplitbrain != repman.SplitBrain {
-			time.Sleep(5 * time.Second)
-		}
-		// request arbitration for all cluster
-		for _, cl := range repman.Clusters {
-
+	if bcksplitbrain != repman.SplitBrain {
+		cl.LogPrintf("INFO", "Splitbrain")
+	}
+	// report to arbitrator
+	for _, cl := range repman.Clusters {
+		if cl.LostMajority() {
 			if bcksplitbrain != repman.SplitBrain {
-				cl.LogPrintf("INFO", "Arbitrator: External check requested")
+				cl.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
 			}
-			url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
-			var mst string
-			if cl.GetMaster() != nil {
-				mst = cl.GetMaster().URL
-			}
-			var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
-			req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-			req.Header.Set("X-Custom-Header", "myvalue")
-			req.Header.Set("Content-Type", "application/json")
+		}
+		url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
+		var mst string
+		if cl.GetMaster() != nil {
+			mst = cl.GetMaster().URL
+		}
+		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		req.Header.Set("X-Custom-Header", "myvalue")
+		req.Header.Set("Content-Type", "application/json")
 
-			client := &http.Client{Timeout: timeout}
-			resp, err := client.Do(req)
-			if err != nil {
-				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
-				cl.SetActiveStatus(ConstMonitorStandby)
-				cl.SetMasterReadOnly()
-				repman.Status = ConstMonitorStandby
-				return
-			}
-			defer resp.Body.Close()
-
-			body, _ := ioutil.ReadAll(resp.Body)
-
-			type response struct {
-				Arbitration string `json:"arbitration"`
-				Master      string `json:"master"`
-			}
-			var r response
-			err = json.Unmarshal(body, &r)
-			if err != nil {
-				cl.LogPrintf("ERROR", "Arbitrator received invalid JSON")
-				cl.SetActiveStatus(ConstMonitorStandby)
-				cl.SetMasterReadOnly()
-				repman.Status = ConstMonitorStandby
-				return
-
-			}
-			if r.Arbitration == "winner" {
-				if bcksplitbrain != repman.SplitBrain {
-					cl.LogPrintf("INFO", "Arbitration message - Election Won")
-				}
-				cl.SetActiveStatus(ConstMonitorActif)
-				repman.Status = ConstMonitorActif
-				return
-			}
-			if bcksplitbrain != repman.SplitBrain {
-				cl.LogPrintf("INFO", "Arbitration message - Election Lost")
-				if cl.GetMaster() != nil {
-					mst = cl.GetMaster().URL
-				}
-				if r.Master != mst {
-					cl.SetMasterReadOnly()
-				}
-			}
+		client := &http.Client{Timeout: timeout}
+		cl.LogPrintf("Reporting cluster state to arbitrator server")
+		resp, err := client.Do(req)
+		if err != nil {
+			cl.LogPrintf("ERROR", "Could not post response to arbitrator %s", err)
 			cl.SetActiveStatus(ConstMonitorStandby)
+			repman.Status = ConstMonitorStandby
+			return
+		}
+		defer resp.Body.Close()
+
+	}
+	// give a chance to other partitions to report if just happened
+	if bcksplitbrain != repman.SplitBrain {
+		time.Sleep(5 * time.Second)
+	}
+	// request arbitration for all cluster
+	for _, cl := range repman.Clusters {
+
+		if bcksplitbrain != repman.SplitBrain {
+			cl.LogPrintf("INFO", "Arbitrator: External check requested")
+		}
+		url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
+		var mst string
+		if cl.GetMaster() != nil {
+			mst = cl.GetMaster().URL
+		}
+		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+		req.Header.Set("X-Custom-Header", "myvalue")
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: timeout}
+		resp, err := client.Do(req)
+		if err != nil {
+			cl.LogPrintf("ERROR", "Could not get http response from arbitrator: %s", err)
+			cl.SetActiveStatus(ConstMonitorStandby)
+			cl.SetMasterReadOnly()
+			repman.Status = ConstMonitorStandby
+			return
+		}
+		defer resp.Body.Close()
+
+		body, _ := ioutil.ReadAll(resp.Body)
+
+		type response struct {
+			Arbitration string `json:"arbitration"`
+			Master      string `json:"master"`
+		}
+		var r response
+		err = json.Unmarshal(body, &r)
+		if err != nil {
+			cl.LogPrintf("ERROR", "Arbitrator sent invalid JSON, %s", body)
+			cl.SetActiveStatus(ConstMonitorStandby)
+			cl.SetMasterReadOnly()
 			repman.Status = ConstMonitorStandby
 			return
 
 		}
+		if r.Arbitration == "winner" {
+			if bcksplitbrain != repman.SplitBrain {
+				cl.LogPrintf("INFO", "Arbitration message - Election Won")
+			}
+			cl.SetActiveStatus(ConstMonitorActif)
+			repman.Status = ConstMonitorActif
+			return
+		}
+		if bcksplitbrain != repman.SplitBrain {
+			cl.LogPrintf("INFO", "Arbitration message - Election Lost")
+			if cl.GetMaster() != nil {
+				mst = cl.GetMaster().URL
+			}
+			if r.Master != mst {
+				cl.SetMasterReadOnly()
+				cl.LogPrintf("INFO", "Election Lost - Current master different from winner master setting it to read only")
+
+			}
+		}
+		cl.SetActiveStatus(ConstMonitorStandby)
+		repman.Status = ConstMonitorStandby
+		return
 
 	}
 
