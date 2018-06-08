@@ -42,6 +42,9 @@ type Cluster struct {
 	FailoverCtr          int               `json:"failoverCounter"`
 	FailoverTs           int64             `json:"failoverLastTime"`
 	Status               string            `json:"activePassiveStatus"`
+	IsSplitBrain         bool              `json:"isSplitBrain"`
+	IsFailedArbitrator   bool              `json:"isFailedArbitrator"`
+	IsLostMajority       bool              `json:"isLostMajority"`
 	Conf                 config.Config     `json:"config"`
 	CleanAll             bool              `json:"cleanReplication"` //used in testing
 	IsDown               bool              `json:"isDown"`
@@ -617,4 +620,20 @@ func (cluster *Cluster) schemaMonitor() {
 	cluster.DBTableSize = tottablesize
 	cluster.master.DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
+}
+
+// Arbitration Only works for GTID now need crash info fetch from arbitrator to do better
+func (cluster *Cluster) LostArbitration(realmasterurl string) {
+
+	//need to join real master via change master
+	realmaster := cluster.GetServerFromURL(realmasterurl)
+	if realmaster == nil {
+		cluster.LogPrintf("ERROR", "Can't found elected master from server list on lost arbitration")
+		return
+	}
+	err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
+	if err != nil {
+		cluster.LogPrintf("ERROR", "Failed in GTID rejoin lost master to winner master %s", err)
+
+	}
 }

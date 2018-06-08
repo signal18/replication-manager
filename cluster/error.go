@@ -104,4 +104,7 @@ var clusterError = map[string]string{
 	"WARN0076": "Physical backup for flashback reseeding running on server %s",
 	"WARN0077": "Logical backup for flashback reseeding running on server %s",
 	"WARN0078": "Haproxy version to old to get statistics",
+	"WARN0079": "Cluster is split brain",
+	"WARN0080": "Cluster lost majority",
+	"WARN0081": "Cluster lost arbitrator posting state",
 }

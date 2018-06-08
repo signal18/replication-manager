@@ -29,6 +29,12 @@ const (
 	LvlDbg  = "DEBUG"
 )
 
+// State Levels
+const (
+	StateWarn = "WARNING"
+	StateErr  = "ERROR"
+)
+
 func (cluster *Cluster) display() {
 	if cluster.Name != cluster.cfgGroupDisplay {
 		return

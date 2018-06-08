@@ -808,6 +808,7 @@ func (repman *ReplicationManager) Heartbeat() {
 			// propagate all Status to clusters after peer negotiation
 			for _, cl := range repman.Clusters {
 				cl.SetActiveStatus(repman.Status)
+				cl.IsSplitBrain = repman.SplitBrain
 			}
 		}
 
@@ -816,16 +817,11 @@ func (repman *ReplicationManager) Heartbeat() {
 		return
 	}
 
-	if bcksplitbrain != repman.SplitBrain {
-		cl.LogPrintf("INFO", "Splitbrain")
-	}
 	// report to arbitrator
 	for _, cl := range repman.Clusters {
-		if cl.LostMajority() {
-			if bcksplitbrain != repman.SplitBrain {
-				cl.LogPrintf("INFO", "Arbitrator: Database cluster lost majority")
-			}
-		}
+		cl.IsLostMajority = cl.LostMajority()
+		// SplitBrain
+
 		url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
 		var mst string
 		if cl.GetMaster() != nil {
@@ -837,16 +833,16 @@ func (repman *ReplicationManager) Heartbeat() {
 		req.Header.Set("Content-Type", "application/json")
 
 		client := &http.Client{Timeout: timeout}
-		cl.LogPrintf("Reporting cluster state to arbitrator server")
 		resp, err := client.Do(req)
 		if err != nil {
-			cl.LogPrintf("ERROR", "Could not post response to arbitrator %s", err)
+
+			cl.IsFailedArbitrator = true
 			cl.SetActiveStatus(ConstMonitorStandby)
 			repman.Status = ConstMonitorStandby
 			return
 		}
 		defer resp.Body.Close()
-
+		cl.IsFailedArbitrator = false
 	}
 	// give a chance to other partitions to report if just happened
 	if bcksplitbrain != repman.SplitBrain {
@@ -871,9 +867,9 @@ func (repman *ReplicationManager) Heartbeat() {
 		client := &http.Client{Timeout: timeout}
 		resp, err := client.Do(req)
 		if err != nil {
-			cl.LogPrintf("ERROR", "Could not get http response from arbitrator: %s", err)
+			cl.LogPrintf("ERROR", "Could not receive http response from arbitration: %s", err)
 			cl.SetActiveStatus(ConstMonitorStandby)
-			cl.SetMasterReadOnly()
+			cl.IsFailedArbitrator = true
 			repman.Status = ConstMonitorStandby
 			return
 		}
@@ -890,11 +886,12 @@ func (repman *ReplicationManager) Heartbeat() {
 		if err != nil {
 			cl.LogPrintf("ERROR", "Arbitrator sent invalid JSON, %s", body)
 			cl.SetActiveStatus(ConstMonitorStandby)
-			cl.SetMasterReadOnly()
 			repman.Status = ConstMonitorStandby
+			cl.IsFailedArbitrator = true
 			return
 
 		}
+		cl.IsFailedArbitrator = false
 		if r.Arbitration == "winner" {
 			if bcksplitbrain != repman.SplitBrain {
 				cl.LogPrintf("INFO", "Arbitration message - Election Won")
@@ -909,9 +906,8 @@ func (repman *ReplicationManager) Heartbeat() {
 				mst = cl.GetMaster().URL
 			}
 			if r.Master != mst {
-				cl.SetMasterReadOnly()
+				cl.LostArbitration(r.Master)
 				cl.LogPrintf("INFO", "Election Lost - Current master different from winner master setting it to read only")
-
 			}
 		}
 		cl.SetActiveStatus(ConstMonitorStandby)

@@ -332,6 +332,17 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.Save()
 		}
 	}
+	if cluster.Conf.Arbitration {
+		if cluster.IsSplitBrain {
+			cluster.SetState("WARN0079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0079"]), ErrFrom: "ARB"})
+		}
+		if cluster.IsLostMajority {
+			cluster.SetState("WARN0080", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0080"]), ErrFrom: "ARB"})
+		}
+		if cluster.IsFailedArbitrator {
+			cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"]), ErrFrom: "ARB"})
+		}
+	}
 	if cluster.sme.CanMonitor() {
 		return nil
 	}
