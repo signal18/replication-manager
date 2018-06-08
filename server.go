@@ -805,14 +805,16 @@ func (repman *ReplicationManager) Heartbeat() {
 				log.Debugf("Peer node is Active, I am Standby")
 				repman.Status = ConstMonitorStandby
 			}
-			// propagate all Status to clusters after peer negotiation
-			for _, cl := range repman.Clusters {
-				cl.SetActiveStatus(repman.Status)
-				cl.IsSplitBrain = repman.SplitBrain
-			}
+
 		}
 
 	} //end check all peers
+
+	// propagate heartbeat state to clusters after peer negotiation
+	for _, cl := range repman.Clusters {
+		cl.SetActiveStatus(repman.Status)
+		cl.IsSplitBrain = repman.SplitBrain
+	}
 	if !repman.SplitBrain {
 		return
 	}
