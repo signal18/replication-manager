@@ -665,7 +665,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		//myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
 		//https://jira.mariadb.org/browse/MDEV-14182
 
-		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" {
+		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
 			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn)
 			if err != nil {

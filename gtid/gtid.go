@@ -187,6 +187,7 @@ func (gl List) Sprint() string {
 	return strings.Join(sl, ",")
 }
 
+//
 func (gl List) Equal(glcomp *List) bool {
 	server := func(c1, c2 *Gtid) bool {
 		return c1.ServerID < c2.ServerID
@@ -196,7 +197,7 @@ func (gl List) Equal(glcomp *List) bool {
 	}
 	OrderedBy(domain, server).Sort(gl)
 	OrderedBy(domain, server).Sort(*glcomp)
-	if gl.Sprint() == glcomp.Sprint() {
+	if gl.Sprint() == glcomp.Sprint() || strings.Contains(glcomp.Sprint()+",", gl.Sprint()+",") {
 		return true
 
 	}
