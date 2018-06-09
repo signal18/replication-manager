@@ -840,12 +840,13 @@ func (repman *ReplicationManager) Heartbeat() {
 
 			cl.IsFailedArbitrator = true
 			cl.SetActiveStatus(ConstMonitorStandby)
-			repman.Status = ConstMonitorStandby
-			return
+
+			continue
 		}
 		defer resp.Body.Close()
 		cl.IsFailedArbitrator = false
-	}
+	} // end reporting state
+
 	// give a chance to other partitions to report if just happened
 	if bcksplitbrain != repman.SplitBrain {
 		time.Sleep(5 * time.Second)
@@ -872,8 +873,8 @@ func (repman *ReplicationManager) Heartbeat() {
 			cl.LogPrintf("ERROR", "Could not receive http response from arbitration: %s", err)
 			cl.SetActiveStatus(ConstMonitorStandby)
 			cl.IsFailedArbitrator = true
-			repman.Status = ConstMonitorStandby
-			return
+
+			continue
 		}
 		defer resp.Body.Close()
 
@@ -888,9 +889,8 @@ func (repman *ReplicationManager) Heartbeat() {
 		if err != nil {
 			cl.LogPrintf("ERROR", "Arbitrator sent invalid JSON, %s", body)
 			cl.SetActiveStatus(ConstMonitorStandby)
-			repman.Status = ConstMonitorStandby
 			cl.IsFailedArbitrator = true
-			return
+			continue
 
 		}
 		cl.IsFailedArbitrator = false
@@ -899,8 +899,8 @@ func (repman *ReplicationManager) Heartbeat() {
 				cl.LogPrintf("INFO", "Arbitration message - Election Won")
 			}
 			cl.SetActiveStatus(ConstMonitorActif)
-			repman.Status = ConstMonitorActif
-			return
+
+			continue
 		}
 		if bcksplitbrain != repman.SplitBrain {
 			cl.LogPrintf("INFO", "Arbitration message - Election Lost")
@@ -913,9 +913,8 @@ func (repman *ReplicationManager) Heartbeat() {
 			}
 		}
 		cl.SetActiveStatus(ConstMonitorStandby)
-		repman.Status = ConstMonitorStandby
 
-	}
+	} // end loop election
 
 }
 
