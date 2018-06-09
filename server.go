@@ -805,6 +805,9 @@ func (repman *ReplicationManager) Heartbeat() {
 				log.Debugf("Peer node is Active, I am Standby")
 				repman.Status = ConstMonitorStandby
 			}
+			for _, cl := range repman.Clusters {
+				cl.SetActiveStatus(repman.Status)
+			}
 
 		}
 
@@ -812,7 +815,6 @@ func (repman *ReplicationManager) Heartbeat() {
 
 	// propagate heartbeat state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
-		cl.SetActiveStatus(repman.Status)
 		cl.IsSplitBrain = repman.SplitBrain
 	}
 	if !repman.SplitBrain {
@@ -829,7 +831,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		if cl.GetMaster() != nil {
 			mst = cl.GetMaster().URL
 		}
-		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 		req.Header.Set("X-Custom-Header", "myvalue")
 		req.Header.Set("Content-Type", "application/json")
@@ -845,7 +847,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 		resp.Body.Close()
 		cl.IsFailedArbitrator = false
-	} // end reporting state
+	} // end loop reporting state
 
 	// give a chance to other partitions to report if just happened
 	if bcksplitbrain != repman.SplitBrain {
@@ -902,6 +904,7 @@ func (repman *ReplicationManager) Heartbeat() {
 
 			continue
 		}
+		cl.SetActiveStatus(ConstMonitorStandby)
 		if bcksplitbrain != repman.SplitBrain {
 			cl.LogPrintf("INFO", "Arbitration message - Election Lost")
 			if cl.GetMaster() != nil {
@@ -912,7 +915,6 @@ func (repman *ReplicationManager) Heartbeat() {
 				cl.LogPrintf("INFO", "Election Lost - Current master different from winner master setting it to read only")
 			}
 		}
-		cl.SetActiveStatus(ConstMonitorStandby)
 
 	} // end loop election
 
