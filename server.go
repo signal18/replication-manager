@@ -734,12 +734,70 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 
 }
 
+func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
+	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
+
+	url := "http://" + peer + "/api/heartbeat"
+	client := &http.Client{
+		Timeout: timeout,
+	}
+
+	log.Debugf("Heartbeat: Sending peer request to node %s", peer)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		if bcksplitbrain == false {
+			log.Errorf("Error building HTTP request: %s", err)
+		}
+		return true
+
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if bcksplitbrain == false {
+			log.Errorf("Could not reach peer node, might be down or incorrect address")
+		}
+		return true
+	}
+	defer resp.Body.Close()
+	monjson, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		if bcksplitbrain == false {
+			log.Errorf("Could not read body from peer response")
+		}
+		return true
+	}
+	// Use json.Decode for reading streams of JSON data
+	var h heartbeat
+	if err := json.Unmarshal(monjson, &h); err != nil {
+		if bcksplitbrain == false {
+			log.Errorf("Could not unmarshal JSON from peer response %s", err)
+		}
+		return true
+	} else {
+		repman.SplitBrain = false
+		if conf.LogLevel > 1 {
+			log.Debugf("RETURN: %v", h)
+		}
+		if h.Status == ConstMonitorStandby {
+			log.Debugf("Peer node is Standby, I am Active")
+			repman.Status = ConstMonitorActif
+		} else {
+			log.Debugf("Peer node is Active, I am Standby")
+			repman.Status = ConstMonitorStandby
+		}
+		for _, cl := range repman.Clusters {
+			cl.SetActiveStatus(repman.Status)
+		}
+
+	}
+	return false
+}
+
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
 		log.Errorf("Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
-	bcksplitbrain := repman.SplitBrain
 
 	var peerList []string
 	// try to found an active peer replication-manager
@@ -750,70 +808,13 @@ func (repman *ReplicationManager) Heartbeat() {
 		conf.Arbitration = false
 		return
 	}
-	repman.SplitBrain = true
+	bcksplitbrain := repman.SplitBrain
 
-	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
 	for _, peer := range peerList {
-		url := "http://" + peer + "/api/heartbeat"
-		client := &http.Client{
-			Timeout: timeout,
-		}
-		// Send the request via a client
-		// Do sends an HTTP request and
-		// returns an HTTP response
-		// Build the request
-		log.Debugf("Heartbeat: Sending peer request to node %s", peer)
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			if bcksplitbrain == false {
-				log.Errorf("Error building HTTP request: %s", err)
-			}
-			continue
-
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			if bcksplitbrain == false {
-				log.Errorf("Could not reach peer node, might be down or incorrect address")
-			}
-			continue
-		}
-		defer resp.Body.Close()
-		monjson, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			if bcksplitbrain == false {
-				log.Errorf("Could not read body from peer response")
-			}
-			continue
-		}
-		// Use json.Decode for reading streams of JSON data
-		var h heartbeat
-		if err := json.Unmarshal(monjson, &h); err != nil {
-			if bcksplitbrain == false {
-				log.Errorf("Could not unmarshal JSON from peer response %s", err)
-			}
-			continue
-		} else {
-			repman.SplitBrain = false
-			if conf.LogLevel > 1 {
-				log.Debugf("RETURN: %v", h)
-			}
-			if h.Status == ConstMonitorStandby {
-				log.Debugf("Peer node is Standby, I am Active")
-				repman.Status = ConstMonitorActif
-			} else {
-				log.Debugf("Peer node is Active, I am Standby")
-				repman.Status = ConstMonitorStandby
-			}
-			for _, cl := range repman.Clusters {
-				cl.SetActiveStatus(repman.Status)
-			}
-
-		}
-
+		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 	} //end check all peers
 
-	// propagate heartbeat state to clusters after peer negotiation
+	// propagate SplitBrain state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
 	}
@@ -823,31 +824,8 @@ func (repman *ReplicationManager) Heartbeat() {
 
 	// report to arbitrator
 	for _, cl := range repman.Clusters {
-		cl.IsLostMajority = cl.LostMajority()
-		// SplitBrain
-
-		url := "http://" + conf.ArbitrationSasHosts + "/heartbeat"
-		var mst string
-		if cl.GetMaster() != nil {
-			mst = cl.GetMaster().URL
-		}
-		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-		req.Header.Set("X-Custom-Header", "myvalue")
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{Timeout: timeout}
-		resp, err := client.Do(req)
-		if err != nil {
-
-			cl.IsFailedArbitrator = true
-			cl.SetActiveStatus(ConstMonitorStandby)
-
-			continue
-		}
-		resp.Body.Close()
-		cl.IsFailedArbitrator = false
-	} // end loop reporting state
+		cl.SetArbitratorHeartbeat(repman.UUID)
+	}
 
 	// give a chance to other partitions to report if just happened
 	if bcksplitbrain != repman.SplitBrain {
@@ -855,68 +833,8 @@ func (repman *ReplicationManager) Heartbeat() {
 	}
 	// request arbitration for all cluster
 	for _, cl := range repman.Clusters {
-
-		if bcksplitbrain != repman.SplitBrain {
-			cl.LogPrintf("INFO", "Arbitrator: External check requested")
-		}
-		url := "http://" + conf.ArbitrationSasHosts + "/arbitrator"
-		var mst string
-		if cl.GetMaster() != nil {
-			mst = cl.GetMaster().URL
-		}
-		var jsonStr = []byte(`{"uuid":"` + repman.UUID + `","secret":"` + conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(conf.ArbitrationSasUniqueId) + `,"status":"` + repman.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-		req.Header.Set("X-Custom-Header", "myvalue")
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{Timeout: timeout}
-		resp, err := client.Do(req)
-		if err != nil {
-			cl.LogPrintf("ERROR", "Could not receive http response from arbitration: %s", err)
-			cl.SetActiveStatus(ConstMonitorStandby)
-			cl.IsFailedArbitrator = true
-
-			continue
-		}
-
-		body, _ := ioutil.ReadAll(resp.Body)
-
-		type response struct {
-			Arbitration string `json:"arbitration"`
-			Master      string `json:"master"`
-		}
-		var r response
-		err = json.Unmarshal(body, &r)
-		if err != nil {
-			cl.LogPrintf("ERROR", "Arbitrator sent invalid JSON, %s", body)
-			cl.SetActiveStatus(ConstMonitorStandby)
-			cl.IsFailedArbitrator = true
-			continue
-
-		}
-		resp.Body.Close()
-		cl.IsFailedArbitrator = false
-		if r.Arbitration == "winner" {
-			if bcksplitbrain != repman.SplitBrain {
-				cl.LogPrintf("INFO", "Arbitration message - Election Won")
-			}
-			cl.SetActiveStatus(ConstMonitorActif)
-
-			continue
-		}
-		cl.SetActiveStatus(ConstMonitorStandby)
-		if bcksplitbrain != repman.SplitBrain {
-			cl.LogPrintf("INFO", "Arbitration message - Election Lost")
-			if cl.GetMaster() != nil {
-				mst = cl.GetMaster().URL
-			}
-			if r.Master != mst {
-				cl.LostArbitration(r.Master)
-				cl.LogPrintf("INFO", "Election Lost - Current master different from winner master setting it to read only")
-			}
-		}
-
-	} // end loop election
+		cl.GetArbitratorElection(repman.UUID, bcksplitbrain)
+	}
 
 }
 

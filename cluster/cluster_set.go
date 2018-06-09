@@ -7,7 +7,11 @@
 package cluster
 
 import (
+	"bytes"
+	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/dbhelper"
@@ -265,4 +269,39 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 
 func (cluster *Cluster) SetState(key string, s state.State) {
 	cluster.sme.AddState(key, s)
+}
+
+func (cl Cluster) SetArbitratorHeartbeat(UUID string) error {
+	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
+
+	cl.IsLostMajority = cl.LostMajority()
+	// SplitBrain
+
+	url := "http://" + cl.Conf.ArbitrationSasHosts + "/heartbeat"
+	var mst string
+	if cl.GetMaster() != nil {
+		mst = cl.GetMaster().URL
+	}
+	var jsonStr = []byte(`{"uuid":"` + UUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		cl.IsFailedArbitrator = true
+		cl.SetActiveStatus(ConstMonitorStandby)
+		return err
+	}
+	req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+
+		cl.IsFailedArbitrator = true
+		cl.SetActiveStatus(ConstMonitorStandby)
+		return err
+	}
+	defer resp.Body.Close()
+	cl.IsFailedArbitrator = false
+	return nil
+
 }
