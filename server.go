@@ -843,7 +843,7 @@ func (repman *ReplicationManager) Heartbeat() {
 
 			continue
 		}
-		defer resp.Body.Close()
+		resp.Body.Close()
 		cl.IsFailedArbitrator = false
 	} // end reporting state
 
@@ -876,7 +876,6 @@ func (repman *ReplicationManager) Heartbeat() {
 
 			continue
 		}
-		defer resp.Body.Close()
 
 		body, _ := ioutil.ReadAll(resp.Body)
 
@@ -893,6 +892,7 @@ func (repman *ReplicationManager) Heartbeat() {
 			continue
 
 		}
+		resp.Body.Close()
 		cl.IsFailedArbitrator = false
 		if r.Arbitration == "winner" {
 			if bcksplitbrain != repman.SplitBrain {
