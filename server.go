@@ -914,7 +914,6 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 		cl.SetActiveStatus(ConstMonitorStandby)
 		repman.Status = ConstMonitorStandby
-		return
 
 	}
 
