@@ -271,7 +271,7 @@ func (cluster *Cluster) SetState(key string, s state.State) {
 	cluster.sme.AddState(key, s)
 }
 
-func (cl Cluster) SetArbitratorHeartbeat(UUID string) error {
+func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
 
 	cl.IsLostMajority = cl.LostMajority()

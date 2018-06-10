@@ -363,7 +363,7 @@ func (cluster *Cluster) GetCron() []CronEntry {
 	return entries
 }
 
-func (cl Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error {
+func (cl *Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
 	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
 	if bcksplitbrain != cl.IsSplitBrain {

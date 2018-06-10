@@ -93,6 +93,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", true, "Enable internal scheduler")
 	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
+	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 
 	monitorCmd.Flags().StringVar(&conf.User, "db-servers-credential", "", "Database login, specified in the [user]:[password] format")
 	monitorCmd.Flags().StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
@@ -795,7 +796,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		log.Errorf("Arbitrator cannot send heartbeat to itself. Exiting")
+		log.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 
@@ -804,19 +805,26 @@ func (repman *ReplicationManager) Heartbeat() {
 	if conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(conf.ArbitrationPeerHosts, ",")
 	} else {
-		log.Errorf("Arbitration peer not specified. Disabling arbitration")
+		log.Debugf("Arbitration peer not specified. Disabling arbitration")
 		conf.Arbitration = false
 		return
 	}
 	bcksplitbrain := repman.SplitBrain
 
 	for _, peer := range peerList {
+
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
+		if conf.LogHeartbeat {
+			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, peer)
+		}
 	} //end check all peers
 
 	// propagate SplitBrain state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
+		if conf.LogHeartbeat {
+			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, cl.Name)
+		}
 	}
 	if !repman.SplitBrain {
 		return

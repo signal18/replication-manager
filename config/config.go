@@ -34,6 +34,7 @@ type Config struct {
 	LogSyslog                          bool   `mapstructure:"log-syslog" toml:"log-syslog" json:"logSyslog"`
 	LogLevel                           int    `mapstructure:"log-level" toml:"log-level" json:"logLevel"`
 	LogSST                             bool   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`
+	LogHeartbeat                       bool   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	User                               string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                              string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
