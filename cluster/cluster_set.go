@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -285,6 +286,9 @@ func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
 	var jsonStr = []byte(`{"uuid":"` + UUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
+		if cl.Conf.LogHeartbeat {
+			cl.LogPrintf("INFO", "Failed to post http new request to arbitrator %s ", jsonStr)
+		}
 		cl.IsFailedArbitrator = true
 		cl.SetActiveStatus(ConstMonitorStandby)
 		return err
@@ -295,12 +299,16 @@ func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
+		if cl.Conf.LogHeartbeat {
+			cl.LogPrintf("INFO", "Failed to post status to arbitrator ")
+		}
 
 		cl.IsFailedArbitrator = true
 		cl.SetActiveStatus(ConstMonitorStandby)
 		return err
 	}
 	defer resp.Body.Close()
+	ioutil.ReadAll(resp.Body)
 	cl.IsFailedArbitrator = false
 	return nil
 
