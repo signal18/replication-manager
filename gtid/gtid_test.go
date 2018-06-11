@@ -35,3 +35,12 @@ func TestEmptyGtid(t *testing.T) {
 		t.Error("Expected empty Gtid List slice")
 	}
 }
+
+func TestEqualGtid(t *testing.T) {
+	gtid1 := "16045609-16045609-29,11026797-11026797-147"
+	gtid2 := "11026797-11026797-147"
+	list1 := NewList(gtid1)
+	list2 := NewList(gtid2)
+	re := list1.Equal(list2)
+	t.Log("Comparison returned ", re)
+}
