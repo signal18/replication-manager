@@ -572,7 +572,7 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
-	if conf.Arbitration == true {
+	if conf.Arbitration {
 		repman.Status = ConstMonitorStandby
 	}
 
@@ -789,17 +789,16 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	} else {
 		repman.SplitBrain = false
 		if conf.LogLevel > 1 {
-			log.Debugf("RETURN: %v", h)
+			log.Errorf("RETURN: %v", h)
 		}
+
 		if h.Status == ConstMonitorStandby {
-			log.Debugf("Peer node is Standby, I am Active")
+			log.Errorf("Peer node is Standby, I am Active")
 			repman.Status = ConstMonitorActif
 		} else {
-			log.Debugf("Peer node is Active, I am Standby")
+
+			log.Errorf("Peer node is Active, I am Standby")
 			repman.Status = ConstMonitorStandby
-		}
-		for _, cl := range repman.Clusters {
-			cl.SetActiveStatus(repman.Status)
 		}
 
 	}

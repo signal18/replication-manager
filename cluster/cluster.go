@@ -157,7 +157,11 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
-	cluster.Status = ConstMonitorActif
+	if conf.Arbitration {
+		cluster.Status = ConstMonitorActif
+	} else {
+		cluster.Status = ConstMonitorStandby
+	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = httplog.NewHttpLog(200)
 	cluster.MonitorType = map[string]string{
