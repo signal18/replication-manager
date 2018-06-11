@@ -742,9 +742,9 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
 		if err != nil {
-			log.Debugf("Heartbeat: Resolv %s DNS err: %s", Host, err)
+			log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
 		} else {
-			log.Debugf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+			log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
 		}
 	}
 	url := "http://" + peer + "/api/heartbeat"
