@@ -737,7 +737,16 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
+	if conf.LogHeartbeat {
 
+		Host, _ := misc.SplitHostPort(peer)
+		ha, err := net.LookupHost(Host)
+		if err != nil {
+			log.Debugf("Heartbeat: Resolv %s DNS err: %s", Host, err)
+		} else {
+			log.Debugf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+		}
+	}
 	url := "http://" + peer + "/api/heartbeat"
 	client := &http.Client{
 		Timeout: timeout,
@@ -766,6 +775,9 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			log.Errorf("Could not read body from peer response")
 		}
 		return true
+	}
+	if conf.LogHeartbeat {
+		log.Errorf("splitbrain http call result: %s ", monjson)
 	}
 	// Use json.Decode for reading streams of JSON data
 	var h heartbeat
