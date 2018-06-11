@@ -1,6 +1,6 @@
 FROM golang:1.9-alpine3.7 as builder
 
-RUN apk --no-cache --update add make git gcc
+RUN apk --no-cache --update add make git gcc musl-dev
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
