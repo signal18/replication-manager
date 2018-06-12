@@ -196,7 +196,7 @@ func (gl List) Equal(glcomp *List) bool {
 	}
 	OrderedBy(domain, server).Sort(gl)
 	OrderedBy(domain, server).Sort(*glcomp)
-	if gl.Sprint() == glcomp.Sprint() {
+	if gl.Sprint() == glcomp.Sprint() || strings.Contains(glcomp.Sprint()+",", gl.Sprint()+",") {
 		return true
 
 	}
