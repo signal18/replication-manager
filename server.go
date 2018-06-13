@@ -794,8 +794,11 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 
 		if h.Status == ConstMonitorStandby {
-			log.Errorf("Peer node is Standby, I am Active")
-			repman.Status = ConstMonitorActif
+			log.Errorf("Peer node is Standby ")
+			if repman.Status == ConstMonitorStandby {
+				//	Both standby an election is need to become active
+				return true
+			}
 		} else {
 
 			log.Errorf("Peer node is Active, I am Standby")
