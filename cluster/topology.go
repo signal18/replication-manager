@@ -161,9 +161,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 				}
-				cluster.master = cluster.Servers[k]
-				cluster.master.State = stateMaster
-				cluster.master.SetReadWrite()
+				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
+					cluster.Servers[k].RejoinMaster()
+				} else {
+					cluster.master = cluster.Servers[k]
+					cluster.master.State = stateMaster
+					cluster.master.SetReadWrite()
+				}
 			}
 		}
 		sv.CheckPrivileges()
@@ -296,9 +301,9 @@ func (cluster *Cluster) TopologyDiscover() error {
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
-						cluster.SetState("WARN00005", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf("Server %s is not a slave of declared master %s, and replication no relay is enable: Pointing to %s", sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
 
-						if cluster.Conf.ReplicationNoRelay {
+						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {
 							cluster.RejoinFixRelay(sl, cluster.master)
 						}
 

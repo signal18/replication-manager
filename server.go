@@ -141,6 +141,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	monitorCmd.Flags().IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
 
+	monitorCmd.Flags().BoolVar(&conf.Autoseed, "autoseed", false, "Automatic join a standalone node")
 	monitorCmd.Flags().BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatic rejoin a failed master")
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "backup ahead binlogs events when old master rejoin")
 	monitorCmd.Flags().StringVar(&conf.RejoinScript, "autorejoin-script", "", "Path of old master rejoin script")

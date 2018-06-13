@@ -41,16 +41,22 @@ func (server *ServerMonitor) RejoinMaster() error {
 	if server.ClusterGroup.sme.IsInFailover() {
 		return nil
 	}
-	server.ClusterGroup.LogPrintf("INFO", "Trying to rejoin restarted server %s", server.URL)
+	if server.ClusterGroup.Conf.LogLevel > 2 {
+		server.ClusterGroup.LogPrintf("INFO", "Trying to rejoin restarted standalone server %s", server.URL)
+	}
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining server %s to master %s", server.URL, server.ClusterGroup.master.URL)
+			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
 			if crash == nil {
-				server.ClusterGroup.LogPrintf("INFO", "Rejoin found no crash infos, promoting full state transfer %s", server.URL)
-				server.RejoinMasterSST()
-				return errors.New("No crash")
+				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
+				if server.ClusterGroup.Conf.Autoseed {
+					server.RejoinMasterSST()
+					return nil
+				} else {
+					return errors.New("No crash")
+				}
 			}
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 				server.backupBinlog(crash)
@@ -352,15 +358,14 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
 
-		if server.ClusterGroup.Conf.Verbose {
-			server.ClusterGroup.LogPrintf("INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, server.ClusterGroup.master.URL)
-		}
+		server.ClusterGroup.SetState("ERR00067", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00067"], server.URL, server.PrevState, ss.SlaveIORunning.String, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
+
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.Conf.MultiTierSlave == false && server.ClusterGroup.Conf.ReplicationNoRelay {
 
 			if server.HasGTIDReplication() {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
-					server.ClusterGroup.LogPrintf(LvlWarn, "No crash found on current master %s", server.ClusterGroup.master.URL)
+					server.ClusterGroup.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)

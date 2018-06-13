@@ -158,9 +158,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.repmgrVersion = repmgrVersion
 	cluster.key = key
 	if conf.Arbitration {
-		cluster.Status = ConstMonitorActif
-	} else {
 		cluster.Status = ConstMonitorStandby
+	} else {
+		cluster.Status = ConstMonitorActif
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = httplog.NewHttpLog(200)
