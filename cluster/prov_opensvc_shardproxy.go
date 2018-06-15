@@ -68,6 +68,7 @@ micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + cluster.GetGComm() + `
 mrm_api_addr = ` + cluster.Conf.BindAddr + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
+crc32_id = ` + string(prx.Id[2:10]) + `
 `
 	log.Println(conf)
 	return conf, nil
@@ -93,7 +94,7 @@ run_args =  --net=container:{svcname}.container.00` + pod + `
  -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
- -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
+ -v {env.base_dir}/pod` + pod + `/data:/var/lib/shardproxy:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
