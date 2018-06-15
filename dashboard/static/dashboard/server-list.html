@@ -1,0 +1,265 @@
+<div>
+<md-card ng-if="servers">
+<table ng-if="servers" class="table table-condensed fixed">
+    <tr>
+        <th class="rowicon"><!-- Actions Menu --></th>
+        <th class="rowicon"><!-- Version --></th>
+        <th class="servers">Database Servers</th>
+        <th class="status">Status</th>
+        <th>
+            <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Using GTID</span>
+            <span ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</span>
+        </th>
+        <th class="gtid">
+            <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</span>
+            <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</span>
+        </th>
+        <th class="gtid">
+            <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</span>
+            <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</span>
+        </th>
+        <th>Delay</th>
+        <th>Fail Cnt</th>
+        <th class="rowicon">Prf Ign</th>
+        <th class="rowicon">IO Thr</th>
+        <th class="rowicon">SQL Thr</th>
+        <th class="rowicon">Ro Sts</th>
+        <th class="rowicon">Evt Sch</th>
+        <th class="rowicon">Mst Syn</th>
+        <th class="rowicon">Rep Syn</th>
+
+    </tr>
+
+<tbody>
+<tr ng-repeat="server in servers"
+    ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }">
+
+    <!-- Start Menu Actions -->
+    <td>
+        <md-menu>
+            <md-button aria-label="Open server interactions menu"
+                       ng-click="$mdMenu.open($event)"
+                       style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;">
+                <md-span md-menu-origin class="fas fa-1x fa-ellipsis-h"></md-span>
+            </md-button>
+            <md-menu-content>
+                <md-menu-item ng-click="dbmaintenance(server.id)">
+                    <md-button>
+                        <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
+                        Maintenance Mode
+                    </md-button>
+                </md-menu-item>
+                <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+                    <md-menu>
+                        <md-button ng-click="$mdMenu.open($event)">
+                 <span md-menu-align-target>
+                    Provision
+                    <md-icon class="fas fa-arrow-right"></md-icon>
+                 </span>
+                        </md-button>
+                        <md-menu-content>
+                            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                          ng-click="dbstop(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
+                                    Stop Database
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                          ng-click="dbstart(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-play"></md-icon>
+                                    Start Database
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                          ng-click="dbprovision(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                                    Provision Database
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                          ng-click="dbunprovision(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                                    Unprovision Database
+                                </md-button>
+                            </md-menu-item>
+                        </md-menu-content>
+                    </md-menu>
+                </md-menu-item>
+                <md-menu-item>
+                    <md-menu>
+                        <md-button ng-click="$mdMenu.open($event)">
+                 <span md-menu-align-target>
+                    Backup
+                    <md-icon class="fas fa-arrow-right"></md-icon>
+                 </span>
+                        </md-button>
+                        <md-menu-content>
+                            <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                                    Physical Backup
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="server.id==master.id" ng-click="dbdump(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                                    Logical Backup
+                                </md-button>
+                            </md-menu-item>
+
+                            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                                    Reseed Logical From Backup
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                                    Reseed Logical From Master
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                                    Reseed Physical From Backup
+                                </md-button>
+                            </md-menu-item>
+
+                        </md-menu-content>
+                    </md-menu>
+                </md-menu-item>
+                <md-menu-item>
+                    <md-menu>
+                        <md-button ng-click="$mdMenu.open($event)">
+                 <span md-menu-align-target>
+                    DB Utils
+                 </span>
+                            <md-icon class="fas fa-arrow-right"></md-icon>
+                        </md-button>
+                        <md-menu-content>
+                            <md-menu-item ng-click="dboptimize(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
+                                    Optimize
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
+                                    Skip 1 Replication Event
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                    Toogle InnoDB Monitor
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-click="dbtoogleslowquerycapture(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                    Toogle Slow Query Capture
+                                </md-button>
+                            </md-menu-item>
+
+                    </md-menu>
+                </md-menu-item>
+            </md-menu-content>
+        </md-menu>
+    </td>
+    <!-- End menu actions -->
+    <td class="rowicon">
+        <md-button class="md-icon-button">
+            <md-tooltip>{{server.dbVersion.major}}.{{server.dbVersion.minor}}</md-tooltip>
+            <md-icon md-svg-src="static/img/mariadb.svg" ng-if="server.dbVersion.flavor=='MariaDB'">
+            </md-icon>
+            <img ng-if="server.dbVersion.flavor=='MySQL'" src="static/img/mysql.png" class="vicon"/>
+            <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png" class="vicon"/>
+            <md-button>
+    </td>
+    <td class="servers">
+    {{server.host}}:{{server.port}}
+    </td>
+    <td ng-switch="server.state">
+    <span ng-switch-when="Master" class="label label-primary">Master<label
+            ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="Failed" class="label label-danger">Failed<label
+                ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
+                ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
+                ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+        <span ng-switch-default class="label label-default">{{server.state}}
+            <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+    </td>
+
+<td class="gtid"><span
+        ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</span>
+<span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span></td>
+<td class="gtid"><span
+        ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.currentGtid)}}">{{gtidstring(server.currentGtid)}}</span>
+<span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].masterLogFile.String}}</span>
+<span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</span>
+</td>
+<td class="gtid"><span
+        ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.slaveGtid)}}">{{gtidstring(server.slaveGtid)}}</span>
+<span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.replications[0].execMasterLogPos.String}}</span>
+<span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</span>
+</td>
+<td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
+<td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
+    <td class="state"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i
+            ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
+    <td class="state"><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'"
+                         class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.replications[0].slaveIoRunning.String!='Yes'"
+            class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.replications[0].slaveSqlRunning.String=='Yes'"
+                         class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.replications[0].slaveSqlRunning.String!='Yes'"
+            class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.semiSyncMasterStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.semiSyncSlaveStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
+            ng-if="server.semiSyncSlaveStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+
+</tr>
+</tbody>
+</table>
+</md-card>
+
+<md-card ng-if="selectedCluster">
+    <table ng-if="servers" class="table">
+        <tr>
+            <th>Cluster Logs</th>
+        </tr>
+    </table>
+<md-card-content ng-if="selectedCluster" style="height: 600px; overflow-y: auto">
+
+<table style="table-layout: fixed;width: 100%;" class="log">
+<tr ng-repeat="logline in selectedCluster.log.buffer" ng-if="logline.timestamp">
+<td width="150px" class="stamp">{{ logline.timestamp }}</td>
+<td width="70px" ng-switch="logline.level">
+<span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
+<span ng-switch-when="WARN" class="label label-warning">{{ logline.level }}</span>
+<span ng-switch-when="ERROR" class="label label-danger">{{ logline.level }}</span>
+<span ng-switch-when="DEBUG" class="label label-primary">{{ logline.level }}</span>
+<span ng-switch-default class="label label-default">{{ logline.level }}</span>
+<td class="text" style="word-wrap:break-word;white-space: normal;">{{ logline.text }}</td>
+</tr>
+</table>
+    </md-pre>
+</md-card-content>
+
+</md-card>
+</div>
