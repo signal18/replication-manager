@@ -452,7 +452,18 @@ app.controller('DashboardController',
             };
         }
 
+        $scope.$on('$mdMenuOpen', function (event, menu) {
+            console.log('Opening menu refresh server will stop...', event, menu);
+            $scope.menuOpened = true;
+            $scope.openedAt = new Date().toLocaleString();
+        });
 
+        $scope.$on('$mdMenuClose', function (event, menu) {
+            console.log('Closing menu refresh servers will resume...', event, menu);
+            $scope.menuOpened = false;
+            $scope.openedAt = "";
+        });
+        
         $scope.start();
 
     });
