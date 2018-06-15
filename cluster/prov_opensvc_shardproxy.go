@@ -9,6 +9,7 @@ package cluster
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/opensvc"
@@ -51,6 +52,7 @@ orchestrate = start
 nodes = ` + agent.Node_name + `
 size = ` + collector.ProvDisk + `
 ` + ipPods + `
+port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + strconv.Itoa(prx.WritePort) + `
 mysql_root_password = ` + cluster.dbPass + `
 mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
