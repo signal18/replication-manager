@@ -23,6 +23,7 @@ var crcTable = crc64.MakeTable(crc64.ECMA)
 
 func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	// cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
+	cluster.mdbsBootstrap(proxy)
 
 	cluster.refreshMdbsproxy(oldmaster, proxy)
 }
