@@ -1225,10 +1225,10 @@ func SetReadOnly(db *sqlx.DB, flag bool) error {
 }
 func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
 	if flag == true {
-		_, err := db.Exec("SET GLOBAL super-read-only=1")
+		_, err := db.Exec("SET GLOBAL super_read_only=1")
 		return err
 	} else {
-		_, err := db.Exec("SET GLOBAL super-read-only=0")
+		_, err := db.Exec("SET GLOBAL super_read_only=0")
 		return err
 	}
 }
