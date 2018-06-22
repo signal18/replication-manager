@@ -28,13 +28,14 @@ import (
 const debug = false
 
 type Table struct {
-	Table_schema string `json:"tableSchema"`
-	Table_name   string `json:"tableName"`
-	Engine       string `json:"engine"`
-	Table_rows   int64  `json:"tableRows"`
-	Data_length  int64  `json:"dataLength"`
-	Index_length int64  `json:"indexLength"`
-	Table_crc    uint64 `json:"tableCrc"`
+	Table_schema   string `json:"tableSchema"`
+	Table_name     string `json:"tableName"`
+	Engine         string `json:"engine"`
+	Table_rows     int64  `json:"tableRows"`
+	Data_length    int64  `json:"dataLength"`
+	Index_length   int64  `json:"indexLength"`
+	Table_crc      uint64 `json:"tableCrc"`
+	Table_clusters string `json:"tableClusters"`
 }
 
 type Grant struct {

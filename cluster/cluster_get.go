@@ -431,3 +431,13 @@ func (cl *Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error 
 	}
 	return nil
 }
+
+func (cluster *Cluster) getClusterByName(clname string) *Cluster {
+
+	for _, c := range cluster.clusterList {
+		if clname == c.GetName() {
+			return c
+		}
+	}
+	return nil
+}

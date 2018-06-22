@@ -563,7 +563,7 @@ func (cluster *Cluster) Optimize() {
 }
 
 func (cluster *Cluster) schemaMonitor() {
-	if !cluster.Conf.MonitorSchemaChange && !cluster.Conf.MdbsProxyOn {
+	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
 	if cluster.master == nil {
@@ -579,12 +579,17 @@ func (cluster *Cluster) schemaMonitor() {
 		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
 	}
 	var duplicates []*ServerMonitor
+	var tableCluster []string
+
 	var tottablesize, totindexsize int64
 	for _, t := range tables {
+
 		tottablesize += t.Data_length
 		totindexsize += t.Index_length
 		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
+		tableCluster = nil
 		duplicates = nil
+		tableCluster = append(tableCluster, cluster.GetName())
 		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
 		haschanged := false
 		if err != nil {
@@ -608,14 +613,17 @@ func (cluster *Cluster) schemaMonitor() {
 						cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
 						if cltbldef.Table_name == t.Table_name {
 							duplicates = append(duplicates, cl.GetMaster())
+							tableCluster = append(tableCluster, cl.GetName())
 							cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
 						}
 					}
 				}
 			}
+			t.Table_clusters = strings.Join(tableCluster, ",")
+			tables[t.Table_schema+"."+t.Table_name] = t
 			for _, pr := range cluster.Proxies {
 				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-					cluster.createMdbsproxyVTable(pr, t, duplicates)
+					cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
 				}
 			}
 		}

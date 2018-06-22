@@ -94,7 +94,7 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 			return err
 		}
 		srv.Close()
-		cluster.mdbsBootstrap(prx)
+		cluster.ShardProxyBootstrap(prx)
 	}
 	return nil
 }

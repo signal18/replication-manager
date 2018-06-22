@@ -178,3 +178,15 @@ func (server *ServerMonitor) GetTables() map[string]dbhelper.Table {
 func (server *ServerMonitor) GetInnoDBStatus() map[string]string {
 	return server.EngineInnoDB
 }
+
+func (server *ServerMonitor) GetTableDefinition(schema string, table string) (string, error) {
+	query := "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
+	var tbl, ddl string
+
+	err := server.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+		return "", err
+	}
+	return ddl, nil
+}

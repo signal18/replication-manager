@@ -119,6 +119,15 @@ func apiClusterProtectedHandler(router *mux.Router) {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSchemaReshardTable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/schema", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSchema)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
 
 	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
@@ -924,6 +933,47 @@ func handlerMuxClusterSettings(w http.ResponseWriter, r *http.Request) {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.Conf)
+		if err != nil {
+			http.Error(w, "Encoding error in settings", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+func handlerMuxClusterSchemaReshardTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		for _, pr := range mycluster.Proxies {
+			if mycluster.Conf.MdbsProxyOn {
+				mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], nil)
+			}
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+func handlerMuxClusterSchema(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetMaster().DictTables)
 		if err != nil {
 			http.Error(w, "Encoding error in settings", 500)
 			return
