@@ -441,3 +441,13 @@ func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 	}
 	return nil
 }
+
+func (cluster *Cluster) GetClusterFromShardProxy(shardproxy string) map[string]*Cluster {
+	var clusters map[string]*Cluster
+	for _, c := range cluster.clusterList {
+		if c.Conf.MdbsProxyHosts == shardproxy {
+			clusters[c.GetName()] = c
+		}
+	}
+	return clusters
+}

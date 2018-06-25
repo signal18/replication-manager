@@ -123,6 +123,10 @@ func apiClusterProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSchemaReshardTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table/{clusterList}", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSchemaReshardTable)),
+	))
 	router.Handle("/api/clusters/{clusterName}/schema", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusterSchema)),
@@ -954,7 +958,18 @@ func handlerMuxClusterSchemaReshardTable(w http.ResponseWriter, r *http.Request)
 	if mycluster != nil {
 		for _, pr := range mycluster.Proxies {
 			if mycluster.Conf.MdbsProxyOn {
-				mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], nil)
+				clusters := mycluster.GetClusterFromShardProxy(mycluster.Conf.MdbsProxyHosts)
+				if vars["clusterList"] == "" {
+					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clusters)
+				} else {
+					var clustersFilter map[string]*cluster.Cluster
+					for _, c := range clusters {
+						if strings.Contains(vars["clusterList"], c.GetName()) {
+							clustersFilter[c.GetName()] = c
+						}
+					}
+					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clustersFilter)
+				}
 			}
 		}
 	} else {

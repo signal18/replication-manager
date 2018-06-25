@@ -173,7 +173,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 	pos := strings.Index(ddl, "(")
 	query := "CREATE OR REPLACE TABLE " + schema + "." + table + "_reshard " + ddl[pos:len(ddl)]
 	var duplicates []*ServerMonitor
-	for _, cl := range cluster.clusterList {
+	for _, cl := range clusters {
 		master := cl.GetMaster()
 		if master != nil {
 			//	RepMan.getClusterByName(s)
@@ -225,7 +225,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			//cltbldef, _ := cluster.master.GetTableFromDict(schema + "." + table)
 			//clusterlist := strings.Split(cltbldef.Table_clusters, ",")
 			duplicates = nil
-			for _, cl := range cluster.clusterList {
+			for _, cl := range clusters {
 				master := cl.GetMaster()
 				master.Conn.Exec("DROP TABLE IF EXISTS " + schema + "." + table)
 				master.Conn.Exec("CREATE OR REPLACE VIEW " + schema + "." + table + "  AS SELECT * FROM " + schema + "." + table + "_reshard")
@@ -236,7 +236,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 				}
 			}
 			cluster.ShardProxyCreateVTable(pr, schema, table, duplicates, false)
-			for _, cl := range cluster.clusterList {
+			for _, cl := range clusters {
 
 				master := cl.GetMaster()
 				master.Conn.Exec("RENAME TABLE  " + schema + "." + table + " TO " + schema + "." + table + "_old , " + schema + "." + table + "_reshard TO " + schema + "." + table)
