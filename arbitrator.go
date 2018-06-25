@@ -360,7 +360,7 @@ func fHeartbeat() {
 			if err != nil {
 				cl.LogPrintf("ERROR", "Could not get http response from Arbitrator server")
 				cl.SetActiveStatus("S")
-				cl.SetMasterReadOnly()
+				//	cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
 			}
@@ -377,7 +377,7 @@ func fHeartbeat() {
 			if err != nil {
 				cl.LogPrintf("ERROR", "Arbitrator received invalid JSON")
 				cl.SetActiveStatus("S")
-				cl.SetMasterReadOnly()
+				//	cl.SetMasterReadOnly()
 				runStatus = "S"
 				return
 
