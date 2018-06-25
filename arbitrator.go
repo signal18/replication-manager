@@ -281,7 +281,7 @@ func fHeartbeat() {
 		// Use json.Decode for reading streams of JSON data
 		var h heartbeat
 		if err := json.Unmarshal(monjson, &h); err != nil {
-			currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response", err)
+			currentCluster.LogPrintf("ERROR", "Could not unmarshal JSON from peer response %s", err)
 		} else {
 			splitBrain = false
 			if conf.LogLevel > 1 {
