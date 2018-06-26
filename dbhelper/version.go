@@ -44,6 +44,13 @@ func (mv *MySQLVersion) IsMySQL() bool {
 	return false
 }
 
+func (mv *MySQLVersion) IsMySQLOrPercona() bool {
+	if mv.Flavor == "MySQL" || mv.Flavor == "Percona" {
+		return true
+	}
+	return false
+}
+
 func (mv *MySQLVersion) IsPercona() bool {
 	if mv.Flavor == "Percona" {
 		return true
@@ -60,6 +67,13 @@ func (mv *MySQLVersion) IsMariaDB() bool {
 
 func (mv *MySQLVersion) IsMySQL57() bool {
 	if mv.Flavor == "MySQL" && mv.Major == 5 && mv.Minor > 6 {
+		return true
+	}
+	return false
+}
+
+func (mv *MySQLVersion) IsMySQLOrPercona57() bool {
+	if (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && mv.Major == 5 && mv.Minor > 6 {
 		return true
 	}
 	return false
