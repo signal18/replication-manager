@@ -53,11 +53,18 @@ func (server *ServerMonitor) GetReplicationHearbeatPeriod() float64 {
 }
 
 func (server *ServerMonitor) GetReplicationUsingGtid() string {
-	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
+	if server.IsMariaDB() {
+		ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
+		if sserr != nil {
+			return "No"
+		}
+		return ss.UsingGtid.String
+	} else {
+		if server.HaveMySQLGTID {
+			return "Yes"
+		}
 		return "No"
 	}
-	return ss.UsingGtid.String
 }
 
 func (server *ServerMonitor) GetReplicationMasterHost() string {

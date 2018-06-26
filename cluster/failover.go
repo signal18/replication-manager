@@ -588,7 +588,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "",
+				Mode:      "MASTER_AUTO_POSITION",
 				SSL:       cluster.Conf.ReplicationSSL,
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: sl.DBVersion.IsMariaDB(),
@@ -610,7 +610,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				IsMariaDB: sl.DBVersion.IsMariaDB(),
 				IsMySQL:   sl.DBVersion.IsMySQLOrPercona(),
 			})
-		} else { // We deduct we are in maxscale binlog server , but can heve support for GTID or not
+		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
 
 			cluster.LogPrintf(LvlInfo, "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
