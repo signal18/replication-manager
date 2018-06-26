@@ -640,7 +640,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Mode:      "SLAVE_POS",
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQL(),
+						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
 					})
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
@@ -655,7 +655,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Mode:      "MASTER_AUTO_POSITION",
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQL(),
+						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
 					})
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.Servers[masterKey].URL)
@@ -675,7 +675,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Logpos:    cluster.Servers[masterKey].BinaryLogPos,
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQL(),
+						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
 					})
 
 					//  Missing  multi source cluster.Conf.MasterConn
