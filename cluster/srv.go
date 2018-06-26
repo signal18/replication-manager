@@ -532,7 +532,7 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveMariaDBGTID = false
 		}
-		if server.DBVersion.IsMySQL57() && server.HasGTIDReplication() {
+		if server.DBVersion.IsMySQLOrPercona57() && server.HasGTIDReplication() {
 			server.SlaveGtid = gtid.NewList(slaveStatus.ExecutedGtidSet.String)
 		}
 	}

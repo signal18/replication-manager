@@ -208,7 +208,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 		}
-	} else if cluster.master.DBVersion.IsMySQL57() && cluster.master.HasGTIDReplication() {
+	} else if cluster.master.DBVersion.IsMySQLOrPercona57() && cluster.master.HasGTIDReplication() {
 		crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -282,7 +282,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.failoverProxies()
 	if cluster.conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
-		if cluster.master.DBVersion.IsMySQL() {
+		if cluster.master.DBVersion.IsMySQLOrPercona() {
 			// Need to stop all threads to reset on MySQL
 			cluster.master.StopSlave()
 		}
@@ -381,7 +381,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-				Mode:      "",
+				Mode:      "MASTER_AUTO_POSITION",
 				SSL:       cluster.conf.ReplicationSSL,
 			})
 			if changeMasterErr != nil {
@@ -566,7 +566,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 
-		} else if oldMaster.DBVersion.IsMySQL57() && hasMyGTID == true {
+		} else if oldMaster.DBVersion.IsMySQLOrPercona57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -574,7 +574,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.conf.ForceSlaveHeartbeatTime),
-				Mode:      "",
+				Mode:      "MASTER_AUTO_POSITION",
 				SSL:       cluster.conf.ReplicationSSL,
 			})
 		} else if cluster.conf.MxsBinlogOn == false {
@@ -1119,7 +1119,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			}
-		} else if cluster.master.DBVersion.IsMySQL57() && cluster.master.HasGTIDReplication() {
+		} else if cluster.master.DBVersion.IsMySQLOrPercona57() && cluster.master.HasGTIDReplication() {
 			crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -1275,7 +1275,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 	var changeMasterErr error
 
 	// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
-	if parent.DBVersion.IsMySQL57() && hasMyGTID == true {
+	if parent.DBVersion.IsMySQLOrPercona57() && hasMyGTID == true {
 		changeMasterErr = dbhelper.ChangeMaster(child.Conn, dbhelper.ChangeMasterOpt{
 			Host:      parent.Host,
 			Port:      parent.Port,
