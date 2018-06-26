@@ -378,7 +378,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Password:  cluster.rplPass,
 				Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-				Mode:      "",
+				Mode:      "MASTER_AUTO_POSITION",
 				SSL:       cluster.Conf.ReplicationSSL,
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: oldMaster.DBVersion.IsMariaDB(),
