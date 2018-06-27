@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -669,9 +670,19 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogPrintf("ERROR", "Can't found elected master from server list on lost arbitration")
 		return
 	}
-	err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
-	if err != nil {
-		cluster.LogPrintf("ERROR", "Failed in GTID rejoin lost master to winner master %s", err)
-
+	if cluster.Conf.ArbitrationFailedMasterScript != "" {
+		cluster.LogPrintf(LvlInfo, "Calling abitration failed for master script")
+		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.master.Host, cluster.master.Port).CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+		}
+		cluster.LogPrintf(LvlInfo, "Arbitration failed master script complete: %s", string(out))
+	} else {
+		cluster.LogPrintf(LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().DSN, realmaster.DSN)
+		err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Failed in GTID rejoin lost master to winner master %s", err)
+		}
 	}
+
 }

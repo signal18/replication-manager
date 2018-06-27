@@ -206,6 +206,7 @@ type Config struct {
 	ArbitrationSasHosts                string `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
 	ArbitrationSasUniqueId             int    `mapstructure:"arbitration-external-unique-id" toml:"arbitration-external-unique-id" json:"arbitrationExternalUniqueId"`
 	ArbitrationPeerHosts               string `mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
+	ArbitrationFailedMasterScript      string `mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
 	ArbitratorAddress                  string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                   string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
 	FailForceGtid                      bool   `toml:"-" json:"-"` //suspicious code

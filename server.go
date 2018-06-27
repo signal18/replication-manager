@@ -309,6 +309,7 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
 		monitorCmd.Flags().StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
 		monitorCmd.Flags().StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
+		monitorCmd.Flags().StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
 	}
 
 	if WithSpider == "ON" {
