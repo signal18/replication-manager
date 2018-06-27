@@ -273,7 +273,7 @@ func (cluster *Cluster) SetState(key string, s state.State) {
 	cluster.sme.AddState(key, s)
 }
 
-func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
+func (cl *Cluster) SetArbitratorReport() error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
 
 	cl.IsLostMajority = cl.LostMajority()
@@ -284,14 +284,13 @@ func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL
 	}
-	var jsonStr = []byte(`{"uuid":"` + UUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		if cl.Conf.LogHeartbeat {
 			cl.LogPrintf("INFO", "Failed to post http new request to arbitrator %s ", jsonStr)
 		}
 		cl.IsFailedArbitrator = true
-		cl.SetActiveStatus(ConstMonitorStandby)
 		return err
 	}
 	req.Header.Set("X-Custom-Header", "myvalue")
@@ -300,12 +299,7 @@ func (cl *Cluster) SetArbitratorHeartbeat(UUID string) error {
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		if cl.Conf.LogHeartbeat {
-			cl.LogPrintf("INFO", "Failed to post status to arbitrator ")
-		}
-
 		cl.IsFailedArbitrator = true
-		cl.SetActiveStatus(ConstMonitorStandby)
 		return err
 	}
 	defer resp.Body.Close()

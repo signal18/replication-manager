@@ -75,6 +75,7 @@ var clusterError = map[string]string{
 	"ERR00065": "No crash found on current master when rejoining slave %s to %s",
 	"ERR00066": "No crash found on current master when rejoining standalone %s to %s",
 	"ERR00067": "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s",
+	"ERR00068": "Arbitration looser",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
@@ -112,5 +113,7 @@ var clusterError = map[string]string{
 	"WARN0078": "Haproxy version to old to get statistics",
 	"WARN0079": "Cluster is split brain",
 	"WARN0080": "Cluster lost majority",
-	"WARN0081": "Cluster lost arbitrator posting state",
+	"WARN0081": "Cluster arbitrator error in reporting %s",
+	"WARN0082": "Cluster arbitrator error in arbitration %s",
+	"WARN0083": "Arbitration winner",
 }

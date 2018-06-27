@@ -33,22 +33,23 @@ import (
 )
 
 type Cluster struct {
-	Name                 string            `json:"name"`
-	Servers              serverList        `json:"-"`
-	ServerIdList         []string          `json:"dbServers"`
-	Crashes              crashList         `json:"dbServersCrashes"`
-	Proxies              proxyList         `json:"-"`
-	ProxyIdList          []string          `json:"proxyServers"`
-	FailoverCtr          int               `json:"failoverCounter"`
-	FailoverTs           int64             `json:"failoverLastTime"`
-	Status               string            `json:"activePassiveStatus"`
-	IsSplitBrain         bool              `json:"isSplitBrain"`
+	Name                 string     `json:"name"`
+	Servers              serverList `json:"-"`
+	ServerIdList         []string   `json:"dbServers"`
+	Crashes              crashList  `json:"dbServersCrashes"`
+	Proxies              proxyList  `json:"-"`
+	ProxyIdList          []string   `json:"proxyServers"`
+	FailoverCtr          int        `json:"failoverCounter"`
+	FailoverTs           int64      `json:"failoverLastTime"`
+	Status               string     `json:"activePassiveStatus"`
+	IsSplitBrain         bool       `json:"isSplitBrain"`
+	IsSplitBrainBck      bool
 	IsFailedArbitrator   bool              `json:"isFailedArbitrator"`
 	IsLostMajority       bool              `json:"isLostMajority"`
-	Conf                 config.Config     `json:"config"`
-	CleanAll             bool              `json:"cleanReplication"` //used in testing
 	IsDown               bool              `json:"isDown"`
 	IsProvisionned       bool              `json:"isProvisionned"`
+	Conf                 config.Config     `json:"config"`
+	CleanAll             bool              `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry       `json:"schedule"`
 	DBTags               []string          `json:"dbServersTags"`
 	ProxyTags            []string          `json:"proxyServersTags"`
@@ -297,6 +298,31 @@ func (cluster *Cluster) Run() {
 					go cluster.InjectTraffic()
 				}
 			}
+
+			// split brain management
+			if cluster.Conf.Arbitration {
+				if cluster.IsSplitBrain {
+					err := cluster.SetArbitratorReport()
+					if err != nil {
+						cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
+					}
+					if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
+						time.Sleep(5 * time.Second)
+					}
+					i := 1
+					for i <= 3 {
+						i++
+						err = cluster.GetArbitratorElection()
+						if err != nil {
+							cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
+						} else {
+							break //break the loop on success retry 3 times
+						}
+					}
+				}
+				cluster.IsSplitBrainBck = cluster.IsSplitBrain
+			}
+
 			// switchover / failover only on Active
 			cluster.CheckFailed()
 			if !cluster.sme.IsInFailover() {

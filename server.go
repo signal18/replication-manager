@@ -842,24 +842,6 @@ func (repman *ReplicationManager) Heartbeat() {
 			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, cl.Name)
 		}
 	}
-	if !repman.SplitBrain {
-		return
-	}
-
-	// report to arbitrator
-	for _, cl := range repman.Clusters {
-		cl.SetArbitratorHeartbeat(repman.UUID)
-	}
-
-	// give a chance to other partitions to report if just happened
-	if bcksplitbrain != repman.SplitBrain {
-		time.Sleep(5 * time.Second)
-	}
-	// request arbitration for all cluster
-	for _, cl := range repman.Clusters {
-		cl.GetArbitratorElection(repman.UUID, bcksplitbrain)
-	}
-
 }
 
 func (repman *ReplicationManager) resolveHostIp() string {

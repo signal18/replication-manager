@@ -9,6 +9,7 @@ package cluster
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -363,21 +364,24 @@ func (cluster *Cluster) GetCron() []CronEntry {
 	return entries
 }
 
-func (cl *Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error {
+func (cl *Cluster) GetArbitratorElection() error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
 	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
-	if bcksplitbrain != cl.IsSplitBrain {
+	if cl.IsSplitBrainBck != cl.IsSplitBrain {
 		cl.LogPrintf("INFO", "Arbitrator: External check requested")
+	} else {
+		// don't need arbitration if split brain status did not change
+		return nil
 	}
 	var mst string
-	if cl.GetMaster() != nil {
-		mst = cl.GetMaster().URL
+	if cl.GetMaster() == nil {
+		return nil
 	}
-	var jsonStr = []byte(`{"uuid":"` + UUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+	mst = cl.GetMaster().URL
+	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		cl.LogPrintf("ERROR", "Could not create http request to arbitrator: %s", err)
-		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.IsFailedArbitrator = true
 		return err
 	}
@@ -388,7 +392,6 @@ func (cl *Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error 
 	resp, err := client.Do(req)
 	if err != nil {
 		cl.LogPrintf("ERROR", "Could not receive http response from arbitration: %s", err)
-		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.IsFailedArbitrator = true
 		return err
 	}
@@ -403,30 +406,21 @@ func (cl *Cluster) GetArbitratorElection(UUID string, bcksplitbrain bool) error 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cl.LogPrintf("ERROR", "Arbitrator sent back invalid JSON, %s", body)
-		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.IsFailedArbitrator = true
 		return err
-
 	}
 
 	cl.IsFailedArbitrator = false
 	if r.Arbitration == "winner" {
-		if bcksplitbrain != cl.IsSplitBrain {
-			cl.LogPrintf("INFO", "Arbitration message - Election Won")
-		}
 		cl.SetActiveStatus(ConstMonitorActif)
-
+		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0083"]), ErrFrom: "ARB"})
 	} else {
 		cl.SetActiveStatus(ConstMonitorStandby)
-		if bcksplitbrain != cl.IsSplitBrain {
-			cl.LogPrintf("INFO", "Arbitration message - Election Lost")
-			if cl.GetMaster() != nil {
-				mst = cl.GetMaster().URL
-			}
-			if r.Master != mst {
-				cl.LostArbitration(r.Master)
-				cl.LogPrintf("INFO", "Election Lost - Current master different from winner master setting it to read only")
-			}
+		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00068"]), ErrFrom: "ARB"})
+		mst = cl.GetMaster().URL
+		if r.Master != mst {
+			cl.LostArbitration(r.Master)
+			cl.LogPrintf("INFO", "Election Lost - Current master %s different from winner master %s, %s is split brain victim. ", mst, r.Master, mst)
 		}
 	}
 	return nil
