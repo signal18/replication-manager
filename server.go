@@ -737,13 +737,13 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
 	Host, _ := misc.SplitHostPort(peer)
-	ha, err := net.LookupHost(Host)
-	if err != nil {
-		log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
-	} else {
-		log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
-	}
-
+	/*	ha, err := net.LookupHost(Host)
+		if err != nil {
+			log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
+		} else {
+			log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+		}
+	*/
 	url := "http://" + peer + "/api/heartbeat"
 	client := &http.Client{
 		Timeout: timeout,
@@ -784,24 +784,20 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 		return true
 	} else {
-		repman.SplitBrain = false
+
 		if conf.LogHeartbeat {
 			log.Errorf("RETURN: %v", h)
 		}
 
 		if h.Status == ConstMonitorStandby {
-			if conf.LogHeartbeat {
-				log.Errorf("Peer node is Standby ")
-			}
-			if repman.Status == ConstMonitorStandby {
-				repman.Status = ConstMonitorActif
-			}
+			repman.Status = ConstMonitorActif
 		} else {
-			if conf.LogHeartbeat {
-				log.Errorf("Peer node is Active, I am Standby")
-			}
 			repman.Status = ConstMonitorStandby
 		}
+		if conf.LogHeartbeat {
+			log.Errorf("No peer split brain setting status to %s", repman.Status)
+		}
+
 	}
 	return false
 }
@@ -827,7 +823,7 @@ func (repman *ReplicationManager) Heartbeat() {
 
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 		if conf.LogHeartbeat {
-			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, peer)
+			log.Errorf("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 		}
 	} //end check all peers
 
@@ -838,7 +834,7 @@ func (repman *ReplicationManager) Heartbeat() {
 			cl.Status = repman.Status
 		} // else let the election decide per cluster
 		if conf.LogHeartbeat {
-			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, cl.Name)
+			log.Errorf("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 		}
 	}
 }
