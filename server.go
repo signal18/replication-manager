@@ -736,8 +736,8 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
-	Host, _ := misc.SplitHostPort(peer)
-	/*	ha, err := net.LookupHost(Host)
+	/*	Host, _ := misc.SplitHostPort(peer)
+		ha, err := net.LookupHost(Host)
 		if err != nil {
 			log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
 		} else {
