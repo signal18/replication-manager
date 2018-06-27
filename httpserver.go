@@ -356,9 +356,9 @@ func httpserver() {
 	router.HandleFunc("/template", handlerOpenSVCTemplate)
 
 	if confs[currentClusterName].Verbose {
-		log.Printf("Starting http monitor on port " + confs[currentClusterName].HttpPort)
+		log.Printf("Starting http monitor on port " + conf.HttpPort)
 	}
-	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+confs[currentClusterName].HttpPort, router))
+	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+conf.HttpPort, router))
 
 }
 

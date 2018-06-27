@@ -21,6 +21,7 @@
   log-syslog = false
   log-level = 0
   log-sst = false
+  log-heartbeat = false
   db-servers-credential = "root:mariadb"
   db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
   db-servers-tls-ca-cert = ""
@@ -69,6 +70,7 @@
   failover-falsepositive-external = false
   failover-falsepositive-external-port = 80
   autorejoin = true
+  autoseed = false
   autorejoin-flashback = false
   autorejoin-mysqldump = false
   autorejoin-zfs-flashback = false
@@ -187,6 +189,7 @@
   arbitration-external-hosts = "reparb.signal18.io:80"
   arbitration-external-unique-id = 0
   arbitration-peer-hosts = "127.0.0.1:10002"
+  arbitration-failed-master-script = ""
   arbitrator-bind-address = ""
   arbitrator-driver = ""
   test = true

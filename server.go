@@ -574,9 +574,6 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
-	if conf.Arbitration {
-		repman.Status = ConstMonitorStandby
-	}
 
 	if conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
@@ -739,29 +736,27 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(conf.MonitoringTicker) * time.Second * 4)
-	if conf.LogHeartbeat {
-
-		Host, _ := misc.SplitHostPort(peer)
-		ha, err := net.LookupHost(Host)
-		if err != nil {
-			log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
-		} else {
-			log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
-		}
+	Host, _ := misc.SplitHostPort(peer)
+	ha, err := net.LookupHost(Host)
+	if err != nil {
+		log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
+	} else {
+		log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
 	}
+
 	url := "http://" + peer + "/api/heartbeat"
 	client := &http.Client{
 		Timeout: timeout,
 	}
-
-	log.Debugf("Heartbeat: Sending peer request to node %s", peer)
+	if conf.LogHeartbeat {
+		log.Debugf("Heartbeat: Sending peer request to node %s", peer)
+	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if bcksplitbrain == false {
 			log.Errorf("Error building HTTP request: %s", err)
 		}
 		return true
-
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -790,22 +785,23 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.SplitBrain = false
-		if conf.LogLevel > 1 {
+		if conf.LogHeartbeat {
 			log.Errorf("RETURN: %v", h)
 		}
 
 		if h.Status == ConstMonitorStandby {
-			log.Errorf("Peer node is Standby ")
+			if conf.LogHeartbeat {
+				log.Errorf("Peer node is Standby ")
+			}
 			if repman.Status == ConstMonitorStandby {
-				//	Both standby an election is need to become active
-				return true
+				repman.Status = ConstMonitorActif
 			}
 		} else {
-
-			log.Errorf("Peer node is Active, I am Standby")
+			if conf.LogHeartbeat {
+				log.Errorf("Peer node is Active, I am Standby")
+			}
 			repman.Status = ConstMonitorStandby
 		}
-
 	}
 	return false
 }
@@ -838,6 +834,9 @@ func (repman *ReplicationManager) Heartbeat() {
 	// propagate SplitBrain state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
+		if !cl.IsSplitBrain {
+			cl.Status = repman.Status
+		} // else let the election decide per cluster
 		if conf.LogHeartbeat {
 			log.Debugf("SplitBrain set to %d on peer %s", repman.SplitBrain, cl.Name)
 		}
