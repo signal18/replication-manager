@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -27,29 +28,28 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	OpenSVC     opensvc.Collector           `json:"-"`
-	Version     string                      `json:"version"`
-	Fullversion string                      `json:"fullVersion"`
-	Os          string                      `json:"os"`
-	Arch        string                      `json:"arch"`
-	Clusters    map[string]*cluster.Cluster `json:"-"`
-	Agents      []opensvc.Host              `json:"agents"`
-	UUID        string                      `json:"uuid"`
-	Hostname    string                      `json:"hostname"`
-	Status      string                      `json:"status"`
-	SplitBrain  bool                        `json:"spitBrain"`
-	ClusterList []string                    `json:"clusters"`
-	Tests       []string                    `json:"tests"`
-	Conf        config.Config               `json:"config"`
-	Logs        httplog.HttpLog             `json:"logs"`
-	tlog        termlog.TermLog
-	termlength  int
-	exitMsg     string
-	exit        bool
-
+	OpenSVC        opensvc.Collector           `json:"-"`
+	Version        string                      `json:"version"`
+	Fullversion    string                      `json:"fullVersion"`
+	Os             string                      `json:"os"`
+	Arch           string                      `json:"arch"`
+	Clusters       map[string]*cluster.Cluster `json:"-"`
+	Agents         []opensvc.Host              `json:"agents"`
+	UUID           string                      `json:"uuid"`
+	Hostname       string                      `json:"hostname"`
+	Status         string                      `json:"status"`
+	SplitBrain     bool                        `json:"spitBrain"`
+	ClusterList    []string                    `json:"clusters"`
+	Tests          []string                    `json:"tests"`
+	Conf           config.Config               `json:"config"`
+	Logs           httplog.HttpLog             `json:"logs"`
+	tlog           termlog.TermLog
+	termlength     int
+	exitMsg        string
+	exit           bool
 	currentCluster *cluster.Cluster
-
-	isStarted bool
+	isStarted      bool
+	sync.Mutex
 }
 
 const (

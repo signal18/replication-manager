@@ -18,13 +18,11 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
-	"github.com/signal18/replication-manager/opensvc"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,7 +46,7 @@ func httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := testFile("app.html"); err != nil {
-		RepMan.currentCluster.LogPrintf("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
+		log.Println("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
 		return
 	}
 
@@ -58,8 +56,8 @@ func httpserver() {
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 	router.HandleFunc("/", handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
-	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
+	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(conf.HttpRoot)))
+	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(conf.HttpRoot)))
 	router.HandleFunc("/api/login", loginHandler)
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
@@ -353,17 +351,16 @@ func httpserver() {
 	// create mux router
 	router.HandleFunc("/repocomp/current", handlerRepoComp)
 	router.HandleFunc("/heartbeat", handlerHeartbeat)
-	router.HandleFunc("/template", handlerOpenSVCTemplate)
 
-	if confs[currentClusterName].Verbose {
+	if conf.Verbose {
 		log.Printf("Starting http monitor on port " + conf.HttpPort)
 	}
-	log.Fatal(http.ListenAndServe(confs[currentClusterName].BindAddr+":"+conf.HttpPort, router))
+	log.Fatal(http.ListenAndServe(conf.BindAddr+":"+conf.HttpPort, router))
 
 }
 
 func handlerApp(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, confs[currentClusterName].HttpRoot+"/app.html")
+	http.ServeFile(w, r, conf.HttpRoot+"/app.html")
 }
 
 func handlerRepoComp(w http.ResponseWriter, r *http.Request) {
@@ -390,39 +387,8 @@ func handlerAgents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
-	svc := RepMan.currentCluster.OpenSVCConnect()
-	servers := RepMan.currentCluster.GetServers()
-	var iplist []string
-	var portlist []string
-	for _, s := range servers {
-		iplist = append(iplist, s.Host)
-		portlist = append(portlist, s.Port)
-
-	}
-
-	agts := svc.GetNodes()
-	var clusteragents []opensvc.Host
-
-	for _, node := range agts {
-		RepMan.currentCluster.LogPrintf("INFO", "hypervisors for cluster: %s %s", svc.ProvAgents, node.Node_name)
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
-			RepMan.currentCluster.LogPrintf("INFO", "hypervisors Found")
-
-			clusteragents = append(clusteragents, node)
-		}
-	}
-	res, err := RepMan.currentCluster.GetServers()[0].GenerateDBTemplate(svc, iplist, portlist, clusteragents, "", svc.ProvAgents)
-	if err != nil {
-		log.Println("HTTP Error ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-
-	w.Write([]byte(res))
-}
-
 func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
+	RepMan.Lock()
 	var send heartbeat
 	send.UUID = RepMan.UUID
 	send.UID = conf.ArbitrationSasUniqueId
@@ -430,8 +396,9 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	send.Status = RepMan.Status
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
-		panic(err)
+		http.Error(w, "Encoding error", 500)
 	}
+	RepMan.Unlock()
 }
 
 func handlerLog(w http.ResponseWriter, r *http.Request) {

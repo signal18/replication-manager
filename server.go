@@ -544,7 +544,7 @@ For interacting with this daemon use,
 }
 
 func (repman *ReplicationManager) Stop() {
-	repman.currentCluster.Close()
+
 	termbox.Close()
 	if memprofile != "" {
 		f, err := os.Create(memprofile)
@@ -642,7 +642,7 @@ func (repman *ReplicationManager) Run() error {
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
 	}
-	repman.currentCluster.SetCfgGroupDisplay(currentClusterName)
+	//	repman.currentCluster.SetCfgGroupDisplay(currentClusterName)
 
 	// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
 	if conf.HttpServ {
@@ -744,6 +744,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
 		}
 	*/
+
 	url := "http://" + peer + "/api/heartbeat"
 	client := &http.Client{
 		Timeout: timeout,
@@ -817,11 +818,13 @@ func (repman *ReplicationManager) Heartbeat() {
 		conf.Arbitration = false
 		return
 	}
+
 	bcksplitbrain := repman.SplitBrain
 
 	for _, peer := range peerList {
-
+		RepMan.Lock()
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
+		RepMan.Unlock()
 		if conf.LogHeartbeat {
 			log.Errorf("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 		}
