@@ -566,8 +566,9 @@ func (repman *ReplicationManager) Run() error {
 	repman.UUID = misc.GetUUID()
 	if conf.Arbitration {
 		repman.Status = ConstMonitorStandby
+	} else {
+		repman.Status = ConstMonitorActif
 	}
-	repman.Status = ConstMonitorActif
 	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
 	regtest := new(regtest.RegTest)
@@ -783,7 +784,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	// Use json.Decode for reading streams of JSON data
 	var h heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
-		if bcksplitbrain == false {
+		if conf.LogHeartbeat {
 			log.Errorf("Could not unmarshal JSON from peer response %s", err)
 		}
 		return true
@@ -793,11 +794,6 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			log.Errorf("RETURN: %v", h)
 		}
 
-		if h.Status == ConstMonitorStandby {
-			repman.Status = ConstMonitorActif
-		} else {
-			repman.Status = ConstMonitorStandby
-		}
 		if conf.LogHeartbeat {
 			log.Errorf("No peer split brain setting status to %s", repman.Status)
 		}
