@@ -564,6 +564,9 @@ func (repman *ReplicationManager) Run() error {
 	repman.Os = GoOS
 	repman.Clusters = make(map[string]*cluster.Cluster)
 	repman.UUID = misc.GetUUID()
+	if conf.Arbitration {
+		repman.Status = ConstMonitorStandby
+	}
 	repman.Status = ConstMonitorActif
 	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
@@ -835,7 +838,10 @@ func (repman *ReplicationManager) Heartbeat() {
 		cl.IsSplitBrain = repman.SplitBrain
 		if !cl.IsSplitBrain {
 			cl.Status = repman.Status
-		} // else let the election decide per cluster
+		} else {
+			// else fetch the result of election
+			repman.Status = cl.Status
+		}
 		if conf.LogHeartbeat {
 			log.Errorf("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 		}
