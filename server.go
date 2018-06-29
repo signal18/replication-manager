@@ -832,12 +832,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	// propagate SplitBrain state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
-		if !cl.IsSplitBrain {
-			cl.Status = repman.Status
-		} else {
-			// else fetch the result of election
-			repman.Status = cl.Status
-		}
+
 		if conf.LogHeartbeat {
 			log.Errorf("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 		}

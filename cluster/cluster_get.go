@@ -374,10 +374,10 @@ func (cl *Cluster) GetArbitratorElection() error {
 		return nil
 	}
 	var mst string
-	if cl.GetMaster() == nil {
-		return nil
+	if cl.GetMaster() != nil {
+		mst = cl.GetMaster().URL
 	}
-	mst = cl.GetMaster().URL
+
 	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
