@@ -417,10 +417,12 @@ func (cl *Cluster) GetArbitratorElection() error {
 	} else {
 		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00068"]), ErrFrom: "ARB"})
-		mst = cl.GetMaster().URL
-		if r.Master != mst {
-			cl.LostArbitration(r.Master)
-			cl.LogPrintf("INFO", "Election Lost - Current master %s different from winner master %s, %s is split brain victim. ", mst, r.Master, mst)
+		if cl.GetMaster() != nil {
+			mst = cl.GetMaster().URL
+			if r.Master != mst {
+				cl.LostArbitration(r.Master)
+				cl.LogPrintf("INFO", "Election Lost - Current master %s different from winner master %s, %s is split brain victim. ", mst, r.Master, mst)
+			}
 		}
 	}
 	return nil
