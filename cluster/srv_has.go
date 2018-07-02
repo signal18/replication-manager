@@ -89,9 +89,17 @@ func (server *ServerMonitor) HasCycling() bool {
 	return false
 }
 
-// IsDown() returns true is the server is Failed or Suspect or can't connect
+// IsDown() returns true is the server is Failed or Suspect or or auth error
 func (server *ServerMonitor) IsDown() bool {
 	if server.State == stateFailed || server.State == stateSuspect || server.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+// IFailed() returns true is the server is Failed or auth error
+func (server *ServerMonitor) IsFailed() bool {
+	if server.State == stateFailed || server.State == stateErrorAuth {
 		return true
 	}
 	return false
