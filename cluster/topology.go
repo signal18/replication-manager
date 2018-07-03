@@ -182,7 +182,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	// Check that all slave servers have the same master and conformity.
 	if cluster.Conf.MultiMaster == false && cluster.Conf.Spider == false {
 		for _, sl := range cluster.slaves {
-			if sl.IsMaxscale == false && !sl.IsDown() {
+			if sl.IsMaxscale == false && !sl.IsFailed() {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
