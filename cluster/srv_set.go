@@ -97,6 +97,21 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
 
+	if server.IsMaster() {
+		return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      master.Host,
+			Port:      master.Port,
+			User:      master.ClusterGroup.rplUser,
+			Password:  master.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:   server.ClusterGroup.Conf.MasterConn,
+			IsMariaDB: server.DBVersion.IsMariaDB(),
+			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+		})
+	}
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      master.Host,
 		Port:      master.Port,
@@ -104,7 +119,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Password:  master.ClusterGroup.rplPass,
 		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "SLAVE_POS",
+		Mode:      "MASTER_AUTO_POSITION",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 		Channel:   server.ClusterGroup.Conf.MasterConn,
 		IsMariaDB: server.DBVersion.IsMariaDB(),
