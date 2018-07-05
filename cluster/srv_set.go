@@ -61,6 +61,19 @@ func (server *ServerMonitor) SetMaintenance() {
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
 
+	if server.IsMariaDB() {
+		return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      master.Host,
+			Port:      master.Port,
+			User:      master.ClusterGroup.rplUser,
+			Password:  master.ClusterGroup.rplPass,
+			Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+			SSL:       server.ClusterGroup.conf.ReplicationSSL,
+		})
+	}
+	// If MySQL or Percona GTID
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      master.Host,
 		Port:      master.Port,
@@ -68,9 +81,10 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Password:  master.ClusterGroup.rplPass,
 		Retry:     strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(master.ClusterGroup.conf.ForceSlaveHeartbeatTime),
-		Mode:      "SLAVE_POS",
+		Mode:      "MASTER_AUTO_POSITION",
 		SSL:       server.ClusterGroup.conf.ReplicationSSL,
 	})
+
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) error {
