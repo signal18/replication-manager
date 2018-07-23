@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/bluele/logrus_slack"
+
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 
@@ -155,6 +157,9 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.AutorejoinSlavePositionalHeartbeat, "autorejoin-slave-positional-heartbeat", false, "Automatically rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 
 	monitorCmd.Flags().StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
+	monitorCmd.Flags().StringVar(&conf.SlackURL, "alert-slack-url", "", "Slack webhook URL to alert")
+	monitorCmd.Flags().StringVar(&conf.SlackChannel, "alert-slack-channel", "", "Slack channel to alert")
+	monitorCmd.Flags().StringVar(&conf.SlackUser, "alert-slack-user", "", "Slack user for alert")
 
 	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
@@ -585,6 +590,15 @@ func (repman *ReplicationManager) Run() error {
 			log.AddHook(hook)
 		}
 	}
+
+	log.AddHook(&logrus_slack.SlackHook{
+		HookURL:        conf.SlackURL,
+		AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+		Channel:        conf.SlackChannel,
+		IconEmoji:      ":ghost:",
+		Username:       conf.SlackUser,
+		Timeout:        5 * time.Second, // request timeout for calling slack api
+	})
 
 	if conf.LogLevel > 1 {
 		log.SetLevel(log.DebugLevel)

@@ -129,6 +129,9 @@ type Config struct {
 	MailFrom                           string `mapstructure:"mail-from" toml:"mail-from" json:"mailFrom"`
 	MailTo                             string `mapstructure:"mail-to" toml:"mail-to" json:"mailTo"`
 	MailSMTPAddr                       string `mapstructure:"mail-smtp-addr" toml:"mail-smtp-addr" json:"mailSmtpAddr"`
+	SlackURL                           string `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
+	SlackChannel                       string `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
+	SlackUser                          string `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
 	Heartbeat                          bool   `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                         bool   `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                        string `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`

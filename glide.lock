@@ -1,5 +1,5 @@
-hash: 890ba4f414a96b4ad5568a733e40aad32ef7f9c5f03d5bae3373ddce1a66fbc5
-updated: 2018-02-16T09:01:44.229600675+01:00
+hash: ea58c1a11f74b35c4fe0c063e1ff18c16244ecb3e5ebcb7c86d28ce034e1be99
+updated: 2018-07-18T16:51:28.903713638+02:00
 imports:
 - name: bitbucket.org/tebeka/strftime
   version: 2194253a23c090a4d5953b152a3c63fb5da4f5a4
@@ -13,6 +13,10 @@ imports:
   version: 7aa49fde808223f8dadfdbfd3a20ff6c19e5f9ec
 - name: github.com/asaskevich/govalidator
   version: 4b3d68f87f176641ffc147420296013aff66ea32
+- name: github.com/bluele/logrus_slack
+  version: 74aa3c9b7cc34e1ab49fcab150bd6e4ef2980ce1
+- name: github.com/bluele/slack
+  version: b4b4d354a079fbf4bd948faad01b32cecb2ffe03
 - name: github.com/bradfitz/gomemcache
   version: 1952afaa557dc08e8e0d89eafab110fb501c1a2b
   subpackages:
@@ -65,7 +69,7 @@ imports:
 - name: github.com/fsnotify/fsnotify
   version: c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9
 - name: github.com/go-sql-driver/mysql
-  version: a0583e0143b1624142adab07e0e97fe106d99561
+  version: d523deb1b23d913de5bdada721a6071e71283618
 - name: github.com/gogo/protobuf
   version: b75782e777cfa7ca469bc46cc313ddd26e6e9d1c
   subpackages:
@@ -175,7 +179,7 @@ imports:
 - name: github.com/mattn/go-runewidth
   version: 97311d9f7767e3d6f422ea06661bc2c7a19e8a5d
 - name: github.com/mattn/go-sqlite3
-  version: 6c771bb9887719704b210e87e934f08be014bdb1
+  version: 25ecb14adfc7543176f7d85291ec7dba82c6f7e4
 - name: github.com/micro/go-micro
   version: d29b5e2fab07d53e5067562809cc7fe0b43b67c2
   subpackages:
@@ -202,11 +206,11 @@ imports:
 - name: github.com/pkg/errors
   version: 30136e27e2ac8d167177e8a583aa4c3fea5be833
 - name: github.com/rs/cors
-  version: 7af7a1e09ba336d2ea14b1ce73bf693c6837dbf6
+  version: ca016a06a5753f8ba03029c0aa5e54afb1bf713f
 - name: github.com/satori/go.uuid
   version: 36e9d2ebbde5e3f13ab2e25625fd453271d6522e
 - name: github.com/shopspring/decimal
-  version: 9ca7f51822d222ae4e246f070f9aad863599bd1a
+  version: cd690d0c9e2447b1ef2a129a6b7b49077da89b8e
 - name: github.com/siddontang/go
   version: cb568a3e5cc06256f91a2da5a87455f717eb33f4
   subpackages:
@@ -279,6 +283,10 @@ imports:
   subpackages:
   - transform
   - unicode/norm
+- name: google.golang.org/appengine
+  version: b1f26356af11148e710935ed1ac8a7f5702c7612
+  subpackages:
+  - cloudsql
 - name: gopkg.in/fsnotify.v1
   version: 7be54206639f256967dd82fa767397ba5f8f48f5
 - name: gopkg.in/tomb.v1
