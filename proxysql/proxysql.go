@@ -20,12 +20,13 @@ type ProxySQL struct {
 
 func (psql *ProxySQL) Connect() error {
 	ProxysqlConfig := mysql.Config{
-		User:        psql.User,
-		Passwd:      psql.Password,
-		Net:         "tcp",
-		Addr:        fmt.Sprintf("%s:%s", psql.Host, psql.Port),
-		Timeout:     time.Second * 5,
-		ReadTimeout: time.Second * 15,
+		User:                 psql.User,
+		Passwd:               psql.Password,
+		Net:                  "tcp",
+		Addr:                 fmt.Sprintf("%s:%s", psql.Host, psql.Port),
+		Timeout:              time.Second * 5,
+		ReadTimeout:          time.Second * 15,
+		AllowNativePasswords: true,
 	}
 
 	var err error
