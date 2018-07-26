@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"golang.org/x/crypto/ssh"
 	//"github.com/robfig/cron"
 
 	"github.com/signal18/replication-manager/cluster/nbc"
@@ -105,6 +106,7 @@ type Cluster struct {
 	haveDBTLSCert        bool
 	tlsconf              *tls.Config
 	scheduler            *cron.Cron
+	tunnel               *ssh.Client
 	sync.Mutex
 }
 

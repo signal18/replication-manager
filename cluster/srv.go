@@ -42,6 +42,7 @@ type ServerMonitor struct {
 	DSN                         string                    `json:"-"`
 	Host                        string                    `json:"host"`
 	Port                        string                    `json:"port"`
+	TunnelPort                  string                    `json:"tunnelPort"`
 	IP                          string                    `json:"ip"`
 	Strict                      string                    `json:"strict"`
 	ServerID                    uint                      `json:"serverId"`
