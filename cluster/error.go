@@ -116,4 +116,5 @@ var clusterError = map[string]string{
 	"WARN0081": "Cluster arbitrator error in reporting %s",
 	"WARN0082": "Cluster arbitrator error in arbitration %s",
 	"WARN0083": "Arbitration winner",
+	"WARN0084": "Variable diff: %s, on slave %s value: %s on master: %s",
 }

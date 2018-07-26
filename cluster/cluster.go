@@ -300,6 +300,7 @@ func (cluster *Cluster) Run() {
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
+				go cluster.variableMonitor()
 			}
 
 			// split brain management
@@ -588,6 +589,39 @@ func (cluster *Cluster) Optimize() {
 	for _, s := range cluster.slaves {
 		jobid, _ := s.JobOptimize()
 		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
+	}
+}
+
+func (cluster *Cluster) variableMonitor() {
+	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
+		return
+	}
+	masterVariables := cluster.GetMaster().Variables
+	exceptVariables := map[string]bool{
+		"PORT":                true,
+		"SERVER_ID":           true,
+		"PID_FILE":            true,
+		"WSREP_NODE_NAME":     true,
+		"LOG_BIN_INDEX":       true,
+		"LOG_BIN_BASENAME":    true,
+		"READ_ONLY":           true,
+		"IN_TRANSACTION":      true,
+		"GTID_SLAVE_POS":      true,
+		"GTID_CURRENT_POS":    true,
+		"GTID_BINLOG_POS":     true,
+		"GTID_BINLOG_STATE":   true,
+		"GENERAL_LOG_FILE":    true,
+		"TIMESTAMP":           true,
+		"SLOW_QUERY_LOG_FILE": true,
+	}
+	for k, v := range masterVariables {
+
+		for _, s := range cluster.slaves {
+			slaveVariables := s.Variables
+			if slaveVariables[k] != v && exceptVariables[k] != true {
+				cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], k, s.URL, slaveVariables[k], v), ErrFrom: "MON"})
+			}
+		}
 	}
 }
 

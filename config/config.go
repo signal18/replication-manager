@@ -22,6 +22,7 @@ type Config struct {
 	MonitorAddress                     string `mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress"`
 	MonitorWriteHeartbeat              bool   `mapstructure:"monitoring-write-heartbeat" toml:"monitoring-write-heartbeat" json:"monitoringWriteHeartbeat"`
 	MonitorWriteHeartbeatCredential    string `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
+	MonitorVariableDiff                bool   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
 	MonitorSchemaChangeScript          string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`

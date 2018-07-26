@@ -87,6 +87,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "", "Credential Access to bastion host topology via SSH tunnel")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
 	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
+	monitorCmd.Flags().BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	monitorCmd.Flags().BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	monitorCmd.Flags().StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
 	monitorCmd.Flags().BoolVar(&conf.MonitorQueries, "monitoring-queries", true, "Monitor long queries")
