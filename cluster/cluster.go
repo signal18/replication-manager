@@ -613,16 +613,25 @@ func (cluster *Cluster) variableMonitor() {
 		"GENERAL_LOG_FILE":    true,
 		"TIMESTAMP":           true,
 		"SLOW_QUERY_LOG_FILE": true,
+		"REPORT_HOST":         true,
+		"SERVER_UUID":         true,
+		"GTID_PURGED":         true,
+		"HOSTNAME":            true,
 	}
+	variablesdiff := ""
 	for k, v := range masterVariables {
 
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables
 			if slaveVariables[k] != v && exceptVariables[k] != true {
-				cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], k, s.URL, slaveVariables[k], v), ErrFrom: "MON"})
+				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
+				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
 			}
+
 		}
 	}
+	cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON"})
+
 }
 
 func (cluster *Cluster) schemaMonitor() {
