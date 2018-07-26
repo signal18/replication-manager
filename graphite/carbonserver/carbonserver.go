@@ -1,8 +1,3 @@
-/*
- * Copyright 2013-2016 Fabian Groffen, Damian Gryski, Vladimir Smirnov
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
@@ -41,7 +36,7 @@ import (
 	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
 	trigram "github.com/dgryski/go-trigram"
 	"github.com/signal18/replication-manager/graphite/helper"
-	pickle "github.com/signal18/replication-manager/graphite/og-rek"
+	pickle "github.com/kisielk/og-rek"
 	"github.com/signal18/replication-manager/graphite/points"
 	whisper "github.com/signal18/replication-manager/graphite/whisper"
 )
