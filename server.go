@@ -16,6 +16,7 @@ import (
 	mysqllog "log"
 	"log/syslog"
 	"net"
+	"os/signal"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -670,6 +671,18 @@ func (repman *ReplicationManager) Run() error {
 
 	//	ticker := time.NewTicker(interval * time.Duration(conf.MonitoringTicker))
 	repman.isStarted = true
+	sigs := make(chan os.Signal, 1)
+	// catch all signals since not explicitly listing
+	signal.Notify(sigs)
+	//signal.Notify(sigs,syscall.SIGQUIT)
+	// method invoked upon seeing signal
+	go func() {
+		s := <-sigs
+		log.Printf("RECEIVED SIGNAL: %s", s)
+		repman.exit = true
+
+	}()
+
 	for repman.exit == false {
 		if conf.Arbitration {
 			repman.Heartbeat()
@@ -682,6 +695,7 @@ func (repman *ReplicationManager) Run() error {
 	if repman.exitMsg != "" {
 		log.Println(repman.exitMsg)
 	}
+	os.Exit(1)
 	return nil
 
 }
