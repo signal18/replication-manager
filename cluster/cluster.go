@@ -617,6 +617,8 @@ func (cluster *Cluster) variableMonitor() {
 		"SERVER_UUID":         true,
 		"GTID_PURGED":         true,
 		"HOSTNAME":            true,
+		"SUPER_READ_ONLY":     true,
+		"GTID_EXECUTED":       true,
 	}
 	variablesdiff := ""
 	for k, v := range masterVariables {
