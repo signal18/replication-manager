@@ -210,7 +210,7 @@ func initConfig() {
 		log.Warningf("Could not parse config file: %s", err)
 	}
 
-	// Procedd include files
+	// Proceed include files
 	if viper.GetString("default.include") != "" {
 		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
 			//	log.Fatal("No include config directory " + conf.Include)

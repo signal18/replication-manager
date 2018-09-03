@@ -97,7 +97,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
 
-	if server.IsMaster() {
+	if server.IsMariaDB() {
 		return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      master.Host,
 			Port:      master.Port,
