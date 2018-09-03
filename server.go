@@ -788,14 +788,14 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Errorf("Error building HTTP request: %s", err)
+			log.Debugf("Error building HTTP request: %s", err)
 		}
 		return true
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Errorf("Could not reach peer node, might be down or incorrect address")
+			log.Debugf("Could not reach peer node, might be down or incorrect address")
 		}
 		return true
 	}
@@ -803,28 +803,28 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	monjson, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Errorf("Could not read body from peer response")
+			log.Debugf("Could not read body from peer response")
 		}
 		return true
 	}
 	if conf.LogHeartbeat {
-		log.Errorf("splitbrain http call result: %s ", monjson)
+		log.Debugf("splitbrain http call result: %s ", monjson)
 	}
 	// Use json.Decode for reading streams of JSON data
 	var h heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
 		if conf.LogHeartbeat {
-			log.Errorf("Could not unmarshal JSON from peer response %s", err)
+			log.Debugf("Could not unmarshal JSON from peer response %s", err)
 		}
 		return true
 	} else {
 
 		if conf.LogHeartbeat {
-			log.Errorf("RETURN: %v", h)
+			log.Debugf("RETURN: %v", h)
 		}
 
 		if conf.LogHeartbeat {
-			log.Errorf("No peer split brain setting status to %s", repman.Status)
+			log.Infof("No peer split brain setting status to %s", repman.Status)
 		}
 
 	}
@@ -854,7 +854,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 		RepMan.Unlock()
 		if conf.LogHeartbeat {
-			log.Errorf("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
+			log.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 		}
 	} //end check all peers
 
@@ -863,7 +863,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		cl.IsSplitBrain = repman.SplitBrain
 
 		if conf.LogHeartbeat {
-			log.Errorf("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+			log.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 		}
 	}
 }
