@@ -679,8 +679,9 @@ func (repman *ReplicationManager) Run() error {
 	go func() {
 		s := <-sigs
 		log.Printf("RECEIVED SIGNAL: %s", s)
-		repman.exit = true
-
+		if signal != "broken pipe" {
+			repman.exit = true
+		}
 	}()
 
 	for repman.exit == false {
