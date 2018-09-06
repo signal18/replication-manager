@@ -405,7 +405,7 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
-	if strings.Contains(cluster.Conf.ClusterConfigPath, "cluster.d") {
+	if strings.Contains(cluster.Conf.ClusterConfigPath, "cluster.d") && cluster.Conf.ConfRewrite {
 		var myconf = make(map[string]config.Config)
 
 		myconf[cluster.Name] = cluster.Conf

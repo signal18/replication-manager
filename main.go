@@ -213,7 +213,7 @@ func initConfig() {
 	// Proceed include files
 	if viper.GetString("default.include") != "" {
 		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
-			//	log.Fatal("No include config directory " + conf.Include)
+
 			log.Warning("No include config directory " + conf.Include)
 		} else {
 			conf.ClusterConfigPath = viper.GetString("default.include")
@@ -276,20 +276,20 @@ func initConfig() {
 
 			if gl != "" {
 				clusterconf := conf
-				cf2 := viper.Sub("Default")
-				if cf2 != nil {
-					initAlias(cf2)
-					cf2.Unmarshal(&clusterconf)
-				}
+
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
-				cf2 = viper.Sub(gl)
+				cf2 := viper.Sub(gl)
 				initAlias(cf2)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
 				cf2.Unmarshal(&clusterconf)
-
+				cf2 = viper.Sub("Default")
+				if cf2 != nil {
+					initAlias(cf2)
+					cf2.Unmarshal(&clusterconf)
+				}
 				confs[gl] = clusterconf
 
 				cfgGroupIndex++
