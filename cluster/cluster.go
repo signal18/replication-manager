@@ -604,6 +604,7 @@ func (cluster *Cluster) variableMonitor() {
 		"WSREP_NODE_NAME":     true,
 		"LOG_BIN_INDEX":       true,
 		"LOG_BIN_BASENAME":    true,
+		"LOG_ERROR":           true,
 		"READ_ONLY":           true,
 		"IN_TRANSACTION":      true,
 		"GTID_SLAVE_POS":      true,
@@ -619,6 +620,10 @@ func (cluster *Cluster) variableMonitor() {
 		"HOSTNAME":            true,
 		"SUPER_READ_ONLY":     true,
 		"GTID_EXECUTED":       true,
+		"WSREP_DATA_HOME_DIR": true,
+		"REPORT_PORT":         true,
+		"SOCKET":              true,
+		"DATADIR":             true,
 	}
 	variablesdiff := ""
 	for k, v := range masterVariables {
