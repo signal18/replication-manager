@@ -275,17 +275,17 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 		}
-		// Send alert if state has changed
+		// Send alert if state has changed on connection error
+
 		if server.PrevState != server.State {
-			//if cluster.conf.Verbose {
+
 			server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
-			//}
+
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
-		}
-		if server.PrevState != server.State {
 			server.PrevState = server.State
 		}
+
 		return
 	} else {
 		defer conn.Close()
@@ -333,9 +333,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
+			server.ClusterGroup.backendStateChangeProxies()
+			server.SendAlert()
 		}
 
 		if server.PrevState != server.State {
+
 			server.PrevState = server.State
 		}
 		return
@@ -344,6 +347,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	if server.PrevState != server.State {
+		if server.PrevState != stateSuspect {
+			server.ClusterGroup.backendStateChangeProxies()
+			server.SendAlert()
+		}
 		server.PrevState = server.State
 	}
 }

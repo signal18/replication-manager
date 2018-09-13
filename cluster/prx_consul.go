@@ -84,12 +84,15 @@ func (cluster *Cluster) initConsul() error {
 		if err := reg.Deregister(&readsrv); err != nil {
 			cluster.LogPrintf(LvlErr, "Unexpected consul deregister error for server %s: %v", srv.URL, err)
 		}
+
 		if srv.State != stateFailed && srv.State != stateMaintenance && srv.State != stateUnconn {
 			if (srv.IsSlave && srv.HasReplicationIssue() == false) || (srv.IsMaster() && cluster.conf.PRXReadOnMaster) {
 				cluster.LogPrintf(LvlInfo, "Register consul read service  %s %s", srv.Id, srv.URL)
 				if err := reg.Register(&readsrv); err != nil {
 					cluster.LogPrintf(LvlErr, "Unexpected consul register error for server %s: %v", srv.URL, err)
 				}
+			} else {
+				cluster.LogPrintf(LvlInfo, "Ignore consul read service  %s %s", srv.Id, srv.URL, srv.IsSlave)
 			}
 		}
 	}
