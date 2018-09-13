@@ -90,6 +90,8 @@ func (server *ServerMonitor) RejoinMaster() error {
 				server.ClusterGroup.master = server
 			}
 		}
+		//If	consul or internal proxy need to adapt read only route to new slaves
+		server.ClusterGroup.backendStateChangeProxies()
 	}
 	return nil
 }
@@ -407,6 +409,8 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					if server.IsMaintenance {
 						server.SwitchMaintenance()
 					}
+					// if consul or internal proxy need to adapt read only route to new slaves
+					server.ClusterGroup.backendStateChangeProxies()
 				} else {
 					//Adding state waiting for old master to rejoin in positional mode
 					// this state prevent crash info to be removed
