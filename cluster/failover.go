@@ -667,6 +667,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
+	// if consul or internal proxy need to adapt read only route to new slaves
+	cluster.backendStateChangeProxies()
 
 	if fail == true && cluster.Conf.PrefMaster != oldMaster.URL && cluster.master.URL != cluster.Conf.PrefMaster && cluster.Conf.PrefMaster != "" {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
