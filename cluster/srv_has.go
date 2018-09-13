@@ -115,7 +115,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.CheckReplication()
-	if ret == "Running OK" {
+	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || server.IsIOThreadRunning() == false) && server.ClusterGroup.GetMaster() == nil) {
 		return false
 	}
 	return true
