@@ -7,12 +7,12 @@
 [Cluster_Consul_MasterSlave]
 title = "ClusterTestConsul"
 
-db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-db-servers-prefered-master = "127.0.0.1:3310"
-db-servers-credential = "root:test"
+db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
+db-servers-prefered-master = "127.0.0.1:3331"
+db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 
-replication-credential = "root:test"
+replication-credential = "root:mariadb"
 
 registry-consul = true
 

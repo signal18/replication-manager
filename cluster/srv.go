@@ -353,6 +353,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 			server.State = stateUnconn
 			server.FailCount = 0
+			server.ClusterGroup.backendStateChangeProxies()
+			server.SendAlert()
 			if server.ClusterGroup.Conf.Autorejoin && server.ClusterGroup.IsActive() {
 				server.RejoinMaster()
 			} else {
@@ -366,6 +368,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.SetReadOnly()
 			}
 			server.State = stateUnconn
+			server.ClusterGroup.backendStateChangeProxies()
+			server.SendAlert()
 		}
 
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
@@ -375,6 +379,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	if server.PrevState != server.State {
 		server.PrevState = server.State
+		if server.PrevState != stateSuspect {
+			server.ClusterGroup.backendStateChangeProxies()
+			server.SendAlert()
+		}
 	}
 }
 
