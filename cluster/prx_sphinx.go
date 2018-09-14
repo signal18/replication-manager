@@ -11,7 +11,7 @@ package cluster
 import (
 	"fmt"
 
-	"github.com/signal18/replication-manager/sphinx"
+	"github.com/signal18/replication-manager/route/sphinx"
 	"github.com/signal18/replication-manager/state"
 )
 

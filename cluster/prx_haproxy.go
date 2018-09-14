@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/haproxy"
+	"github.com/signal18/replication-manager/route/haproxy"
 	"github.com/signal18/replication-manager/state"
 )
 

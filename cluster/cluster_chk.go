@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/route/maxscale"
 	"github.com/signal18/replication-manager/state"
 )
 

@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/proxysql"
+	"github.com/signal18/replication-manager/route/proxysql"
 	"github.com/signal18/replication-manager/state"
 )
 

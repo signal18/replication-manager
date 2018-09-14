@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/route/maxscale"
 	"github.com/signal18/replication-manager/state"
 )
 

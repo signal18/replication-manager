@@ -28,7 +28,7 @@ import (
 	"github.com/signal18/replication-manager/cron"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
-	"github.com/signal18/replication-manager/maxscale"
+	"github.com/signal18/replication-manager/route/maxscale"
 	"github.com/signal18/replication-manager/state"
 	"github.com/signal18/replication-manager/termlog"
 	log "github.com/sirupsen/logrus"
