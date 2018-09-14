@@ -637,8 +637,9 @@ func (cluster *Cluster) variableMonitor() {
 
 		}
 	}
-	cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON"})
-
+	if variablesdiff != "" {
+		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON"})
+	}
 }
 
 func (cluster *Cluster) schemaMonitor() {
