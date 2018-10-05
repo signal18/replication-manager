@@ -443,9 +443,8 @@ func init() {
 			monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		}
 	}
-	viper.BindPFlags(monitorCmd.Flags())
-
 	cobra.OnInitialize(initConfig)
+	viper.BindPFlags(monitorCmd.Flags())
 
 }
 
