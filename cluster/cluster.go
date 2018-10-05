@@ -624,6 +624,7 @@ func (cluster *Cluster) variableMonitor() {
 		"REPORT_PORT":         true,
 		"SOCKET":              true,
 		"DATADIR":             true,
+		"THREAD_POOL_SIZE":    true,
 	}
 	variablesdiff := ""
 	for k, v := range masterVariables {

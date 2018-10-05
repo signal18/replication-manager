@@ -148,7 +148,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			cluster.LogPrintf(LvlDbg, "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
+				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX"})
 			}
 			updated = true
 		}
@@ -158,7 +158,8 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			cluster.LogPrintf(LvlDbg, "ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as offline (%s)", s.URL, err)
+				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX"})
+
 			}
 			updated = true
 
@@ -168,13 +169,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if s.State == stateMaster {
 				err = psql.SetWriter(s.Host, s.Port)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as writer (%s)", s.URL, err)
+					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX"})
 				}
 				updated = true
 			} else if s.IsSlave {
 				err = psql.SetReader(s.Host, s.Port)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not set %s as reader (%s)", s.URL, err)
+					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX"})
 				}
 				updated = true
 			}
