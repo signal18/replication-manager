@@ -51,6 +51,7 @@ type Config struct {
 	PRXReadOnMaster                    bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
 	MasterConnectRetry                 int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                            string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
+	ReplicationErrorScript             string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
 	MasterConn                         string `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
 	ReplicationSSL                     bool   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
 	MultiMasterRing                    bool   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`

@@ -16,6 +16,7 @@ import (
 	"hash/crc64"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -290,6 +291,17 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 				server.ClusterGroup.backendStateChangeProxies()
 				server.SendAlert()
+				if server.State == stateSlaveErr {
+					if server.ClusterGroup.Conf.ReplicationErrorScript != "" {
+						server.ClusterGroup.LogPrintf("INFO", "Calling replication error script")
+						var out []byte
+						out, err := exec.Command(server.ClusterGroup.Conf.ReplicationErrorScript, server.URL, server.PrevState, server.State).CombinedOutput()
+						if err != nil {
+							server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+						}
+						server.ClusterGroup.LogPrintf("INFO", "Replication error script complete:", string(out))
+					}
+				}
 			}
 		}
 		if server.PrevState != server.State {
