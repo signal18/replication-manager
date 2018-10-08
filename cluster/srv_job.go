@@ -293,7 +293,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {
-	if server.IsDown() {
+	if server.IsDown() || server.ClusterGroup.Conf.MonitorScheduler == false {
 		return nil
 	}
 	server.JobInsertTaks("", "", "")

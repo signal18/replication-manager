@@ -324,6 +324,7 @@ func init() {
 	if WithSpider == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	}
+
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupLogical, "scheduler-db-servers-logical-backup", true, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", true, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", true, "Schedule database logs fetching")
