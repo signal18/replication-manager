@@ -537,7 +537,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 		if err != nil {
-			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: "LvlWarn", ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
+			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
