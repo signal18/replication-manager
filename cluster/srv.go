@@ -537,7 +537,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not get events")
+			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: "LvlWarn", ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
@@ -578,7 +578,6 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
-
 	}
 	// select a replication status get an err if repliciations array is empty
 	slaveStatus, err := server.GetSlaveStatus(server.ReplicationSourceName)
