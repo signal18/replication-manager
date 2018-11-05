@@ -54,6 +54,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 		cluster.LogPrintf(LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
+		//MariaDB have timeout in flush use it
 		if cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 1 {
 
 			go func() {
