@@ -54,7 +54,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 		cluster.LogPrintf(LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
-		if cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major > 10 && cluster.master.DBVersion.Minor >= 1 {
+		if cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major >= 10 && cluster.master.DBVersion.Minor >= 1 {
 
 			go func() {
 				var err2 error
@@ -75,6 +75,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		case err = <-workerFlushTable:
 			if err != nil {
 				cluster.LogPrintf(LvlWarn, "Could not flush tables on master", err)
+				cluster.sme.RemoveFailoverState()
+				return false
 			}
 		case <-time.After(time.Second * time.Duration(cluster.conf.SwitchWaitTrx)):
 			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.conf.SwitchWaitTrx)
