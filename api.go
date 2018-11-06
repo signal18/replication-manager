@@ -135,7 +135,13 @@ func apiserver() {
 	apiProxyProtectedHandler(router)
 
 	log.Info("Starting JWT API on " + conf.APIBind + ":" + conf.APIPort)
-	err := http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	var err error
+	if conf.MonitoringSSLCert == "" {
+		err = http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+
+	} else {
+		err = http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.MonitoringSSLCert, conf.MonitoringSSLKey, router)
+	}
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}

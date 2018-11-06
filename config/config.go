@@ -16,6 +16,8 @@ type Config struct {
 	ShareDir                           string `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
 	ConfDir                            string `mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
 	ConfRewrite                        bool   `mapstructure:"monitoring-config-rewrite" toml:"monitoring-config-rewrite" json:"monitoringConfigRewrite"`
+	MonitoringSSLCert                  string `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
+	MonitoringSSLKey                   string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
 	Socket                             string `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host" toml:"monitoring-tunnel-host" json:"monitoringTunnelHost"`

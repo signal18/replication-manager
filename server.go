@@ -92,6 +92,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	monitorCmd.Flags().BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	monitorCmd.Flags().StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	monitorCmd.Flags().StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
+	monitorCmd.Flags().StringVar(&conf.MonitoringSSLKey, "monitoring-ssl-key", "", "HTTPS & API TLS key")
 	monitorCmd.Flags().BoolVar(&conf.MonitorQueries, "monitoring-queries", true, "Monitor long queries")
 	monitorCmd.Flags().IntVar(&conf.MonitorLongQueryTime, "monitoring-long-query-time", 10000, "Long query time in ms")
 	monitorCmd.Flags().StringVar(&conf.MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")
