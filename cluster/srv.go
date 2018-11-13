@@ -312,7 +312,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					if server.ClusterGroup.runStatus == "A" && server.ClusterGroup.master.Id != server.Id {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as actif monitor and other master dicovereds", server.URL)
 						server.SetReadOnly()
-					} else if server.ClusterGroup.runStatus == "S" {
+					} else if server.ClusterGroup.runStatus == "S" && server.ClusterGroup.conf.Arbitration {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
 						server.SetReadOnly()
 					}
