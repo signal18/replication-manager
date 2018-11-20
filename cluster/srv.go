@@ -326,12 +326,15 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State != stateSuspect && server.ClusterGroup.master.Id != server.Id && server.ClusterGroup.conf.FailMode != "manual" {
-			// in automatic failover if master is spit brain than the node is left out of read only and that an issue for proxysql
+		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State != stateSuspect && server.ClusterGroup.conf.FailMode != "manual" {
+			// in automatic failover if master is spit brain than the node is left out of read only and that's an issue for proxysql
+
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				server.ClusterGroup.LogPrintf(LvlInfo, "No replication found on %s but state(%s) is not master  %s, previous state", server.URL, server.State, server.PrevState)
-				server.SetReadOnly()
+			if server.ClusterGroup.master != nil {
+				if server.ClusterGroup.master.Id != server.Id && server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+					server.ClusterGroup.LogPrintf(LvlInfo, "No replication found on %s but state(%s) is not master  %s, previous state", server.URL, server.State, server.PrevState)
+					server.SetReadOnly()
+				}
 			}
 			server.State = stateUnconn
 			server.ClusterGroup.backendStateChangeProxies()
