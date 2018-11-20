@@ -326,12 +326,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster && server.PrevState != stateUnconn {
+		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State != stateSuspect {
+			// on a non read-only slave  do reset slave, waiting more info to re enable read only
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
-			if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and found replication", server.URL)
-				server.SetReadOnly()
-			}
+			//		if server.ClusterGroup.conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+			server.ClusterGroup.LogPrintf(LvlInfo, "No replication found on %s but state(%s) is not master  %s, previous state", server.URL, server.State, server.PrevState)
+			//			server.SetReadOnly()
+			//		}*/
 			server.State = stateUnconn
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
