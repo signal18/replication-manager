@@ -184,7 +184,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	if sl.IsIgnored() == false && sl.HaveLogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO"})
 	}
-	if sl.IsIgnored() == false && sl.HaveGtidStrictMode == false {
+	if sl.IsIgnored() == false && sl.HaveGtidStrictMode == false && sl.IsMariaDB() {
 		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO"})
 	}
 
