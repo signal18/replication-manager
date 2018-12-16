@@ -144,6 +144,7 @@ type Config struct {
 	MdbsProxyHosts                     string `mapstructure:"shardproxy-servers" toml:"shardproxy-servers" json:"shardproxyServers"`
 	MdbsProxyUser                      string `mapstructure:"shardproxy-user" toml:"shardproxy-user" json:"shardproxyUser"`
 	MdbsProxyCopyGrants                bool   `mapstructure:"shardproxy-copy-grants" toml:"shardproxy-copy-grants" json:"shardproxyCopyGrants"`
+	MdbsProxyLoadSystem                bool   `mapstructure:"shardproxy-load-system" toml:"shardproxy-load-system" json:"shardproxyLoadSystem"`
 	MxsOn                              bool   `mapstructure:"maxscale" toml:"maxscale" json:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-servers" toml:"maxscale-servers" json:"maxscaleServers"`
 	MxsPort                            string `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
