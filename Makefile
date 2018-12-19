@@ -6,7 +6,7 @@ TAR = -X main.WithTarball=ON
 BIN = replication-manager
 BINDIR = build/binaries
 BIN-OSC = $(BIN)-osc
-BIN-OSC-CGO = $(BIN)-osc-cgo
+BIN-OSC-CGO = $(BIN)-osc-tgo
 BIN-TST = $(BIN)-tst
 BIN-PRO = $(BIN)-pro
 BIN-MIN = $(BIN)-min
