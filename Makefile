@@ -6,7 +6,6 @@ TAR = -X main.WithTarball=ON
 BIN = replication-manager
 BINDIR = build/binaries
 BIN-OSC = $(BIN)-osc
-BIN-OSC-CGO = $(BIN)-osc-tgo
 BIN-TST = $(BIN)-tst
 BIN-PRO = $(BIN)-pro
 BIN-MIN = $(BIN)-min
@@ -15,15 +14,12 @@ BIN-ARB = $(BIN)-arb
 
 all: bin tar cli arb
 
-bin: osc osc-cgo tst pro min
+bin: osc tst pro min
 
 tar: osc-basedir tst-basedir pro-basedir min-basedir
 
 osc:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=amd64 go build -v --tags "netgo server" --ldflags "-extldflags 'static' -w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF -X main.WithOpenSVC=OFF -X main.WithHaproxy=ON -X main.WithMaxscale=ON  -X main.WithMariadbshardproxy=ON -X  main.WithProxysql=ON -X  main.WithSphinx=ON -X main.WithArbitration=OFF -X main.WithArbitrationClient=ON -X main.WithMonitoring=ON -X main.WithHttp=ON -X main.WithBackup=ON -X main.WithMail=ON -X main.WithEnforce=ON -X main.WithDeprecate=ON"  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
-
-osc-cgo:
-		env CGO_ENABLED=0 GOOS=$(OS) GOARCH=amd64 go build -v --tags "netcgo server" --ldflags  "-w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF -X main.WithOpenSVC=OFF -X main.WithHaproxy=ON -X main.WithMaxscale=ON  -X main.WithMariadbshardproxy=ON -X  main.WithProxysql=ON -X  main.WithSphinx=ON -X main.WithArbitration=OFF -X main.WithArbitrationClient=ON -X main.WithMonitoring=ON -X main.WithHttp=ON -X main.WithBackup=ON -X main.WithMail=ON -X main.WithEnforce=ON -X main.WithDeprecate=ON"  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)
 
 osc-basedir:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=amd64  go build -v --tags "netgo server" --ldflags "-extldflags 'static' -w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF -X main.WithOpenSVC=OFF -X main.WithHaproxy=ON -X main.WithMaxscale=ON  -X main.WithMariadbshardproxy=ON -X  main.WithProxysql=ON -X  main.WithSphinx=ON -X main.WithArbitration=OFF -X main.WithArbitrationClient=ON -X main.WithMonitoring=ON -X main.WithHttp=ON -X main.WithBackup=ON -X main.WithMail=ON -X main.WithEnforce=ON -X main.WithDeprecate=ON"  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)-basedir
