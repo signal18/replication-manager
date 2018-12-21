@@ -319,7 +319,7 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		conf = conf + "\ndocker_daemon_private = false\n"
 	}
 	conf = conf + "docker_data_dir = {env.base_dir}/docker\n"
-	conf = conf + "docker_daemon_args = --log-opt max-size=1m "
+	conf = conf + "docker_daemon_args = "
 	if collector.ProvFSPool == "zpool" {
 		conf = conf + " --storage-driver=zfs"
 	} else {
