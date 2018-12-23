@@ -29,7 +29,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	}
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := replacer.Replace(server.Variables["HOSTNAME"])
-	var metrics = make([]graphite.Metric, 3)
+	var metrics = make([]graphite.Metric, 6)
 	if server.IsSlave {
 		metrics[0] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
 		metrics[1] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", slaveStatus.ExecMasterLogPos.String), time.Now().Unix())
@@ -44,7 +44,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 		} else {
 			metrics[4] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_io_running", hostname), "0", time.Now().Unix())
 		}
-		//metrics[5] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", slaveStatus.LastSQLErrno.String), time.Now().Unix())
+		metrics[5] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", slaveStatus.LastSQLErrno.String), time.Now().Unix())
 
 		//metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_relay_log_pos", hostname), fmt.Sprintf("%d", slaveStatus.re), time.Now().Unix())
 	}
