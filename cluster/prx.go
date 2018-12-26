@@ -47,6 +47,7 @@ type Proxy struct {
 	BackendsRead    []Backend       `json:"backendsRead"`
 	Version         string          `json:"version"`
 	InternalProxy   *myproxy.Server `json:"internalProxy"`
+	ShardProxy      *ServerMonitor  `json:"shardProxy"`
 }
 
 type Backend struct {
@@ -435,9 +436,9 @@ func (cluster *Cluster) refreshProxies() {
 			cluster.refreshMaxscale(pr)
 		}
 		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-			if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
-				cluster.refreshMdbsproxy(nil, pr)
-			}
+			//	if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
+			cluster.refreshMdbsproxy(nil, pr)
+			//	}
 		}
 		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.refreshProxysql(pr)
@@ -465,7 +466,7 @@ func (cluster *Cluster) failoverProxies() {
 			cluster.initMaxscale(nil, pr)
 		}
 		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-			cluster.initMdbsproxy(nil, pr)
+			cluster.failoverMdbsproxy(nil, pr)
 		}
 		if cluster.Conf.ProxysqlOn && pr.Type == proxySqlproxy {
 			cluster.failoverProxysql(pr)

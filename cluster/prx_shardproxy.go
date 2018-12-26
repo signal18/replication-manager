@@ -21,67 +21,54 @@ import (
 
 var crcTable = crc64.MakeTable(crc64.ECMA)
 
-func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	// cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
-	if cluster.Conf.MdbsProxyLoadSystem {
-		cluster.ShardProxyBootstrap(proxy)
+func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
+
+	err := cluster.refreshMdbsproxy(oldmaster, proxy)
+	if err != nil {
+		cluster.createMdbShardServers(proxy)
 	}
-	cluster.refreshMdbsproxy(oldmaster, proxy)
 }
 
-func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-
-	dsn := proxy.User + ":" + proxy.Pass + "@"
-	dsn += "tcp(" + proxy.Host + ":" + proxy.Port + ")/" + params
-	c, err := sqlx.Open("mysql", dsn)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not connect to MariaDB Sharding Proxy %s", err)
-		return
+func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
+	// cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
+	cluster.ShardProxyBootstrap(proxy)
+	if cluster.Conf.MdbsProxyLoadSystem {
+		cluster.ShardProxyCreateSystemTable(proxy)
 	}
-	defer c.Close()
-	if cluster.master == nil {
-		return
-	}
+	cluster.failoverMdbsproxy(oldmaster, proxy)
+}
 
-	var monspider *ServerMonitor
-	if !cluster.Conf.ProvNetCNI {
-		monspider, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf", "")
-	} else {
-		monspider, err = cluster.newServerMonitor("", proxy.User, proxy.Pass, "semisync.cnf", proxy.Host+":"+proxy.Port)
-	}
+func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 
-	//wg.Add(1)
-	//go monspider.Ping(wg)
-	//wg.Wait()
-	monspider.Refresh()
-	proxy.Version = monspider.Variables["VERSION"]
 	schemas, err := cluster.master.GetSchemas()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master schemas %s", err)
 	}
-
 	for _, s := range schemas {
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
 		query := "CREATE OR REPLACE SERVER s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
-		_, err = c.Exec(query)
+		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR: query %s %s", query, err)
 		}
 		query = "CREATE DATABASE IF NOT EXISTS " + s
-		_, err = c.Exec(query)
+		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 		}
 
 	}
 	query := "FLUSH TABLES"
-	_, err = c.Exec(query)
+	_, err = proxy.ShardProxy.Conn.Exec(query)
 	if err != nil {
 		cluster.LogPrintf("ERROR: query %s %s", query, err)
 	}
-
+}
+func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
+	err := proxy.ShardProxy.Refresh()
+	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
+	return err
 }
 
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) {
@@ -263,6 +250,17 @@ func (cluster *Cluster) ShardProxyRunQuery(c *sqlx.DB, query string) error {
 }
 
 func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
+
+	var err error
+	if !cluster.Conf.ProvNetCNI {
+		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf", "")
+	} else {
+		proxy.ShardProxy, err = cluster.newServerMonitor("", proxy.User, proxy.Pass, "semisync.cnf", proxy.Host+":"+proxy.Port)
+	}
+	return err
+}
+
+func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *Proxy) error {
 
 	params := fmt.Sprintf("?timeout=60s")
 
