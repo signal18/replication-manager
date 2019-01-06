@@ -220,7 +220,7 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Name = proxyHost
 				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
+				prx.Host = prx.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			} else {
 				prx.Name = proxyHost
 				prx.Host = proxyHost

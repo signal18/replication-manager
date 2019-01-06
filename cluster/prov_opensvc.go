@@ -75,9 +75,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovisionning error %s on  %s", err, db.Id)
+				cluster.LogPrintf(LvlErr, "Unprovisionning error %s on  %s", err, db.Name)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovisionning done for database %s", db.Id)
+				cluster.LogPrintf(LvlInfo, "Unprovisionning done for database %s", db.Name)
 			}
 		}
 	}
@@ -90,9 +90,9 @@ func (cluster *Cluster) OpenSVCUnprovision() {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovisionning proxy error %s on  %s", err, prx.Id)
+				cluster.LogPrintf(LvlErr, "Unprovisionning proxy error %s on  %s", err, prx.Name)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovisionning done for proxy %s", prx.Id)
+				cluster.LogPrintf(LvlInfo, "Unprovisionning done for proxy %s", prx.Name)
 			}
 		}
 	}
@@ -235,7 +235,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		disk = disk + "\n"
 		disk = disk + "[disk#" + pod + "]\n"
 		disk = disk + "type = loop\n"
-		disk = disk + "file = " + collector.ProvFSPath + "/{svcname}_pod" + pod + ".dsk\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}_pod" + pod + ".dsk\n"
 		disk = disk + "size = {env.size}\n"
 		disk = disk + "standby = true\n"
 		disk = disk + "\n"
@@ -243,7 +243,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		if collector.ProvFSPool == "lvm" {
 			disk = disk + "\n"
 			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = {svcname}_" + pod + "\n"
+			disk = disk + "name = {namespace}-{svcname}_" + pod + "\n"
 			disk = disk + "type = lvm\n"
 			disk = disk + "pvs = {disk#" + pod + ".file}\n"
 			disk = disk + "standby = true\n"
@@ -253,7 +253,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
 			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = zp{svcname}_pod" + pod + "\n"
+			disk = disk + "name = zp{namespace}-{svcname}_pod" + pod + "\n"
 			disk = disk + "type = zpool\n"
 			disk = disk + "vdev  = {disk#" + pod + ".file}\n"
 			disk = disk + "standby = true\n"
@@ -283,14 +283,14 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			strlvsize := re.FindAllString(collector.ProvDisk, 1)
 			lvsize, _ := strconv.Atoi(strlvsize[0])
 			lvsize--
-			fs = fs + "dev = /dev/{svcname}_" + pod + "/pod" + pod + "\n"
-			fs = fs + "vg = {svcname}_" + pod + "\n"
+			fs = fs + "dev = /dev/{namespace}-{svcname}_" + pod + "/pod" + pod + "\n"
+			fs = fs + "vg = {namespace}-{svcname}_" + pod + "\n"
 			fs = fs + "size = 100%FREE\n"
 		} else if collector.ProvFSPool == "zpool" {
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
 				fs = fs + "dev = {disk#" + podpool + ".name}/pod" + pod + "\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{svcname}pod" + pod + "\n"
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod" + pod + "\n"
 			}
 			fs = fs + "size = {env.size}\n"
 			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n"
@@ -329,14 +329,14 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		disk = "\n"
 		disk = disk + "[disk#00]\n"
 		disk = disk + "type = loop\n"
-		disk = disk + "file = " + collector.ProvFSPath + "/{svcname}_docker.dsk\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}_docker.dsk\n"
 		disk = disk + "size = 2g\n"
 		disk = disk + "\n"
 
 		if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
 			disk = disk + "[disk#0000]\n"
-			disk = disk + "name = zp{svcname}_00\n"
+			disk = disk + "name = zp{namespace}-{svcname}_00\n"
 			disk = disk + "type = zpool\n"
 			disk = disk + "vdev  = {disk#00.file}\n"
 			disk = disk + "standby = true\n"
@@ -353,11 +353,13 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 	if collector.ProvFSMode == "loopback" {
 		fs = fs + "dev = {disk#" + podpool + ".name}/docker\n"
 	} else if collector.ProvFSMode == "pool" {
-		fs = fs + "dev = " + cluster.Conf.ProvDiskDevice + "/{svcname}_docker\n"
+		fs = fs + "dev = " + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_docker\n"
 	} else if collector.ProvFSPool == "none" {
 		fs = fs + "dev = {disk" + podpool + ".file}\n"
 	}
-
+	if collector.ProvFSPool == "zpool" {
+		fs = fs + "mkfs_opt = -o compression=gzip -o mountpoint=legacy\n"
+	}
 	fs = fs + "mnt = {env.base_dir}/docker\n"
 	fs = fs + "size = 2g\n"
 	fs = fs + "\n"

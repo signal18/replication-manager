@@ -32,7 +32,7 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
+	conf = conf + `post_provision = {svcmgr} -s {namespace}/{svcname} push status;{svcmgr} -s {namespace}/{svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerShardproxyTemplate(collector, pod)
@@ -62,7 +62,7 @@ maxscale_img = ` + collector.ProvProxDockerMaxscaleImg + `
 haproxy_img = ` + collector.ProvProxDockerHaproxyImg + `
 proxysql_img = ` + collector.ProvProxDockerProxysqlImg + `
 shardproxy_img = ` + collector.ProvProxDockerShardproxyImg + `
-base_dir = /srv/{svcname}
+base_dir = /srv/{namespace}-{svcname}
 max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
@@ -82,17 +82,18 @@ func (cluster *Cluster) GetPodDockerShardproxyTemplate(collector opensvc.Collect
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
-	-v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
+hostname = {svcname}.{namespace}.svc.{clustername}
+image = google/pause
+rm = true
+
 
 [container#20` + pod + `]
 tags = pod` + pod + `
 type = docker
 run_image = {env.shardproxy_img}
-run_args =  --net=container:{svcname}.container.00` + pod + `
- -e SHARDPROXY_ROOT_PASSWORD={env.mysql_root_password}
+rm =true
+netns = container#00` + pod + `
+run_args = -e SHARDPROXY_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro

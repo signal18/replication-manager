@@ -1,17 +1,25 @@
-[mysqld]
-
-performance_schema
-performance_schema_instrument="events_statements_history_long=ON"
-
-sync_binlog                     = 1
-thread_handling=pool-of-threads
-
+[mariadb 10.1]
 # semisync
 plugin-load="semisync_master.so;semisync_slave.so"
 rpl_semi_sync_master=ON
 rpl_semi_sync_slave=ON
 loose_rpl_semi_sync_master_enabled=ON
 loose_rpl_semi_sync_slave_enabled=ON
+[mariadb 10.2]
+# semisync
+plugin-load="semisync_master.so;semisync_slave.so"
+rpl_semi_sync_master=ON
+rpl_semi_sync_slave=ON
+loose_rpl_semi_sync_master_enabled=ON
+loose_rpl_semi_sync_slave_enabled=ON
+
+[mysqld]
+
+performance_schema
+performance_schema_instrument="events_statements_history_long=ON"
+sync_binlog                     = 1
+thread_handling=pool-of-threads
+
 slave-parallel-threads        = 2
 slave-parallel-mode=optimistic
 log_slave_updates

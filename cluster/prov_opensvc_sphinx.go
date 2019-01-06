@@ -28,14 +28,14 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+	conf = conf + `post_provision = {svcmgr} -s {namespace}/{svcname} push status;{svcmgr} -s {namespace}/{svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerSphinxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	conf = conf + `[task0]
 schedule = ` + cluster.Conf.ProvSphinxCron + `
-command = {env.base_dir}/{svcname}/pod01/init/reindex.sh
+command = {env.base_dir}/{namespace}-{svcname}/pod01/init/reindex.sh
 user = root
 run_requires = fs#01(up,stdby up)
 
@@ -52,16 +52,18 @@ func (cluster *Cluster) GetPodDockerSphinxTemplate(collector opensvc.Collector, 
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
--v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
+hostname = {svcname}.{namespace}.svc.{clustername}
+image = google/pause
+rm = true
+
 
 [container#20` + pod + `]
 tags = pod` + pod + `
 type = docker
 run_image = {env.sphinx_img}
-run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00` + pod + `
+netns = container#00` + pod + `
+rm = true
+run_args = --ulimit nofile=262144:262144
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc:rw
 		-v {env.base_dir}/pod` + pod + `/data:/var/lib/sphinx:rw

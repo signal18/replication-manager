@@ -28,7 +28,7 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+	conf = conf + `post_provision = {svcmgr} -s {namespace}/{svcname} push status;{svcmgr} -s {namespace}/{svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerProxysqlTemplate(collector, pod)
@@ -53,7 +53,9 @@ run_command = /bin/sh
 tags = pod` + pod + `
 type = docker
 run_image = {env.proxysql_img}
-run_args = --ulimit nofile=262144:262144 --net=container:{svcname}.container.00` + pod + `
+rm = true
+netns = container#00` + pod + `
+run_args = --ulimit nofile=262144:262144
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cnf:/etc/proxysql.cnf:rw
 		-v {env.base_dir}/pod` + pod + `/data:/var/lib/proxysql:rw

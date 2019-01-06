@@ -28,7 +28,7 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s {svcname} push status;{svcmgr} -s {svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+	conf = conf + `post_provision = {svcmgr} -s {namespace}/{svcname} push status;{svcmgr} -s {namespace}/{svcname} compliance fix --attach --moduleset mariadb.svc.mrm.proxy
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerMaxscaleTemplate(collector, pod)
@@ -44,17 +44,17 @@ func (cluster *Cluster) GetPodDockerMaxscaleTemplate(collector opensvc.Collector
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
--v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
+run_image = google/pause
+hostname={svcname}.{namespace}.svc.{clustername}
+rm = true
 
 [container#20` + pod + `]
 tags = pod` + pod + `
 type = docker
 run_image = {env.maxscale_img}
-run_args = --net=container:{svcname}.container.00` + pod + `
-    -v /etc/localtime:/etc/localtime:ro
+rm = true
+netns = container#00` + pod + `
+run_args = -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
 `
 		if dockerMinusRm {

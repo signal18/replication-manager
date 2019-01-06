@@ -90,7 +90,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	}
 	if prx.Type == proxySpider {
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
-			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf", "")
+			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 			err := srv.Refresh()
 			if err == nil {
 				cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
@@ -219,7 +219,7 @@ func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 
 func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
-	service, err := svc.GetServiceFromName(server.Id)
+	service, err := svc.GetServiceFromName(cluster.Name + "/" + server.Name)
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ port_rw = ` + strconv.Itoa(prx.WritePort) + `
 port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
 port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
 port_http = 80
-base_dir = /srv/{svcname}
+base_dir = /srv/{namespace}-{svcname}
 backend_ips = ` + servers + `
 port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
 port_telnet = ` + prx.Port + `

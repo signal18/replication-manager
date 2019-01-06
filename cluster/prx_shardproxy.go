@@ -252,11 +252,7 @@ func (cluster *Cluster) ShardProxyRunQuery(c *sqlx.DB, query string) error {
 func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 
 	var err error
-	if !cluster.Conf.ProvNetCNI {
-		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf", "")
-	} else {
-		proxy.ShardProxy, err = cluster.newServerMonitor("", proxy.User, proxy.Pass, "semisync.cnf", proxy.Host+":"+proxy.Port)
-	}
+	proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
 	return err
 }
 

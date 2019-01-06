@@ -80,7 +80,7 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 	if prx.Type == proxySpider {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
-		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf", "")
+		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 		err := srv.Refresh()
 		if err == nil {
 			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
@@ -179,6 +179,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		if err2 == nil {
 			defer conn.Close()
 			conn.Exec("set sql_log_bin=0")
+			conn.Exec("delete from mysql.user where password=''")
 			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
 			conn.Exec(grants)
 			cluster.LogPrintf(LvlInfo, "%s", grants)
@@ -186,6 +187,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 			conn.Exec(grants)
 			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			conn.Exec(grants)
+			conn.Exec("flush privileges")
 			exitloop = 100
 		}
 		exitloop++

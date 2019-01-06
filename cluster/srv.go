@@ -154,20 +154,17 @@ const (
 )
 
 /* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string, name string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 	var err error
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
-	server.Name = name
-	if server.Name == "" {
-		server.Name = url
+	server.Name = url
+	if !cluster.Conf.ProvNetCNI {
+		url = server.Name + "." + server.ClusterGroup.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
+	server.Name = url
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
-	if url == "" {
-		url = server.Id + "." + server.ClusterGroup.Conf.ProvCodeApp + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
-	}
-
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.TestConfig = conf
