@@ -30,6 +30,7 @@ import (
 type Proxy struct {
 	Id              string          `json:"id"`
 	Name            string          `json:"name"`
+	ServiceName     string          `json:"serviceName"`
 	Type            string          `json:"type"`
 	Host            string          `json:"host"`
 	Port            string          `json:"port"`

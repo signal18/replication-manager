@@ -36,6 +36,7 @@ import (
 type ServerMonitor struct {
 	Id                          string                    `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                    `json:"name"`
+	ServiceName                 string                    `json:"serviceName"`
 	Conn                        *sqlx.DB                  `json:"-"`
 	User                        string                    `json:"user"`
 	Pass                        string                    `json:"-"`
@@ -160,10 +161,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
 	server.Name = url
+
+	server.ServiceName = url + "/" + cluster.Name
 	if cluster.Conf.ProvNetCNI {
-		url = server.Name + "." + server.ClusterGroup.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
-	server.Name = url
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
