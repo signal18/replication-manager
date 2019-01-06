@@ -223,6 +223,16 @@ app.controller('DashboardController',
         $scope.dbtoogleslowquerycapture = function (server) {
             if (confirm("Confirm toogle slow query capture server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
         };
+        $scope.dbtooglereadonly = function (server) {
+            if (confirm("Confirm toogle read only on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
+        };
+        $scope.dbstartslave = function (server) {
+            if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
+        };
+        $scope.dbresetmaster = function (server) {
+            if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
+        };
+
         $scope.dboptimize = function (server) {
             if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
         };
@@ -463,7 +473,7 @@ app.controller('DashboardController',
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
-        
+
         $scope.start();
 
     });

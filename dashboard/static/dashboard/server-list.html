@@ -166,6 +166,24 @@
                                     Toogle Slow Query Capture
                                 </md-button>
                             </md-menu-item>
+                            <md-menu-item ng-click="dbstartslave(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                    Start slave
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-click="dbtooglereadonly(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                    Toogle read only
+                                </md-button>
+                            </md-menu-item>
+                            <md-menu-item ng-click="dbresetmaster(server.id)">
+                                <md-button>
+                                    <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                                    Reset master
+                                </md-button>
+                            </md-menu-item>
 
                     </md-menu>
                 </md-menu-item>

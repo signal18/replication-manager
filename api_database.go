@@ -144,6 +144,21 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQueryCapture)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerSwitchReadOnly)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reset-master", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerResetMaster)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start-slave", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStartSlave)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-event", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
@@ -293,6 +308,63 @@ func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.SwitchServerMaintenance(node.ServerID)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.SwitchReadOnly()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func handlerMuxServerStartSlave(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.StartSlave()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func handlerMuxServerResetMaster(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.ResetMaster()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

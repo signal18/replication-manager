@@ -40,3 +40,11 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 		dbhelper.SetLongQueryTime(server.Conn, server.LongQueryTimeSaved)
 	}
 }
+
+func (server *ServerMonitor) SwitchReadOnly() {
+	if server.IsReadOnly() {
+		server.SetReadWrite()
+	} else {
+		server.SetReadOnly()
+	}
+}

@@ -763,6 +763,10 @@ func (server *ServerMonitor) StartSlave() error {
 
 }
 
+func (server *ServerMonitor) ResetMaster() error {
+	return dbhelper.ResetMaster(server.Conn)
+}
+
 func (server *ServerMonitor) StopSlaveIOThread() error {
 	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 }
