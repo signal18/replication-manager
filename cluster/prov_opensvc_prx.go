@@ -34,19 +34,19 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	// Unprovision if already in OpenSVC
 
 	var idsrv string
-	mysrv, err := svc.GetServiceFromName(prx.Id)
+	mysrv, err := svc.GetServiceFromName(cluster.Name + "/" + prx.Name)
 	if err == nil {
 		idsrv = mysrv.Svc_id
-		cluster.LogPrintf(LvlInfo, "Found existing service %s service %s", prx.Id, idsrv)
+		cluster.LogPrintf(LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+prx.Name, idsrv)
 
 	} else {
-		idsrv, err = svc.CreateService(prx.Id, "MariaDB")
+		idsrv, err = svc.CreateService(cluster.Name+"/"+prx.Name, "MariaDB")
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC proxy service")
 			return err
 		}
 	}
-	cluster.LogPrintf(LvlInfo, "Attaching internal id  %s to opensvc service id %s", prx.Id, idsrv)
+	cluster.LogPrintf(LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+prx.Name, idsrv)
 
 	err = svc.DeteteServiceTags(idsrv)
 	if err != nil {
@@ -73,12 +73,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err != nil {
 				return err
 			}
-			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			idtemplate, err := svc.CreateTemplate(cluster.Name+"/"+prx.Name, res)
 			if err != nil {
 				return err
 			}
 
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+prx.Name)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
@@ -102,12 +102,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err != nil {
 				return err
 			}
-			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			idtemplate, err := svc.CreateTemplate(cluster.Name+"/"+prx.Name, res)
 			if err != nil {
 				return err
 			}
 
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+prx.Name)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
@@ -123,12 +123,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err != nil {
 				return err
 			}
-			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			idtemplate, err := svc.CreateTemplate(cluster.Name+"/"+prx.Name, res)
 			if err != nil {
 				return err
 			}
 
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+prx.Name)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
@@ -144,12 +144,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err != nil {
 				return err
 			}
-			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			idtemplate, err := svc.CreateTemplate(cluster.Name+"/"+prx.Name, res)
 			if err != nil {
 				return err
 			}
 
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+prx.Name)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
@@ -165,12 +165,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err != nil {
 				return err
 			}
-			idtemplate, err := svc.CreateTemplate(prx.Id, res)
+			idtemplate, err := svc.CreateTemplate(cluster.Name+"/"+prx.Name, res)
 			if err != nil {
 				return err
 			}
 
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.Id)
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+prx.Name)
 			cluster.OpenSVCWaitDequeue(svc, idaction)
 			task := svc.GetAction(strconv.Itoa(idaction))
 			if task != nil {
@@ -188,7 +188,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	//agents := opensvc.GetNodes()
 	node, _ := cluster.FoundProxyAgent(prx)
 	for _, svc := range node.Svc {
-		if prx.Id == svc.Svc_name {
+		if cluster.Name+"/"+prx.Name == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
