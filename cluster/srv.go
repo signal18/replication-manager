@@ -160,7 +160,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
 	server.Name = url
-	if !cluster.Conf.ProvNetCNI {
+	if cluster.Conf.ProvNetCNI {
 		url = server.Name + "." + server.ClusterGroup.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
 	server.Name = url
