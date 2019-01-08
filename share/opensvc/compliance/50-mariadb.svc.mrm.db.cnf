@@ -24,8 +24,8 @@ check)
 		export OSVC_COMP_SERVER_PORT=${!server_port}
 		server_ip="OSVC_COMP_SVC_CONF_ENV_IP_POD$padded_n"
 		export OSVC_COMP_SERVER_IP=${!server_ip}
-		IFS=. read -r a b c d <<< "${!server_ip}"
-		export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
+#		IFS=. read -r a b c d <<< "${!server_ip}"
+#		export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
 
 		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_CNF check
 		[ $? -eq 1 ] && r=1
@@ -45,8 +45,8 @@ fix)
 		export OSVC_COMP_SERVER_PORT=${!server_port}
 		server_ip="OSVC_COMP_SVC_CONF_ENV_IP_POD$padded_n"
 		export OSVC_COMP_SERVER_IP=${!server_ip}
-		IFS=. read -r a b c d <<< "${!server_ip}"
-		export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
+	#	IFS=. read -r a b c d <<< "${!server_ip}"
+	#	export OSVC_COMP_SERVER_ID="$((a * 256 ** 3 + b * 256 ** 2 + c * 256 + d))"
 		$OSVC_PYTHON $PATH_LIB/file.py ${PREFIX}_CNF fix
 		[ $? -eq 1 ] && exit 1
 		$OSVC_PYTHON $PATH_LIB/symlink.py ${PREFIX}_LINK fix
