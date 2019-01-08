@@ -328,6 +328,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	err = server.Refresh()
 	if err != nil {
+		// reaffect a global DB pool object if we never get it , ex dynamic seeding
+		server.Conn, err = sqlx.Open("mysql", server.DSN)
 		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
 	}
