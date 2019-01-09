@@ -124,7 +124,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	node, _ := cluster.FoundDatabaseAgent(db)
 	for _, svc := range node.Svc {
 		if cluster.Name+"/"+db.Name == svc.Svc_name {
-			idaction, _ := opensvc.UnprovisionService(node.Node_id, cluster.Name+"/"+db.Name)
+			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/"+db.Name, err)
