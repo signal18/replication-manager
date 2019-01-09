@@ -130,15 +130,12 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort = cluster.Conf.MxsReadPort
 			prx.WritePort = cluster.Conf.MxsWritePort
 			prx.ReadWritePort = cluster.Conf.MxsReadWritePort
+			prx.Name = proxyHost
+			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Name = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
-			} else {
-				prx.Name = proxyHost
-				prx.Host = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -160,16 +157,12 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort = cluster.Conf.HaproxyWritePort
 			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
 
+			prx.Name = proxyHost
+			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Name = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
-			} else {
-				prx.Name = proxyHost
-				prx.Host = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
-
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -218,16 +211,12 @@ func (cluster *Cluster) newProxyList() error {
 				p.Decrypt()
 				prx.Pass = p.PlainText
 			}
+			prx.Name = proxyHost
+			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Name = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-				prx.Host = prx.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
-			} else {
-				prx.Name = proxyHost
-				prx.Host = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
-
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -245,17 +234,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
-
+			prx.Name = proxyHost
+			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Name = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-
-				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
+				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 				prx.Port = "3306"
-			} else {
-				prx.Name = prx.Host
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-
 			}
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -278,16 +261,13 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
-
+			prx.Name = proxyHost
+			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Name = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-				prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
-			} else {
-				prx.Name = proxyHost
-				prx.Host = proxyHost
-				prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
+
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -314,7 +294,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		if prx.Host == "" {
-			prx.Host = prx.Id + "." + cluster.Conf.ProvCodeApp + ".svc." + cluster.Conf.ProvNetCNICluster
+			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 		}
 
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
