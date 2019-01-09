@@ -71,6 +71,18 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	return err
 }
 
+func (cluster *Cluster) TableGetDLL(schema string, table string, srv *ServerMonitor) (string, error) {
+	query := "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
+	var tbl, ddl string
+	err := srv.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+	if err != nil {
+		return "", err
+	}
+	pos := strings.Index(ddl, "ENGINE=")
+	ddl = ddl[12:pos]
+	return ddl, err
+}
+
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
@@ -83,36 +95,27 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		return
 	}
 	defer c.Close()
-
+	var tbl, ddl string
 	if len(duplicates) == 0 {
 		cluster.LogPrintf(LvlInfo, "Creating table in shard proxy %s", schema+"."+table)
-		//	if withreshard {
-		//		query := "CREATE OR REPLACE TABLE " + schema + "." + table + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\" \"" + table + "_reshard\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\" \"slocal_" + schema + "\", mbk \"2\", mkd \"2\"'"
-		//	} else {
-		query := "CREATE OR REPLACE TABLE " + schema + "." + table + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
-		//}
-
+		ddl, err = cluster.TableGetDLL(schema, table, cluster.master)
+		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		_, err = c.Exec(query)
-
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 		}
-
 	} else {
 		query := "SELECT group_concat( distinct column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND (TABLE_NAME='" + table + "' OR  TABLE_NAME='" + table + "_reshard')"
 		var pk string
 		err := duplicates[0].Conn.QueryRowx(query).Scan(&pk)
-		//				' ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 			return
 		}
 
 		query = "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
-		var tbl, ddl string
 
 		err = cluster.master.Conn.QueryRowx(query).Scan(&tbl, &ddl)
-		//				' ENGINE=spider comment='wrapper \"mysql\", table \"" + t.Table_name + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		if err != nil {
 			cluster.LogPrintf(LvlWarn, "Failed query %s %s", query, err)
 

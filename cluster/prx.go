@@ -235,7 +235,6 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Name = proxyHost
-			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 				prx.Port = "3306"
