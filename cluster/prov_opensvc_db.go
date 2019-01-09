@@ -80,7 +80,12 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	}
 	idtemplate, _ := svc.CreateTemplate(cluster.Name+"/"+s.Name, res)
 	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+s.Name)
-	cluster.OpenSVCWaitDequeue(svc, idaction)
+	err = cluster.OpenSVCWaitDequeue(svc, idaction)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.errorChan <- err
+		return
+	}
 	task := svc.GetAction(strconv.Itoa(idaction))
 	if task != nil {
 		cluster.LogPrintf(LvlInfo, "%s", task.Stderr)

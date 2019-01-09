@@ -24,7 +24,7 @@ var crcTable = crc64.MakeTable(crc64.ECMA)
 func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
 	err := cluster.refreshMdbsproxy(oldmaster, proxy)
-	if err != nil {
+	if err == nil {
 		cluster.createMdbShardServers(proxy)
 	}
 }
