@@ -127,6 +127,18 @@ type BinlogEvents struct {
 	Info        string `db:"Info" json:"info"`
 }
 
+type MySQLServer struct {
+	Server_name string `db:"Server_name" json:"serverName"`
+	Host        string `db:"Host" json:"host"`
+	Db          string `db:"Db" json:"db"`
+	Username    string `db:"Username" json:"username"`
+	Password    string `db:"Password" json:"password"`
+	Port        uint   `db:"Port" json:"port"`
+	Socket      string `db:"Socket" json:"socket"`
+	Wrapper     string `db:"Wrapper" json:"wrapper"`
+	Owner       string `db:"Owner" json:"owner"`
+}
+
 func MySQLConnect(user string, password string, address string, parameters ...string) (*sqlx.DB, error) {
 	dsn := user + ":" + password + "@" + address + "/"
 	if len(parameters) > 0 {
@@ -159,6 +171,14 @@ func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
 	return pl, nil
+}
+
+func GetServers(db *sqlx.DB) ([]MySQLServer, error) {
+	db.MapperFunc(strings.Title)
+	var err error
+	ss := []MySQLServer{}
+	err = db.Select(&ss, "SELECT * FROM mysql.servers")
+	return ss, err
 }
 
 func GetLastPseudoGTID(db *sqlx.DB) (string, error) {

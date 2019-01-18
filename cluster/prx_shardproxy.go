@@ -67,8 +67,42 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 }
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
 	err := proxy.ShardProxy.Refresh()
+	if err != nil {
+		return nil
+	}
 	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
-	return err
+
+	proxy.BackendsWrite = nil
+	proxy.BackendsRead = nil
+
+	servers, err := dbhelper.GetServers(proxy.ShardProxy.Conn)
+	for _, s := range servers {
+		myport := strconv.FormatUint(uint64(s.Port), 10)
+		var bke = Backend{
+			Host:         s.Host,
+			Port:         myport,
+			PrxName:      s.Host + ":" + myport,
+			PrxStatus:    "ONLINE",
+			PrxHostgroup: "WRITE",
+		}
+
+		//PrxConnections: s.Variables,
+		//PrxByteIn:      strconv.Itoa(proxysqlByteOut),
+		//PrxByteOut:     strconv.Itoa(proxysqlByteIn),
+		//PrxLatency:     strconv.Itoa(proxysqlLatency),
+
+		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+
+		var bkeread = Backend{
+			Host:         s.Host,
+			Port:         myport,
+			PrxName:      s.Host + ":" + myport,
+			PrxStatus:    "ONLINE",
+			PrxHostgroup: "READ",
+		}
+		proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
+	}
+	return nil
 }
 
 func (cluster *Cluster) TableGetDLL(schema string, table string, srv *ServerMonitor) (string, error) {
