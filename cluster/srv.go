@@ -239,7 +239,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
-
+		// Copy the last known server states or they will be cleared at next monitoring loop
+		server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			// access denied
 			if driverErr.Number == 1045 {
@@ -250,6 +251,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		if err != sql.ErrNoRows {
 			server.FailCount++
+
 			if server.ClusterGroup.master != nil && server.URL == server.ClusterGroup.master.URL {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.Conf.MaxFail {

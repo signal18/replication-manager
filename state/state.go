@@ -329,6 +329,7 @@ func (SM *StateMachine) GetOpenErrors() []StateHttp {
 	sort.SliceStable(log, func(i, j int) bool { return log[i].ErrNumber < log[j].ErrNumber })
 	return log
 }
+
 func (SM *StateMachine) GetOpenWarnings() []StateHttp {
 	var log []StateHttp
 	SM.Lock()
@@ -344,4 +345,14 @@ func (SM *StateMachine) GetOpenWarnings() []StateHttp {
 	SM.Unlock()
 	sort.SliceStable(log, func(i, j int) bool { return log[i].ErrNumber < log[j].ErrNumber })
 	return log
+}
+
+func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
+	SM.Lock()
+	for key, value := range *SM.OldState {
+		if value.ServerUrl == Url {
+			SM.AddState(key, value)
+		}
+	}
+	SM.Unlock()
 }
