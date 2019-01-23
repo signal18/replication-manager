@@ -154,6 +154,9 @@ func (SM *StateMachine) AddState(key string, s State) {
 	s.ErrKey = key
 	SM.Lock()
 	SM.CurState.Add(key, s)
+	if SM.heartbeats == 0 {
+		SM.OldState.Add(key, s)
+	}
 	SM.Unlock()
 }
 

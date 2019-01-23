@@ -71,7 +71,8 @@ type Config struct {
 	FailLimit                          int    `mapstructure:"failover-limit" toml:"failover-limit" json:"failoverLimit"`
 	PreScript                          string `mapstructure:"failover-pre-script" toml:"failover-pre-script" json:"failoverPreScript"`
 	PostScript                         string `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`
-	ReadOnly                           bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadonlyState"`
+	ReadOnly                           bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadOnlyState"`
+	SuperReadOnly                      bool   `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
 	FailTime                           int64  `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                           bool   `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
 	FailEventScheduler                 bool   `mapstructure:"failover-event-scheduler" toml:"failover-event-scheduler" json:"failoverEventScheduler"`
@@ -80,13 +81,13 @@ type Config struct {
 	FailResetTime                      int64  `mapstructure:"failcount-reset-time" toml:"failover-reset-time" json:"failoverResetTime"`
 	FailMode                           string `mapstructure:"failover-mode" toml:"failover-mode" json:"failoverMode"`
 	FailMaxDelay                       int64  `mapstructure:"failover-max-slave-delay" toml:"failover-max-slave-delay" json:"failoverMaxSlaveDelay"`
-	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter" toml:"failover-falsepositive-ping-counter" json:"failoverFalsepositivePingCounter"`
-	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat" toml:"failover-falsepositive-heartbeat" json:"failoverFalsepositiveHeartbeat"`
+	MaxFail                            int    `mapstructure:"failover-falsepositive-ping-counter" toml:"failover-falsepositive-ping-counter" json:"failoverFalsePositivePingCounter"`
+	CheckFalsePositiveHeartbeat        bool   `mapstructure:"failover-falsepositive-heartbeat" toml:"failover-falsepositive-heartbeat" json:"failoverFalsePositiveHeartbeat"`
 	CheckFalsePositiveMaxscale         bool   `mapstructure:"failover-falsepositive-maxscale" toml:"failover-falsepositive-maxscale" json:"failoverFalsePositiveMaxscale"`
-	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout" toml:"failover-falsepositive-heartbeat-timeout" json:"failoverFalsepositiveHeartbeatTimeout"`
-	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout" toml:"failover-falsepositive-maxscale-timeout" json:"failoverFalsepositiveMaxscaleTimeout"`
-	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsepositiveExternal"`
-	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsepositiveExternalPort"`
+	CheckFalsePositiveHeartbeatTimeout int    `mapstructure:"failover-falsepositive-heartbeat-timeout" toml:"failover-falsepositive-heartbeat-timeout" json:"failoverFalsePositiveHeartbeatTimeout"`
+	CheckFalsePositiveMaxscaleTimeout  int    `mapstructure:"failover-falsepositive-maxscale-timeout" toml:"failover-falsepositive-maxscale-timeout" json:"failoverFalsePositiveMaxscaleTimeout"`
+	CheckFalsePositiveExternal         bool   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsePositiveExternal"`
+	CheckFalsePositiveExternalPort     int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsePositiveExternalPort"`
 	Autorejoin                         bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                           bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
 	AutorejoinFlashback                bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`

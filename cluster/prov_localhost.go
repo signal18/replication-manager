@@ -178,7 +178,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
 			defer conn.Close()
-			conn.Exec("set sql_log_bin=0")
+			err, _ := conn.Exec("set sql_log_bin=0")
 			conn.Exec("delete from mysql.user where password=''")
 			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
 			conn.Exec(grants)
@@ -188,7 +188,9 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			conn.Exec(grants)
 			conn.Exec("flush privileges")
-			exitloop = 100
+			if err == nil {
+				exitloop = 100
+			}
 		}
 		exitloop++
 

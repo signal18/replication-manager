@@ -34,7 +34,7 @@ func (server *ServerMonitor) SetReadOnly() error {
 			return err
 		}
 	}
-	if server.HasSuperReadOnly() {
+	if server.HasSuperReadOnly() && server.ClusterGroup.Conf.SuperReadOnly {
 		err := dbhelper.SetSuperReadOnly(server.Conn, true)
 		if err != nil {
 			return err
