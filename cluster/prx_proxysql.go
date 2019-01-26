@@ -65,16 +65,19 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
-	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
-		return
-	}
+
 	defer psql.Connection.Close()
 	for _, s := range cluster.Servers {
 		if s.State == stateUnconn {
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s offline (%s)", s.URL, err)
+			}
+		}
+		if s.IsMaster() {
+			err = psql.ReplaceWriter(s.Host, s.Port)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
 			}
 		}
 	}
