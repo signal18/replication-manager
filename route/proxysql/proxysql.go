@@ -73,8 +73,8 @@ func (psql *ProxySQL) SetWriter(host string, port string) error {
 	return err
 }
 
-func (psql *ProxySQL) ReplaceWriter(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' , hostname='%s',  port='%s' WHERE  hostgroup_id='%s'", host, port, psql.WriterHG)
+func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string) error {
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' ,  hostgroup_id='%s', hostname='%s',  port='%s' WHERE  hostname='%s' and  port='%s' ", psql.WriterHG, host, port, oldhost, oldport)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }

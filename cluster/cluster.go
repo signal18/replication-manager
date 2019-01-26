@@ -70,6 +70,7 @@ type Cluster struct {
 	clusterList          map[string]*Cluster
 	slaves               serverList
 	master               *ServerMonitor
+	oldMaster            *ServerMonitor
 	vmaster              *ServerMonitor
 	mxs                  *maxscale.MaxScale
 	dbUser               string
