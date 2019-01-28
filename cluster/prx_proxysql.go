@@ -74,12 +74,12 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s offline (%s)", s.URL, err)
 			}
 		}
-		if s.IsMaster() {
-			err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port)
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
-			}
-		}
+		/*		if s.IsMaster() {
+				err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
+				}
+			}*/
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
