@@ -23,6 +23,12 @@ description="Replication Manager for MariaDB and MySQL"
 maintainer="info@signal18.io"
 license="GPLv3"
 
+
+echo "# Install containerd"
+go get github.com/containerd/containerd
+echo "# Don't knwo what TODO !!!!!!!!!!!!!!!!!"
+
+
 if [ $nobuild -eq 0 ]; then
   echo "# Building"
   make
@@ -44,13 +50,16 @@ fpm --package replication-manager-client-$version.tar -C "$builddir"/package -s 
 
 mkdir -p "$builddir"/package/usr/share/replication-manager/dashboard
 mkdir -p "$builddir"/package/etc/replication-manager
+mkdir -p "$builddir"/package/run/replication-manager
 mkdir -p "$builddir"/package/etc/systemd/system
 mkdir -p "$builddir"/package/etc/init.d
 mkdir -p "$builddir"/package/var/lib/replication-manager/cluster.d
+mkdir -p "$builddir"/package/var/lib/replication-manager/container.d
 mkdir -p "$builddir"/tar/bin
 mkdir -p "$builddir"/tar/etc
 mkdir -p "$builddir"/tar/share
 mkdir -p "$builddir"/tar/data/cluster.d
+mkdir -p "$builddir"/tar/data/container.d
 
 echo "# Copying files to build dir"
 cp -r dashboard/* "$builddir"/package/usr/share/replication-manager/dashboard/
@@ -82,6 +91,7 @@ do
       rm -f "$builddir"/package/etc/replication-manager/config.toml.sample.opensvc.*
     else
       cp -rp test/opensvc "$builddir"/package/usr/share/replication-manager/tests
+      cp service/replication-manager-$flavor-containerd.service "$builddir"/package/etc/systemd/system/replication-manager-containerd.service
     fi
     cp "$builddir"/binaries/replication-manager-$flavor "$builddir"/package/usr/bin/
     cp service/replication-manager-$flavor.service "$builddir"/package/etc/systemd/system/replication-manager.service
@@ -100,6 +110,7 @@ do
     fi
     cp "$builddir"/binaries/replication-manager-$flavor-basedir "$builddir"/tar/bin/replication-manager-$flavor
     cp service/replication-manager-$flavor-basedir.service "$builddir"/tar/share/replication-manager.service
+    cp service/replication-manager-$flavor-containerd-basedir.service "$builddir"/tar/share/replication-manager.service
     cp service/replication-manager-$flavor-basedir.init.el6 "$builddir"/tar/share/replication-manager.init
     fpm --package replication-manager-$flavor-$version.tar --prefix replication-manager-$flavor -C "$builddir"/tar -s dir -t tar -n replication-manager-$flavor -p "$builddir"/release/replication-manager-$flavor-$version.tar.gz .
     rm -rf "$builddir"/tar/bin/replication-manager-$flavor
@@ -124,6 +135,8 @@ fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-arb
 rm -rf "$builddir"/tar/*
 mkdir -p "$builddir"/tar/etc
 mkdir -p "$builddir"/tar/data
+mkdir -p "$builddir"/tar/data/container.d
+mkdir -p "$builddir"/tar/data/cluster.d
 mkdir -p "$builddir"/tar/bin
 mv "$builddir"/package/usr/bin/replication-manager-arb "$builddir"/tar/bin
 fpm --package replication-manager-arbitrator-$version.tar -C "$builddir"/tar -s dir -t tar -n replication-manager-arbitrator -p "$builddir"/release/replication-manager-arbitrator-$version.tar.gz

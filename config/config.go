@@ -172,6 +172,14 @@ type Config struct {
 	HaproxyWriteBindIp                 string `mapstructure:"haproxy-ip-write-bind" toml:"haproxy-ip-write-bind" json:"haproxyIpWriteBind"`
 	HaproxyReadBindIp                  string `mapstructure:"haproxy-ip-read-bind" toml:"haproxy-ip-read-bind" json:"haproxyIpReadBind"`
 	HaproxyBinaryPath                  string `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
+	EnvoyProxyOn                       bool   `mapstructure:"envoyproxy" toml:"envoyproxy" json:"envoyproxy"`
+	EnvoyProxyHosts                    string `mapstructure:"envoyproxy-servers" toml:"envoyproxy-servers" json:"envoyproxyServers"`
+	EnvoyProxyWritePort                int    `mapstructure:"envoyproxy-write-port" toml:"envoyproxy-write-port" json:"envoyproxyWritePort"`
+	EnvoyProxyReadPort                 int    `mapstructure:"envoyproxy-read-port" toml:"envoyproxy-read-port" json:"envoyproxyReadPort"`
+	EnvoyProxyXDSPort                  int    `mapstructure:"envoyproxy-xds-port" toml:"envoyproxy-xds-port" json:"envoyproxyXDSPort"`
+	EnvoyProxyWriteBindIp              string `mapstructure:"envoyproxy-ip-write-bind" toml:"envoyproxy-ip-write-bind" json:"envoyproxyIpWriteBind"`
+	EnvoyProxyReadBindIp               string `mapstructure:"envoyproxy-ip-read-bind" toml:"envoyproxy-ip-read-bind" json:"envoyproxyIpReadBind"`
+	EnvoyProxyBinaryPath               string `mapstructure:"envoyproxy-binary-path" toml:"envoyproxy-binary-path" json:"envoyproxyBinaryPath"`
 	ProxysqlOn                         bool   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlHosts                      string `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlPort                       string `mapstructure:"proxysql-port" toml:"proxysql-port" json:"proxysqlPort"`

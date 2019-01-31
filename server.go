@@ -274,6 +274,16 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
 		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
 	}
+
+	monitorCmd.Flags().BoolVar(&conf.EnvoyProxyOn, "envoyproxy", false, "Wrapper to use envoy proxy on same host")
+	monitorCmd.Flags().StringVar(&conf.EnvoyProxyHosts, "envoyproxy-servers", "", "Envoy proxy hosts")
+	monitorCmd.Flags().IntVar(&conf.EnvoyProxyWritePort, "envoyproxy-write-port", 3306, "Envoy proxy cluster read-write port to leader")
+	monitorCmd.Flags().IntVar(&conf.EnvoyProxyReadPort, "envoyproxy-read-port", 3307, "Envoy proxy cluster load balance read port to all nodes")
+	monitorCmd.Flags().IntVar(&conf.EnvoyProxyXDSPort, "envoyproxy-xds-port", 10006, "Envoy proxy cluster XDS port")
+	monitorCmd.Flags().StringVar(&conf.EnvoyProxyBinaryPath, "envoyproxy-binary-path", "./", "Envoy proxy binary location")
+	monitorCmd.Flags().StringVar(&conf.EnvoyProxyReadBindIp, "envoyproxy-ip-read-bind", "0.0.0.0", "Envoy proxy input bind address for read")
+	monitorCmd.Flags().StringVar(&conf.EnvoyProxyWriteBindIp, "envoyproxy-ip-write-bind", "0.0.0.0", "Envoy proxy input bind address for write")
+
 	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
 	monitorCmd.Flags().IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
 	monitorCmd.Flags().StringVar(&conf.MyproxyUser, "myproxy-user", "admin", "Myproxy user")

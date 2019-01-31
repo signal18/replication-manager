@@ -1,5 +1,6 @@
 [Unit]
 Description=MariaDB replication-manager pro including provisioning and testing
+After=network.target
 
 [Service]
 Type=simple

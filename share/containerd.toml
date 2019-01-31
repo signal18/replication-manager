@@ -1,0 +1,30 @@
+# persistent data location
+root = "/var/lib/replication-manager/container.d"
+# runtime state information
+state = "/run/replication-manager"
+# set containerd as a subreaper on linux when it is not running as PID 1
+subreaper = true
+# set containerd's OOM score
+oom_score = -999
+
+# grpc configuration
+[grpc]
+  address = "0.0.0.0:10006"
+  # socket uid
+  uid = 0
+  # socket gid
+  gid = 0
+
+  [debug]
+    address = "127.0.0.1:10007"
+    # socket uid
+    uid = 0
+    # socket gid
+    gid = 0
+    # debug level
+    level = "info"
+
+  # metrics configuration
+  [metrics]
+    # tcp address!
+    address = "127.0.0.1:10008"
