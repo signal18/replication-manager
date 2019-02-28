@@ -301,7 +301,7 @@ Interactive console and HTTP dashboards are available for control`,
 			}
 		}
 		if conf.Daemon {
-			termlength = 40
+			termlength = 120
 			log.WithField("version", Version).Info("replication-manager started in daemon mode")
 		} else {
 			_, termlength = termbox.Size()
