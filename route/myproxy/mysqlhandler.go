@@ -26,6 +26,12 @@ func (h MysqlHandler) UseDB(dbName string) error {
 	return nil
 }
 
+func (h MysqlHandler) HandleOtherCommand(cmd byte, data []byte) error {
+
+	log.Printf("Other command %d is not supported now ", cmd)
+	return fmt.Errorf("Other command %d is not supported now ", cmd)
+}
+
 // HandleQuery is response to process select/insert/update/delete statement
 func (h MysqlHandler) HandleQuery(queryStr string) (*Result, error) {
 	// 1. parse

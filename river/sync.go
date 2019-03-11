@@ -54,6 +54,11 @@ func (h *eventHandler) OnDDL(nextPos mysql.Position, _ *replication.QueryEvent) 
 	return h.r.ctx.Err()
 }
 
+func (h *eventHandler) OnTableChanged(schema string, table string) error {
+	log.Infof("Table change %s.%s", schema, table)
+	return h.r.ctx.Err()
+}
+
 func (h *eventHandler) OnXID(nextPos mysql.Position) error {
 	h.r.syncCh <- posSaver{nextPos, false}
 	return h.r.ctx.Err()
@@ -632,7 +637,7 @@ func (r *River) makeUpdateReqData(rule *Rule, values []interface{}) string {
 // PK must not be nil
 func (r *River) getDocID(rule *Rule, row []interface{}) (string, error) {
 	//	log.Warnf("  getDocID for rule:%s", rule.TableInfo)
-	pks, err := canal.GetPKValues(rule.TableInfo, row)
+	pks, err := rule.TableInfo.GetPKValues(row)
 	if err != nil {
 		return "", err
 	}
