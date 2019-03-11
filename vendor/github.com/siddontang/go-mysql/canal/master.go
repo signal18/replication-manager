@@ -3,7 +3,7 @@ package canal
 import (
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/mysql"
 )
 
@@ -12,7 +12,9 @@ type masterInfo struct {
 
 	pos mysql.Position
 
-	gtid mysql.GTIDSet
+	gset mysql.GTIDSet
+
+	timestamp uint32
 }
 
 func (m *masterInfo) Update(pos mysql.Position) {
@@ -23,11 +25,19 @@ func (m *masterInfo) Update(pos mysql.Position) {
 	m.Unlock()
 }
 
-func (m *masterInfo) UpdateGTID(gtid mysql.GTIDSet) {
-	log.Debugf("update master gtid %s", gtid.String())
+func (m *masterInfo) UpdateTimestamp(ts uint32) {
+	log.Debugf("update master timestamp %d", ts)
 
 	m.Lock()
-	m.gtid = gtid
+	m.timestamp = ts
+	m.Unlock()
+}
+
+func (m *masterInfo) UpdateGTIDSet(gset mysql.GTIDSet) {
+	log.Debugf("update master gtid set %s", gset)
+
+	m.Lock()
+	m.gset = gset
 	m.Unlock()
 }
 
@@ -38,9 +48,19 @@ func (m *masterInfo) Position() mysql.Position {
 	return m.pos
 }
 
-func (m *masterInfo) GTID() mysql.GTIDSet {
+func (m *masterInfo) Timestamp() uint32 {
 	m.RLock()
 	defer m.RUnlock()
 
-	return m.gtid
+	return m.timestamp
+}
+
+func (m *masterInfo) GTIDSet() mysql.GTIDSet {
+	m.RLock()
+	defer m.RUnlock()
+
+	if m.gset == nil {
+		return nil
+	}
+	return m.gset.Clone()
 }

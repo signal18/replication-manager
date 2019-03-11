@@ -2,7 +2,6 @@ package replication
 
 import (
 	"encoding/binary"
-	//"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
@@ -10,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/satori/go.uuid"
 	. "github.com/siddontang/go-mysql/mysql"
 )
@@ -20,10 +19,11 @@ const (
 	SidLength                  = 16
 	LogicalTimestampTypeCode   = 2
 	PartLogicalTimestampLength = 8
+	BinlogChecksumLength       = 4
 )
 
 type BinlogEvent struct {
-	// raw binlog data, including crc32 checksum if exists
+	// raw binlog data which contains all data, including binlog header and event body, and including crc32 checksum if exists
 	RawData []byte
 
 	Header *EventHeader
@@ -53,7 +53,7 @@ type EventError struct {
 }
 
 func (e *EventError) Error() string {
-	return e.Err
+	return fmt.Sprintf("Header %#v, Data %q, Err: %v", e.Header, e.Data, e.Err)
 }
 
 type EventHeader struct {
@@ -453,7 +453,7 @@ func (e *MariadbGTIDEvent) Decode(data []byte) error {
 }
 
 func (e *MariadbGTIDEvent) Dump(w io.Writer) {
-	fmt.Fprintf(w, "GTID: %s\n", e.GTID)
+	fmt.Fprintf(w, "GTID: %v\n", e.GTID)
 	fmt.Fprintln(w)
 }
 
@@ -476,6 +476,7 @@ func (e *MariadbGTIDListEvent) Decode(data []byte) error {
 		e.GTIDs[i].ServerID = binary.LittleEndian.Uint32(data[pos:])
 		pos += 4
 		e.GTIDs[i].SequenceNumber = binary.LittleEndian.Uint64(data[pos:])
+		pos += 8
 	}
 
 	return nil

@@ -5,23 +5,25 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/pingcap/errors"
 	"github.com/satori/go.uuid"
+	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/replication"
 	"github.com/siddontang/go-mysql/schema"
-	log "github.com/sirupsen/logrus"
 )
 
 var (
-	expCreateTable  = regexp.MustCompile("(?i)^CREATE\\sTABLE(\\sIF\\sNOT\\sEXISTS)?\\s`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s.*")
-	expAlterTable  = regexp.MustCompile("(?i)^ALTER\\sTABLE\\s.*?`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s.*")
-	expRenameTable = regexp.MustCompile("(?i)^RENAME\\sTABLE\\s.*?`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s{1,}TO\\s.*?")
-	expDropTable   = regexp.MustCompile("(?i)^DROP\\sTABLE(\\sIF\\sEXISTS){0,1}\\s`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}($|\\s)")
+	expCreateTable   = regexp.MustCompile("(?i)^CREATE\\sTABLE(\\sIF\\sNOT\\sEXISTS)?\\s`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s.*")
+	expAlterTable    = regexp.MustCompile("(?i)^ALTER\\sTABLE\\s.*?`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s.*")
+	expRenameTable   = regexp.MustCompile("(?i)^RENAME\\sTABLE\\s.*?`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}\\s{1,}TO\\s.*?")
+	expDropTable     = regexp.MustCompile("(?i)^DROP\\sTABLE(\\sIF\\sEXISTS){0,1}\\s`{0,1}(.*?)`{0,1}\\.{0,1}`{0,1}([^`\\.]+?)`{0,1}(?:$|\\s)")
+	expTruncateTable = regexp.MustCompile("(?i)^TRUNCATE\\s+(?:TABLE\\s+)?(?:`?([^`\\s]+)`?\\.`?)?([^`\\s]+)`?")
 )
 
 func (c *Canal) startSyncer() (*replication.BinlogStreamer, error) {
-	if !c.useGTID {
+	gset := c.master.GTIDSet()
+	if gset == nil {
 		pos := c.master.Position()
 		s, err := c.syncer.StartSync(pos)
 		if err != nil {
@@ -30,12 +32,11 @@ func (c *Canal) startSyncer() (*replication.BinlogStreamer, error) {
 		log.Infof("start sync binlog at binlog file %v", pos)
 		return s, nil
 	} else {
-		gset := c.master.GTID()
 		s, err := c.syncer.StartSyncGTID(gset)
 		if err != nil {
-			return nil, errors.Errorf("start sync replication at GTID %v error %v", gset, err)
+			return nil, errors.Errorf("start sync replication at GTID set %v error %v", gset, err)
 		}
-		log.Infof("start sync binlog at GTID %v", gset)
+		log.Infof("start sync binlog at GTID set %v", gset)
 		return s, nil
 	}
 }
@@ -91,6 +92,9 @@ func (c *Canal) runSyncBinlog() error {
 			}
 			continue
 		case *replication.XIDEvent:
+			if e.GSet != nil {
+				c.master.UpdateGTIDSet(e.GSet)
+			}
 			savePos = true
 			// try to save the position later
 			if err := c.eventHandler.OnXID(pos); err != nil {
@@ -98,28 +102,32 @@ func (c *Canal) runSyncBinlog() error {
 			}
 		case *replication.MariadbGTIDEvent:
 			// try to save the GTID later
-			gtid := &e.GTID
-			c.master.UpdateGTID(gtid)
+			gtid, err := mysql.ParseMariadbGTIDSet(e.GTID.String())
+			if err != nil {
+				return errors.Trace(err)
+			}
 			if err := c.eventHandler.OnGTID(gtid); err != nil {
 				return errors.Trace(err)
 			}
 		case *replication.GTIDEvent:
 			u, _ := uuid.FromBytes(e.SID)
-			gset, err := mysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), e.GNO))
+			gtid, err := mysql.ParseMysqlGTIDSet(fmt.Sprintf("%s:%d", u.String(), e.GNO))
 			if err != nil {
 				return errors.Trace(err)
 			}
-			c.master.UpdateGTID(gset)
-			if err := c.eventHandler.OnGTID(gset); err != nil {
+			if err := c.eventHandler.OnGTID(gtid); err != nil {
 				return errors.Trace(err)
 			}
 		case *replication.QueryEvent:
+			if e.GSet != nil {
+				c.master.UpdateGTIDSet(e.GSet)
+			}
 			var (
-				mb [][]byte
-				schema []byte
+				mb    [][]byte
+				db    []byte
 				table []byte
 			)
-			regexps := []regexp.Regexp{*expCreateTable, *expAlterTable, *expRenameTable, *expDropTable}
+			regexps := []regexp.Regexp{*expCreateTable, *expAlterTable, *expRenameTable, *expDropTable, *expTruncateTable}
 			for _, reg := range regexps {
 				mb = reg.FindSubmatch(e.Query)
 				if len(mb) != 0 {
@@ -133,27 +141,34 @@ func (c *Canal) runSyncBinlog() error {
 
 			// the first last is table name, the second last is database name(if exists)
 			if len(mb[mbLen-2]) == 0 {
-				schema = e.Schema
+				db = e.Schema
 			} else {
-				schema = mb[mbLen-2]
+				db = mb[mbLen-2]
 			}
 			table = mb[mbLen-1]
 
 			savePos = true
 			force = true
-			c.ClearTableCache(schema, table)
-			log.Infof("table structure changed, clear table cache: %s.%s\n", schema, table)
-			if err = c.eventHandler.OnDDL(pos, e); err != nil {
+			c.ClearTableCache(db, table)
+			log.Infof("table structure changed, clear table cache: %s.%s\n", db, table)
+			if err = c.eventHandler.OnTableChanged(string(db), string(table)); err != nil && errors.Cause(err) != schema.ErrTableNotExist {
 				return errors.Trace(err)
 			}
 
+			// Now we only handle Table Changed DDL, maybe we will support more later.
+			if err = c.eventHandler.OnDDL(pos, e); err != nil {
+				return errors.Trace(err)
+			}
 		default:
 			continue
 		}
 
 		if savePos {
 			c.master.Update(pos)
-			c.eventHandler.OnPosSynced(pos, force)
+			c.master.UpdateTimestamp(ev.Header.Timestamp)
+			if err := c.eventHandler.OnPosSynced(pos, force); err != nil {
+				return errors.Trace(err)
+			}
 		}
 	}
 
@@ -182,8 +197,13 @@ func (c *Canal) handleRowsEvent(e *replication.BinlogEvent) error {
 	default:
 		return errors.Errorf("%s not supported now", e.Header.EventType)
 	}
-	events := newRowsEvent(t, action, ev.Rows)
+	events := newRowsEvent(t, action, ev.Rows, e.Header)
 	return c.eventHandler.OnRow(events)
+}
+
+func (c *Canal) FlushBinlog() error {
+	_, err := c.Execute("FLUSH BINARY LOGS")
+	return errors.Trace(err)
 }
 
 func (c *Canal) WaitUntilPos(pos mysql.Position, timeout time.Duration) error {
@@ -193,6 +213,10 @@ func (c *Canal) WaitUntilPos(pos mysql.Position, timeout time.Duration) error {
 		case <-timer.C:
 			return errors.Errorf("wait position %v too long > %s", pos, timeout)
 		default:
+			err := c.FlushBinlog()
+			if err != nil {
+				return errors.Trace(err)
+			}
 			curPos := c.master.Position()
 			if curPos.Compare(pos) >= 0 {
 				return nil
@@ -209,13 +233,36 @@ func (c *Canal) WaitUntilPos(pos mysql.Position, timeout time.Duration) error {
 func (c *Canal) GetMasterPos() (mysql.Position, error) {
 	rr, err := c.Execute("SHOW MASTER STATUS")
 	if err != nil {
-		return mysql.Position{"", 0}, errors.Trace(err)
+		return mysql.Position{}, errors.Trace(err)
 	}
 
 	name, _ := rr.GetString(0, 0)
 	pos, _ := rr.GetInt(0, 1)
 
-	return mysql.Position{name, uint32(pos)}, nil
+	return mysql.Position{Name: name, Pos: uint32(pos)}, nil
+}
+
+func (c *Canal) GetMasterGTIDSet() (mysql.GTIDSet, error) {
+	query := ""
+	switch c.cfg.Flavor {
+	case mysql.MariaDBFlavor:
+		query = "SELECT @@GLOBAL.gtid_current_pos"
+	default:
+		query = "SELECT @@GLOBAL.GTID_EXECUTED"
+	}
+	rr, err := c.Execute(query)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	gx, err := rr.GetString(0, 0)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	gset, err := mysql.ParseGTIDSet(c.cfg.Flavor, gx)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return gset, nil
 }
 
 func (c *Canal) CatchMasterPos(timeout time.Duration) error {

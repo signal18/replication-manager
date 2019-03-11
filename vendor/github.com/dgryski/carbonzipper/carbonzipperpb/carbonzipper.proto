@@ -1,8 +1,6 @@
-syntax = "proto2";
 package carbonzipperpb;
 
-// Regenerate with  protoc --gogo_out=. carbonzipper.proto
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+// Regenerate with  protoc --gogo_out=. carbonzipper.proto 
 
 message FetchResponse {
     required string name = 1;
@@ -14,7 +12,7 @@ message FetchResponse {
 }
 
 message MultiFetchResponse {
-    repeated FetchResponse metrics = 1 [(gogoproto.nullable) = false];
+    repeated FetchResponse metrics = 1;
 }
 
 message GlobMatch {
@@ -24,7 +22,7 @@ message GlobMatch {
 
 message GlobResponse {
     required string name = 1;
-    repeated GlobMatch matches = 2 [(gogoproto.nullable) = false];
+    repeated GlobMatch matches = 2;
 }
 
 message Retention {
@@ -37,7 +35,7 @@ message InfoResponse {
 	required string aggregationMethod = 2;
 	required int32 maxRetention = 3;
 	required float xFilesFactor = 4;
-	repeated Retention retentions = 5 [(gogoproto.nullable) = false];
+	repeated Retention retentions = 5;
 }
 
 message ServerInfoResponse {
@@ -46,5 +44,5 @@ message ServerInfoResponse {
 }
 
 message ZipperInfoResponse {
-	repeated ServerInfoResponse responses = 1 [(gogoproto.nullable) = false];
+	repeated ServerInfoResponse responses = 1;
 }
