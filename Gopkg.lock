@@ -225,12 +225,12 @@
   version = "v1.4.7"
 
 [[projects]]
-  digest = "1:adea5a94903eb4384abef30f3d878dc9ff6b6b5b0722da25b82e5169216dfb61"
+  digest = "1:ec6f9bf5e274c833c911923c9193867f3f18788c461f76f05f62bb1510e0ae65"
   name = "github.com/go-sql-driver/mysql"
   packages = ["."]
   pruneopts = "UT"
-  revision = "d523deb1b23d913de5bdada721a6071e71283618"
-  version = "v1.4.0"
+  revision = "72cd26f257d44c1114970e19afddcd812016007e"
+  version = "v1.4.1"
 
 [[projects]]
   digest = "1:9a688317f3231e0175b3429033f44411906c0ce119361b7b5019d01375f8cff7"
@@ -593,6 +593,14 @@
   version = "v0.11.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:30f9298ba99beb0ff1aec7742d666be859ce8556ac9107a5f10fd855eacc5311"
+  name = "github.com/pires/go-proxyproto"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4d51b51e3bfc23ac5f4384478ff64940f34a5d63"
+
+[[projects]]
   digest = "1:87d657fe2a38c018c33f867e7d6e6208d4997279b2c9e25d31aed22e461ad010"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -880,6 +888,7 @@
     "github.com/mjibson/go-dsp/fft",
     "github.com/nsf/termbox-go",
     "github.com/peterbourgon/g2g",
+    "github.com/pires/go-proxyproto",
     "github.com/satori/go.uuid",
     "github.com/siddontang/go-mysql-elasticsearch/elastic",
     "github.com/siddontang/go-mysql/canal",
