@@ -18,7 +18,7 @@ import (
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 	svc := cluster.OpenSVCConnect()
-	agent, err := cluster.FoundDatabaseAgent(s)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
 		return ""
@@ -35,7 +35,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	var taglist []string
 
-	agent, err := cluster.FoundDatabaseAgent(s)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
 		return
@@ -121,7 +121,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
-	node, _ := cluster.FoundDatabaseAgent(db)
+	node, _ := cluster.OpenSVCFoundDatabaseAgent(db)
 	for _, svc := range node.Svc {
 		if cluster.Name+"/"+db.Name == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -140,7 +140,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	if err != nil {
 		return err
 	}
-	agent, err := cluster.FoundDatabaseAgent(server)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(server)
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,21 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
+func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
+	svc := cluster.OpenSVCConnect()
+	service, err := svc.GetServiceFromName(cluster.Name + "/" + server.Name)
+	if err != nil {
+		return err
+	}
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(server)
+	if err != nil {
+		return err
+	}
+	svc.StartService(agent.Node_id, service.Svc_id)
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host
 	svc := cluster.OpenSVCConnect()

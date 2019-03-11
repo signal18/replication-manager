@@ -29,6 +29,7 @@ import (
 // Proxy defines a proxy
 type Proxy struct {
 	Id              string          `json:"id"`
+	IDContainerd    string          `json:"idContainerd"`
 	Name            string          `json:"name"`
 	ServiceName     string          `json:"serviceName"`
 	Type            string          `json:"type"`

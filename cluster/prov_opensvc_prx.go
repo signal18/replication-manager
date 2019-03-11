@@ -27,7 +27,7 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 
 func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	svc := cluster.OpenSVCConnect()
-	agent, err := cluster.FoundProxyAgent(prx)
+	agent, err := cluster.OpenSVCFoundProxyAgent(prx)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
-	node, _ := cluster.FoundProxyAgent(prx)
+	node, _ := cluster.OpenSVCFoundProxyAgent(prx)
 	for _, svc := range node.Svc {
 		if cluster.Name+"/"+prx.Name == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -199,7 +199,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
+func (cluster *Cluster) OpenSVCFoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	agents := svc.GetNodes()
 	var clusteragents []opensvc.Host
@@ -215,20 +215,6 @@ func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 		}
 	}
 	return agent, errors.New("Indice not found in proxies agent list")
-}
-
-func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
-	svc := cluster.OpenSVCConnect()
-	service, err := svc.GetServiceFromName(cluster.Name + "/" + server.Name)
-	if err != nil {
-		return err
-	}
-	agent, err := cluster.FoundDatabaseAgent(server)
-	if err != nil {
-		return err
-	}
-	svc.StartService(agent.Node_id, service.Svc_id)
-	return nil
 }
 
 func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) string {

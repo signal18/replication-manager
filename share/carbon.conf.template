@@ -13,7 +13,7 @@ data-dir = "{{.datadir}}"
 schemas-file = "{{.schemas}}"
 aggregation-file = ""
 workers = 1
-max-updates-per-second = 0
+max-updates-per-second = 100
 sparse-create = false
 enabled = true
 

@@ -17,6 +17,10 @@ import (
 	"github.com/signal18/replication-manager/dbhelper"
 )
 
+const constOrchestratorOpenSVC = "opensvc"
+const constOrchestratorBinaries = "binaries"
+const constOrchestratorContainerd = "containerd"
+
 // Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
 	var err error
@@ -70,8 +74,14 @@ func (cluster *Cluster) ProvisionServices() error {
 	os.Remove(path)
 	cluster.ResetCrashes()
 	if cluster.Conf.Enterprise {
-		err = cluster.OpenSVCProvisionCluster()
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			err = cluster.OpenSVCProvisionCluster()
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			err = cluster.ContainerdProvisionCluster()
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		err = cluster.LocalhostProvisionCluster()
 	}
 	cluster.sme.RemoveFailoverState()
@@ -86,28 +96,48 @@ func (cluster *Cluster) ProvisionServices() error {
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	cluster.sme.SetFailoverState()
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCProvisionDatabaseService(server)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCProvisionDatabaseService(server)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdProvisionDatabaseService(server)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
+
 	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
 func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCProvisionProxyService(prx)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCProvisionProxyService(prx)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdProvisionProxyService(prx)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostProvisionProxyService(prx)
 	}
+
 	return nil
 }
 
 func (cluster *Cluster) Unprovision() {
 	cluster.sme.SetFailoverState()
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCUnprovision()
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCUnprovision()
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdUnprovision()
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostUnprovision()
 	}
 	cluster.slaves = nil
@@ -121,18 +151,31 @@ func (cluster *Cluster) Unprovision() {
 
 func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCUnprovisionProxyService(prx)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCUnprovisionProxyService(prx)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdUnprovisionProxyService(prx)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		//		cluster.LocalhostUnprovisionProxyService(prx)
 	}
+
 	return nil
 }
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.ResetCrashes()
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCUnprovisionDatabaseService(server)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCUnprovisionDatabaseService(server)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdUnprovisionDatabaseService(server)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostUnprovisionDatabaseService(server)
 	}
 	return nil
@@ -144,8 +187,14 @@ func (cluster *Cluster) RollingUpgrade() {
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCStopDatabaseService(server)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCStopDatabaseService(server)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdStopDatabaseService(server)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostStopDatabaseService(server)
 	}
 	return nil
@@ -159,10 +208,17 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/"+server.Name)
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCStartService(server)
-	} else {
+		if cluster.Conf.ProvOrchestrator == constOrchestratorOpenSVC {
+			cluster.OpenSVCStartService(server)
+		}
+		if cluster.Conf.ProvOrchestrator == constOrchestratorContainerd {
+			cluster.ContainerdStartDatabaseService(server)
+		}
+	}
+	if cluster.Conf.ProvOrchestrator == constOrchestratorBinaries {
 		cluster.LocalhostStartDatabaseService(server)
 	}
+
 	return nil
 }
 

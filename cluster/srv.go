@@ -37,6 +37,7 @@ type ServerMonitor struct {
 	Id                          string                    `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                    `json:"name"`
 	ServiceName                 string                    `json:"serviceName"`
+	IDContainerd                string                    `json:"idContainerd"`
 	Conn                        *sqlx.DB                  `json:"-"`
 	User                        string                    `json:"user"`
 	Pass                        string                    `json:"-"`

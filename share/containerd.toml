@@ -9,14 +9,14 @@ oom_score = -999
 
 # grpc configuration
 [grpc]
-  address = "0.0.0.0:10006"
+  address = "/var/run/replication-manager-containerd.sock"
   # socket uid
   uid = 0
   # socket gid
   gid = 0
 
   [debug]
-    address = "127.0.0.1:10007"
+    address = "/var/run/replication-manager-containerd-debug.sock"
     # socket uid
     uid = 0
     # socket gid

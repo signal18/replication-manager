@@ -230,7 +230,8 @@ type Config struct {
 	FailForceGtid                      bool   `toml:"-" json:"-"` //suspicious code
 	Test                               bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
-	Enterprise                         bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
+	Enterprise                         bool   `toml:"enterprise" json:"enterprise"` //used to enable orchestration
+	ProvOrchestrator                   string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvHost                           string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvRegister                       bool   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                      string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
