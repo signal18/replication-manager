@@ -31,7 +31,7 @@ func (cluster *Cluster) GetPersitentState() error {
 	var clsave Save
 	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
 	if err != nil {
-		cluster.LogPrintf(LvlWarn, "File error: %v\n", err)
+		cluster.LogPrintf(LvlInfo, "No file found: %v\n", err)
 		return err
 	}
 	err = json.Unmarshal(file, &clsave)

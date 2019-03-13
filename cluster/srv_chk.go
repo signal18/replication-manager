@@ -272,7 +272,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
 		myhost, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser)
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Check Privileges can't get hostname from server connection on %s: %s", server.URL, err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		}
 		myip, err := misc.GetIPSafe(myhost)
 		if server.ClusterGroup.Conf.LogLevel > 2 {
