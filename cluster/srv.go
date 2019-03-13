@@ -311,30 +311,28 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		return
 	}
 
-	// from here we have connection
-	defer conn.Close()
-	// reaffect a global DB pool object if we never get it , ex dynamic seeding
-	if server.Conn == nil {
-		server.Conn, err = sqlx.Open("mysql", server.DSN)
-		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Assigning a global connection on server %s failed %s", server.URL, err)
-			return
-		}
-	}
+	// From here we have a new connection
+	// We will affect it or closing it
 
 	if server.ClusterGroup.sme.IsInFailover() {
+		conn.Close()
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
-
+	// reaffect a global DB pool object if we never get it , ex dynamic seeding
+	if server.Conn == nil {
+		server.Conn = conn
+		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
+		return
+	}
 	err = server.Refresh()
 	if err != nil {
 		// reaffect a global DB pool object if we never get it , ex dynamic seeding
-		server.Conn, err = sqlx.Open("mysql", server.DSN)
+		server.Conn = conn
 		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
 	}
+	defer conn.Close()
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
@@ -407,21 +405,18 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	if server.Conn == nil {
-
 		return errors.New("Connection is nil, server unreachable")
-
 	}
 	if server.Conn.Unsafe() == nil {
 		//	server.State = stateFailed
 		return errors.New("Connection is unsafe, server unreachable")
 	}
-	//conn, err := sqlx.Connect("mysql", server.DSN)
+
 	err := server.Conn.Ping()
 	if err != nil {
 		return err
 	}
 
-	//	defer conn.Close()
 	if server.ClusterGroup.Conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
@@ -435,7 +430,6 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	} else {
 		server.IsMaxscale = false
-
 	}
 
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) {
@@ -446,7 +440,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Could not get variables %s", err)
-			return err
+			return nil
 		}
 		server.Version = dbhelper.MariaDBVersion(server.Variables["VERSION"]) // Deprecated
 		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
