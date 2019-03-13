@@ -157,17 +157,14 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if sv.IsDown() {
 			continue
 		}
-
 		if sv.IsSlave {
 			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
-
 			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				sv.State = stateUnconn
-				// TODO: fix flapping in case slaves are reconnecting
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
 				}
