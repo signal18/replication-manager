@@ -9,14 +9,13 @@ BIN-OSC = $(BIN)-osc
 BIN-OSC-CGO = $(BIN)-osc-cgo
 BIN-TST = $(BIN)-tst
 BIN-PRO = $(BIN)-pro
-BIN-PRO-CGO = $(BIN)-pro-cgo
 BIN-MIN = $(BIN)-min
 BIN-CLI = $(BIN)-cli
 BIN-ARB = $(BIN)-arb
 
 all: bin tar cli arb
 
-bin: osc tst pro min osc-cgo pro-cgo
+bin: osc tst pro min osc-cgo 
 
 tar: osc-basedir tst-basedir pro-basedir min-basedir
 
