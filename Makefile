@@ -15,7 +15,7 @@ BIN-ARB = $(BIN)-arb
 
 all: bin tar cli arb
 
-bin: osc tst pro min osc-cgo 
+bin: osc tst pro min osc-cgo
 
 tar: osc-basedir tst-basedir pro-basedir min-basedir
 
