@@ -86,6 +86,7 @@ do
     else
       cp -rp test/opensvc "$builddir"/package/usr/share/replication-manager/tests
     fi
+
     cp "$builddir"/binaries/replication-manager-$flavor "$builddir"/package/usr/bin/
     cp service/replication-manager-$flavor.service "$builddir"/package/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 "$builddir"/package/etc/init.d/replication-manager

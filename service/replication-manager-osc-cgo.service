@@ -1,0 +1,9 @@
+[Unit]
+Description=replication-manager open source using cgo
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/replication-manager-osc-cgo monitor
+
+[Install]
+WantedBy=multi-user.target
