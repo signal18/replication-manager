@@ -127,11 +127,10 @@ type ServerMonitor struct {
 	PrevMonitorTime             int64                     `json:"-"`
 	MonitorTime                 int64                     `json:"-"`
 	Version                     int                       `json:"-"`
+	maxConn                     string                    `json:"maxConn"` // used to back max connection for failover
 }
 
 type serverList []*ServerMonitor
-
-var maxConn string
 
 const (
 	stateFailed      string = "Failed"
@@ -659,13 +658,13 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
+	server.maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get max_connections value on demoted leader")
 	} else {
-		_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
+		_, err = server.Conn.Exec("SET GLOBAL max_connections=1")
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 0 on demoted leader")
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 1 on demoted leader")
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
