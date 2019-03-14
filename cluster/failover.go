@@ -478,8 +478,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogPrintf(LvlErr, "Could not set old master as read-write, %s", err)
 			}
 		}
-		cluster.oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", cluster.oldMaster.maxConn))
+		if cluster.Conf.SwitchDecreaseMaxConn {
+			cluster.oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", cluster.oldMaster.maxConn))
+		}
 		// Add the old master to the slaves list
+
 		cluster.oldMaster.State = stateSlave
 		if cluster.Conf.MultiMaster == false {
 			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
@@ -1217,7 +1220,9 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				cluster.LogPrintf(LvlErr, "Could not set old master as read-write, %s", err)
 			}
 		}
-		cluster.oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", cluster.oldMaster.maxConn))
+		if cluster.Conf.SwitchDecreaseMaxConn {
+			cluster.oldMaster.Conn.Exec(fmt.Sprintf("SET GLOBAL max_connections=%s", cluster.oldMaster.maxConn))
+		}
 		// Add the old master to the slaves list
 	}
 

@@ -662,9 +662,11 @@ func (server *ServerMonitor) freeze() bool {
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get max_connections value on demoted leader")
 	} else {
-		_, err = server.Conn.Exec("SET GLOBAL max_connections=1")
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 1 on demoted leader")
+		if server.ClusterGroup.Conf.SwitchDecreaseMaxConn {
+			_, err = server.Conn.Exec("SET GLOBAL max_connections=" + strconv.FormatInt(server.ClusterGroup.Conf.SwitchDecreaseMaxConnValue, 10))
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 1 on demoted leader")
+			}
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
