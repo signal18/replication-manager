@@ -55,6 +55,8 @@ type Config struct {
 	SwitchSync                         bool   `mapstructure:"switchover-at-sync"`
 	SwitchMaxDelay                     int64  `mapstructure:"switchover-max-slave-delay"`
 	SwitchSlaveWaitCatch               bool   `mapstructure:"switchover-slave-wait-catch"`
+	SwitchDecreaseMaxConn              bool   `mapstructure:"switchover-decrease-max-conn"`
+	SwitchDecreaseMaxConnValue         int64  `mapstructure:"switchover-decrease-max-conn-value"`
 	FailLimit                          int    `mapstructure:"failover-limit"`
 	PreScript                          string `mapstructure:"failover-pre-script"`
 	PostScript                         string `mapstructure:"failover-post-script"`

@@ -110,11 +110,10 @@ type ServerMonitor struct {
 	TestConfig                  string
 	DictTables                  map[string]dbhelper.Table
 	Users                       map[string]dbhelper.Grant `json:"-"`
+	maxConn                     string
 }
 
 type serverList []*ServerMonitor
-
-var maxConn string
 
 const (
 	stateFailed      string = "Failed"
@@ -603,13 +602,19 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf("INFO", "Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
+	server.maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
 	if err != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Could not get max_connections value on demoted leader")
 	} else {
-		_, err = server.Conn.Exec("SET GLOBAL max_connections=0")
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not set max_connections to 0 on demoted leader")
+		if server.ClusterGroup.conf.SwitchDecreaseMaxConn {
+			_, err = server.Conn.Exec("SET  sql_mode='STRICT_TRANS_TABLES'")
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Could not set connecttion sql_mode to STRICT_TRANS_TABLES %s", err)
+			}
+			_, err = server.Conn.Exec("SET GLOBAL max_connections=" + strconv.FormatInt(server.ClusterGroup.conf.SwitchDecreaseMaxConnValue, 10))
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to %s on demoted leader", strconv.FormatInt(server.ClusterGroup.conf.SwitchDecreaseMaxConnValue, 10))
+			}
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
