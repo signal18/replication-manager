@@ -31,6 +31,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		err := m.Connect()
 		if err != nil {
 			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
+			cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
 			return
 		}
 	}
@@ -47,7 +48,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
 			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/servers")
 			if err != nil {
-				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON"})
+				cluster.sme.AddState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON", ServerUrl: proxy.Name})
 			}
 			srvport, _ := strconv.Atoi(server.Port)
 			mxsConnections := 0
@@ -59,7 +60,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		} else {
 			_, err := m.ListServers()
 			if err != nil {
-				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON"})
+				server.ClusterGroup.sme.AddState("ERR00019", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00019"], server.URL), ErrFrom: "MON", ServerUrl: proxy.Name})
 			} else {
 
 				if proxy.Tunnel {
@@ -128,7 +129,7 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 	} else {
-		cluster.sme.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO"})
+		cluster.sme.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO", ServerUrl: proxy.Name})
 	}
 
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")

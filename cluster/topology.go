@@ -198,7 +198,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
-						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
 						cluster.Conf.MultiMaster = true
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
@@ -312,7 +312,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
-						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 
 						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {
 							cluster.RejoinFixRelay(sl, cluster.master)
@@ -320,7 +320,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 
 					}
 					if sl.LogBin == "OFF" {
-						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO"})
+						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 					}
 				}
 				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() {

@@ -283,6 +283,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 		}
+		// Copy back old server states when unkown
+		server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		// Send alert if state has changed
 		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {

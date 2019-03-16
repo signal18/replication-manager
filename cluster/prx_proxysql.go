@@ -95,6 +95,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	psql, err := connectProxysql(proxy)
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
 		return
 	}
 	defer psql.Connection.Close()
@@ -151,7 +152,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			cluster.LogPrintf(LvlDbg, "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
-				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX"})
+				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
 			}
 			updated = true
 		}
@@ -161,7 +162,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			cluster.LogPrintf(LvlDbg, "ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
-				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX"})
+				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 
 			}
 			updated = true
@@ -172,13 +173,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			if s.State == stateMaster {
 				err = psql.SetWriter(s.Host, s.Port)
 				if err != nil {
-					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX"})
+					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
 			} else if s.IsSlave {
 				err = psql.SetReader(s.Host, s.Port)
 				if err != nil {
-					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX"})
+					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
 			}
@@ -187,7 +188,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, err := dbhelper.GetProxySQLUsers(psql.Connection)
 			if err != nil {
-				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON"})
+				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 			}
 			uniUsers := make(map[string]dbhelper.Grant)
 			dupUsers := make(map[string]string)
@@ -196,7 +197,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
-					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON"})
+					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {
 					if u.Password != "" {
 						uniUsers[u.User+":"+u.Password] = u
@@ -209,7 +210,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 					cluster.LogPrintf(LvlInfo, "Add ProxySQL user %s ", user.User)
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
-						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON"})
+						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 
 					}
 				}
