@@ -564,8 +564,14 @@ func (server *ServerMonitor) Refresh() error {
 	if server.ClusterGroup.Conf.GraphiteEmbedded {
 		// SHOW ENGINE INNODB STATUS
 		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("WARNING", "Could not get engine")
+		}
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("WARNING", "Could not get PFS queries")
+		}
 	}
 
 	// Set channel source name is dangerous with multi cluster
