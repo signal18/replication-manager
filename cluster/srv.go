@@ -513,8 +513,14 @@ func (server *ServerMonitor) Refresh() error {
 	if server.ClusterGroup.conf.GraphiteEmbedded {
 		// SHOW ENGINE INNODB STATUS
 		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("WARNING", "Could not get engine")
+		}
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
+		if err != nil {
+			server.ClusterGroup.LogPrintf("WARNING", "Could not get PFS queries")
+		}
 	}
 	// SHOW SLAVE STATUS
 	err = server.SetReplicationChannel(server.ClusterGroup.conf.MasterConn)
