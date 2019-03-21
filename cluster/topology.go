@@ -330,7 +330,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		// State also check in failover_check false positive
-		if cluster.master.IsFailed() && cluster.slaves.checkAllSlavesRunning() {
+		if cluster.master.IsDown() && cluster.slaves.checkAllSlavesRunning() {
 			cluster.SetState("ERR00016", state.State{
 				ErrType:   "ERROR",
 				ErrDesc:   clusterError["ERR00016"],
