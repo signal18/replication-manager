@@ -8,6 +8,16 @@ app.factory('Cluster', function ($resource) {
         });
 });
 
+app.factory('Clusters', function ($resource) {
+    return $resource('api/clusters',
+        {
+            'query': {
+                method: 'GET',
+                isArray: false
+            }
+        });
+});
+
 app.factory('Servers', function ($resource) {
     return $resource('api/clusters/:clusterName/topology/servers', {clusterName: '@clusters'});
 });

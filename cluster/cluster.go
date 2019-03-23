@@ -35,80 +35,80 @@ import (
 )
 
 type Cluster struct {
-	Name                 string     `json:"name"`
-	Servers              serverList `json:"-"`
-	ServerIdList         []string   `json:"dbServers"`
-	Crashes              crashList  `json:"dbServersCrashes"`
-	Proxies              proxyList  `json:"-"`
-	ProxyIdList          []string   `json:"proxyServers"`
-	FailoverCtr          int        `json:"failoverCounter"`
-	FailoverTs           int64      `json:"failoverLastTime"`
-	Status               string     `json:"activePassiveStatus"`
-	IsSplitBrain         bool       `json:"isSplitBrain"`
-	IsSplitBrainBck      bool
-	IsFailedArbitrator   bool              `json:"isFailedArbitrator"`
-	IsLostMajority       bool              `json:"isLostMajority"`
-	IsDown               bool              `json:"isDown"`
-	IsProvisionned       bool              `json:"isProvisionned"`
-	Conf                 config.Config     `json:"config"`
-	CleanAll             bool              `json:"cleanReplication"` //used in testing
-	Schedule             []CronEntry       `json:"schedule"`
-	DBTags               []string          `json:"dbServersTags"`
-	ProxyTags            []string          `json:"proxyServersTags"`
-	Topology             string            `json:"topology"`
-	Uptime               string            `json:"uptime"`
-	UptimeFailable       string            `json:"uptimeFailable"`
-	UptimeSemiSync       string            `json:"uptimeSemisync"`
-	MonitorSpin          string            `json:"monitorSpin"`
-	DBTableSize          int64             `json:"dbTableSize"`
-	DBIndexSize          int64             `json:"dbIndexSize"`
-	Log                  httplog.HttpLog   `json:"log"`
-	MonitorType          map[string]string `json:"monitorType"`
-	TopologyType         map[string]string `json:"topologyType"`
-	hostList             []string
-	proxyList            []string
-	clusterList          map[string]*Cluster
-	slaves               serverList
-	master               *ServerMonitor
-	oldMaster            *ServerMonitor
-	vmaster              *ServerMonitor
-	mxs                  *maxscale.MaxScale
-	dbUser               string
-	dbPass               string
-	rplUser              string
-	rplPass              string
-	sme                  *state.StateMachine
-	runOnceAfterTopology bool
-	tlog                 *termlog.TermLog
-	htlog                *httplog.HttpLog
-	logPtr               *os.File
-	termlength           int
-	runUUID              string
-	cfgGroupDisplay      string
-	repmgrVersion        string
-	repmgrHostname       string
-	key                  []byte
-	exitMsg              string
-	exit                 bool
-	canFlashBack         bool
-	failoverCond         *nbc.NonBlockingChan
-	switchoverCond       *nbc.NonBlockingChan
-	rejoinCond           *nbc.NonBlockingChan
-	bootstrapCond        *nbc.NonBlockingChan
-	altertableCond       *nbc.NonBlockingChan
-	addtableCond         *nbc.NonBlockingChan
-	statecloseChan       chan state.State
-	switchoverChan       chan bool
-	errorChan            chan error
-	testStopCluster      bool
-	testStartCluster     bool
-	lastmaster           *ServerMonitor
-	benchmarkType        string
-	haveDBTLSCert        bool
-	tlsconf              *tls.Config
-	scheduler            *cron.Cron
-	tunnel               *ssh.Client
-	sync.Mutex
+	Name                 string               `json:"name"`
+	Servers              serverList           `json:"-"`
+	ServerIdList         []string             `json:"dbServers"`
+	Crashes              crashList            `json:"dbServersCrashes"`
+	Proxies              proxyList            `json:"-"`
+	ProxyIdList          []string             `json:"proxyServers"`
+	FailoverCtr          int                  `json:"failoverCounter"`
+	FailoverTs           int64                `json:"failoverLastTime"`
+	Status               string               `json:"activePassiveStatus"`
+	IsSplitBrain         bool                 `json:"isSplitBrain"`
+	IsSplitBrainBck      bool                 `json:"-"`
+	IsFailedArbitrator   bool                 `json:"isFailedArbitrator"`
+	IsLostMajority       bool                 `json:"isLostMajority"`
+	IsDown               bool                 `json:"isDown"`
+	IsProvisionned       bool                 `json:"isProvisionned"`
+	Conf                 config.Config        `json:"config"`
+	CleanAll             bool                 `json:"cleanReplication"` //used in testing
+	Schedule             []CronEntry          `json:"schedule"`
+	DBTags               []string             `json:"dbServersTags"`
+	ProxyTags            []string             `json:"proxyServersTags"`
+	Topology             string               `json:"topology"`
+	Uptime               string               `json:"uptime"`
+	UptimeFailable       string               `json:"uptimeFailable"`
+	UptimeSemiSync       string               `json:"uptimeSemisync"`
+	MonitorSpin          string               `json:"monitorSpin"`
+	DBTableSize          int64                `json:"dbTableSize"`
+	DBIndexSize          int64                `json:"dbIndexSize"`
+	Log                  httplog.HttpLog      `json:"log"`
+	MonitorType          map[string]string    `json:"monitorType"`
+	TopologyType         map[string]string    `json:"topologyType"`
+	hostList             []string             `json:"-"`
+	proxyList            []string             `json:"-"`
+	clusterList          map[string]*Cluster  `json:"-"`
+	slaves               serverList           `json:"-"`
+	master               *ServerMonitor       `json:"-"`
+	oldMaster            *ServerMonitor       `json:"-"`
+	vmaster              *ServerMonitor       `json:"-"`
+	mxs                  *maxscale.MaxScale   `json:"-"`
+	dbUser               string               `json:"-"`
+	dbPass               string               `json:"-"`
+	rplUser              string               `json:"-"`
+	rplPass              string               `json:"-"`
+	sme                  *state.StateMachine  `json:"-"`
+	runOnceAfterTopology bool                 `json:"-"`
+	tlog                 *termlog.TermLog     `json:"-"`
+	htlog                *httplog.HttpLog     `json:"-"`
+	logPtr               *os.File             `json:"-"`
+	termlength           int                  `json:"-"`
+	runUUID              string               `json:"-"`
+	cfgGroupDisplay      string               `json:"-"`
+	repmgrVersion        string               `json:"-"`
+	repmgrHostname       string               `json:"-"`
+	key                  []byte               `json:"-"`
+	exitMsg              string               `json:"-"`
+	exit                 bool                 `json:"-"`
+	canFlashBack         bool                 `json:"-"`
+	failoverCond         *nbc.NonBlockingChan `json:"-"`
+	switchoverCond       *nbc.NonBlockingChan `json:"-"`
+	rejoinCond           *nbc.NonBlockingChan `json:"-"`
+	bootstrapCond        *nbc.NonBlockingChan `json:"-"`
+	altertableCond       *nbc.NonBlockingChan `json:"-"`
+	addtableCond         *nbc.NonBlockingChan `json:"-"`
+	statecloseChan       chan state.State     `json:"-"`
+	switchoverChan       chan bool            `json:"-"`
+	errorChan            chan error           `json:"-"`
+	testStopCluster      bool                 `json:"-"`
+	testStartCluster     bool                 `json:"-"`
+	lastmaster           *ServerMonitor       `json:"-"`
+	benchmarkType        string               `json:"-"`
+	haveDBTLSCert        bool                 `json:"-"`
+	tlsconf              *tls.Config          `json:"-"`
+	scheduler            *cron.Cron           `json:"-"`
+	tunnel               *ssh.Client          `json:"-"`
+	sync.Mutex           `json:"-"`
 }
 
 type CronEntry struct {

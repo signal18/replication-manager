@@ -27,6 +27,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/regtest"
@@ -302,7 +303,7 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
+func handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	s := new(Settings)
 	s.Clusters = cfgGroupList
@@ -314,6 +315,45 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return
+	}
+}
+
+func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err == nil {
+		claims := token.Claims.(jwt.MapClaims)
+
+		var cl []*cluster.Cluster
+
+		userinfo := claims["CustomUserInfo"]
+		mycutinfo := userinfo.(map[string]interface{})
+		meuser := mycutinfo["Name"].(string)
+
+		for _, cluster := range RepMan.Clusters {
+			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
+
+			if strings.Contains(meuser, apiUser) {
+				cl = append(cl, cluster)
+			}
+		}
+
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(cl)
+
+		//err := e.Encode(RepMan)
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "token parse error", 500)
 	}
 }
 

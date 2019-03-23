@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
@@ -41,16 +41,28 @@ app.controller('DashboardController',
             if (!AppService.hasAuthHeaders()) return;
             if ($scope.menuOpened) return;
 
+            // get lis of clusters
+            if (!$scope.selectedClusterName) {
+              Clusters.query({}, function (data) {
+                if (data) {
+                    $scope.clusters = data;
+                  }
+              }, function () {
+                  $scope.reserror = true;
+              });
+            }
+
+
             Monitor.query({}, function (data) {
                 if (data) {
 
                         $scope.settings = data;
                         if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
-                            if ($scope.settings.clusters.length === 1) {
+                          /*  if ($scope.settings.clusters.length === 1) {
                                 $scope.selectedClusterName = $scope.settings.clusters[0];
                             } else if ($scope.settings.clusters.length > 1){
                                 $scope.openClusterDialog();
-                            }
+                            }*/
                         }
 
                         if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
@@ -314,6 +326,18 @@ app.controller('DashboardController',
 
         $scope.setsettings = function (setting, value) {
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
+        };
+
+        $scope.openCluster = function (cluster) {
+
+            $scope.selectedClusterName = cluster;
+        };
+
+        $scope.closeCluster = function () {
+          $scope.selectedClusterName = undefined;
+          $scope.menuOpened = false;
+          $scope.selectedCluster = undefined;
+            $mdSidenav('right').close();
         };
 
         $scope.openClusterDialog = function () {

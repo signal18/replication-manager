@@ -13,7 +13,7 @@
                           <div class="input-group number-spinner">
                                               <span class="input-group-btn data-dwn">
                                                   <button class="btn btn-default btn-info" data-dir="dwn"
-                                                          ng-click="calculateInterval(-10000)"
+                                                          ng-click="calculateInterval(-1000)"
                                                           ng-disabled="refreshInterval <= 2000">
                                                       <span class="glyphicon glyphicon-minus"></span></button>
                                               </span>
@@ -24,7 +24,7 @@
                                      ng-change="checkIfAllowedInterval(refreshInterval)">
                               <span class="input-group-btn data-up">
                                                   <button class="btn btn-default btn-info" data-dir="up"
-                                                          ng-click="calculateInterval(10000)"
+                                                          ng-click="calculateInterval(1000)"
                                                           ng-disabled="refreshInterval > 600000"><span
                                                           class="glyphicon glyphicon-plus"></span></button>
                                               </span>
@@ -52,7 +52,7 @@
                 <md-nav-list>
                     <md-list-item>
                         <li class="text-center">
-                            <a ng-click="openClusterDialog()" data-toggle="modal" data-target="#myClusterDialog"><i
+                            <a ng-click="closeCluster()" data-toggle="modal" data-target="#myClusterDialog"><i
                                     class="fa fa-3x fa-folder-open"></i><br>Open<br/><br/></a>
                         </li>
                     </md-list-item>
@@ -213,8 +213,8 @@
 
         <md-content layout="column">
           <md-tabs ng-if="selectedClusterName=='Default' || !selectedCluster"  md-dynamic-height="" md-border-bottom="" >
-              <md-tab   label="Settings">
-                  <div ng-include src="'static/setting.html'"></div>
+              <md-tab   label="Clusters">
+                  <div ng-include src="'static/cluster.html'"></div>
               </md-tab>
             </md-tabs>
             <md-tabs ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
