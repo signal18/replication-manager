@@ -212,32 +212,32 @@
         </div>
 
         <md-content layout="column">
-          <md-tabs ng-if="selectedClusterName=='Default' || !selectedCluster"  md-dynamic-height="" md-border-bottom="" >
+          <md-tabs ng-if="selectedClusterName=='Default' || !selectedCluster"   md-dynamic-height="" md-border-bottom="" >
               <md-tab   label="Clusters">
                   <div ng-include src="'static/cluster.html'"></div>
               </md-tab>
             </md-tabs>
-            <md-tabs ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
-                <md-tab   label="Dashboard">
+            <md-tabs  ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
+                <md-tab  md-on-select="onTabSelected('Dashboard')" label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/dash.html'"></div>
                 </md-tab>
-                <md-tab label="Alerts ^{{alerts.errors.length}}">
+                <md-tab md-on-select="onTabSelected('Alerts')" label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
 
-                <md-tab label="Proxies">
+                <md-tab md-on-select="onTabSelected('Proxies')" label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
                 <md-tab label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab label="Jobs">
+                <md-tab md-on-select="onTabSelected('Jobs')" label="Jobs">
                     <div ng-include src="'static/job.html'"></div>
                 </md-tab>
                 <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab label="Agents" ng-if="settings.config.enterprise">
+                <md-tab md-on-select="onTabSelected('Agents')" label="Agents" ng-if="settings.config.enterprise">
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>

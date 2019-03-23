@@ -41,7 +41,7 @@ app.controller('DashboardController',
             if (!AppService.hasAuthHeaders()) return;
             if ($scope.menuOpened) return;
 
-            // get lis of clusters
+            // get list of clusters
             if (!$scope.selectedClusterName) {
               Clusters.query({}, function (data) {
                 if (data) {
@@ -50,28 +50,28 @@ app.controller('DashboardController',
               }, function () {
                   $scope.reserror = true;
               });
+              Monitor.query({}, function (data) {
+                  if (data) {
+
+                          $scope.settings = data;
+                          if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
+                            /*  if ($scope.settings.clusters.length === 1) {
+                                  $scope.selectedClusterName = $scope.settings.clusters[0];
+                              } else if ($scope.settings.clusters.length > 1){
+                                  $scope.openClusterDialog();
+                              }*/
+                          }
+
+                          if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
+                          $scope.agents = data.agents;
+
+                  }
+              }, function () {
+                  $scope.reserror = true;
+              });
+                return
             }
 
-
-            Monitor.query({}, function (data) {
-                if (data) {
-
-                        $scope.settings = data;
-                        if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
-                          /*  if ($scope.settings.clusters.length === 1) {
-                                $scope.selectedClusterName = $scope.settings.clusters[0];
-                            } else if ($scope.settings.clusters.length > 1){
-                                $scope.openClusterDialog();
-                            }*/
-                        }
-
-                        if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
-                        $scope.agents = data.agents;
-
-                }
-            }, function () {
-                $scope.reserror = true;
-            });
 
             if ($scope.selectedClusterName) {
                 Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
@@ -87,6 +87,15 @@ app.controller('DashboardController',
                     if (!$scope.menuOpened) {
                         if (data) {
                         $scope.servers = data;
+                        function myfilter(array, test){
+                            var passedTest =[];
+                            for (var i = 0; i < array.length; i++) {
+                               if(test( array[i]))
+                                  passedTest.push(array[i]);
+                            }
+                            return passedTest;
+                        }
+                        $scope.slaves=myfilter(data,function(currentServer){return ( currentServer.isSlave);});
                         $scope.reserror = false;
                         }
                     }
@@ -100,21 +109,7 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
 
-                Master.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    $scope.master = data;
-                }, function () {
-                    $scope.reserror = true;
-                });
-
-                Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    if (!$scope.menuOpened) {
-                        $scope.proxies = data;
-                        $scope.reserror = false;
-                    }
-
-                }, function () {
-                    $scope.reserror = true;
-                });
+                /*
 
                 Slaves.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (data) {
@@ -123,6 +118,25 @@ app.controller('DashboardController',
                 }, function () {
                     $scope.reserror = true;
                 });
+                */
+
+                Master.query({clusterName: $scope.selectedClusterName}, function (data) {
+                    $scope.master = data;
+                }, function () {
+                    $scope.reserror = true;
+                });
+
+                if ($scope.selectedTab=="Proxies") {
+                  Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
+                      if (!$scope.menuOpened) {
+                          $scope.proxies = data;
+                          $scope.reserror = false;
+                      }
+
+                  }, function () {
+                      $scope.reserror = true;
+                  });
+                }
             }
         };
 
@@ -476,6 +490,10 @@ app.controller('DashboardController',
             }
         };
 
+        $scope.onTabSelected  = function (tab) {
+          $scope.selectedTab=tab;
+        };
+
         $scope.toggleLeft = buildToggler('left');
         $scope.toggleRight = buildToggler('right');
 
@@ -485,6 +503,7 @@ app.controller('DashboardController',
 
             };
         }
+
 
         $scope.$on('$mdMenuOpen', function (event, menu) {
             console.log('Opening menu refresh server will stop...', event, menu);
@@ -497,6 +516,8 @@ app.controller('DashboardController',
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
+
+
 
         $scope.start();
 
