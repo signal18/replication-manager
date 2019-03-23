@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -329,7 +330,7 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		claims := token.Claims.(jwt.MapClaims)
 
-		var cl []*cluster.Cluster
+		var clusters []*cluster.Cluster
 
 		userinfo := claims["CustomUserInfo"]
 		mycutinfo := userinfo.(map[string]interface{})
@@ -339,15 +340,15 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
 
 			if strings.Contains(meuser, apiUser) {
-				cl = append(cl, cluster)
+				clusters = append(clusters, cluster)
 			}
 		}
 
+		sort.Sort(cluster.ClusterSorter(clusters))
+
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(cl)
-
-		//err := e.Encode(RepMan)
+		err = e.Encode(clusters)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return

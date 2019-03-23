@@ -111,6 +111,12 @@ type Cluster struct {
 	sync.Mutex           `json:"-"`
 }
 
+type ClusterSorter []*Cluster
+
+func (a ClusterSorter) Len() int           { return len(a) }
+func (a ClusterSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ClusterSorter) Less(i, j int) bool { return a[i].Name < a[j].Name }
+
 type CronEntry struct {
 	Schedule string
 	Next     time.Time
