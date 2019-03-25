@@ -2,7 +2,8 @@
     <div ng-include src="'static/dashboard/toolbar.html'"></div>
     <div ng-include src="'static/dashboard/failed-connection-to-backend.html'"></div>
     <div ng-include src="'static/dashboard/cluster-settings.html'"></div>
-    <div ng-include src="'static/dashboard/server-list.html'"></div>
+    <div ng-if="serverListTabular" ng-include src="'static/dashboard/server-list-tab.html'"></div>
+    <div ng-if="!serverListTabular" ng-include src="'static/dashboard/server-list.html'"></div>
     <div ng-include src="'static/dashboard/settings-enterprise.html'"></div>
     <div ng-include src="'static/dashboard/settings-test-config.html'"></div>
 </md-content>

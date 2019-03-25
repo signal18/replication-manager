@@ -3,6 +3,7 @@ app.controller('DashboardController',
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.menuOpened = false;
+        $scope.serverListTabular = false;
 
         $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -504,6 +505,9 @@ app.controller('DashboardController',
             };
         }
 
+        $scope.toogleTabular = function()  {
+          $scope.serverListTabular = !$scope.serverListTabular;
+        };
 
         $scope.$on('$mdMenuOpen', function (event, menu) {
             console.log('Opening menu refresh server will stop...', event, menu);
@@ -516,7 +520,6 @@ app.controller('DashboardController',
             $scope.menuOpened = false;
             $scope.openedAt = "";
         });
-
 
 
         $scope.start();

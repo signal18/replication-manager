@@ -186,6 +186,11 @@ th.rowicon {
   width: 32px;
 }
 
+th.tabicon {
+  border:  1px solid darkgray;
+}
+
+
 td.servers {
     word-wrap: break-word;
 }
@@ -217,7 +222,7 @@ table.fixed {
 }
 
 img.vicon {
-  width: 16px;
+  width: 32px;
 }
 
 span.cluster {
