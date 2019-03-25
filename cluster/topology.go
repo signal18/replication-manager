@@ -370,26 +370,29 @@ func (cluster *Cluster) TopologyDiscover() error {
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
 	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
-		//	if cluster.Conf.Interactive == false {
+
 		allslavefailed := true
 		for _, s := range cluster.slaves {
 			if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
 				allslavefailed = false
 			}
 		}
-		if allslavefailed && cluster.IsDiscovered() {
-			if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
-				// forget the master if safe mode
-				cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
-				cluster.lastmaster = cluster.master
-				cluster.master = nil
-
+		if allslavefailed {
+			if cluster.IsDiscovered() {
+				if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
+					// forget the master if safe mode
+					cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					cluster.lastmaster = cluster.master
+					cluster.master = nil
+				}
 			}
 			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+			cluster.IsDown = true
 			return true
 		}
-		//}
+
 	}
+	cluster.IsDown = false
 	return false
 }
 
