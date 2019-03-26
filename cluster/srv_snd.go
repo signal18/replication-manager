@@ -106,7 +106,7 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 }
 
 func (server *ServerMonitor) SendAlert() error {
-	if server.ClusterGroup.Status != ConstMonitorActif {
+	if server.ClusterGroup.Status != ConstMonitorActif && server.ClusterGroup.IsDiscovered() {
 		return nil
 	}
 	if server.ClusterGroup.Conf.MailTo != "" {
