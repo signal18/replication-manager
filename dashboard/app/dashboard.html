@@ -50,10 +50,10 @@
                     md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
             <ul class="nav navbar-nav">
                 <md-nav-list>
-                    <md-list-item>
+                    <md-list-item ng-if="selectedCluster">
                         <li class="text-center">
-                            <a ng-click="closeCluster()" data-toggle="modal" data-target="#myClusterDialog"><i
-                                    class="fa fa-3x fa-folder-open"></i><br>Open<br/><br/></a>
+                            <a ng-click="back()" data-toggle="modal" data-target="#myClusterDialog"><i
+                                    class="fa fa-3x fa-folder-open"></i><br>Back<br/><br/></a>
                         </li>
                     </md-list-item>
                     <md-list-item>
@@ -218,26 +218,35 @@
               </md-tab>
             </md-tabs>
             <md-tabs  ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
-                <md-tab  md-on-select="onTabSelected('Dashboard')" label="Dashboard">
+                <md-tab  ng-if="!selectedServer" md-on-select="onTabSelected('Dashboard')" label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/dash.html'"></div>
                 </md-tab>
-                <md-tab md-on-select="onTabSelected('Alerts')" label="Alerts ^{{alerts.errors.length}}">
+                <md-tab ng-if="!selectedServer" md-on-select="onTabSelected('Alerts')" label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
 
-                <md-tab md-on-select="onTabSelected('Proxies')" label="Proxies">
+                <md-tab ng-if="!selectedServer" md-on-select="onTabSelected('Proxies')" label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
-                <md-tab label="Settings">
+                <md-tab ng-if="!selectedServer" label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab md-on-select="onTabSelected('Jobs')" label="Jobs">
-                    <div ng-include src="'static/job.html'"></div>
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogError')" label="Log Errors">
+                    <div ng-include src="'static/error.html'"></div>
                 </md-tab>
-                <md-tab label="Graphs" ng-if="settings.config.graphiteMetrics">
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogSlow')" label="Log Slow Queries">
+                    <div ng-include src="'static/slow.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('ProcessList')" label="Processlist">
+                    <div ng-include src="'static/slow.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('Table')" label="Table">
+                    <div ng-include src="'static/slow.html'"></div>
+                </md-tab>
+                <md-tab label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab md-on-select="onTabSelected('Agents')" label="Agents" ng-if="settings.config.enterprise">
+                <md-tab md-on-select="onTabSelected('Agents')" label="Agents" ng-if="settings.config.enterprise && !selectedServer">
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>

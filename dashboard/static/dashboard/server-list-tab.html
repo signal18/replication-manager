@@ -10,7 +10,7 @@
   <col style="width: 65%;">
     <tr>
 
-<th class="rowicon" >
+<th  ng-click="openServer(server.id)" class="rowicon" >
              <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb.svg"  class="vicon" />
               <img ng-if="server.dbVersion.flavor=='MySQL'"   src="static/img/mysql.png"    class="vicon"/>
               <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png"  class="vicon"/>

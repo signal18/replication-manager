@@ -2,6 +2,7 @@ app.controller('DashboardController',
     function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
+        $scope.selectedServer = undefined;
         $scope.menuOpened = false;
         $scope.serverListTabular = false;
 
@@ -348,8 +349,12 @@ app.controller('DashboardController',
             $scope.selectedClusterName = cluster;
         };
 
-        $scope.closeCluster = function () {
-          $scope.selectedClusterName = undefined;
+        $scope.back = function () {
+          if (typeof $scope.selectedServer != 'undefined'){
+            $scope.selectedServer = undefined;
+          }   else   {
+            $scope.selectedClusterName = undefined;
+          }
           $scope.menuOpened = false;
           $scope.selectedCluster = undefined;
             $mdSidenav('right').close();
@@ -493,6 +498,10 @@ app.controller('DashboardController',
 
         $scope.onTabSelected  = function (tab) {
           $scope.selectedTab=tab;
+        };
+
+        $scope.openServer  = function (id) {
+          $scope.selectedServer=id;
         };
 
         $scope.toggleLeft = buildToggler('left');
