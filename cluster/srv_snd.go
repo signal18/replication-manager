@@ -116,6 +116,8 @@ func (server *ServerMonitor) SendAlert() error {
 			Type:        server.State,
 			Origin:      server.URL,
 			Destination: server.ClusterGroup.Conf.MailSMTPAddr,
+			User:        server.ClusterGroup.Conf.MailSMTPUser,
+			Password:    server.ClusterGroup.Conf.MailSMTPPassword,
 		}
 		err := a.Email()
 		if err != nil {

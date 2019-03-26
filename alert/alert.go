@@ -13,6 +13,7 @@ package alert
 
 import (
 	"fmt"
+	"net/smtp"
 	"strings"
 
 	"github.com/jordan-wright/email"
@@ -24,6 +25,8 @@ type Alert struct {
 	Type        string
 	Origin      string
 	Destination string
+	User        string
+	Password    string
 }
 
 func (a *Alert) Email() error {
@@ -35,6 +38,11 @@ func (a *Alert) Email() error {
 	text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
 New server state is %s.`, a.Origin, a.Type)
 	e.Text = []byte(text)
-	err := e.Send(a.Destination, nil)
+	var err error
+	if a.User == "" {
+		err = e.Send(a.Destination, nil)
+	} else {
+		err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+	}
 	return err
 }
