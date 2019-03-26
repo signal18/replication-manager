@@ -1,0 +1,31 @@
+<md-content class="md-padding">
+
+
+
+<div ng-repeat="server in servers">
+
+    <md-card ng-if="server.id==selectedServer">
+    <md-card-content   class="serverlogitem">
+      <p class="sectionheader">{{server.host}}:{{server.port}}</p>
+     </md-card-content>
+
+
+               <table class="log">
+                  <tr ng-repeat="logline in server.errorLog.buffer" ng-if="logline.timestamp">
+                     <td class="stamp">{{ logline.timestamp }}</td>
+                     <td ng-switch="logline.level">
+                        <span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
+                        <span ng-switch-when="Warning" class="label label-warning">{{ logline.level }}</span>
+                        <span ng-switch-when="Error" class="label label-danger">{{ logline.level }}</span>
+                        <span ng-switch-when="Note" class="label label-primary">{{ logline.level }}</span>
+                        <span ng-switch-default class="label label-default">{{ logline.level }}</span>
+                     <td class="text">{{ logline.text }}</td>
+                  </tr>
+               </table>
+
+         </md-card>
+         <BR>
+
+</div>
+
+</md-content>
