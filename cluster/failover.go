@@ -981,7 +981,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 	if sl.IsIgnored() {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave is in ignored list ", sl.URL)
+			cluster.LogPrintf(LvlWarn, "Slave is in ignored list %s", sl.URL)
 		}
 		return false
 	}

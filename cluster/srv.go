@@ -237,7 +237,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	//server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s", server.URL)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
 		// Copy the last known server states or they will be cleared at next monitoring loop
 		server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
