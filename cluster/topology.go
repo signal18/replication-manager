@@ -330,7 +330,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		// State also check in failover_check false positive
-		if cluster.master.IsDown() && cluster.slaves.checkAllSlavesRunning() {
+		if cluster.master.IsFailed() && cluster.slaves.checkAllSlavesRunning() {
 			cluster.SetState("ERR00016", state.State{
 				ErrType:   "ERROR",
 				ErrDesc:   clusterError["ERR00016"],
@@ -381,9 +381,10 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 			if cluster.IsDiscovered() {
 				if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
 					// forget the master if safe mode
-					cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
-					cluster.lastmaster = cluster.master
-					cluster.master = nil
+					//		cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					//		cluster.lastmaster = cluster.master
+					//		cluster.master = nil
+
 				}
 			}
 			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
@@ -452,7 +453,7 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 			ct++
 		}
 	}
-	if ct > 1 {
+	if ct > 0 {
 		return true
 	}
 	return false

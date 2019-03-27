@@ -210,6 +210,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
+	server.ClusterGroup.LogPrintf(LvlDbg, "Entering ping")
 
 	defer wg.Done()
 
@@ -238,9 +239,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// Handle failure cases here
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
-		// Copy the last known server states or they will be cleared at next monitoring loop
-		server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
+			server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
 			// access denied
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
@@ -250,7 +250,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		if err != sql.ErrNoRows {
 			server.FailCount++
-
+			if server.ClusterGroup.master == nil {
+				server.ClusterGroup.LogPrintf(LvlDbg, "Master not defined")
+			}
 			if server.ClusterGroup.master != nil && server.URL == server.ClusterGroup.master.URL {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.Conf.MaxFail {
@@ -263,6 +265,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					server.ClusterGroup.master.State = stateFailed
 				} else {
 					server.ClusterGroup.master.State = stateSuspect
+					// Copy the last known server states or they will be cleared at next monitoring loop
+					server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
+
 				}
 			} else {
 				// not the master
@@ -283,8 +288,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 		}
-		// Copy back old server states when unkown
-		server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		// Send alert if state has changed
 		if server.PrevState != server.State {
 			//if cluster.Conf.Verbose {

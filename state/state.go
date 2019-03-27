@@ -351,11 +351,11 @@ func (SM *StateMachine) GetOpenWarnings() []StateHttp {
 }
 
 func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
-	SM.Lock()
+
 	for key, value := range *SM.OldState {
 		if value.ServerUrl == Url {
 			SM.AddState(key, value)
 		}
 	}
-	SM.Unlock()
+
 }
