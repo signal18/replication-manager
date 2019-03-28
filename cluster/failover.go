@@ -990,7 +990,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 
 func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 	for _, sl := range l {
-		if sl.URL == cluster.Conf.PrefMaster && cluster.master.State != stateFailed {
+		if strings.Contains(cluster.Conf.PrefMaster, sl.URL) && cluster.master.State != stateFailed {
 			return sl
 		}
 	}

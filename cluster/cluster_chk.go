@@ -389,22 +389,13 @@ func (cluster *Cluster) isValidConfig() error {
 
 	// Check if preferred master is included in Host List
 	pfa := strings.Split(cluster.Conf.PrefMaster, ",")
-	if len(pfa) > 1 {
-		cluster.LogPrintf(LvlErr, "Prefmaster option takes exactly one argument")
-		return errors.New("Prefmaster option takes exactly one argument")
-	}
-	ret := func() bool {
-		for _, v := range cluster.hostList {
-			if v == cluster.Conf.PrefMaster {
-				return true
-			}
+
+	for _, host := range pfa {
+		if !strings.Contains(cluster.Conf.Hosts, host) {
+			cluster.LogPrintf(LvlErr, clusterError["ERR00074"], host)
 		}
-		return false
 	}
-	if ret() == false && cluster.Conf.PrefMaster != "" {
-		cluster.LogPrintf(LvlErr, "Preferred master is not included in the hosts option")
-		return errors.New("Prefmaster option takes exactly one argument")
-	}
+
 	return nil
 }
 

@@ -81,6 +81,7 @@ var clusterError = map[string]string{
 	"ERR00071": "ProxySQL could not set discoverd master %s as writer (%s)",
 	"ERR00072": "ProxySQL could not set discoverd slave %s as reader (%s)",
 	"ERR00073": "Could not get events on server %s",
+	"ERR00074": "Prefered server %s not found in configured server list",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
