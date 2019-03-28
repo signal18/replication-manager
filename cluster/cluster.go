@@ -49,7 +49,7 @@ type Cluster struct {
 	IsFailedArbitrator   bool                 `json:"isFailedArbitrator"`
 	IsLostMajority       bool                 `json:"isLostMajority"`
 	IsDown               bool                 `json:"isDown"`
-	IsProvisionned       bool                 `json:"isProvisionned"`
+	IsProvisioned        bool                 `json:"isProvisioned"`
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
