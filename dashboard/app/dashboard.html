@@ -231,16 +231,16 @@
                 <md-tab ng-if="!selectedServer" label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogError')" label="Log Errors">
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('Processlist')" label="Processlist">
+                    <div style="min-height:800px;height:100%"  ng-include src="'static/process.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogSlow')" label="Slow Queries">
+                    <div ng-include src="'static/slow.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogError')" label="Errors">
                     <div ng-include src="'static/error.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('LogSlow')" label="Log Slow Queries">
-                    <div ng-include src="'static/slow.html'"></div>
-                </md-tab>
-                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('ProcessList')" label="Processlist">
-                    <div ng-include src="'static/slow.html'"></div>
-                </md-tab>
-                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('Table')" label="Table">
+                <md-tab ng-if="selectedServer" md-on-select="onTabSelected('Table')" label="Tables">
                     <div ng-include src="'static/slow.html'"></div>
                 </md-tab>
                 <md-tab label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics">

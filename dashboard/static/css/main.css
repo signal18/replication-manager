@@ -167,6 +167,7 @@ th {
 }
 table.slowlog  {
   width: 100%;
+  border:1;
 }
 .slowlog td.stamp {
   font-family: "Courier New", Courier, monospace;

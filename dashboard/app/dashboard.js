@@ -1,10 +1,15 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.selectedServer = undefined;
         $scope.menuOpened = false;
         $scope.serverListTabular = false;
+        $scope.selectedTab = undefined;
+        $scope.selectedUserIndex = undefined;
+        $scope.refreshInterval = 2000;
+        var promise = undefined;
+
 
         $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -15,10 +20,8 @@ app.controller('DashboardController',
     { id: 'shardproxy', name: 'ShardProxy' },
     { id: 'maxscale', name: 'MaxScale' },
     { id: 'sphinx', name: 'SphinxProxy' },
-    { id: 'extvip', name: 'VIP' },
-
-   ];
-  $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
+    { id: 'extvip', name: 'VIP' },  ];
+        $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
 
         var getClusterUrl = function () {
             return AppService.getClusterUrl($scope.selectedClusterName);
@@ -57,12 +60,9 @@ app.controller('DashboardController',
 
                           $scope.settings = data;
                           if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
-                            /*  if ($scope.settings.clusters.length === 1) {
+                              if ($scope.settings.clusters.length === 1) {
                                   $scope.selectedClusterName = $scope.settings.clusters[0];
-                              } else if ($scope.settings.clusters.length > 1){
-                                  $scope.openClusterDialog();
-                              }*/
-                          }
+                              }                           }
 
                           if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
                           $scope.agents = data.agents;
@@ -111,6 +111,18 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
 
+
+                if ($scope.selectedServer && $scope.selectedTab=='Processlist') {
+                Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+
+                    $scope.processlist = data;
+                    $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                // fetch now from servers to save roudtrip
                 /*
 
                 Slaves.query({clusterName: $scope.selectedClusterName}, function (data) {
@@ -142,8 +154,6 @@ app.controller('DashboardController',
             }
         };
 
-        $scope.refreshInterval = 2000;
-        var promise = undefined;
 
         function startPromise(){
             promise = $interval(function() {
@@ -181,7 +191,7 @@ app.controller('DashboardController',
             $scope.cancel();
         });
 
-        $scope.selectedUserIndex = undefined;
+
 
         var httpGetWithoutResponse = function (url) {
             $http.get(url)
@@ -502,6 +512,7 @@ app.controller('DashboardController',
 
         $scope.openServer  = function (id) {
           $scope.selectedServer=id;
+          $scope.selectedTab='Processlist';
         };
 
         $scope.toggleLeft = buildToggler('left');

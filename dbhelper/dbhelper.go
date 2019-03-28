@@ -53,14 +53,14 @@ type Event struct {
 }
 
 type Processlist struct {
-	Id      uint64         `json:"id"`
-	User    string         `json:"user"`
-	Host    string         `json:"host"`
-	Db      sql.NullString `json:"db"`
-	Command string         `json:"command"`
-	Time    float64        `json:"time"`
-	State   string         `json:"state"`
-	Info    sql.NullString `json:"info"`
+	Id      uint64          `json:"id"`
+	User    string          `json:"user"`
+	Host    string          `json:"host"`
+	Db      sql.NullString  `json:"db"`
+	Command string          `json:"command"`
+	Time    sql.NullFloat64 `json:"time"`
+	State   string          `json:"state"`
+	Info    sql.NullString  `json:"info"`
 }
 
 type SlaveHosts struct {

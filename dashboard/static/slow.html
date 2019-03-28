@@ -8,7 +8,17 @@
          <md-card ng-if="server.id==selectedServer">
 
              <md-card-content>
-                 <p class="sectionheader">SLOW LOG {{server.host}}:{{server.port}}</p>
+               <p  ng-switch="server.state" class="sectionheader">
+                 <span ng-switch-when="Master" class="label label-primary">Master   {{server.host}}:{{server.port}}<label
+                         ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="Suspect" class="label label-warning">Suspect   {{server.host}}:{{server.port}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                     <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="StandAlone" class="label label-info">Standalone   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-default class="label label-default">{{server.state}}  {{server.host}}:{{server.port}}
+                         <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+              </p>
               </md-card-content>
                    <table  class="slowlog" >
                       <tr>
