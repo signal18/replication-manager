@@ -112,6 +112,9 @@ app.controller('DashboardController',
                 });
 
 
+        //        console.log($scope.selectedServer);
+        //        console.log($scope.selectedTab);
+
                 if ($scope.selectedServer && $scope.selectedTab=='Processlist') {
                 Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
 
@@ -140,7 +143,7 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
 
-                if ($scope.selectedTab=="Proxies") {
+                if ($scope.selectedTab=='Proxies') {
                   Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
                       if (!$scope.menuOpened) {
                           $scope.proxies = data;
@@ -507,12 +510,13 @@ app.controller('DashboardController',
         };
 
         $scope.onTabSelected  = function (tab) {
+
           $scope.selectedTab=tab;
         };
 
         $scope.openServer  = function (id) {
           $scope.selectedServer=id;
-          $scope.selectedTab='Processlist';
+          $scope.onTabSelected('Processlist');
         };
 
         $scope.toggleLeft = buildToggler('left');
