@@ -153,8 +153,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 	}
 	cluster.slaves = nil
 	for k, sv := range cluster.Servers {
-		// Failed and suspect ignore
-		if sv.IsDown() {
+		// Failed Do not ignore suspect or topology will change to fast
+		if sv.IsFailed() {
 			continue
 		}
 		if sv.IsSlave {

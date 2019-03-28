@@ -210,7 +210,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
-	server.ClusterGroup.LogPrintf(LvlDbg, "Entering ping")
 
 	defer wg.Done()
 
