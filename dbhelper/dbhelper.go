@@ -53,13 +53,14 @@ type Event struct {
 }
 
 type Processlist struct {
-	Id       uint64         `json:"id"`
-	User     string         `json:"user"`
-	Host     string         `json:"host"`
-	Database sql.NullString `json:"database"`
-	Command  string         `json:"command"`
-	Time     float64        `json:"time"`
-	State    string         `json:"state"`
+	Id      uint64         `json:"id"`
+	User    string         `json:"user"`
+	Host    string         `json:"host"`
+	Db      sql.NullString `json:"db"`
+	Command string         `json:"command"`
+	Time    float64        `json:"time"`
+	State   string         `json:"state"`
+	Info    sql.NullString `json:"info"`
 }
 
 type SlaveHosts struct {
@@ -166,7 +167,7 @@ func GetAddress(host string, port string, socket string) string {
 
 func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
 	pl := []Processlist{}
-	err := db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Database`, Command, Time_ms as Time, State FROM INFORMATION_SCHEMA.PROCESSLIST")
+	err := db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
@@ -838,7 +839,7 @@ func GetQueries(db *sqlx.DB) (map[string]string, error) {
 	query = "select digest_text as digest, round(sum_timer_wait/1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest where digest_text is not null order by sum_timer_wait desc limit 20"
 
 	rows, err := db.Queryx(query)
-	defer rows.Close();
+	defer rows.Close()
 	if err != nil {
 		return nil, errors.New("Could not get queries")
 	}

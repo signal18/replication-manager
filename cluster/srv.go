@@ -552,7 +552,10 @@ func (server *ServerMonitor) Refresh() error {
 		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
-		server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
+
+		if server.ClusterGroup.Conf.MonitorProcessList {
+			server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
+		}
 	}
 
 	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
