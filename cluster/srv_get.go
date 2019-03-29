@@ -178,7 +178,10 @@ func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
 	return server.SlowLog
 }
 
-func (server *ServerMonitor) GetTables() map[string]dbhelper.Table {
+func (server *ServerMonitor) GetTables() []dbhelper.Table {
+	return server.Tables
+}
+func (server *ServerMonitor) GetVTables() map[string]dbhelper.Table {
 	return server.DictTables
 }
 

@@ -120,6 +120,7 @@ type ServerMonitor struct {
 	Status                      map[string]string         `json:"-"`
 	Queries                     map[string]string         `json:"-"` //PFS queries
 	DictTables                  map[string]dbhelper.Table `json:"-"`
+	Tables                      []dbhelper.Table          `json:"-"`
 	Users                       map[string]dbhelper.Grant `json:"-"`
 	ErrorLogTailer              *tail.Tail                `json:"-"`
 	SlowLogTailer               *tail.Tail                `json:"-"`

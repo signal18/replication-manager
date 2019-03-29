@@ -664,7 +664,8 @@ func (cluster *Cluster) schemaMonitor() {
 	}
 	cluster.sme.SetMonitorSchemaState()
 
-	tables, err := dbhelper.GetTables(cluster.master.Conn)
+	tables, tablelist, err := dbhelper.GetTables(cluster.master.Conn)
+	cluster.master.Tables = tablelist
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
 	}

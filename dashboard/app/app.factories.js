@@ -34,6 +34,11 @@ app.factory('Processlist', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/processlist', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('Tables', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/tables', {clusterName: '@clusters',serverName: '@server'});
+});
+
+
 app.factory('Alerts', function ($resource) {
     return $resource(
         'api/clusters/:clusterName/topology/alerts', {clusterName: '@clusters'},

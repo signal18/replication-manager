@@ -218,35 +218,35 @@
               </md-tab>
             </md-tabs>
             <md-tabs  ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
-                <md-tab  ng-if="!selectedServer" md-select-id="Dashboard" md-on-select="onTabSelected" label="Dashboard">
+                <md-tab  ng-if="!selectedServer" ng-click="onTabClicked('Dashboard')"  md-select-id="Dashboard" md-on-select="onTabSelected" label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/dash.html'"></div>
                 </md-tab>
-                <md-tab ng-if="!selectedServer" md-select-id="Alerts" md-on-select="onTabSelected" label="Alerts ^{{alerts.errors.length}}">
+                <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Alerts')" md-select-id="Alerts" md-on-select="onTabSelected" label="Alerts ^{{alerts.errors.length}}">
                     <div ng-include src="'static/alert.html'"></div>
                 </md-tab>
 
-                <md-tab ng-if="!selectedServer" md-select-id="Proxies" md-on-select="onTabSelected" label="Proxies">
+                <md-tab ng-if="!selectedServer" ng-click="onTabClicked('Proxies')"  md-select-id="Proxies" md-on-select="onTabSelected" label="Proxies">
                     <div ng-include src="'static/proxy.html'"></div>
                 </md-tab>
-                <md-tab ng-if="!selectedServer" md-select-id="Settings" md-on-select="onTabSelected" label="Settings">
+                <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Settings')" md-select-id="Settings" md-on-select="onTabSelected" label="Settings">
                     <div ng-include src="'static/setting.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist">
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist">
                     <div style="min-height:800px"  ng-include src="'static/process.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries">
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries">
                     <div ng-include src="'static/slow.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogError')" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
                     <div ng-include src="'static/error.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
-                    <div ng-include src="'static/slow.html'"></div>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Tables')" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
+                    <div ng-include src="'static/tables.html'"></div>
                 </md-tab>
-                <md-tab md-select-id="Graphs" md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics">
+                <md-tab md-select-id="Graphs" ng-click="onTabClicked('Graphs')"  md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>
-                <md-tab md-select-id="Agents" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer">
+                <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer">
                     <div ng-include src="'static/agent.html'"></div>
                 </md-tab>
             </md-tabs>

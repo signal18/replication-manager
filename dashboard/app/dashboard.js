@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.selectedServer = undefined;
@@ -55,6 +55,7 @@ app.controller('DashboardController',
               }, function () {
                   $scope.reserror = true;
               });
+
               Monitor.query({}, function (data) {
                   if (data) {
 
@@ -73,7 +74,7 @@ app.controller('DashboardController',
               });
                 return
             }
-
+            console.log("cluster:" + $scope.selectedClusterName);
 
             if ($scope.selectedClusterName) {
                 Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
@@ -105,27 +106,7 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
 
-                Alerts.query({clusterName: $scope.selectedClusterName}, function (data) {
-                    $scope.alerts = data;
-                }, function () {
-                    $scope.reserror = true;
-                });
-
-
-        //        console.log($scope.selectedServer);
-        //        console.log($scope.selectedTab);
-
-                if ($scope.selectedServer && $scope.selectedTab=='Processlist') {
-                Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
-
-                    $scope.processlist = data;
-                    $scope.reserror = false;
-
-                }, function () {
-                    $scope.reserror = true;
-                });
-                }
-                // fetch now from servers to save roudtrip
+                // Slaves fetch now from servers to save one roudtrip
                 /*
 
                 Slaves.query({clusterName: $scope.selectedClusterName}, function (data) {
@@ -136,6 +117,39 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
                 */
+
+
+                Alerts.query({clusterName: $scope.selectedClusterName}, function (data) {
+                    $scope.alerts = data;
+                }, function () {
+                    $scope.reserror = true;
+                });
+
+
+             console.log($scope.selectedServer);
+             console.log($scope.selectedTab);
+              if ($scope.selectedServer){
+                if ($scope.selectedTab=='Processlist') {
+                Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+
+                    $scope.processlist = data;
+                    $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                if ( $scope.selectedTab=='Tables') {
+                Tables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+
+                    $scope.tables = data;
+                    $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+              } // End Selected Server
 
                 Master.query({clusterName: $scope.selectedClusterName}, function (data) {
                     $scope.master = data;
@@ -512,6 +526,10 @@ app.controller('DashboardController',
         $scope.onTabSelected  = function (tab) {
 
           $scope.selectedTab=tab;
+        };
+
+        $scope.onTabClicked  = function (tab) {
+            $scope.selectedTab=tab;
         };
 
         $scope.openServer  = function (id) {
