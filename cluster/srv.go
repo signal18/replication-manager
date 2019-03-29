@@ -554,7 +554,7 @@ func (server *ServerMonitor) Refresh() error {
 		}
 
 		if server.ClusterGroup.Conf.MonitorProcessList {
-			server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn)
+			server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 		}
 	}
 

@@ -165,9 +165,16 @@ func GetAddress(host string, port string, socket string) string {
 	return address
 }
 
-func GetProcesslist(db *sqlx.DB) ([]Processlist, error) {
+func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
 	pl := []Processlist{}
-	err := db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
+	var err error
+	if version.IsMariaDB() {
+		//MariaDB
+		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
+	} else {
+		//MySQL
+		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
@@ -350,9 +357,14 @@ func GetDBVersion(db *sqlx.DB) (*MySQLVersion, error) {
 	return NewMySQLVersion(version, versionComment), nil
 }
 
+//Unused does not look like safe way or documenting it
 func GetHostFromProcessList(db *sqlx.DB, user string) string {
 	pl := []Processlist{}
-	pl, err := GetProcesslist(db)
+	version, err := GetDBVersion(db)
+	if err != nil {
+		return "N/A"
+	}
+	pl, err = GetProcesslist(db, version)
 	if err != nil {
 		return "N/A"
 	}

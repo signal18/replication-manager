@@ -5,14 +5,20 @@
 
 <div style=" position: absolute;left: 0px;top: 0px;">
 <md-card  ng-if="servers">
-<table border=0 ng-if="servers" class="table table-condensed fixed">
+  <style >
+    .mastertable th {
+      background-color: rgb(51, 122, 183);
+    }
+  </style>
+<table  border=0 ng-if="servers" class="table table-condensed fixed">
   <col style="width: 5%;">
   <col style="width: 30%;">
  <col style="width: 60%;">
  <col style="width: 5%;">
-    <tr ng-click="openServer(server.id)">
 
-     <th   class="rowicon" >
+      <tr  ng-click="openServer(server.id)">
+
+     <th class="server.state == 'Master' ? 'mastertable' :  ''"   >
              <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb.svg"  class="vicon" />
               <img ng-if="server.dbVersion.flavor=='MySQL'"   src="static/img/mysql.png"    class="vicon"/>
               <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png"  class="vicon"/>
@@ -21,63 +27,69 @@
       <th align="right">
         <div align="right" ng-include src="'static/dashboard/server-menu.html'"></div>
       </th>
-    </tr>
-    <tr>
-      <td colspan=2 class="status">Status</td>
-
-      <td colspan=2 ng-switch="server.state" >
-
-      <span ng-switch-when="Master" class="label label-primary">Master<label
-              ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-          <span ng-switch-when="Failed" class="label label-danger">Failed<label
-                  ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-          <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-          <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
-                  ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-          <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
-                  ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-          <span ng-switch-default class="label label-default">{{server.state}}
-              <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-      </td>
-
       </tr><tr>
-        <td colspan=2 class="rowicon">Version</td>
-        <td colspan=2>{{server.variables.VERSION}}</td>
-        </tr><tr>
-          <td colspan=2 class="rowicon">Server Id</td>
-          <td colspan=2 >{{server.variables.SERVER_ID}}</td>
-        </tr><tr>
-            <td colspan=2 >Fail Cnt</td>
-            <td colspan=2 >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
-        </tr><tr>
-
-    <td colspan=4 style="padding: 0px;">
-    <Table class="table table-condensed fixed" style="border: 1px"><tr>
-      <th class="tabicon">Prf Ign</th>
-      <th class="tabicon">IO Thr</th>
-      <th class="tabicon">SQL Thr</th>
-      <th class="tabicon">Ro Sts</th>
-      <th class="tabicon">Evt Sch</th>
-      <th class="tabicon">Mst Syn</th>
-      <th class="tabicon">Rep Syn</th>
+      <td colspan=4 style="padding: 0px;">
+        <Table class="table fixed" style="border: 1px">
+        <tr>
+          <th class="tabicon">Status</th>
+          <th class="tabicon">Prefered/Ignored</th>
+          <th class="tabicon">Read Only</th>
+          <th class="tabicon">Event Scheduler</th>
+        </tr>
+        <tr>
+          <td ng-switch="server.state">
+            <span ng-switch-when="Master" class="label label-primary">Master<label
+                    ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                <span ng-switch-when="Failed" class="label label-danger">Failed<label
+                        ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label
+                        ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                <span ng-switch-when="StandAlone" class="label label-info">Standalone<label
+                        ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                <span ng-switch-default class="label label-default">{{server.state}}
+                    <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+          </td>
+        <td align="center" class="tabicon"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i
+                ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
+        <td align="center" class="tabicon"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i
+                ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        <td align="center" class="tabicon"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i
+                ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
+        </tr>
+        </table>
+    </td>
     </tr><tr>
-    <td class="tabicon"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i
-            ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
-    <td class="tabicon"><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'"
+      <td colspan=2 class="rowicon">Version</td>
+      <td colspan=2>{{server.variables.VERSION}}</td>
+    </tr><tr>
+        <td colspan=2 class="rowicon">Server Id</td>
+        <td colspan=2 >{{server.variables.SERVER_ID}}</td>
+    </tr><tr>
+          <td colspan=2 >Fail Cnt</td>
+          <td colspan=2 >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
+    </tr><tr>
+    <td colspan=4 style="padding: 0px;">
+    <Table class="table table-condensed fixed" style="border: 1px">
+    <tr>
+      <th class="tabicon">IO Thread</th>
+      <th class="tabicon">SQL Thread</th>
+      <th class="tabicon">Master Sync</th>
+      <th class="tabicon">Slave Sync</th>
+    </tr><tr>
+
+    <td align="center" class="tabicon"><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'"
                          class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.replications[0].slaveIoRunning.String!='Yes'"
             class="fa fa-1x fa-times-circle text-danger"></i></td>
-    <td class="tabicon"><i ng-if="server.replications[0].slaveSqlRunning.String=='Yes'"
+    <td align="center" class="tabicon"><i ng-if="server.replications[0].slaveSqlRunning.String=='Yes'"
                          class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.replications[0].slaveSqlRunning.String!='Yes'"
             class="fa fa-1x fa-times-circle text-danger"></i></td>
-    <td class="tabicon"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i
-            ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
-    <td class="tabicon"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i
-            ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
-    <td class="tabicon"><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
+
+    <td align="center" class="tabicon"><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.semiSyncMasterStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
-    <td class="tabicon"><i ng-if="server.semiSyncSlaveStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
+    <td align="center" class="tabicon"><i ng-if="server.semiSyncSlaveStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.semiSyncSlaveStatus==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
       </tr>
 
