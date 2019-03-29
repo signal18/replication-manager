@@ -44,6 +44,7 @@ func (cluster *Cluster) GetPersitentState() error {
 	}
 	cluster.Crashes = clsave.Crashes
 	cluster.sme.SetSla(clsave.SLA)
+
 	return nil
 }
 

@@ -50,6 +50,7 @@ type Cluster struct {
 	IsLostMajority       bool                 `json:"isLostMajority"`
 	IsDown               bool                 `json:"isDown"`
 	IsProvisioned        bool                 `json:"isProvisioned"`
+	IsFailable           bool                 `json:"isFailable"`
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
@@ -294,6 +295,7 @@ func (cluster *Cluster) Run() {
 				}
 			}
 			cluster.TopologyDiscover()
+			cluster.IsFailable = cluster.GetStatus()
 			if cluster.runOnceAfterTopology {
 				if cluster.GetMaster() != nil {
 					cluster.initProxies()
