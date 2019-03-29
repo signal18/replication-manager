@@ -1,3 +1,4 @@
+
  <div layout="row" flex>
 <md-content  class="md-padding">
 
@@ -52,7 +53,8 @@
                          <td class="process">{{ table.tableRows }}</td>
                          <td class="process">{{ table.dataLength }}</td>
                          <td class="process">{{ table.indexLength }}</td>
-                         <td class="process">{{ selectedCluster.dbTableSize }}</td>
+                         <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
+                           thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" /> </td>
 
                       </tr>
                    <table>

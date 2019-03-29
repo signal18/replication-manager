@@ -563,7 +563,9 @@ app.controller('DashboardController',
             $scope.openedAt = "";
         });
 
-
+        $scope.getTablePct  = function (table,index) {
+          return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
+        };
         $scope.start();
 
     });

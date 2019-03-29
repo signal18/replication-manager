@@ -1,4 +1,4 @@
-var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ngStorage'])
+var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial', 'ngRoute', 'ngStorage','angularjs-gauge'])
     .config(function($routeProvider) {
         routeProvider = $routeProvider;
         $routeProvider
