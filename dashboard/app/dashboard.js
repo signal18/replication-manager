@@ -284,6 +284,9 @@ app.controller('DashboardController',
         $scope.dbstartslave = function (server) {
             if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
         };
+        $scope.dbstopslave = function (server) {
+            if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop-slave');
+        };
         $scope.dbresetmaster = function (server) {
             if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
         };

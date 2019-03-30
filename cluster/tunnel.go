@@ -10,102 +10,17 @@
 package cluster
 
 import (
-	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
-	"sync"
+	"strconv"
 
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/misc"
 	"golang.org/x/crypto/ssh"
 )
 
-type tunnelSession struct {
-	client     *ssh.Client
-	listenAddr string
-	remoteAddr string
-}
-
-func (cluster *Cluster) loginTunnel(cfg *config.Config) (*ssh.Client, error) {
-	var methods []ssh.AuthMethod
-
-	/*	if cfg.KeyPath != "" {
-		key, err := ioutil.ReadFile(cfg.KeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read private key: %v", err)
-		}
-
-
-		signer, err := ssh.ParsePrivateKey(key)
-		if err != nil {
-			log.Fatalf("unable to parse private key: %v", err)
-		}
-		methods = append(methods, ssh.PublicKeys(signer))
-	} */
-	pwd, user := misc.SplitPair(cfg.TunnelCredential)
-	if pwd == "" {
-		return nil, fmt.Errorf("empty private key and password")
-	}
-	if pwd != "" {
-		methods = append(methods, ssh.Password(pwd))
-	}
-
-	sshconfig := &ssh.ClientConfig{
-		User: user,
-		Auth: methods,
-	}
-
-	return ssh.Dial("tcp", cfg.TunnelHost, sshconfig)
-}
-
-func (cluster *Cluster) newTunnelSession(listen, remote string, client *ssh.Client) *tunnelSession {
-	return &tunnelSession{
-		client:     client,
-		listenAddr: listen,
-		remoteAddr: remote,
-	}
-}
-
-func (s *tunnelSession) handleTunnelConn(conn net.Conn) {
-	log.Printf("accept %s", conn.RemoteAddr())
-	remote, err := s.client.Dial("tcp", s.remoteAddr)
-	if err != nil {
-		log.Printf("dial %s error", s.remoteAddr)
-		return
-	}
-	log.Printf("%s -> %s connected.", conn.RemoteAddr(), s.remoteAddr)
-	wait := new(sync.WaitGroup)
-	wait.Add(2)
-	go func() {
-		io.Copy(remote, conn)
-		remote.Close()
-		wait.Done()
-	}()
-	go func() {
-		io.Copy(conn, remote)
-		conn.Close()
-		wait.Done()
-	}()
-	wait.Wait()
-	log.Printf("%s -> %s closed", conn.RemoteAddr(), s.remoteAddr)
-}
-
-func (s *tunnelSession) Run() error {
-	l, err := net.Listen("tcp", s.listenAddr)
-	if err != nil {
-		return err
-	}
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go s.handleTunnelConn(conn)
-	}
-}
-
-func (cluster *Cluster) sshTunnelGetLocalPort() int {
+func (server *ServerMonitor) GetTunnelLocalPort() int {
 	var port int
 	for {
 		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
@@ -115,7 +30,7 @@ func (cluster *Cluster) sshTunnelGetLocalPort() int {
 
 		listen, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can't get tunnel port %s", err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Can't get tunnel port %s", err)
 			continue
 		}
 
@@ -125,4 +40,103 @@ func (cluster *Cluster) sshTunnelGetLocalPort() int {
 	}
 
 	return port
+}
+
+// Get private key for ssh authentication
+func (server *ServerMonitor) parsePrivateKey(keyPath string) (ssh.Signer, error) {
+	buff, _ := ioutil.ReadFile(keyPath)
+	return ssh.ParsePrivateKey(buff)
+}
+
+func (server *ServerMonitor) makeSshConfig(user, password string) (*ssh.ClientConfig, error) {
+
+	key, err := server.parsePrivateKey(server.ClusterGroup.Conf.TunnelKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	config := ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(key),
+			ssh.Password(password),
+		},
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
+		},
+	}
+
+	return &config, nil
+}
+
+// Handle local client connections and tunnel data to the remote serverq
+// Will use io.Copy - http://golang.org/pkg/io/#Copy
+func (server *ServerMonitor) handleTunnelClient(client net.Conn, remote net.Conn) {
+	defer client.Close()
+	chDone := make(chan bool)
+
+	// Start remote -> local data transfer
+	go func() {
+		_, err := io.Copy(client, remote)
+		if err != nil {
+			log.Println("error while copy remote->local:", err)
+		}
+		chDone <- true
+	}()
+
+	// Start local -> remote data transfer
+	go func() {
+		_, err := io.Copy(remote, client)
+		if err != nil {
+			log.Println(err)
+		}
+		chDone <- true
+	}()
+
+	<-chDone
+}
+
+func (server *ServerMonitor) Tunnel() {
+	// Connection settings
+	sshAddr := server.ClusterGroup.Conf.TunnelHost
+	server.TunnelPort = strconv.Itoa(server.GetTunnelLocalPort())
+	localAddr := "127.0.0.1:" + server.TunnelPort
+	remoteAddr := server.Host + ":" + server.Port
+	server.ClusterGroup.LogPrintf(LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
+	// Build SSH client configuration
+	user, pwd := misc.SplitPair(server.ClusterGroup.Conf.TunnelCredential)
+	cfg, err := server.makeSshConfig(user, pwd)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Establish connection with SSH server
+	conn, err := ssh.Dial("tcp", sshAddr, cfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer conn.Close()
+
+	// Establish connection with remote server
+	remote, err := conn.Dial("tcp", remoteAddr)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Start local server to forward traffic to remote connection
+	local, err := net.Listen("tcp", localAddr)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer local.Close()
+
+	// Handle incoming connections
+	for {
+		client, err := local.Accept()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		server.handleTunnelClient(client, remote)
+	}
 }

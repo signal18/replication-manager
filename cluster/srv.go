@@ -167,6 +167,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
+
+	if cluster.Conf.TunnelHost != "" {
+		go server.Tunnel()
+	}
+
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 	server.TestConfig = conf

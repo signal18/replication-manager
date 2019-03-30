@@ -163,6 +163,11 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerStartSlave)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop-slave", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStopSlave)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-event", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
@@ -350,6 +355,25 @@ func handlerMuxServerStartSlave(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			node.StartSlave()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func handlerMuxServerStopSlave(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.StopSlave()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

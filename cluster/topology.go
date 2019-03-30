@@ -12,7 +12,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 
 	"github.com/go-sql-driver/mysql"
@@ -49,28 +48,12 @@ func (cluster *Cluster) newServerList() error {
 	cluster.Lock()
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 
-	if cluster.Conf.TunnelHost != "" {
-		cluster.tunnel, err = cluster.loginTunnel(&cluster.Conf)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Failed to open tunnel: %s", err)
-		}
-	}
 	for k, url := range cluster.hostList {
-
 		cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
-
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 		}
-		if cluster.Conf.TunnelHost != "" {
-			cluster.Servers[k].TunnelPort = strconv.Itoa(cluster.sshTunnelGetLocalPort())
-			sess := cluster.newTunnelSession(":"+cluster.Servers[k].TunnelPort, cluster.Servers[k].Host+":"+cluster.Servers[k].Port, cluster.tunnel)
-			err := sess.Run()
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Tunnel run %s error:%s", cluster.Servers[k].TunnelPort, err)
-			}
-			cluster.Servers[k].SetCredential("127.0.0.1:"+cluster.Servers[k].TunnelPort, cluster.dbUser, cluster.dbPass)
-		}
+
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.Servers[k].URL)
 		}

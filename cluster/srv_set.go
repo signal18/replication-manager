@@ -77,7 +77,10 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 	mydsn := func() string {
 		dsn := server.User + ":" + server.Pass + "@"
-		if server.Host != "" {
+		if server.ClusterGroup.Conf.TunnelHost != "" {
+			dsn += "tcp(127.0.0.1:" + server.TunnelPort + ")/" + params
+		} else if server.Host != "" {
+			//don't use IP as it can change under orchestration
 			//	if server.IP != "" {
 			//		dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
 			//	} else {
