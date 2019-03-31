@@ -11,6 +11,8 @@ package cluster
 
 import (
 	"errors"
+	"sort"
+	"strconv"
 
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
@@ -162,12 +164,49 @@ func (server *ServerMonitor) GetTableFromDict(URI string) (dbhelper.Table, error
 	}
 }
 
-func (server *ServerMonitor) GetVariables() map[string]string {
-	return server.Variables
+func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
+	var variables []dbhelper.Variable
+	for k, v := range server.Variables {
+		var r dbhelper.Variable
+		r.Variable_name = k
+		r.Value = v
+		variables = append(variables, r)
+	}
+	sort.Sort(dbhelper.VariableSorter(variables))
+	return variables
 }
 
-func (server *ServerMonitor) GetStatus() map[string]string {
-	return server.Status
+func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
+	var status []dbhelper.Variable
+	for k, v := range server.Status {
+		var r dbhelper.Variable
+		r.Variable_name = k
+		r.Value = v
+		status = append(status, r)
+	}
+	sort.Sort(dbhelper.VariableSorter(status))
+	return status
+}
+
+func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
+	var delta []dbhelper.Variable
+	for k, v := range server.Status {
+		//server.ClusterGroup.LogPrintf(LvlInfo, "Status %s %s", k, v)
+		i1, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			i2, err2 := strconv.ParseInt(server.PrevStatus[k], 10, 64)
+			//	server.ClusterGroup.LogPrintf(LvlInfo, "Status now %s %d", k, v)
+			if err2 == nil && i2-i1 != 0 {
+				//			server.ClusterGroup.LogPrintf(LvlInfo, "Status prev %s %d", k, v)
+				var r dbhelper.Variable
+				r.Variable_name = k
+				r.Value = strconv.FormatInt(i1-i2, 10)
+				delta = append(delta, r)
+			}
+		}
+
+	}
+	return delta
 }
 
 func (server *ServerMonitor) GetErrorLog() httplog.HttpLog {
@@ -185,8 +224,17 @@ func (server *ServerMonitor) GetVTables() map[string]dbhelper.Table {
 	return server.DictTables
 }
 
-func (server *ServerMonitor) GetInnoDBStatus() map[string]string {
-	return server.EngineInnoDB
+func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {
+	var status []dbhelper.Variable
+	for k, v := range server.EngineInnoDB {
+		var r dbhelper.Variable
+		r.Variable_name = k
+		r.Value = v
+		status = append(status, r)
+	}
+	sort.Sort(dbhelper.VariableSorter(status))
+	return status
+
 }
 
 func (server *ServerMonitor) GetTableDefinition(schema string, table string) (string, error) {

@@ -20,7 +20,18 @@
                          <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
               </p>
               </md-card-content>
-                   <table  class="slowlog" >
+                   <table border=1 class="slowlog" >
+                     <col width="10%"/>
+                     <col width="34%"/>
+                     <col width="17%"/>
+                     <col width="6%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="6%"/>
+                     <col width="6%"/>
+                     <col width="6%"/>
+
                       <tr>
                          <th rowspan=2>At</th>
                          <th rowspan=2>Query</th>
@@ -29,12 +40,13 @@
                          <th rowspan=2>Lock</th>
                          <th rowspan=2>Cache</th>
                          <th rowspan=2>Thread</th>
-                         <th colspan=3>Rows</th>
+                         <th align="center" colspan=3>Rows</th>
                       </tr>
                       <tr>
-                         <th>Examined</th>
-                         <th>Send</th>
-                         <th>Affected</th>
+
+                         <th align="center">Examined</th>
+                         <th align="center">Send</th>
+                         <th align="center">Affected</th>
                       </tr>
                       <tr ng-repeat="logline in server.slowLog.Buffer" ng-if="logline.timestamp">
                          <td class="stamp">{{ logline.timestamp }}</td>

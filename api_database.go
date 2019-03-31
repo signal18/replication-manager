@@ -48,8 +48,13 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status-delta", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerStatusDelta)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
@@ -70,7 +75,7 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerSchemas)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/innodb-status", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status-innodb", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerInnoDBStatus)),
 	))
@@ -82,7 +87,7 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerMasterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service-opensvc", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxGetDatabaseServiceConfig)),
 	))
@@ -702,6 +707,33 @@ func handlerMuxServerStatus(w http.ResponseWriter, r *http.Request) {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetStatus()
+			err := e.Encode(l)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerStatusDelta(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetStatusDelta()
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)

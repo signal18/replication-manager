@@ -243,6 +243,18 @@
                 <md-tab ng-if="selectedServer" ng-click="onTabClicked('Tables')" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
                     <div ng-include src="'static/tables.html'"></div>
                 </md-tab>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Status')" md-select-id="Status" md-on-select="onTabSelected" label="Status">
+                    <div ng-include src="'static/status.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('StatusInnoDB')" md-select-id="StatusInnoDB" md-on-select="onTabSelected" label="Status InnoDB">
+                    <div ng-include src="'static/statusinnodb.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Variables')" md-select-id="Variables" md-on-select="onTabSelected" label="Variables">
+                    <div ng-include src="'static/variables.html'"></div>
+                </md-tab>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('ServiceOpenSVC')" md-select-id="ServiceOpenSVC" md-on-select="onTabSelected" label="Service OpenSVC">
+                    <div ng-include src="'static/serviceopensvc.html'"></div>
+                </md-tab>
                 <md-tab md-select-id="Graphs" ng-click="onTabClicked('Graphs')"  md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics">
                     <div ng-include src="'static/graph.html'"></div>
                 </md-tab>

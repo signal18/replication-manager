@@ -38,6 +38,21 @@ app.factory('Tables', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/tables', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('Status', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/status-delta', {clusterName: '@clusters',serverName: '@server'});
+});
+
+app.factory('Variables', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/variables', {clusterName: '@clusters',serverName: '@server'});
+});
+
+app.factory('StatusInnoDB', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/status-innodb', {clusterName: '@clusters',serverName: '@server'});
+});
+
+app.factory('ServiceOpenSVC', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/service-opensvc', {clusterName: '@clusters',serverName: '@server'});
+});
 
 app.factory('Alerts', function ($resource) {
     return $resource(

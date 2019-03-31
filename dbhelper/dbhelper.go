@@ -140,6 +140,17 @@ type MySQLServer struct {
 	Owner       string `db:"Owner" json:"owner"`
 }
 
+type Variable struct {
+	Variable_name string `json:"variableName"`
+	Value         string `json:"value"`
+}
+
+type VariableSorter []Variable
+
+func (a VariableSorter) Len() int           { return len(a) }
+func (a VariableSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a VariableSorter) Less(i, j int) bool { return a[i].Variable_name < a[j].Variable_name }
+
 func MySQLConnect(user string, password string, address string, parameters ...string) (*sqlx.DB, error) {
 	dsn := user + ":" + password + "@" + address + "/"
 	if len(parameters) > 0 {
@@ -787,10 +798,7 @@ func GetVariableSource(db *sqlx.DB) string {
 }
 
 func GetStatus(db *sqlx.DB) (map[string]string, error) {
-	type Variable struct {
-		Variable_name string
-		Value         string
-	}
+
 	source := GetVariableSource(db)
 	vars := make(map[string]string)
 	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status")
@@ -886,10 +894,7 @@ func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 }
 
 func GetVariables(db *sqlx.DB) (map[string]string, error) {
-	type Variable struct {
-		Variable_name string
-		Value         string
-	}
+
 	source := GetVariableSource(db)
 	vars := make(map[string]string)
 	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables")

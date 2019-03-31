@@ -108,6 +108,7 @@ type ServerMonitor struct {
 	MasterStatus                dbhelper.MasterStatus     `json:"masterStatus"`
 	ReplicationSourceName       string                    `json:"replicationSourceName"`
 	DBVersion                   *dbhelper.MySQLVersion    `json:"dbVersion"`
+	Version                     int                       `json:"-"`
 	QPS                         int64                     `json:"qps"`
 	ReplicationHealth           string                    `json:"replicationHealth"`
 	TestConfig                  string                    `json:"testConfig"`
@@ -118,16 +119,15 @@ type ServerMonitor struct {
 	LongQueryTimeSaved          string                    `json:"longQueryTimeSaved"`
 	SlowQueryCapture            bool                      `json:"slowQueryCapture"`
 	Status                      map[string]string         `json:"-"`
+	PrevStatus                  map[string]string         `json:"-"`
 	Queries                     map[string]string         `json:"-"` //PFS queries
 	DictTables                  map[string]dbhelper.Table `json:"-"`
 	Tables                      []dbhelper.Table          `json:"-"`
 	Users                       map[string]dbhelper.Grant `json:"-"`
 	ErrorLogTailer              *tail.Tail                `json:"-"`
 	SlowLogTailer               *tail.Tail                `json:"-"`
-	PrevStatus                  map[string]string         `json:"-"`
-	PrevMonitorTime             int64                     `json:"-"`
 	MonitorTime                 int64                     `json:"-"`
-	Version                     int                       `json:"-"`
+	PrevMonitorTime             int64                     `json:"-"`
 	maxConn                     string                    `json:"maxConn"` // used to back max connection for failover
 }
 
@@ -301,7 +301,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.State != stateSuspect {
 				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 				server.ClusterGroup.backendStateChangeProxies()
-				server.SendAlert()
+				go server.SendAlert()
 				if server.State == stateSlaveErr {
 					if server.ClusterGroup.Conf.ReplicationErrorScript != "" {
 						server.ClusterGroup.LogPrintf("INFO", "Calling replication error script")
@@ -380,7 +380,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
-			server.SendAlert()
+			go server.SendAlert()
 			if server.ClusterGroup.Conf.Autorejoin && server.ClusterGroup.IsActive() {
 				server.RejoinMaster()
 			} else {
@@ -577,12 +577,14 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogFile = server.MasterStatus.File
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 	}
-	if server.ClusterGroup.Conf.GraphiteEmbedded {
+	if server.ClusterGroup.Conf.MonitorInnoDBStatus {
 		// SHOW ENGINE INNODB STATUS
 		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("WARNING", "Could not get engine")
 		}
+	}
+	if server.ClusterGroup.Conf.MonitorPFS {
 		// GET PFS query digest
 		server.Queries, err = dbhelper.GetQueries(server.Conn)
 		if err != nil {

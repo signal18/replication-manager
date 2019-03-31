@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.selectedServer = undefined;
@@ -130,20 +130,54 @@ app.controller('DashboardController',
              console.log($scope.selectedTab);
               if ($scope.selectedServer){
                 if ($scope.selectedTab=='Processlist') {
-                Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
-
-                    $scope.processlist = data;
-                    $scope.reserror = false;
+                  Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.processlist = data;
+                  $scope.reserror = false;
 
                 }, function () {
                     $scope.reserror = true;
                 });
                 }
                 if ( $scope.selectedTab=='Tables') {
-                Tables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  Tables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.tables = data;
+                  $scope.reserror = false;
 
-                    $scope.tables = data;
-                    $scope.reserror = false;
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                if ( $scope.selectedTab=='Status') {
+                  Status.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.status = data;
+                  $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                if ( $scope.selectedTab=='Variables') {
+                  Variables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.variables = data;
+                  $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                if ( $scope.selectedTab=='StatusInnoDB') {
+                  StatusInnoDB.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.statusinnodb = data;
+                  $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+                if ( $scope.selectedTab=='ServiceOpenSVC') {
+                  ServiceOpenSVC.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.serviceopensvc = data;
+                  $scope.reserror = false;
 
                 }, function () {
                     $scope.reserror = true;
