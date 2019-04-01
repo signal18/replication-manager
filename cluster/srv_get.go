@@ -11,6 +11,8 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"sort"
 	"strconv"
 
@@ -215,6 +217,40 @@ func (server *ServerMonitor) GetErrorLog() httplog.HttpLog {
 
 func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
 	return server.SlowLog
+}
+
+func (server *ServerMonitor) GetSlowLogTable() {
+
+	f, err := os.OpenFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
+	}
+	defer f.Close()
+
+	slowqueries := []dbhelper.LogSlow{}
+	err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,rows_affected FROM  mysql.slow_log")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slow queries from table %s", err)
+	}
+	for _, s := range slowqueries {
+
+		fmt.Fprintf(f, "# User@Host: %s\n# Thread_id: %d  Schema: %s  QC_hit: No\n# Query_time: %s  Lock_time: %s  Rows_sent: %d  Rows_examined: %d\n# Rows_affected: %d\nSET timestamp=%d;\n%s;\n",
+			s.User_host.String,
+			s.Thread_id,
+			s.Db.String,
+			s.Query_time,
+			s.Lock_time,
+			s.Rows_sent,
+			s.Rows_examined,
+			s.Rows_affected,
+			s.Start_time,
+			s.Sql_text.String,
+		)
+	}
+	_, err = server.Conn.Exec("TRUNCATE mysql.slow_log")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
+	}
 }
 
 func (server *ServerMonitor) GetTables() []dbhelper.Table {

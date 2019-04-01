@@ -6,6 +6,9 @@
 
 
          <md-card ng-if="server.id==selectedServer">
+            <md-button  class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquerytable(selectedServer)">
+              <md-icon ng-if="server.variables.LOG_OUTPUT=='TABLE'" md-menu-origin class="fa fa-table"></md-icon><md-icon ng-if="server.variables.LOG_OUTPUT=='FILE'" md-menu-origin class="fa fa-file"></md-icon> Toogle capture mode TABLE/FILE
+            </md-button>
 
              <md-card-content>
                <p  ng-switch="server.state" class="sectionheader">

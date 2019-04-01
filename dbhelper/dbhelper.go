@@ -64,19 +64,19 @@ type Processlist struct {
 }
 
 type LogSlow struct {
-	Start_time     sql.NullInt64
-	User_host      sql.NullString
-	Query_time     sql.NullFloat64
-	Lock_time      sql.NullFloat64
-	Rows_sent      int
-	Rows_examined  int
-	Db             sql.NullString
-	Last_insert_id int
-	Insert_id      int
-	Server_id      int
-	Sql_text       sql.NullString
-	Thread_id      int64
-	Rows_affected  int
+	Start_time     int64          `db:"start_time"`
+	User_host      sql.NullString `db:"user_host"`
+	Query_time     string         `db:"query_time"`
+	Lock_time      string         `db:"lock_time"`
+	Rows_sent      int            `db:"rows_sent"`
+	Rows_examined  int            `db:"rows_examined"`
+	Db             sql.NullString `db:"db"`
+	Last_insert_id int            `db:"last_insert_id"`
+	Insert_id      int            `db:"insert_id"`
+	Server_id      int            `db:"server_id"`
+	Sql_text       sql.NullString `db:"sql_text"`
+	Thread_id      int64          `db:"thread_id"`
+	Rows_affected  int            `db:"rows_affected"`
 }
 
 type SlaveHosts struct {

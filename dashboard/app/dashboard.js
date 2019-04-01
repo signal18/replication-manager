@@ -312,6 +312,9 @@ app.controller('DashboardController',
         $scope.dbtoogleslowquerycapture = function (server) {
             if (confirm("Confirm toogle slow query capture server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
         };
+        $scope.dbtoogleslowquerytable = function (server) {
+            if (confirm("Confirm toogle slow query mode between TABLE and FILE server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
+        };
         $scope.dbtooglereadonly = function (server) {
             if (confirm("Confirm toogle read only on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
         };

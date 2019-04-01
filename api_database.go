@@ -153,6 +153,11 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQueryCapture)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQueryTable)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerSwitchReadOnly)),
@@ -416,6 +421,24 @@ func handlerMuxSwitchSlowQueryCapture(w http.ResponseWriter, r *http.Request) {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			node.SwitchSlowQueryCapture()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func handlerMuxSwitchSlowQueryTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.SwitchSlowQueryCaptureMode()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
