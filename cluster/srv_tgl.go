@@ -41,6 +41,14 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 	}
 }
 
+func (server *ServerMonitor) SwitchSlowQueryCaptureMode() {
+	if server.Variables["LOG_OUTPUT"] == "FILE" {
+		dbhelper.SetQueryCaptureMode(server.Conn, "TABLE")
+	} else {
+		dbhelper.SetQueryCaptureMode(server.Conn, "FILE")
+	}
+}
+
 func (server *ServerMonitor) SwitchReadOnly() {
 	if server.IsReadOnly() {
 		server.SetReadWrite()

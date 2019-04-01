@@ -113,7 +113,8 @@ func (server *ServerMonitor) SendAlert() error {
 		a := alert.Alert{
 			From:        server.ClusterGroup.Conf.MailFrom,
 			To:          server.ClusterGroup.Conf.MailTo,
-			Type:        server.State,
+			State:       server.State,
+			PrevState:   server.PrevState,
 			Origin:      server.URL,
 			Destination: server.ClusterGroup.Conf.MailSMTPAddr,
 			User:        server.ClusterGroup.Conf.MailSMTPUser,

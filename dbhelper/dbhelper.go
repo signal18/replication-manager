@@ -63,6 +63,22 @@ type Processlist struct {
 	Info    sql.NullString  `json:"info"`
 }
 
+type LogSlow struct {
+	Start_time     sql.NullInt64
+	User_host      sql.NullString
+	Query_time     sql.NullFloat64
+	Lock_time      sql.NullFloat64
+	Rows_sent      int
+	Rows_examined  int
+	Db             sql.NullString
+	Last_insert_id int
+	Insert_id      int
+	Server_id      int
+	Sql_text       sql.NullString
+	Thread_id      int64
+	Rows_affected  int
+}
+
 type SlaveHosts struct {
 	Server_id uint64 `json:"serverId"`
 	Host      string `json:"host"`
@@ -1273,6 +1289,16 @@ func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
 		_, err := db.Exec("SET GLOBAL super_read_only=0")
 		return err
 	}
+}
+
+func SetQueryCaptureMode(db *sqlx.DB, mode string) error {
+	var err error
+	if mode == "TABLE" || mode == "FILE" {
+		_, err = db.Exec("SET GLOBAL log_output='" + mode + "'")
+	} else {
+		err = errors.New("Unvalid mode")
+	}
+	return err
 }
 
 func CheckLongRunningWrites(db *sqlx.DB, thresh int) int {

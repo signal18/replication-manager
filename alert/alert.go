@@ -22,7 +22,8 @@ import (
 type Alert struct {
 	From        string
 	To          string
-	Type        string
+	State       string
+	PrevState   string
 	Origin      string
 	Destination string
 	User        string
@@ -36,7 +37,7 @@ func (a *Alert) Email() error {
 	subj := fmt.Sprintf("Repman alert - State change detected on host %s", a.Origin)
 	e.Subject = subj
 	text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
-New server state is %s.`, a.Origin, a.Type)
+New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
 	e.Text = []byte(text)
 	var err error
 	if a.User == "" {

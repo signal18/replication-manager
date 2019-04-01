@@ -821,3 +821,36 @@ func (server *ServerMonitor) SkipReplicationEvent() {
 	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 	server.StartSlave()
 }
+
+func (server *ServerMonitor) WriteSlowLogTable() {
+
+	f, err := os.OpenFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
+	}
+	defer f.Close()
+
+	slowqueries := []dbhelper.LogSlow{}
+	err = server.Conn.Select(&slowqueries, "SELECT * FROM  mysql.slow_log")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slow queries from table %s", err)
+	}
+	for _, s := range slowqueries {
+
+		fmt.Fprintf(f, "# User@Host: %s\n# Thread_id: %d  Schema:   QC_hit: No\n# Query_time: %f  Lock_time: %f  Rows_sent: %d  Rows_examined: %d\n# Rows_affected: %d\nSET timestamp=%d;\n%s;\n",
+			s.User_host.String,
+			s.Thread_id,
+			s.Query_time.Float64,
+			s.Lock_time.Float64,
+			s.Rows_sent,
+			s.Rows_examined,
+			s.Rows_affected,
+			s.Start_time.Int64,
+			s.Sql_text.String,
+		)
+	}
+	_, err = server.Conn.Exec("TRUNCATE mysql.slow_log")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
+	}
+}
