@@ -1293,6 +1293,7 @@ func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
 
 func SetQueryCaptureMode(db *sqlx.DB, mode string) error {
 	var err error
+
 	if mode == "TABLE" || mode == "FILE" {
 		_, err = db.Exec("SET GLOBAL log_output='" + mode + "'")
 	} else {

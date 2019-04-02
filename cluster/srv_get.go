@@ -247,6 +247,10 @@ func (server *ServerMonitor) GetSlowLogTable() {
 			s.Sql_text.String,
 		)
 	}
+	_, err = server.Conn.Exec("set sql_log_bin=0")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
+	}
 	_, err = server.Conn.Exec("TRUNCATE mysql.slow_log")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
