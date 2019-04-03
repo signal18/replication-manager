@@ -15,6 +15,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/httplog"
@@ -244,7 +245,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 			s.Rows_examined,
 			s.Rows_affected,
 			s.Start_time,
-			s.Sql_text.String,
+			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
 		)
 	}
 	_, err = server.Conn.Exec("set sql_log_bin=0")
