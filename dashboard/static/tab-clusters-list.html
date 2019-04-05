@@ -21,7 +21,7 @@
      <tr><td >Servers</td><td style=" word-wrap:break-word;overflow: hidden;" >{{cluster.dbServers}}</td>    </tr>
      <tr><td>Is Down</td><td><i ng-if="!cluster.isDown && cluster.isFailable"  class="fas fa-lightbulb" style="color:green"/><i ng-if="!cluster.isDown && !cluster.isFailable"  class="fas fa-lightbulb" style="color:orange"/><i  ng-if="cluster.isDown"  class="fas fa-lightbulb" style="color:red"/></td>    </tr>
      <tr><td>Is Provisioned</td><td><i ng-if="!cluster.isProvisioned"  class="fas fa-yin-yang" style="color:green"/><i  ng-if="cluster.isProvisioned"  class="fas fa-yin-yang" style="color:red"/></td>    </tr>
-     <tr><td>Last Failover</td><td>{{cluster.failoverLastTime}}</td>    </tr>
+     <tr><td>SLA</td><td>{{cluster.uptime}}</td>    </tr>
    </table>
 </md-card>
 <!--

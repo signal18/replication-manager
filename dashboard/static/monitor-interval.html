@@ -1,0 +1,42 @@
+<table width="100%" border=0>
+    <tr>
+      <td align="left">
+        <span style="padding: 0px 0px 10px 0px"  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"  alt="Replication Manager"/></span>
+      </td>
+      <td>
+
+          <div class="col-xs-3">
+              <div ng-if="selectedClusterName" class="input-group number-spinner">
+                                  <span class="input-group-btn data-dwn">
+                                      <button class="btn btn-default btn-info" data-dir="dwn"
+                                              ng-click="calculateInterval(-1000)"
+                                              ng-disabled="refreshInterval <= 2000">
+                                          <span class="glyphicon glyphicon-minus"></span></button>
+                                  </span>
+                  <input type="number" class="form-control text-center"
+                         name="refreshInterval"
+                         readonly="readonly"
+                         ng-model="refreshInterval"
+                         ng-change="checkIfAllowedInterval(refreshInterval)">
+                  <span class="input-group-btn data-up">
+                                      <button class="btn btn-default btn-info" data-dir="up"
+                                              ng-click="calculateInterval(1000)"
+                                              ng-disabled="refreshInterval > 600000"><span
+                                              class="glyphicon glyphicon-plus"></span></button>
+                                  </span>
+
+              </div>
+          </div>
+          <div  ng-if="selectedClusterName" class="col-xs-3">
+              <h6>Auto reload every
+              <small>{{refreshInterval/1000}} seconds</small>.</h6></div>
+          </div>
+      </td>
+        <td align="right" >
+            <span style="padding: 0px -0px 0px 0px"   ng-click="toggleRight()">
+          <md-icon  md-menu-origin class="fa fa-2x fa-bars" style="color:#468cc5"></md-icon>
+         </span>
+        </td>
+
+    </tr>
+</table>

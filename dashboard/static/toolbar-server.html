@@ -1,0 +1,16 @@
+<table>
+  <tr>
+    <td width="10%">
+        <div ng-include src="'static/menu-server.html'"></div>
+    </td>
+    <td width="20%">
+      <md-button  ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquerytable(selectedServer)">
+        <md-icon ng-if="server.variables.LOG_OUTPUT=='TABLE'" md-menu-origin class="fa fa-table"></md-icon><md-icon ng-if="server.variables.LOG_OUTPUT=='FILE'" md-menu-origin class="fa fa-file"></md-icon> Capture TABLE/FILE
+      </md-button>
+    </td>
+    <td  width="20%">
+      <form  ng-if="selectedTab=='LogSlow'"><input type="text" ng-model="longQueryTime" ng-value="server.variables.LONG_QUERY_TIME "></input><input type="submit" ng-click="updateLongQueryTime(longQueryTime,server.id)" value="Save" /></form>
+    </td>
+    <td width="70%"></td>
+  </tr>
+</table>

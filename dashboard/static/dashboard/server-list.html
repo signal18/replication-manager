@@ -36,11 +36,11 @@
 
     <!-- Start Menu Actions -->
     <td>
-      <div ng-include src="'static/dashboard/server-menu.html'"></div>
+      <div ng-include src="'static/menu-server.html'"></div>
     </td>
     <!-- End menu actions -->
     <td class="rowicon">
-        <md-button class="md-icon-button">
+        <md-button ng-click="openServer(server.id)" class="md-icon-button">
             <md-tooltip>{{server.dbVersion.major}}.{{server.dbVersion.minor}}</md-tooltip>
             <md-icon md-svg-src="static/img/mariadb.svg" ng-if="server.dbVersion.flavor=='MariaDB'">
             </md-icon>

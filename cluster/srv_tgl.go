@@ -34,10 +34,12 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 	if !server.SlowQueryCapture {
 		server.LongQueryTimeSaved = server.Variables["LONG_QUERY_TIME"]
 		server.SlowQueryCapture = true
-		dbhelper.SetLongQueryTime(server.Conn, "0")
+		server.SetLongQueryTime("0")
+
 	} else {
 		server.SlowQueryCapture = false
-		dbhelper.SetLongQueryTime(server.Conn, server.LongQueryTimeSaved)
+		server.SetLongQueryTime(server.LongQueryTimeSaved)
+
 	}
 }
 

@@ -43,6 +43,14 @@ func (server *ServerMonitor) SetReadOnly() error {
 	return nil
 }
 
+func (server *ServerMonitor) SetLongQueryTime(queryTime string) error {
+	err := dbhelper.SetLongQueryTime(server.Conn, queryTime)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (server *ServerMonitor) SetReadWrite() error {
 	if server.IsReadOnly() {
 		err := dbhelper.SetReadOnly(server.Conn, false)

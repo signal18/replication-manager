@@ -1,0 +1,131 @@
+<div class="hidden">
+    <div class="md-dialog-container" id="myClusterDialog">
+        <md-dialog class="padding20">
+            <h2 class="md-title">Choose a Cluster</h2>
+            <md-select width="100px" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                <md-option ng-selected="{{element == selectedClusterName}}"
+                           ng-repeat="element in settings.clusters" ng-value="element"
+                           selected="{{ element === ctrl.selectedClusterName ? 'selected' : '' }}">
+                                {{element}}</md-option>
+                </md-select>
+            <md-button ng-click="closeClusterDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myNewClusterDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">New Cluster</h2>
+            <form>
+                <input type="text" ng-model="dlgClusterName">
+            </form>
+            <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
+                Cancel
+            </md-button>
+            <md-button ng-click="closeNewClusterDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myNewServerDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">New Server</h2>
+            <form>
+                Host: <input type="text" ng-model="dlgServerName"><BR>
+                Port: <input type="text" ng-model="dlgServerPort">
+                Type:  <md-select ng-model="selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
+<md-option ng-value="monitor" ng-repeat="monitor in monitors">{{ monitor.name }}</md-option>
+</md-select>
+            </form>
+            <md-button ng-click="cancelNewServerDialog()" class="md-primary">
+                Cancel
+            </md-button>
+            <md-button ng-click="closeNewServerDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myClusterCredentialDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">Database Server Credential</h2>
+            <form>
+                User: <input type="text" ng-model="dlgClusterUser"><BR>
+                Password: <input type="password" ng-model="dlgClusterPassword">
+            </form>
+            <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
+                Cancel
+            </md-button>
+            <md-button ng-click="closeClusterCredentialDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myRplCredentialDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">Replication Credential</h2>
+            <form>
+                User: <input type="text" ng-model="dlgRplUser"><BR>
+                Password: <input type="password" ng-model="dlgRplPassword">
+            </form>
+            <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
+                Cancel
+            </md-button>
+            <md-button ng-click="closeRplCredentialDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myClusterDebugDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">JSON</h2>
+            <form>
+              <textarea name="message" rows="30" cols="150">
+                {{selectedCluster}}
+              </textarea>
+            </form>
+            <md-button ng-click="closeDebugClusterDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myServerDebugDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">JSON</h2>
+            <form>
+              <textarea name="message" rows="30" cols="150">
+                {{servers}}
+              </textarea>
+            </form>
+            <md-button ng-click="closeDebugServerDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
+    <div class="md-dialog-container" id="myProcessListDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">JSON</h2>
+            <form>
+              <textarea name="message" rows="30" cols="150">
+                {{selectedCluster}}
+              </textarea>
+            </form>
+            <md-button ng-click="closeProcessListDialog" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>

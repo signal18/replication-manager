@@ -47,44 +47,51 @@ app.controller('DashboardController',
             if ($scope.menuOpened) return;
 
             // get list of clusters
-            if (!$scope.selectedClusterName) {
+            if ($scope.selectedClusterName== undefined) {
+
+
               Clusters.query({}, function (data) {
                 if (data) {
                     $scope.clusters = data;
+                          if ($scope.clusters.length === 1) {
+                            $scope.selectedClusterName = $scope.clusters[0].name;
+                          } else {
+                            $scope.refreshInterval = 20000;
+                        }
+
                   }
+              }, function () {
+                  $scope.reserror = true;
+              });
+
+          }
+
+
+
+
+
+            if ($scope.selectedClusterName) {
+              Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
+
+
+                  $scope.selectedCluster = data;
+                  $scope.reserror = false;
+
               }, function () {
                   $scope.reserror = true;
               });
 
               Monitor.query({}, function (data) {
-                  if (data) {
-
-                          $scope.settings = data;
-                          if (($scope.settings.clusters !== undefined) && ($scope.selectedClusterName== undefined)) {
-                              if ($scope.settings.clusters.length === 1) {
-                                  $scope.selectedClusterName = $scope.settings.clusters[0];
-                              }                           }
-
-                          if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
-                          $scope.agents = data.agents;
-
-                  }
-              }, function () {
-                  $scope.reserror = true;
-              });
-                return
-            }
-            console.log("cluster:" + $scope.selectedClusterName);
-
-            if ($scope.selectedClusterName) {
-                Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
-
-                    $scope.selectedCluster = data;
-                    $scope.reserror = false;
-
-                }, function () {
-                    $scope.reserror = true;
+                      if (data) {
+                              $scope.settings = data;
+                              if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
+                              $scope.agents = data.agents;
+                      }
+                  }, function () {
+                      $scope.reserror = true;
                 });
+
+
 
                 Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
                     if (!$scope.menuOpened) {
@@ -207,6 +214,7 @@ app.controller('DashboardController',
 
 
         function startPromise(){
+
             promise = $interval(function() {
                 callServices()
             }, $scope.refreshInterval);
@@ -412,8 +420,8 @@ app.controller('DashboardController',
         };
 
         $scope.openCluster = function (cluster) {
-
-            $scope.selectedClusterName = cluster;
+          $scope.refreshInterval = 2000;
+          $scope.selectedClusterName = cluster;
         };
 
         $scope.back = function () {
@@ -577,6 +585,10 @@ app.controller('DashboardController',
           $scope.onTabSelected('Processlist');
         };
 
+        $scope.updateLongQueryTime = function (serverName)  {
+            if (confirm("Confirm change Long Query Time" + $scope.longQueryTime + " on server "+serverName)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + serverName+'/actions/set-long-query-time/'+longQueryTime);
+        };
+
         $scope.toggleLeft = buildToggler('left');
         $scope.toggleRight = buildToggler('right');
 
@@ -603,7 +615,7 @@ app.controller('DashboardController',
             $scope.openedAt = "";
         });
 
-        $scope.getTablePct  = function (table,index) {
+              $scope.getTablePct  = function (table,index) {
           return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
         };
         $scope.start();

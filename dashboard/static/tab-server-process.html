@@ -6,7 +6,7 @@
 
   <div  ng-repeat="server in servers">
 
-
+          <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
            <md-card ng-if="server.id==selectedServer">
 
 
