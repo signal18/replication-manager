@@ -109,6 +109,9 @@ func (server *ServerMonitor) SendAlert() error {
 	if server.ClusterGroup.Status != ConstMonitorActif && server.ClusterGroup.IsDiscovered() {
 		return nil
 	}
+	if server.State == server.PrevState {
+		return nil
+	}
 	if server.ClusterGroup.Conf.MailTo != "" {
 		a := alert.Alert{
 			From:        server.ClusterGroup.Conf.MailFrom,
