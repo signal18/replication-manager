@@ -56,7 +56,7 @@ app.controller('DashboardController',
                           if ($scope.clusters.length === 1) {
                             $scope.selectedClusterName = $scope.clusters[0].name;
                           } else {
-                            $scope.refreshInterval = 20000;
+                            $scope.refreshInterval = 2000;
                         }
 
                   }

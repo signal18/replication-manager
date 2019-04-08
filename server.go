@@ -653,6 +653,7 @@ func (repman *ReplicationManager) Run() error {
 		} else {
 			repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(conf.ProvUser)
 		}
+
 		repman.Agents = repman.OpenSVC.GetNodes()
 		if RepMan.Agents == nil {
 			log.Fatalf("Can't connect or agents not registered")

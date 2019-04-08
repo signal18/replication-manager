@@ -380,7 +380,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.State = stateUnconn
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
-			go server.SendAlert()
+			server.SendAlert()
 			if server.ClusterGroup.Conf.Autorejoin && server.ClusterGroup.IsActive() {
 				server.RejoinMaster()
 			} else {

@@ -13,13 +13,6 @@ db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 
 
-[Cluster_Mdbshardproxy_Shard2]
-title = "Shard2"
-db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
-db-servers-prefered-master = "127.0.0.1:3333"
-db-servers-credential = "root:mariadb"
-db-servers-connect-timeout = 1
-replication-credential = "root:mariadb"
 
 
 [Default]
