@@ -1,16 +1,37 @@
-<table>
+<md-toolbar class="transparent" style="background-color:transparent">
+<div class="md-toolbar-tools" >
+    <h2>
+                <span>
+<table border=0 >
   <tr>
-    <td width="10%">
+    <td width="5%">
         <div ng-include src="'static/menu-server.html'"></div>
     </td>
-    <td width="20%">
+    <td width="10%">
+      <md-button  class="md-raised" aria-label="Tabular" ng-click="toogleRefresh()">
+        <md-icon ng-if="menuOpened==false"class="fa fa-stop"></md-icon><md-icon ng-if="menuOpened==true" class="fa fa-play"></md-icon>
+      </md-button>
+    </td>
+    <td width="25%">
       <md-button  ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquerytable(selectedServer)">
         <md-icon ng-if="server.variables.LOG_OUTPUT=='TABLE'" md-menu-origin class="fa fa-table"></md-icon><md-icon ng-if="server.variables.LOG_OUTPUT=='FILE'" md-menu-origin class="fa fa-file"></md-icon> Capture TABLE/FILE
       </md-button>
     </td>
-    <td  width="20%">
-      <form  ng-if="selectedTab=='LogSlow'"><input type="text" ng-model="longQueryTime" ng-value="server.variables.LONG_QUERY_TIME "></input><input type="submit" ng-click="updateLongQueryTime(longQueryTime,server.id)" value="Save" /></form>
+
+    <td  width="50%">
+
+      <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
+        <input type="text"  ng-model="longQueryTime" ng-init="longQueryTime=server.variables.LONG_QUERY_TIME"></input>
+
+        <md-button class="md-raised"  ng-click="updateLongQueryTime(longQueryTime,server.id)"  >
+            <md-icon class="fa fa-save"/>
+          </md-button>
+      </from>
     </td>
-    <td width="70%"></td>
+    <td width="10%"></td>
   </tr>
 </table>
+</span>
+</h2>
+</div>
+</md-toolbar>

@@ -48,6 +48,8 @@ func (server *ServerMonitor) SetLongQueryTime(queryTime string) error {
 	if err != nil {
 		return err
 	}
+	server.SwitchSlowQuery()
+	server.SwitchSlowQuery()
 	return nil
 }
 

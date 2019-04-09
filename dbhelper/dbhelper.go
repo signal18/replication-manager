@@ -696,6 +696,22 @@ func SetBinlogCompress(db *sqlx.DB) error {
 	return nil
 }
 
+func SetSlowQueryLogOn(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL slow_query_log=1")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func SetSlowQueryLogOff(db *sqlx.DB) error {
+	_, err := db.Exec("SET GLOBAL slow_query_log=0")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func ResetAllSlaves(db *sqlx.DB) error {
 	myver, _ := GetDBVersion(db)
 

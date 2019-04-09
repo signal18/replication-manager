@@ -42,6 +42,16 @@ app.controller('DashboardController',
             timeFrame = "10m";
         }
 
+        $scope.toogleRefresh = function()  {
+           if ($scope.menuOpened) {
+             $scope.menuOpened = false;
+             $scope.openedAt = "";
+           } else {
+             $scope.menuOpened = true;
+             $scope.openedAt = new Date().toLocaleString();
+           }
+        };
+
         var callServices = function () {
             if (!AppService.hasAuthHeaders()) return;
             if ($scope.menuOpened) return;
@@ -128,8 +138,8 @@ app.controller('DashboardController',
                 });
 
 
-             console.log($scope.selectedServer);
-             console.log($scope.selectedTab);
+            // console.log($scope.selectedServer);
+            // console.log($scope.selectedTab);
               if ($scope.selectedServer){
                 if ($scope.selectedTab=='Processlist') {
                   Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
@@ -426,6 +436,7 @@ app.controller('DashboardController',
             $scope.selectedClusterName = undefined;
           }
           $scope.menuOpened = false;
+
           $scope.selectedCluster = undefined;
             $mdSidenav('right').close();
         };
@@ -580,8 +591,10 @@ app.controller('DashboardController',
           $scope.onTabSelected('Processlist');
         };
 
-        $scope.updateLongQueryTime = function (serverName)  {
-            if (confirm("Confirm change Long Query Time" + $scope.longQueryTime + " on server "+serverName)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + serverName+'/actions/set-long-query-time/'+longQueryTime);
+        $scope.longQueryTime =  "0"
+
+        $scope.updateLongQueryTime = function (time,name)  {
+            if (confirm("Confirm change Long Query Time" +   time  + " on server "+  name  )) httpGetWithoutResponse(getClusterUrl() + '/servers/' + name +'/actions/set-long-query-time/'+time);
         };
 
         $scope.toggleLeft = buildToggler('left');
@@ -610,9 +623,12 @@ app.controller('DashboardController',
             $scope.openedAt = "";
         });
 
-              $scope.getTablePct  = function (table,index) {
+
+
+        $scope.getTablePct  = function (table,index) {
           return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
         };
+
         $scope.start();
 
     });

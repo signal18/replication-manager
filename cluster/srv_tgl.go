@@ -30,6 +30,14 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 	return nil
 }
 
+func (server *ServerMonitor) SwitchSlowQuery() {
+	if server.Variables["SLOW_QUERY_LOG"] == "ON" {
+		dbhelper.SetSlowQueryLogOff(server.Conn)
+	} else {
+		dbhelper.SetSlowQueryLogOn(server.Conn)
+	}
+}
+
 func (server *ServerMonitor) SwitchSlowQueryCapture() {
 	if !server.SlowQueryCapture {
 		server.LongQueryTimeSaved = server.Variables["LONG_QUERY_TIME"]

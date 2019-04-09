@@ -259,9 +259,9 @@ func (server *ServerMonitor) SlowLogWatcher() {
 				server.SlowLog.Add(log)
 			}
 			log = newlog
-		} else {
-			server.SlowLog.ParseLine(line.Text, log)
 		}
+		server.SlowLog.ParseLine(line.Text, log)
+
 		preline = line.Text
 	}
 

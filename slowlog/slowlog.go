@@ -10,6 +10,7 @@
 package slowlog
 
 import (
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ func NewMessage() *Message {
 // Regular expressions to match important lines in slow log.
 var timeRe = regexp.MustCompile(`Time: (\S+\s{1,2}\S+)`)
 var userRe = regexp.MustCompile(`User@Host: ([^\[]+|\[[^[]+\]).*?@ (\S*) \[(.*)\]`)
+
 var schema = regexp.MustCompile(`Schema: +(.*?) +Last_errno:`)
 var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
 var metricsRe = regexp.MustCompile(`(\w+): (\S+|\z)`)
@@ -61,6 +63,7 @@ var adminRe = regexp.MustCompile(`command: (.+)`)
 var setRe = regexp.MustCompile(`^SET (?:last_insert_id|insert_id|timestamp)`)
 var useRe = regexp.MustCompile(`^(?i)use `)
 
+// var regexp.MustCompile(`\b(User@Host: \S+\[\w+\]+ @ (?:)(\w+)? \[\S*\])|(Id:.+)`)
 func NewSlowLog(sz int) SlowLog {
 	tl := SlowLog{}
 	tl.Len = sz
@@ -88,7 +91,7 @@ func (tl *SlowLog) ParseLine(line string, sl *Message) {
 	}
 
 	if strings.HasPrefix(line, "# Time") {
-
+		log.Printf("match 3 %s", line)
 		m := timeRe.FindStringSubmatch(line)
 		if len(m) < 2 {
 			return
@@ -101,12 +104,14 @@ func (tl *SlowLog) ParseLine(line string, sl *Message) {
 		}
 	} else if strings.HasPrefix(line, "# User") {
 
+		// # User@Host: root[root] @  [127.0.0.1]
 		m := userRe.FindStringSubmatch(line)
+
 		if len(m) < 3 {
 			return
 		}
 		sl.User = m[1]
-		sl.Host = m[2]
+		sl.Host = m[3]
 	} else if strings.HasPrefix(line, "# admin") {
 		tl.parseAdmin(line, sl)
 	} else {
