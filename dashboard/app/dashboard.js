@@ -58,17 +58,12 @@ app.controller('DashboardController',
                           } else {
                             $scope.refreshInterval = 2000;
                         }
-
                   }
               }, function () {
                   $scope.reserror = true;
               });
 
           }
-
-
-
-
 
             if ($scope.selectedClusterName) {
               Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {

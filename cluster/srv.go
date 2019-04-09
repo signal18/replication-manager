@@ -301,7 +301,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.State != stateSuspect {
 				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 				server.ClusterGroup.backendStateChangeProxies()
-				go server.SendAlert()
+				server.SendAlert()
 				if server.State == stateSlaveErr {
 					if server.ClusterGroup.Conf.ReplicationErrorScript != "" {
 						server.ClusterGroup.LogPrintf("INFO", "Calling replication error script")
