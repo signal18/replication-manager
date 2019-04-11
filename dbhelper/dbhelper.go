@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/percona/go-mysql/query"
 )
 
 const debug = false
@@ -180,6 +181,11 @@ func MySQLConnect(user string, password string, address string, parameters ...st
 func SQLiteConnect(path string) (*sqlx.DB, error) {
 	db, err := sqlx.Connect("sqlite3", path+"/arbitrator.db")
 	return db, err
+}
+
+func GetqueryDigest(q string) string {
+	f := query.Fingerprint(q)
+	return f
 }
 
 func GetAddress(host string, port string, socket string) string {

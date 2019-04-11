@@ -8,8 +8,8 @@
         <div ng-include src="'static/menu-server.html'"></div>
     </td>
     <td width="10%">
-      <md-button  class="md-raised" aria-label="Tabular" ng-click="toogleRefresh()">
-        <md-icon ng-if="menuOpened==false"class="fa fa-stop"></md-icon><md-icon ng-if="menuOpened==true" class="fa fa-play"></md-icon>
+      <md-button ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquery(server.id)">
+        <md-icon ng-if="server.variables.SLOW_QUERY_LOG=='ON'"class="fa fa-stop"></md-icon><md-icon ng-if="server.variables.SLOW_QUERY_LOG=='OFF'" class="fa fa-play"></md-icon>
       </md-button>
     </td>
     <td width="25%">
@@ -21,7 +21,7 @@
     <td  width="50%">
 
       <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
-        <input type="text"  ng-model="longQueryTime" ng-init="longQueryTime=server.variables.LONG_QUERY_TIME"></input>
+        <input type="text" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.variables.LONG_QUERY_TIME"></input>
 
         <md-button class="md-raised"  ng-click="updateLongQueryTime(longQueryTime,server.id)"  >
             <md-icon class="fa fa-save"/>

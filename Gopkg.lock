@@ -578,6 +578,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:3a11627f7f2515b12cb6f1804ff4ebfea9a99d8782b43129580ce17c48aa75e0"
+  name = "github.com/percona/go-mysql"
+  packages = ["query"]
+  pruneopts = "UT"
+  revision = "f5cfaf6a5e55b754b7b106f4488e1bc24cb8c2d6"
+
+[[projects]]
+  branch = "master"
   digest = "1:588e2057e78e22a3faad762ed9bb69b4c16f09c0b9949f0e104e7e9f8731a3d4"
   name = "github.com/peterbourgon/g2g"
   packages = ["."]
@@ -887,6 +895,7 @@
     "github.com/micro/go-micro/registry",
     "github.com/mjibson/go-dsp/fft",
     "github.com/nsf/termbox-go",
+    "github.com/percona/go-mysql/query",
     "github.com/peterbourgon/g2g",
     "github.com/pires/go-proxyproto",
     "github.com/satori/go.uuid",
