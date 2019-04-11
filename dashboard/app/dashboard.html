@@ -42,6 +42,9 @@
                 <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries">
                     <div ng-include src="'static/tab-server-slow.html'"></div>
                 </md-tab>
+                <md-tab ng-if="selectedServer" ng-click="onTabClicked('PFSQueries')"  md-select-id="PFSQueries"  md-on-select="onTabSelected" label="PFS Queries">
+                    <div ng-include src="'static/tab-server-pfs-statements.html'"></div>
+                </md-tab>
                 <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogError')" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
                     <div ng-include src="'static/tab-server-errors.html'"></div>
                 </md-tab>

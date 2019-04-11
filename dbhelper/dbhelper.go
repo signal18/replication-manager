@@ -28,6 +28,30 @@ import (
 
 const debug = false
 
+type PFSQuery struct {
+	Digest           string
+	Last_seen        string
+	Plan_full_scan   string
+	Plan_tmp_disk    int64
+	Plan_tmp_mem     int64
+	Exec_count       int64
+	Err_count        int64
+	Warn_count       int64
+	Exec_time_total  string
+	Exec_time_max    sql.NullFloat64
+	Exec_time_avg_ms sql.NullFloat64
+	Rows_sent        int64
+	Rows_sent_avg    int64
+	Rows_scanned     int64
+	Value            string
+}
+
+type PFSQuerySorter []PFSQuery
+
+func (a PFSQuerySorter) Len() int           { return len(a) }
+func (a PFSQuerySorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a PFSQuerySorter) Less(i, j int) bool { return a[i].Value > a[j].Value }
+
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`
@@ -886,15 +910,32 @@ func GetEngineInnoDB(db *sqlx.DB) (map[string]string, error) {
 	return vars, nil
 }
 
-func GetQueries(db *sqlx.DB) (map[string]string, error) {
-	type Variable struct {
-		Digest string
-		Value  string
-	}
-	vars := make(map[string]string)
+func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
+
+	vars := make(map[string]PFSQuery)
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
-	query = "select digest_text as digest, round(sum_timer_wait/1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest where digest_text is not null order by sum_timer_wait desc limit 20"
+	query = `SELECT
+	digest_text as digest,
+
+	LAST_SEEN as last_seen,
+	IF(SUM_NO_GOOD_INDEX_USED > 0 OR SUM_NO_INDEX_USED > 0, '*', '') AS plan_full_scan,
+	SUM_CREATED_TMP_DISK_TABLES as plan_tmp_disk,
+	SUM_CREATED_TMP_TABLES as plan_tmp_mem,
+	COUNT_STAR AS exec_count,
+  SUM_ERRORS AS err_count,
+	SUM_WARNINGS AS warn_count,
+	SEC_TO_TIME(SUM_TIMER_WAIT/1000000000000) AS exec_time_total,
+	(MAX_TIMER_WAIT/1000000000000) AS exec_time_max,
+	(AVG_TIMER_WAIT/1000000000000) AS exec_time_avg,
+	SUM_ROWS_SENT AS rows_sent,
+	ROUND(SUM_ROWS_SENT / COUNT_STAR) AS rows_sent_avg,
+	SUM_ROWS_EXAMINED AS rows_scanned,
+	round(sum_timer_wait/1000000000000, 6) as value
+	FROM performance_schema.events_statements_summary_by_digest
+	WHERE digest_text is not null
+	ORDER BY sum_timer_wait desc
+	LIMIT 50`
 
 	rows, err := db.Queryx(query)
 	defer rows.Close()
@@ -902,12 +943,12 @@ func GetQueries(db *sqlx.DB) (map[string]string, error) {
 		return nil, errors.New("Could not get queries")
 	}
 	for rows.Next() {
-		var v Variable
-		err := rows.Scan(&v.Digest, &v.Value)
+		var v PFSQuery
+		err := rows.Scan(&v.Digest, &v.Last_seen, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
 		if err != nil {
 			return nil, errors.New("Could not get results from status scan")
 		}
-		vars[v.Digest] = v.Value
+		vars[v.Digest] = v
 	}
 	return vars, nil
 }

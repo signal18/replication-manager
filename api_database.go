@@ -63,6 +63,10 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/pfs-statements", negroni.New(
+		negroni.HandlerFunc(validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(handlerMuxServerPFSStatements)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/tables", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerTables)),
@@ -722,6 +726,33 @@ func handlerMuxServerSlowLog(w http.ResponseWriter, r *http.Request) {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetSlowLog()
+			err := e.Encode(l)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func handlerMuxServerPFSStatements(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetPFSStatements()
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)

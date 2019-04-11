@@ -42,6 +42,10 @@ app.factory('Status', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/status-delta', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('PFSStatements', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/pfs-statements', {clusterName: '@clusters',serverName: '@server'});
+});
+
 app.factory('Variables', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/variables', {clusterName: '@clusters',serverName: '@server'});
 });

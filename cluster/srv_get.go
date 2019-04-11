@@ -179,6 +179,15 @@ func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	return variables
 }
 
+func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
+	var rows []dbhelper.PFSQuery
+	for _, v := range server.PFSQueries {
+		rows = append(rows, v)
+	}
+	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	return rows
+}
+
 func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
 	var status []dbhelper.Variable
 	for k, v := range server.Status {

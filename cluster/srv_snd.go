@@ -86,15 +86,15 @@ func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus
 	}
 	graph.SendMetrics(globalinnodbengine)
 
-	var queries = make([]graphite.Metric, len(server.Queries))
+	var queries = make([]graphite.Metric, len(server.PFSQueries))
 	i = 0
-	for k, v := range server.Queries {
-		if isNumeric(v) {
+	for k, v := range server.PFSQueries {
+		if isNumeric(v.Value) {
 			label := replacer.Replace(k)
 			if len(label) > 198 {
 				label = label[0:198]
 			}
-			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", hostname, label), v, time.Now().Unix())
+			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", hostname, label), v.Value, time.Now().Unix())
 		}
 		i++
 	}

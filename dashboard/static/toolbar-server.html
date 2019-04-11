@@ -21,7 +21,7 @@
     <td  width="50%">
 
       <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
-        <input type="text" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.variables.LONG_QUERY_TIME"></input>
+        <input type="text" ng-blur="toogleRefresh()" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.variables.LONG_QUERY_TIME"></input>
 
         <md-button class="md-raised"  ng-click="updateLongQueryTime(longQueryTime,server.id)"  >
             <md-icon class="fa fa-save"/>

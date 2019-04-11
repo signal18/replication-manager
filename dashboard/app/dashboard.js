@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.selectedServer = undefined;
@@ -150,6 +150,17 @@ app.controller('DashboardController',
                     $scope.reserror = true;
                 });
                 }
+
+                if ($scope.selectedTab=='PFSQueries') {
+                  PFSStatements.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.pfsstatements = data;
+                  $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+
                 if ( $scope.selectedTab=='Tables') {
                   Tables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
                   $scope.tables = data;
@@ -328,7 +339,7 @@ app.controller('DashboardController',
         $scope.dbtoogleslowquery = function (server) {
             if (confirm("Confirm toogle slow query : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
         };
-        
+
         $scope.dbtoogleslowquerytable = function (server) {
             if (confirm("Confirm toogle slow query mode between TABLE and FILE server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
         };

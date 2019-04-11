@@ -1,0 +1,81 @@
+<md-content class="md-padding">
+
+
+
+<div ng-repeat="server in servers">
+        <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
+
+         <md-card ng-if="server.id==selectedServer">
+
+             <md-card-content>
+               <p  ng-switch="server.state" class="sectionheader">
+                 <span ng-switch-when="Master" class="label label-primary">Master   {{server.host}}:{{server.port}}<label
+                         ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="Suspect" class="label label-warning">Suspect   {{server.host}}:{{server.port}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                     <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="StandAlone" class="label label-info">Standalone   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-default class="label label-default">{{server.state}}  {{server.host}}:{{server.port}}
+                         <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+              </p>
+              </md-card-content>
+                   <table border=1 class="slowlog" >
+                     <col width="12%"/>
+                     <col width="34%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                    <col width="5%"/>
+                     <col width="5%"/>
+
+                      <tr>
+                         <th rowspan=2>At</th>
+                         <th rowspan=2>Query</th>
+                         <th rowspan=2>Count</th>
+                         <th align="center" colspan=3>Times</th>
+                         <th align="center" colspan=3>Rows</th>
+                         <th align="center" colspan=3>Plans</th>
+                      </tr>
+                      <tr>
+
+                        <th align="center">Total</th>
+                        <th align="center">Max</th>
+                        <th align="center">Avg</th>
+
+
+                         <th align="center">Sent</th>
+                         <th align="center">Avg</th>
+                         <th align="center">Scan</th>
+
+                         <th align="center">Full</th>
+                         <th align="center">Disk</th>
+                         <th align="center">Mem</th>
+                      </tr>
+                      <tr ng-repeat="logline in pfsstatements">
+                         <td class="stamp">{{logline.Last_seen }}</td>
+                         <td class="text">{{ logline.Digest }}</td>
+                         <td class="text">{{ logline.Exec_count }}</td>
+                         <td class="text">{{ logline.Exec_time_total }}</td>
+                         <td class="text">{{ logline.Exec_time_max.Float64 }}</td>
+                         <td class="text">{{ logline.Exec_time_avg_ms.Float64 }}</td>
+
+                        <td class="text">{{ logline.Rows_sent   }}</td>
+                          <td class="text">{{ logline.Rows_sent_avg   }}</td>
+                          <td class="text">{{ logline.Rows_scanned  }}</td>
+                          <td class="text">{{ logline.Plan_full_scan   }}</td>
+                            <td class="text">{{ logline.Plan_tmp_disk   }}</td>
+                            <td class="text">{{ logline.Plan_tmp_mem  }}</td>
+                      </tr>
+                   </table>
+
+             </md-card>
+             <BR><BR>
+</div>
+
+</md-content>
