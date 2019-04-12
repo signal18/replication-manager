@@ -35,7 +35,11 @@ func (server *ServerMonitor) GetPrometheusMetrics() string {
 	var s string
 	for _, m := range metrics {
 		v := strings.Split(m.Name, ".")
-		s = s + v[2] + "{instance=\"" + v[1] + "\"} " + m.Value + "\n"
+		if v[2] == "pfs" {
+			s = s + v[2] + "_" + v[3] + "{instance=\"" + v[1] + "\"} " + m.Value + "\n"
+		} else {
+			s = s + v[2] + "{instance=\"" + v[1] + "\"} " + m.Value + "\n"
+		}
 	}
 	return s
 }
@@ -244,6 +248,12 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	f, err := os.OpenFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
+		return
+	}
+	fi, _ := f.Stat()
+	if fi.Size() > 100000000 {
+		f.Truncate(0)
+		f.Seek(0, 0)
 	}
 	defer f.Close()
 
