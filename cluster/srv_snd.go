@@ -17,88 +17,82 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/alert"
-	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/graphite"
 )
 
-func (server *ServerMonitor) SendDatabaseStats(slaveStatus *dbhelper.SlaveStatus) error {
-	graph, err := graphite.NewGraphite(server.ClusterGroup.Conf.GraphiteCarbonHost, server.ClusterGroup.Conf.GraphiteCarbonPort)
+func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
-	if err != nil {
-		return err
-	}
+	i := 0
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := replacer.Replace(server.Variables["HOSTNAME"])
 	var metrics = make([]graphite.Metric, 6)
+
 	if server.IsSlave {
-		metrics[0] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", slaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
-		metrics[1] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", slaveStatus.ExecMasterLogPos.String), time.Now().Unix())
-		metrics[2] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%s", slaveStatus.ReadMasterLogPos.String), time.Now().Unix())
-		if slaveStatus.SlaveSQLRunning.String == "Yes" {
+		metrics[0] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", server.SlaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
+		metrics[1] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ExecMasterLogPos.String), time.Now().Unix())
+		metrics[2] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ReadMasterLogPos.String), time.Now().Unix())
+		if server.SlaveStatus.SlaveSQLRunning.String == "Yes" {
 			metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_sql_running", hostname), "1", time.Now().Unix())
 		} else {
 			metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_sql_running", hostname), "0", time.Now().Unix())
 		}
-		if slaveStatus.SlaveIORunning.String == "Yes" {
+		if server.SlaveStatus.SlaveIORunning.String == "Yes" {
 			metrics[4] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_io_running", hostname), "1", time.Now().Unix())
 		} else {
 			metrics[4] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_io_running", hostname), "0", time.Now().Unix())
 		}
-		metrics[5] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", slaveStatus.LastSQLErrno.String), time.Now().Unix())
+		metrics[5] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", server.SlaveStatus.LastSQLErrno.String), time.Now().Unix())
+		i = 6
+		//metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_relay_log_pos", hostname), fmt.Sprintf("%d", server.SlaveStatus.re), time.Now().Unix())
 
-		//metrics[3] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_relay_log_pos", hostname), fmt.Sprintf("%d", slaveStatus.re), time.Now().Unix())
 	}
-
-	graph.SendMetrics(metrics)
 
 	isNumeric := func(s string) bool {
 		_, err := strconv.ParseFloat(s, 64)
 		return err == nil
 	}
 
-	var globalstatusmetrics = make([]graphite.Metric, len(server.Status))
-	i := 0
 	for k, v := range server.Status {
 		if isNumeric(v) {
-			globalstatusmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_status_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
+			metrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_status_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
-	graph.SendMetrics(globalstatusmetrics)
 
-	var globalvariablesmetrics = make([]graphite.Metric, len(server.Variables))
-	i = 0
 	for k, v := range server.Variables {
 		if isNumeric(v) {
-			globalvariablesmetrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
+			metrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
-	graph.SendMetrics(globalvariablesmetrics)
-
-	var globalinnodbengine = make([]graphite.Metric, len(server.EngineInnoDB))
-	i = 0
 	for k, v := range server.EngineInnoDB {
 		if isNumeric(v) {
-			globalinnodbengine[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
+			metrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k)), v, time.Now().Unix())
 		}
 		i++
 	}
-	graph.SendMetrics(globalinnodbengine)
 
-	var queries = make([]graphite.Metric, len(server.PFSQueries))
-	i = 0
-	for k, v := range server.PFSQueries {
+	for _, v := range server.PFSQueries {
 		if isNumeric(v.Value) {
-			label := replacer.Replace(k)
+			label := replacer.Replace(v.Query)
 			if len(label) > 198 {
 				label = label[0:198]
 			}
-			queries[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", hostname, label), v.Value, time.Now().Unix())
+			metrics[i] = graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", hostname, label), v.Value, time.Now().Unix())
 		}
 		i++
 	}
-	graph.SendMetrics(queries)
+	return metrics
+}
+
+func (server *ServerMonitor) SendDatabaseStats() error {
+	metrics := server.GetDatabaseMetrics()
+	graph, err := graphite.NewGraphite(server.ClusterGroup.Conf.GraphiteCarbonHost, server.ClusterGroup.Conf.GraphiteCarbonPort)
+
+	if err != nil {
+		return err
+	}
+	graph.SendMetrics(metrics)
 
 	graph.Disconnect()
 

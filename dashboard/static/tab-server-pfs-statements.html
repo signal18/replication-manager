@@ -22,6 +22,7 @@
               </md-card-content>
                    <table border=1 class="slowlog" >
                      <col width="12%"/>
+                     <col width="8%"/>
                      <col width="34%"/>
                      <col width="5%"/>
                      <col width="5%"/>
@@ -36,6 +37,7 @@
 
                       <tr>
                          <th rowspan=2>At</th>
+                        <th rowspan=2>Schema</th>
                          <th rowspan=2>Query</th>
                          <th rowspan=2>Count</th>
                          <th align="center" colspan=3>Times</th>
@@ -59,7 +61,8 @@
                       </tr>
                       <tr ng-repeat="logline in pfsstatements">
                          <td class="stamp">{{logline.Last_seen }}</td>
-                         <td class="text">{{ logline.Digest }}</td>
+                         <td class="stamp">{{logline.Schema_name }}</td>
+                         <td class="text">{{ logline.Query }}</td>
                          <td class="text">{{ logline.Exec_count }}</td>
                          <td class="text">{{ logline.Exec_time_total }}</td>
                          <td class="text">{{ logline.Exec_time_max.Float64 }}</td>

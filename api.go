@@ -115,6 +115,9 @@ func apiserver() {
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
 	))
+	router.Handle("/api/prometheus", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxPrometheus)),
+	))
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
 	))
@@ -316,6 +319,17 @@ func handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return
+	}
+}
+
+func handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	for _, cluster := range RepMan.Clusters {
+		for _, server := range cluster.Servers {
+			res := server.GetPrometheusMetrics()
+			w.Write([]byte(res))
+		}
 	}
 }
 

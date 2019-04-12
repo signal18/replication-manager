@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements) {
+    function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,SlowQueries) {
         //Selected cluster is choose from the drop-down-list
         $scope.selectedClusterName = undefined;
         $scope.selectedServer = undefined;
@@ -154,6 +154,16 @@ app.controller('DashboardController',
                 if ($scope.selectedTab=='PFSQueries') {
                   PFSStatements.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
                   $scope.pfsstatements = data;
+                  $scope.reserror = false;
+
+                }, function () {
+                    $scope.reserror = true;
+                });
+                }
+
+                if ($scope.selectedTab=='LogSlow') {
+                  SlowQueries.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+                  $scope.slowqueries = data;
                   $scope.reserror = false;
 
                 }, function () {

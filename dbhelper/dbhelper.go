@@ -30,6 +30,8 @@ const debug = false
 
 type PFSQuery struct {
 	Digest           string
+	Query            string
+	Schema_name      string
 	Last_seen        string
 	Plan_full_scan   string
 	Plan_tmp_disk    int64
@@ -916,9 +918,10 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
 	query = `SELECT
-	digest_text as digest,
-
+	digest as digest,
+	digest_text as query,
 	LAST_SEEN as last_seen,
+	COALESCE(SCHEMA_NAME,'') as schema_name,
 	IF(SUM_NO_GOOD_INDEX_USED > 0 OR SUM_NO_INDEX_USED > 0, '*', '') AS plan_full_scan,
 	SUM_CREATED_TMP_DISK_TABLES as plan_tmp_disk,
 	SUM_CREATED_TMP_TABLES as plan_tmp_mem,
@@ -944,7 +947,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	}
 	for rows.Next() {
 		var v PFSQuery
-		err := rows.Scan(&v.Digest, &v.Last_seen, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
+		err := rows.Scan(&v.Digest, &v.Query, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
 		if err != nil {
 			return nil, errors.New("Could not get results from status scan")
 		}

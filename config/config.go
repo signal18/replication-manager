@@ -37,6 +37,8 @@ type Config struct {
 	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`
 	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorLongQueryWithTable          bool   `mapstructure:"monitoring-long-query-with-table" toml:"monitoring-long-query-with-table" json:"monitoringLongQueryWithTable"`
+	MonitorLongQueryLogLength          int    `mapstructure:"monitoring-long-query-log-length" toml:""monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
+	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:""monitoring-erreur-log-length" json:"monitoringErruerLogLength"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`

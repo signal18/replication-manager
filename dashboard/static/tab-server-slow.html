@@ -48,7 +48,7 @@
                          <th align="center">Send</th>
                          <th align="center">Affected</th>
                       </tr>
-                      <tr ng-repeat="logline in server.slowLog.Buffer" ng-if="logline.timestamp">
+                      <tr ng-repeat="logline in slowqueries" >
                          <td class="stamp">{{ logline.timestamp }}</td>
                          <td class="text">{{ logline.query }}    </td>
                          <td class="text">{{ logline.user }}@{{ logline.host }}</td>

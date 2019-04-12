@@ -46,6 +46,10 @@ app.factory('PFSStatements', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/pfs-statements', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('SlowQueries', function ($resource) {
+  return $resource('api/clusters/:clusterName/servers/:serverName/slow-queries', {clusterName: '@clusters',serverName: '@server'});
+});
+
 app.factory('Variables', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/variables', {clusterName: '@clusters',serverName: '@server'});
 });

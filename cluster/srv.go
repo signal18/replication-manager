@@ -106,6 +106,7 @@ type ServerMonitor struct {
 	Replications                []dbhelper.SlaveStatus       `json:"replications"`
 	LastSeenReplications        []dbhelper.SlaveStatus       `json:"lastSeenReplications"`
 	MasterStatus                dbhelper.MasterStatus        `json:"masterStatus"`
+	SlaveStatus                 *dbhelper.SlaveStatus        `json:"-"`
 	ReplicationSourceName       string                       `json:"replicationSourceName"`
 	DBVersion                   *dbhelper.MySQLVersion       `json:"dbVersion"`
 	Version                     int                          `json:"-"`
@@ -115,7 +116,7 @@ type ServerMonitor struct {
 	Variables                   map[string]string            `json:"variables"`
 	EngineInnoDB                map[string]string            `json:"engineInnodb"`
 	ErrorLog                    httplog.HttpLog              `json:"errorLog"`
-	SlowLog                     slowlog.SlowLog              `json:"slowLog"`
+	SlowLog                     slowlog.SlowLog              `json:"-"`
 	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
 	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
 	Status                      map[string]string            `json:"-"`
@@ -203,8 +204,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
 	server.SlowLogTailer, _ = tail.TailFile(slowLogFile, tail.Config{Follow: true, ReOpen: true})
-	server.ErrorLog = httplog.NewHttpLog(20)
-	server.SlowLog = slowlog.NewSlowLog(20)
+	server.ErrorLog = httplog.NewHttpLog(server.ClusterGroup.Conf.MonitorErrorLogLength)
+	server.SlowLog = slowlog.NewSlowLog(server.ClusterGroup.Conf.MonitorLongQueryLogLength)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
@@ -418,6 +419,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
+	var err error
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
 	}
@@ -426,7 +428,7 @@ func (server *ServerMonitor) Refresh() error {
 		return errors.New("Connection is unsafe, server unreachable")
 	}
 
-	err := server.Conn.Ping()
+	err = server.Conn.Ping()
 	if err != nil {
 		return err
 	}
@@ -608,19 +610,19 @@ func (server *ServerMonitor) Refresh() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
 	}
 	// select a replication status get an err if repliciations array is empty
-	slaveStatus, err := server.GetSlaveStatus(server.ReplicationSourceName)
+	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		server.IsSlave = false
 	} else {
 		server.IsSlave = true
-		if slaveStatus.UsingGtid.String == "Slave_Pos" || slaveStatus.UsingGtid.String == "Current_Pos" {
+		if server.SlaveStatus.UsingGtid.String == "Slave_Pos" || server.SlaveStatus.UsingGtid.String == "Current_Pos" {
 			server.HaveMariaDBGTID = true
 		} else {
 			server.HaveMariaDBGTID = false
 		}
 		if server.DBVersion.IsMySQLOrPercona57() && server.HasGTIDReplication() {
-			server.SlaveGtid = gtid.NewList(slaveStatus.ExecutedGtidSet.String)
+			server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
 		}
 	}
 	server.ReplicationHealth = server.CheckReplication()
@@ -667,7 +669,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// Initialize graphite monitoring
 	if server.ClusterGroup.Conf.GraphiteMetrics {
-		go server.SendDatabaseStats(slaveStatus)
+		go server.SendDatabaseStats()
 	}
 	return nil
 }

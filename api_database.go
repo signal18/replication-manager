@@ -59,7 +59,7 @@ func apiDatabaseProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slowlog", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slow-queries", negroni.New(
 		negroni.HandlerFunc(validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
 	))
@@ -726,7 +726,7 @@ func handlerMuxServerSlowLog(w http.ResponseWriter, r *http.Request) {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetSlowLog()
-			err := e.Encode(l)
+			err := e.Encode(l.Buffer)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)
 				return
