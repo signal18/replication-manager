@@ -65,6 +65,10 @@ func httpserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
 	))
+	router.Handle("/api/prometheus", negroni.New(
+		negroni.Wrap(http.HandlerFunc(handlerMuxPrometheus)),
+	))
+
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
 	))
