@@ -601,14 +601,6 @@
   version = "v0.11.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:30f9298ba99beb0ff1aec7742d666be859ce8556ac9107a5f10fd855eacc5311"
-  name = "github.com/pires/go-proxyproto"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "4d51b51e3bfc23ac5f4384478ff64940f34a5d63"
-
-[[projects]]
   digest = "1:87d657fe2a38c018c33f867e7d6e6208d4997279b2c9e25d31aed22e461ad010"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -897,7 +889,6 @@
     "github.com/nsf/termbox-go",
     "github.com/percona/go-mysql/query",
     "github.com/peterbourgon/g2g",
-    "github.com/pires/go-proxyproto",
     "github.com/satori/go.uuid",
     "github.com/siddontang/go-mysql-elasticsearch/elastic",
     "github.com/siddontang/go-mysql/canal",
