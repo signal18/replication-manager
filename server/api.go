@@ -1,5 +1,3 @@
-// +build server
-
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017 Signal 18 SARL
 // Author: Stephane Varoqui  <svaroqui@gmail.com>
@@ -29,9 +27,9 @@ import (
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/crypto"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -392,7 +390,7 @@ func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *ht
 }
 
 func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
-	var send heartbeat
+	var send Heartbeat
 	send.UUID = repman.UUID
 	send.UID = repman.Conf.ArbitrationSasUniqueId
 	send.Secret = repman.Conf.ArbitrationSasSecret

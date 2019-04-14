@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/signal18/replication-manager/route/maxscale"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {

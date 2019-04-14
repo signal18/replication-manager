@@ -1,5 +1,3 @@
-// +build server
-
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017 Signal 18 SARL
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
@@ -393,7 +391,7 @@ func (repman *ReplicationManager) handlerAgents(w http.ResponseWriter, r *http.R
 
 func (repman *ReplicationManager) handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	repman.Lock()
-	var send heartbeat
+	var send Heartbeat
 	send.UUID = repman.UUID
 	send.UID = repman.Conf.ArbitrationSasUniqueId
 	send.Secret = repman.Conf.ArbitrationSasSecret

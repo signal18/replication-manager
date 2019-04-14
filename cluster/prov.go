@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 // Bootstrap provisions && setup topology

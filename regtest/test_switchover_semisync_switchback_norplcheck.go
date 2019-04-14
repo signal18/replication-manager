@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -44,7 +44,7 @@ func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluste
 			cluster.LogPrintf(LvlErr, "Slave  %s issue on replication", s.URL)
 			return false
 		}
-		if s.GetReplicationServerID()!= cluster.GetMaster().ServerID {
+		if s.GetReplicationServerID() != cluster.GetMaster().ServerID {
 			cluster.LogPrintf(LvlErr, "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
 			return false
 		}

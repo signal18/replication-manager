@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) OpenSVCProvisionProxies() error {

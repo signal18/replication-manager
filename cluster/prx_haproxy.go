@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/route/haproxy"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/router/haproxy"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {

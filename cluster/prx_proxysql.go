@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/route/proxysql"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/router/proxysql"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {

@@ -16,7 +16,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 var crcTable = crc64.MakeTable(crc64.ECMA)

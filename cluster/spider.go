@@ -14,8 +14,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) SpiderShardsDiscovery() {

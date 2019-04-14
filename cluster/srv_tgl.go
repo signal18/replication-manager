@@ -9,7 +9,7 @@
 
 package cluster
 
-import "github.com/signal18/replication-manager/dbhelper"
+import "github.com/signal18/replication-manager/utils/dbhelper"
 
 func (server *ServerMonitor) SwitchMaintenance() error {
 	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep || server.ClusterGroup.GetTopology() == topoMultiMasterRing {

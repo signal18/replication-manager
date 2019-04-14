@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/route/maxscale"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) CheckFailed() {

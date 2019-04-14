@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/dbhelper"
-	river "github.com/signal18/replication-manager/river"
-	"github.com/signal18/replication-manager/s18log"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	river "github.com/signal18/replication-manager/utils/river"
+	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {

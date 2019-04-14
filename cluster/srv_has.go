@@ -10,7 +10,7 @@
 package cluster
 
 import (
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 // check if node see same master as the passed list

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {

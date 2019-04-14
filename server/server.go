@@ -1,5 +1,3 @@
-// +build server
-
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017 Signal 18 SARL
 // Author: Guillaume Lefranc <guillaume@signal18.io>
@@ -35,12 +33,12 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/crypto"
 	"github.com/signal18/replication-manager/graphite"
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
-	"github.com/signal18/replication-manager/s18log"
+	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 )
 
 // Global variables
@@ -118,7 +116,7 @@ type Settings struct {
 	Scheduler           []cluster.CronEntry `json:"scheduler"`
 }
 
-type heartbeat struct {
+type Heartbeat struct {
 	UUID    string `json:"uuid"`
 	Secret  string `json:"secret"`
 	Cluster string `json:"cluster"`
@@ -563,7 +561,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		log.Debugf("splitbrain http call result: %s ", monjson)
 	}
 	// Use json.Decode for reading streams of JSON data
-	var h heartbeat
+	var h Heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
 		if repman.Conf.LogHeartbeat {
 			log.Debugf("Could not unmarshal JSON from peer response %s", err)

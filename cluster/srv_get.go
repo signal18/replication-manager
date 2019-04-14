@@ -17,8 +17,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/s18log"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/s18log"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {

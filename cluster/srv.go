@@ -25,10 +25,10 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/gtid"
-	"github.com/signal18/replication-manager/s18log"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/gtid"
+	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // ServerMonitor defines a server to monitor.

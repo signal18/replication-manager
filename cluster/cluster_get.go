@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) GetPersitentState() error {

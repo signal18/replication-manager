@@ -15,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/signal18/replication-manager/s18log"
+	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/nsf/termbox-go"

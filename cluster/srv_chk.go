@@ -11,9 +11,9 @@ package cluster
 import (
 	"fmt"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/misc"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 /* CheckReplication Check replication health and return status string */

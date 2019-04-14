@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/signal18/replication-manager/misc"
 	"github.com/signal18/replication-manager/opensvc"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 var dockerMinusRm bool

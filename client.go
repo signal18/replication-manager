@@ -28,8 +28,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/s18log"
-
+	"github.com/signal18/replication-manager/server"
+	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -51,7 +51,7 @@ var (
 	cliServers                   []cluster.ServerMonitor
 	cliMaster                    cluster.ServerMonitor
 	cliSettings                  cluster.Cluster
-	cliMonitor                   ReplicationManager
+	cliMonitor                   server.ReplicationManager
 	cliUrl                       string
 	cliTTestRun                  string
 	cliTestShowTests             bool
@@ -540,7 +540,7 @@ var showCmd = &cobra.Command{
 		urlpost := ""
 		type Objects struct {
 			Name     string
-			Settings Settings                `json:"settings"`
+			Settings server.Settings         `json:"settings"`
 			Servers  []cluster.ServerMonitor `json:"servers"`
 			Master   cluster.ServerMonitor   `json:"master"`
 			Slaves   []cluster.ServerMonitor `json:"slaves"`
@@ -988,7 +988,7 @@ func cliLogin() (string, error) {
 }
 
 func cliGetAllClusters() ([]string, error) {
-	var r Settings
+	var r server.Settings
 	var res []string
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters"
 	var bearer = "Bearer " + cliToken
@@ -1049,8 +1049,8 @@ func cliGetSettings() (cluster.Cluster, error) {
 	return r, nil
 }
 
-func cliGetMonitor() (ReplicationManager, error) {
-	var r ReplicationManager
+func cliGetMonitor() (server.ReplicationManager, error) {
+	var r server.ReplicationManager
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/monitor"
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)

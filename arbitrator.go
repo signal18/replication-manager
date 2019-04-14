@@ -19,7 +19,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/dbhelper"
+	"github.com/signal18/replication-manager/server"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -78,7 +79,7 @@ var (
 )
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize()
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
@@ -90,14 +91,16 @@ var arbitratorCmd = &cobra.Command{
 	Short: "Arbitrator environment",
 	Long:  `The arbitrator is used for false positive detection`,
 	Run: func(cmd *cobra.Command, args []string) {
+		RepMan = new(server.ReplicationManager)
+		RepMan.InitConfig(conf)
 
-		if _, ok := confs["arbitrator"]; !ok {
+		if _, ok := RepMan.Confs["arbitrator"]; !ok {
 			log.Fatal("Could not find arbitrator configuration section")
 		}
 
-		if confs["arbitrator"].ArbitratorDriver == "mysql" {
+		if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
 			arbitratorCluster = new(cluster.Cluster)
-			arbitratorCluster.InitAgent(confs["arbitrator"])
+			arbitratorCluster.InitAgent(RepMan.Confs["arbitrator"])
 			arbitratorCluster.SetLogStdout()
 		}
 
@@ -116,8 +119,8 @@ var arbitratorCmd = &cobra.Command{
 			log.WithError(err).Error("Error creating tables")
 		}
 		router := newRouter()
-		log.Infof("Arbitrator listening on %s", confs["arbitrator"].ArbitratorAddress)
-		log.Fatal(http.ListenAndServe(confs["arbitrator"].ArbitratorAddress, router))
+		log.Infof("Arbitrator listening on %s", RepMan.Confs["arbitrator"].ArbitratorAddress)
+		log.Fatal(http.ListenAndServe(RepMan.Confs["arbitrator"].ArbitratorAddress, router))
 	},
 }
 
@@ -125,17 +128,17 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 
 	var err error
 	var db *sqlx.DB
-	if confs["arbitrator"].ArbitratorDriver == "sqlite" {
+	if RepMan.Confs["arbitrator"].ArbitratorDriver == "sqlite" {
 		db, err = dbhelper.SQLiteConnect(conf.WorkingDir)
 	}
-	if confs["arbitrator"].ArbitratorDriver == "mysql" {
-		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", confs["arbitrator"].Timeout))
+	if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
+		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
 	}
 	return db, err
 }
 
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
-	var h heartbeat
+	var h server.Heartbeat
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
 		log.Errorln(err)
@@ -182,7 +185,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 
 }
 func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
-	var h heartbeat
+	var h server.Heartbeat
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {
@@ -232,7 +235,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerForget(w http.ResponseWriter, r *http.Request) {
-	var h heartbeat
+	var h server.Heartbeat
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {

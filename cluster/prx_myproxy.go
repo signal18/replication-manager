@@ -4,7 +4,7 @@ import (
 	"database/sql"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/signal18/replication-manager/route/myproxy"
+	"github.com/signal18/replication-manager/router/myproxy"
 )
 
 func (cluster *Cluster) initMyProxy(proxy *Proxy) {

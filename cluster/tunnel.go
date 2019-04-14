@@ -16,7 +16,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/signal18/replication-manager/misc"
+	"github.com/signal18/replication-manager/utils/misc"
 	"golang.org/x/crypto/ssh"
 )
 

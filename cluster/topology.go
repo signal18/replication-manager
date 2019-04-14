@@ -17,7 +17,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 type topologyError struct {

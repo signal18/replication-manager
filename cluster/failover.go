@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/gtid"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/gtid"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // MasterFailover triggers a master switchover and returns the new master URL

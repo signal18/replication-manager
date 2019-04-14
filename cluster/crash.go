@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
-	"github.com/signal18/replication-manager/gtid"
+	"github.com/signal18/replication-manager/utils/gtid"
 )
 
 // Crash will store informations on a crash based on the replication stream

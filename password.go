@@ -13,7 +13,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/signal18/replication-manager/crypto"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/spf13/cobra"
 )
 

@@ -11,8 +11,8 @@ package cluster
 import (
 	"fmt"
 
-	"github.com/signal18/replication-manager/route/sphinx"
-	"github.com/signal18/replication-manager/state"
+	"github.com/signal18/replication-manager/router/sphinx"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func connectSphinx(proxy *Proxy) (sphinx.SphinxSQL, error) {

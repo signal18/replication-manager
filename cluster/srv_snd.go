@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signal18/replication-manager/alert"
 	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/utils/alert"
 )
 
 func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
