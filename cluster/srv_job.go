@@ -26,9 +26,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/httplog"
 	river "github.com/signal18/replication-manager/river"
-	"github.com/signal18/replication-manager/slowlog"
+	"github.com/signal18/replication-manager/s18log"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -217,7 +216,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 func (server *ServerMonitor) ErrorLogWatcher() {
 
 	for line := range server.ErrorLogTailer.Lines {
-		var log httplog.Message
+		var log s18log.HttpMessage
 		itext := strings.Index(line.Text, "]")
 		if itext != -1 {
 			log.Text = line.Text[itext+2:]
@@ -241,11 +240,11 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 }
 
 func (server *ServerMonitor) SlowLogWatcher() {
-	log := slowlog.NewMessage()
+	log := s18log.NewSlowMessage()
 	preline := ""
 	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
 	for line := range server.SlowLogTailer.Lines {
-		newlog := slowlog.NewMessage()
+		newlog := s18log.NewSlowMessage()
 		if server.ClusterGroup.Conf.LogSST {
 			server.ClusterGroup.LogPrintf(LvlInfo, "New line %s", line.Text)
 		}

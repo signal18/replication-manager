@@ -27,8 +27,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/dbhelper"
 	"github.com/signal18/replication-manager/gtid"
-	"github.com/signal18/replication-manager/httplog"
-	"github.com/signal18/replication-manager/slowlog"
+	"github.com/signal18/replication-manager/s18log"
 	"github.com/signal18/replication-manager/state"
 )
 
@@ -115,8 +114,8 @@ type ServerMonitor struct {
 	TestConfig                  string                       `json:"testConfig"`
 	Variables                   map[string]string            `json:"variables"`
 	EngineInnoDB                map[string]string            `json:"engineInnodb"`
-	ErrorLog                    httplog.HttpLog              `json:"errorLog"`
-	SlowLog                     slowlog.SlowLog              `json:"-"`
+	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
+	SlowLog                     s18log.SlowLog               `json:"-"`
 	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
 	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
 	Status                      map[string]string            `json:"-"`
@@ -204,8 +203,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
 	server.SlowLogTailer, _ = tail.TailFile(slowLogFile, tail.Config{Follow: true, ReOpen: true})
-	server.ErrorLog = httplog.NewHttpLog(server.ClusterGroup.Conf.MonitorErrorLogLength)
-	server.SlowLog = slowlog.NewSlowLog(server.ClusterGroup.Conf.MonitorLongQueryLogLength)
+	server.ErrorLog = s18log.NewHttpLog(server.ClusterGroup.Conf.MonitorErrorLogLength)
+	server.SlowLog = s18log.NewSlowLog(server.ClusterGroup.Conf.MonitorLongQueryLogLength)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))

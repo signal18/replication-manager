@@ -18,8 +18,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/httplog"
-	"github.com/signal18/replication-manager/slowlog"
+	"github.com/signal18/replication-manager/s18log"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
@@ -235,11 +234,11 @@ func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	return delta
 }
 
-func (server *ServerMonitor) GetErrorLog() httplog.HttpLog {
+func (server *ServerMonitor) GetErrorLog() s18log.HttpLog {
 	return server.ErrorLog
 }
 
-func (server *ServerMonitor) GetSlowLog() slowlog.SlowLog {
+func (server *ServerMonitor) GetSlowLog() s18log.SlowLog {
 	return server.SlowLog
 }
 

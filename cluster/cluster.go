@@ -20,18 +20,15 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"golang.org/x/crypto/ssh"
-	//"github.com/robfig/cron"
-
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/cron"
 	"github.com/signal18/replication-manager/dbhelper"
-	"github.com/signal18/replication-manager/httplog"
 	"github.com/signal18/replication-manager/route/maxscale"
+	"github.com/signal18/replication-manager/s18log"
 	"github.com/signal18/replication-manager/state"
-	"github.com/signal18/replication-manager/termlog"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
 
 type Cluster struct {
@@ -63,7 +60,9 @@ type Cluster struct {
 	MonitorSpin          string               `json:"monitorSpin"`
 	DBTableSize          int64                `json:"dbTableSize"`
 	DBIndexSize          int64                `json:"dbIndexSize"`
-	Log                  httplog.HttpLog      `json:"log"`
+	Log                  s18log.HttpLog       `json:"log"`
+	tlog                 *s18log.TermLog      `json:"-"`
+	htlog                *s18log.HttpLog      `json:"-"`
 	MonitorType          map[string]string    `json:"monitorType"`
 	TopologyType         map[string]string    `json:"topologyType"`
 	hostList             []string             `json:"-"`
@@ -80,8 +79,6 @@ type Cluster struct {
 	rplPass              string               `json:"-"`
 	sme                  *state.StateMachine  `json:"-"`
 	runOnceAfterTopology bool                 `json:"-"`
-	tlog                 *termlog.TermLog     `json:"-"`
-	htlog                *httplog.HttpLog     `json:"-"`
 	logPtr               *os.File             `json:"-"`
 	termlength           int                  `json:"-"`
 	runUUID              string               `json:"-"`
@@ -147,7 +144,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.TermLog, repmanlog *httplog.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
@@ -162,7 +159,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.tlog = tlog
-	cluster.htlog = repmanlog
+	cluster.htlog = log
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.runUUID = runUUID
@@ -175,7 +172,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *termlog.
 		cluster.Status = ConstMonitorActif
 	}
 	cluster.benchmarkType = "sysbench"
-	cluster.Log = httplog.NewHttpLog(200)
+	cluster.Log = s18log.NewHttpLog(200)
 	cluster.MonitorType = map[string]string{
 		"mariadb":    "database",
 		"mysql":      "database",

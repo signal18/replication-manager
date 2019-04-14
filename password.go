@@ -9,14 +9,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/signal18/replication-manager/crypto"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -43,7 +41,7 @@ the CLI or in the replication-manager config file`,
 		if err != nil {
 			log.Fatalln(err)
 		}
-		err = writeKey(p.Key)
+		err = crypto.WriteKey(p.Key, keyPath, overwrite)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -57,7 +55,7 @@ var passwordCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		p := crypto.Password{}
 		var err error
-		p.Key, err = readKey()
+		p.Key, err = crypto.ReadKey(keyPath)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -65,35 +63,4 @@ var passwordCmd = &cobra.Command{
 		p.Encrypt()
 		fmt.Println("Encrypted password hash:", p.CipherText)
 	},
-}
-
-func writeKey(key []byte) error {
-	if _, err := os.Stat(keyPath); err == nil {
-		if !overwrite {
-			return errors.New("Key file already exists")
-		}
-	}
-
-	flag := os.O_WRONLY | os.O_CREATE
-
-	file, err := os.OpenFile(keyPath, flag, 0600)
-	if err != nil {
-		return err
-	}
-	_, err = file.Write(key)
-	return err
-}
-
-func readKey() ([]byte, error) {
-	flag := os.O_RDONLY
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		return nil, errors.New("Key file does not exist")
-	}
-	file, err := os.OpenFile(keyPath, flag, 0600)
-	if err != nil {
-		return nil, err
-	}
-	key := make([]byte, 16)
-	_, err = file.Read(key)
-	return key, err
 }

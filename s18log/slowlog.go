@@ -7,7 +7,7 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package slowlog
+package s18log
 
 import (
 	"log"
@@ -21,13 +21,13 @@ import (
 )
 
 type SlowLog struct {
-	Buffer []Message
+	Buffer []SlowMessage
 	Len    int
 	Line   int
 	L      sync.Mutex
 }
 
-type Message struct {
+type SlowMessage struct {
 	Group         string             `json:"group"`
 	Level         string             `json:"level"`
 	Timestamp     string             `json:"timestamp"`
@@ -44,8 +44,8 @@ type Message struct {
 	Text          string             `json:"text"`
 }
 
-func NewMessage() *Message {
-	m := new(Message)
+func NewSlowMessage() *SlowMessage {
+	m := new(SlowMessage)
 	m.TimeMetrics = make(map[string]float64)
 	m.NumberMetrics = make(map[string]uint64)
 	m.BoolMetrics = make(map[string]bool)
@@ -67,23 +67,23 @@ var useRe = regexp.MustCompile(`^(?i)use `)
 func NewSlowLog(sz int) SlowLog {
 	tl := SlowLog{}
 	tl.Len = sz
-	tl.Buffer = make([]Message, tl.Len)
+	tl.Buffer = make([]SlowMessage, tl.Len)
 	return tl
 }
 
-func (tl *SlowLog) Add(s *Message) {
+func (tl *SlowLog) Add(s *SlowMessage) {
 	tl.L.Lock()
 	tl.Shift(*s)
 	tl.L.Unlock()
 }
 
-func (tl *SlowLog) Shift(e Message) {
-	ns := make([]Message, 1)
+func (tl *SlowLog) Shift(e SlowMessage) {
+	ns := make([]SlowMessage, 1)
 	ns[0] = e
 	tl.Buffer = append(ns, tl.Buffer[0:tl.Len]...)
 }
 
-func (tl *SlowLog) ParseLine(line string, sl *Message) {
+func (tl *SlowLog) ParseLine(line string, sl *SlowMessage) {
 
 	if !headerRe.MatchString(line) {
 		tl.parseQuery(line, sl)
@@ -153,7 +153,7 @@ func (tl *SlowLog) ParseLine(line string, sl *Message) {
 	}
 }
 
-func (tl *SlowLog) parseQuery(line string, sl *Message) {
+func (tl *SlowLog) parseQuery(line string, sl *SlowMessage) {
 
 	if strings.HasPrefix(line, "# admin") {
 		return
@@ -183,7 +183,7 @@ func (tl *SlowLog) parseQuery(line string, sl *Message) {
 	}
 }
 
-func (tl *SlowLog) parseAdmin(line string, sl *Message) {
+func (tl *SlowLog) parseAdmin(line string, sl *SlowMessage) {
 
 	sl.Admin = true
 	m := adminRe.FindStringSubmatch(line)

@@ -15,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/signal18/replication-manager/httplog"
+	"github.com/signal18/replication-manager/s18log"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/nsf/termbox-go"
@@ -113,7 +113,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		}
 
 		if cluster.Conf.HttpServ {
-			msg := httplog.Message{
+			msg := s18log.HttpMessage{
 				Group:     cluster.Name,
 				Level:     level,
 				Timestamp: stamp,

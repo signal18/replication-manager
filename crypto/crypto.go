@@ -11,8 +11,10 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log"
+	"os"
 )
 
 type Password struct {
@@ -70,4 +72,35 @@ func (p *Password) Decrypt() {
 	stream.XORKeyStream(ciphertext, ciphertext)
 	p.PlainText = string(ciphertext)
 	return
+}
+
+func WriteKey(key []byte, keyPath string, overwrite bool) error {
+	if _, err := os.Stat(keyPath); err == nil {
+		if !overwrite {
+			return errors.New("Key file already exists")
+		}
+	}
+
+	flag := os.O_WRONLY | os.O_CREATE
+
+	file, err := os.OpenFile(keyPath, flag, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(key)
+	return err
+}
+
+func ReadKey(keyPath string) ([]byte, error) {
+	flag := os.O_RDONLY
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		return nil, errors.New("Key file does not exist")
+	}
+	file, err := os.OpenFile(keyPath, flag, 0600)
+	if err != nil {
+		return nil, err
+	}
+	key := make([]byte, 16)
+	_, err = file.Read(key)
+	return key, err
 }

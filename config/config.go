@@ -10,6 +10,12 @@
 package config
 
 type Config struct {
+	Version                            string `mapstructure:"-" toml:"-" json:"-"`
+	FullVersion                        string `mapstructure:"-" toml:"-" json:"-"`
+	GoOS                               string `mapstructure:"goos" toml:"-" json:"-"`
+	GoArch                             string `mapstructure:"goarch" toml:"-" json:"-"`
+	WithTarball                        string `mapstructure:"-" toml:"-" json:"-"`
+	MemProfile                         string `mapstructure:"-" toml:"-" json:"-"`
 	Include                            string `mapstructure:"include" toml:"-" json:"-"`
 	BaseDir                            string `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
 	WorkingDir                         string `mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
@@ -18,6 +24,7 @@ type Config struct {
 	ConfRewrite                        bool   `mapstructure:"monitoring-config-rewrite" toml:"monitoring-config-rewrite" json:"monitoringConfigRewrite"`
 	MonitoringSSLCert                  string `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
 	MonitoringSSLKey                   string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
+	MonitoringKeyPath                  string `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringTicker                   int64  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
 	Socket                             string `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
 	TunnelHost                         string `mapstructure:"monitoring-tunnel-host" toml:"monitoring-tunnel-host" json:"monitoringTunnelHost"`
@@ -308,8 +315,6 @@ type Config struct {
 	APIBind                            string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	AlertScript                        string `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                         string `mapstructure:"config" toml:"-" json:"-"`
-	GoOS                               string `mapstructure:"goos" toml:"-" json:"-"`
-	GoArch                             string `mapstructure:"goarch" toml:"-" json:"-"`
 	Backup                             bool   `mapstructure:"backup" toml:"backup" json:"backup"`
 	SchedulerBackupLogical             bool   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup" json:"schedulerDbServersLogicalBackup"`
 	SchedulerBackupPhysical            bool   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`

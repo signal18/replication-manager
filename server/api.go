@@ -6,7 +6,7 @@
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package server
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ var signingKey, verificationKey []byte
 var apiPass string
 var apiUser string
 
-func initKeys() {
+func (repman *ReplicationManager) initKeys() {
 	var (
 		err         error
 		privKey     *rsa.PrivateKey
@@ -103,49 +103,49 @@ type token struct {
 	Token string `json:"token"`
 }
 
-func apiserver() {
-	initKeys()
+func (repman *ReplicationManager) apiserver() {
+	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
-	router.HandleFunc("/", handlerApp)
+	router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
-	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(confs[currentClusterName].HttpRoot)))
-	router.HandleFunc("/api/login", loginHandler)
+	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	router.HandleFunc("/api/login", repman.loginHandler)
 	router.Handle("/api/clusters", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxClusters)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
 	router.Handle("/api/prometheus", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxPrometheus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))
 	router.Handle("/api/status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxStatus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
 	))
 	router.Handle("/api/timeout", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxTimeout)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
 	))
 	router.Handle("/api/repocomp/current", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerRepoComp)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerRepoComp)),
 	))
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/monitor", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxReplicationManager)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
 
-	apiDatabaseUnprotectedHandler(router)
-	apiDatabaseProtectedHandler(router)
-	apiClusterUnprotectedHandler(router)
-	apiClusterProtectedHandler(router)
-	apiProxyProtectedHandler(router)
+	repman.apiDatabaseUnprotectedHandler(router)
+	repman.apiDatabaseProtectedHandler(router)
+	repman.apiClusterUnprotectedHandler(router)
+	repman.apiClusterProtectedHandler(router)
+	repman.apiProxyProtectedHandler(router)
 
-	log.Info("Starting JWT API on " + conf.APIBind + ":" + conf.APIPort)
+	log.Info("Starting JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	var err error
-	if conf.MonitoringSSLCert == "" {
-		err = http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.ShareDir+"/server.crt", conf.ShareDir+"/server.key", router)
+	if repman.Conf.MonitoringSSLCert == "" {
+		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", router)
 
 	} else {
-		err = http.ListenAndServeTLS(conf.APIBind+":"+conf.APIPort, conf.MonitoringSSLCert, conf.MonitoringSSLKey, router)
+		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.MonitoringSSLCert, repman.Conf.MonitoringSSLKey, router)
 	}
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
@@ -157,7 +157,7 @@ func apiserver() {
 /////////////ENDPOINT HANDLERS////////////
 /////////////////////////////////////////
 
-func loginHandler(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var user userCredentials
 
@@ -168,11 +168,11 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
-	k, err := readKey()
+	k, err := crypto.ReadKey(repman.Conf.MonitoringKeyPath)
 	if err != nil {
 		k = nil
 	}
-	for _, cluster := range RepMan.Clusters {
+	for _, cluster := range repman.Clusters {
 		//validate user credentials
 		apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
 		if k != nil {
@@ -208,7 +208,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 			//create a token instance using the token string
 			resp := token{tokenString}
-			jsonResponse(resp, w)
+			repman.jsonResponse(resp, w)
 			return
 		}
 	}
@@ -224,7 +224,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 //AUTH TOKEN VALIDATION
 
-func validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//validate token
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
@@ -248,7 +248,7 @@ func validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.H
 
 //HELPER FUNCTIONS
 
-func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
+func (repman *ReplicationManager) jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json, err := json.Marshal(apiresponse)
 	if err != nil {
@@ -261,14 +261,14 @@ func jsonResponse(apiresponse interface{}, w http.ResponseWriter) {
 	w.Write(json)
 }
 
-func handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	RepMan.AddCluster(vars["clusterName"])
+	repman.AddCluster(vars["clusterName"])
 
 }
 
-func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
@@ -278,14 +278,14 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		claims := token.Claims.(jwt.MapClaims)
 
-		mycopy := RepMan
+		mycopy := repman
 		var cl []string
 
 		userinfo := claims["CustomUserInfo"]
 		mycutinfo := userinfo.(map[string]interface{})
 		meuser := mycutinfo["Name"].(string)
 
-		for _, cluster := range RepMan.Clusters {
+		for _, cluster := range repman.Clusters {
 			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
 
 			if strings.Contains(meuser, apiUser) {
@@ -297,7 +297,7 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 		e.SetIndent("", "\t")
 		err := e.Encode(mycopy)
 
-		//err := e.Encode(RepMan)
+		//err := e.Encode(repman)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -307,10 +307,10 @@ func handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	s := new(Settings)
-	s.Clusters = cfgGroupList
+	s.Clusters = repman.ClusterList
 	regtest := new(regtest.RegTest)
 	s.RegTests = regtest.GetTests()
 	e := json.NewEncoder(w)
@@ -322,10 +322,10 @@ func handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	for _, cluster := range RepMan.Clusters {
+	for _, cluster := range repman.Clusters {
 		for _, server := range cluster.Servers {
 			res := server.GetPrometheusMetrics()
 			w.Write([]byte(res))
@@ -333,7 +333,7 @@ func handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -350,7 +350,7 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 		mycutinfo := userinfo.(map[string]interface{})
 		meuser := mycutinfo["Name"].(string)
 
-		for _, cluster := range RepMan.Clusters {
+		for _, cluster := range repman.Clusters {
 			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
 
 			if strings.Contains(meuser, apiUser) {
@@ -372,18 +372,18 @@ func handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	if RepMan.isStarted {
+	if repman.isStarted {
 		io.WriteString(w, `{"alive": "running"}`)
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
 	}
 }
 
-func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
@@ -391,12 +391,12 @@ func handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, `{"alive": "running"}`)
 }
 
-func handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send heartbeat
-	send.UUID = RepMan.UUID
-	send.UID = conf.ArbitrationSasUniqueId
-	send.Secret = conf.ArbitrationSasSecret
-	send.Status = RepMan.Status
+	send.UUID = repman.UUID
+	send.UID = repman.Conf.ArbitrationSasUniqueId
+	send.Secret = repman.Conf.ArbitrationSasSecret
+	send.Status = repman.Status
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)

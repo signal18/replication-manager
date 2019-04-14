@@ -6,7 +6,7 @@
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package server
 
 import (
 	"io/ioutil"
@@ -16,24 +16,24 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func apiProxyProtectedHandler(router *mux.Router) {
+func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 	//PROTECTED ENDPOINTS FOR PROXIES
 
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxProxyUnprovision)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyUnprovision)),
 	))
 	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxProxyProvision)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyProvision)),
 	))
 
 }
 
-func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
@@ -48,10 +48,10 @@ func handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
@@ -66,10 +66,10 @@ func handlerMuxProxyUnprovision(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
 	if err != nil {
 		w.WriteHeader(404)

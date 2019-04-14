@@ -7,18 +7,18 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package httplog
+package s18log
 
 import "sync"
 
 type HttpLog struct {
-	Buffer []Message  `json:"buffer"`
-	Len    int        `json:"len"`
-	Line   int        `json:"line"`
-	L      sync.Mutex `json:"-"`
+	Buffer []HttpMessage `json:"buffer"`
+	Len    int           `json:"len"`
+	Line   int           `json:"line"`
+	L      sync.Mutex    `json:"-"`
 }
 
-type Message struct {
+type HttpMessage struct {
 	Group     string `json:"group"`
 	Level     string `json:"level"`
 	Timestamp string `json:"timestamp"`
@@ -28,18 +28,18 @@ type Message struct {
 func NewHttpLog(sz int) HttpLog {
 	tl := HttpLog{}
 	tl.Len = sz
-	tl.Buffer = make([]Message, tl.Len)
+	tl.Buffer = make([]HttpMessage, tl.Len)
 	return tl
 }
 
-func (tl *HttpLog) Add(s Message) {
+func (tl *HttpLog) Add(s HttpMessage) {
 	tl.L.Lock()
 	tl.Shift(s)
 	tl.L.Unlock()
 }
 
-func (tl *HttpLog) Shift(e Message) {
-	ns := make([]Message, 1)
+func (tl *HttpLog) Shift(e HttpMessage) {
+	ns := make([]HttpMessage, 1)
 	ns[0] = e
 	tl.Buffer = append(ns, tl.Buffer[0:tl.Len]...)
 }

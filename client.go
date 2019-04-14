@@ -28,7 +28,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/termlog"
+	"github.com/signal18/replication-manager/s18log"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,7 +46,7 @@ var (
 	cliToken                     string
 	cliClusters                  []string
 	cliClusterIndex              int
-	cliTlog                      termlog.TermLog
+	cliTlog                      s18log.TermLog
 	cliTermlength                int
 	cliServers                   []cluster.ServerMonitor
 	cliMaster                    cluster.ServerMonitor
@@ -643,7 +644,7 @@ var clientCmd = &cobra.Command{
 				cliServers, _ = cliGetServers()
 				cliMaster, _ = cliGetMaster()
 				dlogs, _ := cliGetLogs()
-				cliTlog = termlog.NewTermLog(loglen)
+				cliTlog = s18log.NewTermLog(loglen)
 				cliAddTlog(dlogs)
 				cliDisplay()
 			case event := <-termboxChan:

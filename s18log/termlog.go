@@ -7,8 +7,8 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-// Package termlog is a termbox logging package
-package termlog
+// termlog is a termbox logging on s18log package
+package s18log
 
 import (
 	"sync"

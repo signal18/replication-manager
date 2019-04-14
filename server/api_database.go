@@ -6,7 +6,7 @@
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package server
 
 import (
 	"encoding/json"
@@ -17,191 +17,191 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func apiDatabaseUnprotectedHandler(router *mux.Router) {
+func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-master", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsMasterStatus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsMasterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-slave", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersIsSlaveStatus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsSlaveStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsMasterStatus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortIsSlaveStatus)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsSlaveStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
-		negroni.Wrap(http.HandlerFunc(handlerMuxServersPortBackup)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortBackup)),
 	))
 }
 
-func apiDatabaseProtectedHandler(router *mux.Router) {
+func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
 	//PROTECTED ENDPOINTS FOR SERVERS
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerProcesslist)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerVariables)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStatus)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status-delta", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStatusDelta)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStatusDelta)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerErrorLog)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerErrorLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slow-queries", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerSlowLog)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSlowLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/pfs-statements", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerPFSStatements)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerPFSStatements)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/tables", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerTables)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerTables)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/vtables", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerVTables)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVTables)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/schemas", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerSchemas)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSchemas)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status-innodb", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerInnoDBStatus)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerInnoDBStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/all-slaves-status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerAllSlavesStatus)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAllSlavesStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerMasterStatus)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMasterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service-opensvc", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxGetDatabaseServiceConfig)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetDatabaseServiceConfig)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStart)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStop)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStop)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerMaintenance)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMaintenance)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerUnprovision)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUnprovision)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/provision", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerProvision)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProvision)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-physical", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupPhysical)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerBackupPhysical)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-logical", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupLogical)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerBackupLogical)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-error-log", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupErrorLog)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerBackupErrorLog)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/backup-slowquery-log", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerBackupSlowQueryLog)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerBackupSlowQueryLog)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/optimize", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerOptimize)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerOptimize)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerReseed)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSetInnoDBMonitor)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetInnoDBMonitor)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQueryCapture)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQueryCapture)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQueryTable)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQueryTable)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSlowQuery)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQuery)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/set-long-query-time/{queryTime}", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSwitchSetLongQueryTime)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSetLongQueryTime)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerSwitchReadOnly)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchReadOnly)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reset-master", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerResetMaster)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetMaster)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start-slave", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStartSlave)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStartSlave)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop-slave", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxServerStopSlave)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStopSlave)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/skip-replication-event", negroni.New(
-		negroni.HandlerFunc(validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(handlerMuxSkipReplicationEvent)),
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSkipReplicationEvent)),
 	))
 }
 
-func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -216,10 +216,10 @@ func handlerMuxServerStop(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -234,10 +234,10 @@ func handlerMuxServerBackupPhysical(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerBackupLogical(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerBackupLogical(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -252,10 +252,10 @@ func handlerMuxServerBackupLogical(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -270,10 +270,10 @@ func handlerMuxServerOptimize(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -297,10 +297,10 @@ func handlerMuxServerReseed(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -315,10 +315,10 @@ func handlerMuxServerBackupErrorLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -333,10 +333,10 @@ func handlerMuxServerBackupSlowQueryLog(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -351,11 +351,11 @@ func handlerMuxServerMaintenance(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -370,11 +370,11 @@ func handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerStartSlave(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStartSlave(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -389,11 +389,11 @@ func handlerMuxServerStartSlave(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerStopSlave(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStopSlave(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -408,11 +408,11 @@ func handlerMuxServerStopSlave(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerResetMaster(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerResetMaster(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -427,10 +427,10 @@ func handlerMuxServerResetMaster(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSwitchSlowQueryCapture(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSwitchSlowQueryCapture(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -445,10 +445,10 @@ func handlerMuxSwitchSlowQueryCapture(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSwitchSlowQuery(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSwitchSlowQuery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -463,10 +463,10 @@ func handlerMuxSwitchSlowQuery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSwitchSlowQueryTable(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSwitchSlowQueryTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -481,10 +481,10 @@ func handlerMuxSwitchSlowQueryTable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSwitchSetLongQueryTime(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSwitchSetLongQueryTime(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -499,10 +499,10 @@ func handlerMuxSwitchSetLongQueryTime(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -517,10 +517,10 @@ func handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -535,10 +535,10 @@ func handlerMuxServerProvision(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
@@ -553,10 +553,10 @@ func handlerMuxServerUnprovision(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsInFailover() == false && mycluster.IsActive() && node.IsMaster() && node.IsDown() == false && node.IsMaintenance == false && node.IsReadOnly() == false {
@@ -572,10 +572,10 @@ func handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node == nil {
@@ -598,10 +598,10 @@ func handlerMuxServersPortIsMasterStatus(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
@@ -619,10 +619,10 @@ func handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
@@ -642,10 +642,10 @@ func handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
@@ -661,10 +661,10 @@ func handlerMuxServersPortBackup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerProcesslist(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerProcesslist(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -689,10 +689,10 @@ func handlerMuxServerProcesslist(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerErrorLog(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerErrorLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -716,10 +716,10 @@ func handlerMuxServerErrorLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerSlowLog(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerSlowLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -743,10 +743,10 @@ func handlerMuxServerSlowLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerPFSStatements(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerPFSStatements(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -770,10 +770,10 @@ func handlerMuxServerPFSStatements(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -797,10 +797,10 @@ func handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -824,10 +824,10 @@ func handlerMuxServerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerStatusDelta(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerStatusDelta(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -851,10 +851,10 @@ func handlerMuxServerStatusDelta(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerTables(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerTables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -878,10 +878,10 @@ func handlerMuxServerTables(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerVTables(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerVTables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -905,10 +905,10 @@ func handlerMuxServerVTables(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerSchemas(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerSchemas(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -932,10 +932,10 @@ func handlerMuxServerSchemas(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerInnoDBStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerInnoDBStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -959,10 +959,10 @@ func handlerMuxServerInnoDBStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerAllSlavesStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerAllSlavesStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -986,10 +986,10 @@ func handlerMuxServerAllSlavesStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -1013,10 +1013,10 @@ func handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSkipReplicationEvent(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSkipReplicationEvent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -1031,10 +1031,10 @@ func handlerMuxSkipReplicationEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxSetInnoDBMonitor(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxSetInnoDBMonitor(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
@@ -1049,10 +1049,10 @@ func handlerMuxSetInnoDBMonitor(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerMuxGetDatabaseServiceConfig(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := RepMan.getClusterByName(vars["clusterName"])
+	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
