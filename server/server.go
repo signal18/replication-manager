@@ -365,7 +365,7 @@ func (repman *ReplicationManager) Run() error {
 	log.WithField("version", repman.Version).Info("replication-manager started in daemon mode")
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
-	repman.Logs = s18log.NewHttpLog(1000)
+	repman.Logs = s18log.NewHttpLog(80)
 
 	go repman.apiserver()
 

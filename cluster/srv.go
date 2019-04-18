@@ -561,13 +561,16 @@ func (server *ServerMonitor) Refresh() error {
 		}
 
 		if server.ClusterGroup.Conf.MonitorProcessList {
-			server.FullProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+			server.FullProcessList, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+			if err != nil {
+				server.ClusterGroup.SetState("ERR00075", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
+			}
 		}
 	}
 
 	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 	if err != nil {
-		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ErrFrom: "CONF"})
+		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
 	}
 
 	// SHOW MASTER STATUS

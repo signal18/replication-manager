@@ -80,14 +80,15 @@ type Event struct {
 }
 
 type Processlist struct {
-	Id      uint64          `json:"id"`
-	User    string          `json:"user"`
-	Host    string          `json:"host"`
-	Db      sql.NullString  `json:"db"`
-	Command string          `json:"command"`
-	Time    sql.NullFloat64 `json:"time"`
-	State   string          `json:"state"`
-	Info    sql.NullString  `json:"info"`
+	Id       uint64          `json:"id"`
+	User     string          `json:"user"`
+	Host     string          `json:"host"`
+	Db       sql.NullString  `json:"db" db:"db"`
+	Command  string          `json:"command"`
+	Time     sql.NullFloat64 `json:"time"`
+	State    string          `json:"state"`
+	Info     sql.NullString  `json:"info"`
+	Progress sql.NullFloat64 `json:"progress"`
 }
 
 type LogSlow struct {
@@ -224,15 +225,31 @@ func GetAddress(host string, port string, socket string) string {
 	return address
 }
 
+func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
+	pl := []Processlist{}
+	var err error
+	if version.IsMariaDB() {
+		//MariaDB
+		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info, CASE WHEN Max_Stage < 2 THEN Progress ELSE (Stage-1)/Max_Stage*100+Progress/Max_Stage END AS Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
+	} else {
+		//MySQL
+		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+	}
+	return pl, nil
+}
+
 func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
 	pl := []Processlist{}
 	var err error
 	if version.IsMariaDB() {
 		//MariaDB
-		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
+		err = db.Select(&pl, "SHOW FULL PROCESSLIST")
 	} else {
 		//MySQL
-		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `Db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50")
+		err = db.Select(&pl, "SHOW FULL PROCESSLIST")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
