@@ -112,11 +112,14 @@ type ServerMonitor struct {
 	QPS                         int64                        `json:"qps"`
 	ReplicationHealth           string                       `json:"replicationHealth"`
 	TestConfig                  string                       `json:"testConfig"`
-	Variables                   map[string]string            `json:"variables"`
+	Variables                   map[string]string            `json:"-"`
 	EngineInnoDB                map[string]string            `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
 	SlowLog                     s18log.SlowLog               `json:"-"`
 	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
+	LongQueryTime               string                       `json:"longQueryTime"`
+	LogOutput                   string                       `json:"logOutput"`
+	SlowQueryLog                string                       `json:"slowQueryLog"`
 	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
 	Status                      map[string]string            `json:"-"`
 	PrevStatus                  map[string]string            `json:"-"`
@@ -471,6 +474,10 @@ func (server *ServerMonitor) Refresh() error {
 		server.Strict = server.Variables["GTID_STRICT_MODE"]
 		server.LogBin = server.Variables["LOG_BIN"]
 		server.ReadOnly = server.Variables["READ_ONLY"]
+		server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
+		server.LogOutput = server.Variables["LOG_OUTPUT"]
+		server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
+
 		if server.Variables["READ_ONLY"] != "ON" {
 			server.HaveReadOnly = false
 		} else {

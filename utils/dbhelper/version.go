@@ -15,9 +15,10 @@ import (
 )
 
 type MySQLVersion struct {
-	Flavor string `json:"flavor"`
-	Major  int    `json:"major"`
-	Minor  int    `json:"minor"`
+	Flavor  string `json:"flavor"`
+	Major   int    `json:"major"`
+	Minor   int    `json:"minor"`
+	Release int    `json:"release"`
 }
 
 func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
@@ -33,6 +34,7 @@ func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
 	if len(tokens) >= 2 {
 		mv.Major, _ = strconv.Atoi(tokens[0])
 		mv.Minor, _ = strconv.Atoi(tokens[1])
+		mv.Release, _ = strconv.Atoi(tokens[2])
 	}
 	return mv
 }

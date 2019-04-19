@@ -61,10 +61,10 @@
     </td>
     </tr><tr>
       <td colspan=2 class="rowicon">Version</td>
-      <td colspan=2>{{server.variables.VERSION}}</td>
+      <td colspan=2>{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}.{{server.dbVersion.release}}</td>
     </tr><tr>
         <td colspan=2 class="rowicon">Server Id</td>
-        <td colspan=2 >{{server.variables.SERVER_ID}}</td>
+        <td colspan=2 >{{server.serverId}}</td>
     </tr><tr>
           <td colspan=2 >Fail Cnt</td>
           <td colspan=2 >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
