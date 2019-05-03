@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -42,6 +44,7 @@ type SlowMessage struct {
 	RateType      string             `json:"raeType"`       // Percona Server rate limit type
 	RateLimit     uint               `json:"rateLimit"`     // Percona Server rate limit value
 	Text          string             `json:"text"`
+	Digest        string             `json:"digest"`
 }
 
 func NewSlowMessage() *SlowMessage {
@@ -168,6 +171,7 @@ func (tl *SlowLog) parseQuery(line string, sl *SlowMessage) {
 		db = strings.Trim(db, "`")
 		sl.Db = db
 		sl.Query = line
+		sl.Digest = crypto.GetMD5Hash(dbhelper.GetQueryDigest(line))
 	} else if setRe.MatchString(line) {
 		if strings.Contains(line, "timestamp") {
 			val := strings.Split(line, "=")
@@ -180,6 +184,7 @@ func (tl *SlowLog) parseQuery(line string, sl *SlowMessage) {
 		}
 	} else {
 		sl.Query = line
+		sl.Digest = crypto.GetMD5Hash(dbhelper.GetQueryDigest(line))
 	}
 }
 

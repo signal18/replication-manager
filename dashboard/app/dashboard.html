@@ -36,34 +36,36 @@
                     <div ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
 
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist">
                     <div style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries">
                     <div ng-include src="'static/tab-server-slow.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('PFSQueries')"  md-select-id="PFSQueries"  md-on-select="onTabSelected" label="PFS Queries">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('PFSQueries')"  md-select-id="PFSQueries"  md-on-select="onTabSelected" label="Digest Queries">
                     <div ng-include src="'static/tab-server-pfs-statements.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('LogError')" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('LogError')" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
                     <div ng-include src="'static/tab-server-errors.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Tables')" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('Tables')" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
                     <div ng-include src="'static/tab-server-tables.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Status')" md-select-id="Status" md-on-select="onTabSelected" label="Status">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('Status')" md-select-id="Status" md-on-select="onTabSelected" label="Status">
                     <div ng-include src="'static/tab-server-status.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('StatusInnoDB')" md-select-id="StatusInnoDB" md-on-select="onTabSelected" label="Status InnoDB">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('StatusInnoDB')" md-select-id="StatusInnoDB" md-on-select="onTabSelected" label="Status InnoDB">
                     <div ng-include src="'static/tab-server-statusinnodb.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('Variables')" md-select-id="Variables" md-on-select="onTabSelected" label="Variables">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('Variables')" md-select-id="Variables" md-on-select="onTabSelected" label="Variables">
                     <div ng-include src="'static/tab-server-variables.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer" ng-click="onTabClicked('ServiceOpenSVC')" md-select-id="ServiceOpenSVC" md-on-select="onTabSelected" label="Service OpenSVC">
+                <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('ServiceOpenSVC')" md-select-id="ServiceOpenSVC" md-on-select="onTabSelected" label="Service OpenSVC">
                     <div ng-include src="'static/tab-server-serviceopensvc.html'"></div>
                 </md-tab>
-
+                <md-tab ng-if="selectedQuery" ng-click="onTabClicked('QueryExplain')" md-select-id="QueryExplain" md-on-select="onTabSelected" label="Explain Plan">
+                    <div ng-include src="'static/tab-query-explain.html'"></div>
+                </md-tab>
             </md-tabs>
         </md-content>
     </div>

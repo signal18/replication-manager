@@ -7,18 +7,21 @@
     <td width="5%">
         <div ng-include src="'static/menu-server.html'"></div>
     </td>
-    <td width="10%">
+    <td width="15%">
       <md-button ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquery(server.id)">
         <md-icon ng-if="server.slowQueryLog=='ON'"class="fa fa-stop"></md-icon><md-icon ng-if="server.slowQueryLog=='OFF'" class="fa fa-play"></md-icon>
       </md-button>
+      <md-button ng-if="selectedTab=='PFSQueries'" class="md-raised" aria-label="Tabular" ng-click="dbtooglepfsslow(server.id)" >
+        <div ng-if="digestmode=='pfs'"><md-icon ng-if="digestmode=='pfs'"class="fa fa-object-group"></md-icon> PFS</div><div ng-if="digestmode=='slow'"><md-icon ng-if="digestmode=='slow'" class="fa fa-object-group" ></md-icon> SLOW</div>
+      </md-button>
     </td>
-    <td width="25%">
-      <md-button  ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquerytable(selectedServer)">
-        <md-icon ng-if="server.logOutput=='TABLE'" md-menu-origin class="fa fa-table"></md-icon><md-icon ng-if="server.logOutput=='FILE'" md-menu-origin class="fa fa-file"></md-icon> Capture TABLE/FILE
+    <td width="30%">
+      <md-button  ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquerytable(selectedServer)"  >
+        <h1 ng-if="server.logOutput=='TABLE'"><md-icon md-menu-origin class="fa fa-table"></md-icon> TABLE</h1><h1 ng-if="server.logOutput=='FILE'"><md-icon md-menu-origin class="fa fa-file"></md-icon> FILE</h1>
       </md-button>
     </td>
 
-    <td  width="50%">
+    <td  width="40%">
 
       <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
         <input type="text" ng-blur="toogleRefresh()" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.longQueryTime"></input>

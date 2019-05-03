@@ -9,6 +9,7 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -103,4 +104,10 @@ func ReadKey(keyPath string) ([]byte, error) {
 	key := make([]byte, 16)
 	_, err = file.Read(key)
 	return key, err
+}
+
+func GetMD5Hash(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
 }

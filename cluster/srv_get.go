@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -192,13 +193,67 @@ func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	return variables
 }
 
-func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
-	var rows []dbhelper.PFSQuery
+func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
 	for _, v := range server.PFSQueries {
-		rows = append(rows, v)
+		//server.ClusterGroup.LogPrintf(LvlInfo, "Status %s %s", digest, v.Digest)
+		if v.Digest == digest {
+			return v.Schema_name, v.Query, nil
+		}
 	}
-	sort.Sort(dbhelper.PFSQuerySorter(rows))
-	return rows
+	return "", "", errors.New("Query digest not found in PFS")
+}
+
+func (server *ServerMonitor) GetQueryFromSlowLogDigest(digest string) (string, string, error) {
+	for _, v := range server.SlowLog.Buffer {
+		if v.Digest == digest {
+			return v.Db, v.Query, nil
+		}
+	}
+	return "", "", errors.New("Query digest not found in PFS")
+}
+
+func (server *ServerMonitor) GetQueryExplain(schema string, query string) ([]dbhelper.Explain, error) {
+	explainPlan, err := dbhelper.GetQueryExplain(server.Conn, server.DBVersion, schema, query)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlInfo, "GetExplain %s %s ", query, err)
+	}
+	return explainPlan, err
+}
+
+func (server *ServerMonitor) GetQueryAnalyze(schema string, query string) (string, error) {
+	return dbhelper.AnalyzeQuery(server.Conn, server.DBVersion, schema, query)
+}
+
+func (server *ServerMonitor) GetQueryExplainPFS(digest string) ([]dbhelper.Explain, error) {
+	schema, query, err := server.GetQueryFromPFSDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+	return server.GetQueryExplain(schema, query)
+}
+
+func (server *ServerMonitor) GetQueryAnalyzePFS(digest string) (string, error) {
+	schema, query, err := server.GetQueryFromPFSDigest(digest)
+	if err != nil {
+		return "", err
+	}
+	return server.GetQueryAnalyze(schema, query)
+}
+
+func (server *ServerMonitor) GetQueryExplainSlowLog(digest string) ([]dbhelper.Explain, error) {
+	schema, query, err := server.GetQueryFromSlowLogDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+	return server.GetQueryExplain(schema, query)
+}
+
+func (server *ServerMonitor) GetQueryAnalyzeSlowLog(digest string) (string, error) {
+	schema, query, err := server.GetQueryFromSlowLogDigest(digest)
+	if err != nil {
+		return "", err
+	}
+	return server.GetQueryAnalyze(schema, query)
 }
 
 func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
@@ -238,8 +293,71 @@ func (server *ServerMonitor) GetErrorLog() s18log.HttpLog {
 	return server.ErrorLog
 }
 
+func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
+	var rows []dbhelper.PFSQuery
+	for _, v := range server.PFSQueries {
+		rows = append(rows, v)
+	}
+	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	return rows
+}
+
+func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
+	SlowPFSQueries := make(map[string]dbhelper.PFSQuery)
+	for _, s := range server.SlowLog.Buffer {
+		if val, ok := SlowPFSQueries[s.Digest]; ok {
+			val.Exec_count = val.Exec_count + 1
+			sum, _ := strconv.ParseFloat(val.Exec_time_total, 64)
+			val.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"]+sum, 'g', 1, 64)
+			avg, _ := strconv.ParseFloat(val.Exec_time_total, 64)
+			avg = avg / float64(val.Exec_count)
+			val.Exec_time_avg_ms.Float64 = avg
+			if s.TimeMetrics["queryTime"] > val.Exec_time_max.Float64 {
+				val.Exec_time_max.Float64 = s.TimeMetrics["queryTime"]
+			}
+			SlowPFSQueries[s.Digest] = val
+		} else {
+			var nval dbhelper.PFSQuery
+			nval.Digest_text = dbhelper.GetQueryDigest(s.Query)
+			nval.Digest = s.Digest
+			nval.Query = s.Query
+			nval.Last_seen = s.Timestamp
+			nval.Exec_count = 1
+			nval.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"], 'g', 1, 64)
+			nval.Exec_time_max.Float64 = s.TimeMetrics["queryTime"]
+			avg, _ := strconv.ParseFloat(nval.Exec_time_total, 64)
+			avg = avg / float64(nval.Exec_count)
+			nval.Exec_time_avg_ms.Float64 = avg
+			nval.Rows_scanned = int64(s.NumberMetrics["rowExamined"])
+			nval.Rows_sent = int64(s.NumberMetrics["rowSent"])
+			SlowPFSQueries[s.Digest] = nval
+			//	val.Plan_tmp_disk = s.BoolMetrics[""]
+		}
+
+	}
+	var rows []dbhelper.PFSQuery
+	for _, v := range SlowPFSQueries {
+		rows = append(rows, v)
+	}
+	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	var limits []dbhelper.PFSQuery
+	i := 0
+	for _, v := range rows {
+		if i < 50 {
+			limits = append(limits, v)
+
+		}
+		i = i + 1
+	}
+	return limits
+}
+
 func (server *ServerMonitor) GetSlowLog() s18log.SlowLog {
 	return server.SlowLog
+}
+
+func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
+	return sqlx.Connect("mysql", server.DSN)
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
@@ -276,11 +394,17 @@ func (server *ServerMonitor) GetSlowLogTable() {
 			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
 		)
 	}
-	_, err = server.Conn.Exec("set sql_log_bin=0")
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
+		return
+	}
+	defer Conn.Close()
+	_, err = Conn.Exec("set sql_log_bin=0")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
 	}
-	_, err = server.Conn.Exec("TRUNCATE mysql.slow_log")
+	_, err = Conn.Exec("TRUNCATE mysql.slow_log")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
 	}

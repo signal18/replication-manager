@@ -43,7 +43,11 @@ app.factory('Status', function ($resource) {
 });
 
 app.factory('PFSStatements', function ($resource) {
-    return $resource('api/clusters/:clusterName/servers/:serverName/pfs-statements', {clusterName: '@clusters',serverName: '@server'});
+    return $resource('api/clusters/:clusterName/servers/:serverName/digest-statements-pfs', {clusterName: '@clusters',serverName: '@server'});
+});
+
+app.factory('PFSStatementsSlowLog', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/digest-statements-slow', {clusterName: '@clusters',serverName: '@server'});
 });
 
 app.factory('SlowQueries', function ($resource) {
@@ -56,6 +60,14 @@ app.factory('Variables', function ($resource) {
 
 app.factory('StatusInnoDB', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/status-innodb', {clusterName: '@clusters',serverName: '@server'});
+});
+
+app.factory('ExplainPlanPFS', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/queries/:queryDigest/actions/explain-pfs', {clusterName: '@clusters',serverName: '@server',queryDigest: '@digest'});
+});
+
+app.factory('ExplainPlanSlowLog', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/queries/:queryDigest/actions/explain-slowlog', {clusterName: '@clusters',serverName: '@server',queryDigest: '@digest'});
 });
 
 app.factory('ServiceOpenSVC', function ($resource) {

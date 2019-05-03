@@ -29,23 +29,24 @@ import (
 const debug = false
 
 type PFSQuery struct {
-	Digest           string
-	Query            string
-	Schema_name      string
-	Last_seen        string
-	Plan_full_scan   string
-	Plan_tmp_disk    int64
-	Plan_tmp_mem     int64
-	Exec_count       int64
-	Err_count        int64
-	Warn_count       int64
-	Exec_time_total  string
-	Exec_time_max    sql.NullFloat64
-	Exec_time_avg_ms sql.NullFloat64
-	Rows_sent        int64
-	Rows_sent_avg    int64
-	Rows_scanned     int64
-	Value            string
+	Digest           string          `json:"digest"`
+	Query            string          `json:"query"`
+	Digest_text      string          `json:"digestText"`
+	Schema_name      string          `json:"shemaName"`
+	Last_seen        string          `json:"lastSeen"`
+	Plan_full_scan   string          `json:"planFullScan"`
+	Plan_tmp_disk    int64           `json:"planTmpDisk"`
+	Plan_tmp_mem     int64           `json:"planTmpMem"`
+	Exec_count       int64           `json:"execCount"`
+	Err_count        int64           `json:"errCount"`
+	Warn_count       int64           `json:"warnCount"`
+	Exec_time_total  string          `json:"execTimeTotal"`
+	Exec_time_max    sql.NullFloat64 `json:"execTimeMax"`
+	Exec_time_avg_ms sql.NullFloat64 `json:"execTimeAvgMs"`
+	Rows_sent        int64           `json:"rowsSent"`
+	Rows_sent_avg    int64           `json:"rowsSentAvg"`
+	Rows_scanned     int64           `json:"rowsScanned"`
+	Value            string          `json:"value"`
 }
 
 type PFSQuerySorter []PFSQuery
@@ -86,7 +87,7 @@ type Processlist struct {
 	Db       sql.NullString  `json:"db" db:"db"`
 	Command  string          `json:"command"`
 	Time     sql.NullFloat64 `json:"time"`
-	State    string          `json:"state"`
+	State    sql.NullString  `json:"state"`
 	Info     sql.NullString  `json:"info"`
 	Progress sql.NullFloat64 `json:"progress"`
 }
@@ -105,6 +106,7 @@ type LogSlow struct {
 	Sql_text       sql.NullString `db:"sql_text"`
 	Thread_id      int64          `db:"thread_id"`
 	Rows_affected  int            `db:"rows_affected"`
+	Digest         string
 }
 
 type SlaveHosts struct {
@@ -189,6 +191,19 @@ type Variable struct {
 	Value         string `json:"value"`
 }
 
+type Explain struct {
+	Id            uint           `db:"id" json:"id"`
+	Select_type   sql.NullString `db:"select_type" json:"selectType"`
+	Table         sql.NullString `db:"table" json:"table"`
+	Type          sql.NullString `db:"type" json:"type"`
+	Possible_keys sql.NullString `db:"possible_keys" json:"possibleKeys"`
+	Key           sql.NullString `db:"key" json:"key"`
+	Key_len       sql.NullString `db:"key_len" json:"keyLen"`
+	Ref           sql.NullString `db:"ref" json:"ref"`
+	Rows          sql.NullString `db:"rows" json:"rows"`
+	Extra         sql.NullString `db:"Extra" json:"extra"`
+}
+
 type VariableSorter []Variable
 
 func (a VariableSorter) Len() int           { return len(a) }
@@ -210,7 +225,7 @@ func SQLiteConnect(path string) (*sqlx.DB, error) {
 	return db, err
 }
 
-func GetqueryDigest(q string) string {
+func GetQueryDigest(q string) string {
 	f := query.Fingerprint(q)
 	return f
 }
@@ -223,6 +238,25 @@ func GetAddress(host string, port string, socket string) string {
 		address = "unix(" + socket + ")"
 	}
 	return address
+}
+
+func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query string) ([]Explain, error) {
+	pl := []Explain{}
+	var err error
+	if schema != "" {
+		_, err = db.Exec("USE " + schema)
+	}
+	if version.IsMariaDB() {
+		//MariaDB
+		err = db.Select(&pl, "Explain "+query)
+	} else {
+		//MySQL
+		err = db.Select(&pl, "Explain "+query)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+	}
+	return pl, nil
 }
 
 func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
@@ -239,6 +273,25 @@ func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, err
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
 	return pl, nil
+}
+
+func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, error) {
+	var res string
+	if schema != "" {
+		db.Exec("USE " + schema)
+	}
+	rows, err := db.Query("ANALYZE  FORMAT=JSON " + query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		if err := rows.Scan(&res); err != nil {
+			return res, err
+		}
+	}
+	return res, err
 }
 
 func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
@@ -935,26 +988,28 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
 	query = `SELECT
-	digest as digest,
-	digest_text as query,
-	LAST_SEEN as last_seen,
-	COALESCE(SCHEMA_NAME,'') as schema_name,
-	IF(SUM_NO_GOOD_INDEX_USED > 0 OR SUM_NO_INDEX_USED > 0, '*', '') AS plan_full_scan,
-	SUM_CREATED_TMP_DISK_TABLES as plan_tmp_disk,
-	SUM_CREATED_TMP_TABLES as plan_tmp_mem,
-	COUNT_STAR AS exec_count,
-  SUM_ERRORS AS err_count,
-	SUM_WARNINGS AS warn_count,
-	SEC_TO_TIME(SUM_TIMER_WAIT/1000000000000) AS exec_time_total,
-	(MAX_TIMER_WAIT/1000000000000) AS exec_time_max,
-	(AVG_TIMER_WAIT/1000000000000) AS exec_time_avg,
-	SUM_ROWS_SENT AS rows_sent,
-	ROUND(SUM_ROWS_SENT / COUNT_STAR) AS rows_sent_avg,
-	SUM_ROWS_EXAMINED AS rows_scanned,
-	round(sum_timer_wait/1000000000000, 6) as value
-	FROM performance_schema.events_statements_summary_by_digest
-	WHERE digest_text is not null
-	ORDER BY sum_timer_wait desc
+	A.digest as digest,
+	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
+	 A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query,
+	A.digest_text as digest_text,
+	A.LAST_SEEN as last_seen,
+	COALESCE(A.SCHEMA_NAME,'') as schema_name,
+	IF(A.SUM_NO_GOOD_INDEX_USED > 0 OR A.SUM_NO_INDEX_USED > 0, '*', '') AS plan_full_scan,
+	A.SUM_CREATED_TMP_DISK_TABLES as plan_tmp_disk,
+	A.SUM_CREATED_TMP_TABLES as plan_tmp_mem,
+	A.COUNT_STAR AS exec_count,
+  A.SUM_ERRORS AS err_count,
+	A.SUM_WARNINGS AS warn_count,
+	SEC_TO_TIME(A.SUM_TIMER_WAIT/1000000000000) AS exec_time_total,
+	(A.MAX_TIMER_WAIT/1000000000000) AS exec_time_max,
+	(A.AVG_TIMER_WAIT/1000000000000) AS exec_time_avg,
+	A.SUM_ROWS_SENT AS rows_sent,
+	ROUND(A.SUM_ROWS_SENT / A.COUNT_STAR) AS rows_sent_avg,
+	A.SUM_ROWS_EXAMINED AS rows_scanned,
+	round(A.sum_timer_wait/1000000000000, 6) as value
+	FROM performance_schema.events_statements_summary_by_digest A
+	WHERE A.digest_text is not null
+	ORDER BY A.sum_timer_wait desc
 	LIMIT 50`
 
 	rows, err := db.Queryx(query)
@@ -964,7 +1019,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	}
 	for rows.Next() {
 		var v PFSQuery
-		err := rows.Scan(&v.Digest, &v.Query, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
+		err := rows.Scan(&v.Digest, &v.Query, &v.Digest_text, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
 		if err != nil {
 			return nil, errors.New("Could not get results from status scan")
 		}
@@ -1400,6 +1455,15 @@ func KillThreads(db *sqlx.DB) {
 	for _, id := range ids {
 		db.Exec("KILL ?", id)
 	}
+}
+
+func KillThread(db *sqlx.DB, id string) error {
+	_, err := db.Exec("KILL ?", id)
+	return err
+}
+func KillQuery(db *sqlx.DB, id string) error {
+	_, err := db.Exec("KILL QUERY ?", id)
+	return err
 }
 
 /* Check if string is an IP address or a hostname, return a IP address */

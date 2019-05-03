@@ -124,6 +124,7 @@ type ServerMonitor struct {
 	Status                      map[string]string            `json:"-"`
 	PrevStatus                  map[string]string            `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
+	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
 	DictTables                  map[string]dbhelper.Table    `json:"-"`
 	Tables                      []dbhelper.Table             `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`
@@ -213,7 +214,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 
-	server.Conn, err = sqlx.Open("mysql", server.DSN)
+	server.Conn, err = server.GetNewDBConn()
 
 	return server, err
 }
@@ -233,7 +234,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	var err error
 	switch server.ClusterGroup.Conf.CheckType {
 	case "tcp":
-		conn, err = sqlx.Connect("mysql", server.DSN)
+		conn, err = server.GetNewDBConn()
 	case "agent":
 		var resp *http.Response
 		resp, err = http.Get("http://" + server.Host + ":10001/check/")
@@ -834,4 +835,12 @@ func (server *ServerMonitor) SkipReplicationEvent() {
 	server.StopSlave()
 	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 	server.StartSlave()
+}
+
+func (server *ServerMonitor) KillThread(id string) error {
+	return dbhelper.KillThread(server.Conn, id)
+}
+
+func (server *ServerMonitor) KillQuery(id string) error {
+	return dbhelper.KillQuery(server.Conn, id)
 }

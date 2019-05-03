@@ -1,14 +1,17 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,SlowQueries) {
+function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedServer = undefined;
+  $scope.selectedQuery = undefined;
   $scope.menuOpened = false;
   $scope.serverListTabular = false;
   $scope.selectedTab = undefined;
   $scope.selectedUserIndex = undefined;
   $scope.refreshInterval = 2000;
+  $scope.digestmode = "pfs";
   var promise = undefined;
+
 
 
   $scope.monitors = [
@@ -81,13 +84,7 @@ function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDial
         });
 
       }
-      if ($scope.selectedClusterName && $scope.selectedServer==undefined ) {
-        Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
-        $scope.selectedCluster = data;
-        $scope.reserror = false;
-        }, function () {
-          $scope.reserror = true;
-        });
+      if ($scope.selectedClusterName ) {
         Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
           if (!$scope.menuOpened) {
             if (data) {
@@ -107,6 +104,15 @@ function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDial
         }, function () {
           $scope.reserror = true;
         });
+      } // fetch server most of  the time
+      if ($scope.selectedClusterName && $scope.selectedServer==undefined ) {
+        Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
+        $scope.selectedCluster = data;
+        $scope.reserror = false;
+        }, function () {
+          $scope.reserror = true;
+        });
+
 
 
 
@@ -152,6 +158,7 @@ function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDial
         }
 
         if ($scope.selectedTab=='PFSQueries') {
+          if ($scope.digestmode == 'pfs') {
           PFSStatements.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.pfsstatements = data;
             $scope.reserror = false;
@@ -159,6 +166,15 @@ function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDial
           }, function () {
             $scope.reserror = true;
           });
+          } else {
+            PFSStatementsSlowLog.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+              $scope.pfsstatements = data;
+              $scope.reserror = false;
+
+            }, function () {
+              $scope.reserror = true;
+            });
+          }
         }
 
         if ($scope.selectedTab=='LogSlow') {
@@ -272,6 +288,9 @@ var httpGetWithoutResponse = function (url) {
     });
   };
 
+
+
+
   $scope.switch = function (fail) {
     if (fail) {
       if (confirm("Confirm failover")) httpGetWithoutResponse(getClusterUrl() + '/actions/failover');
@@ -336,6 +355,17 @@ var httpGetWithoutResponse = function (url) {
   $scope.dbtoogleslowquerytable = function (server) {
     if (confirm("Confirm toogle slow query mode between TABLE and FILE server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
   };
+
+
+  $scope.dbtooglepfsslow = function (server) {
+    confirm("Confirm toogle digest mode between PFS and SLOW server-id: " + server) ;
+    if ($scope.digestmode=="slow") {
+        $scope.digestmode="pfs";
+    }  else {
+        $scope.digestmode="slow";
+    }
+  };
+
   $scope.dbtooglereadonly = function (server) {
     if (confirm("Confirm toogle read only on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
   };
@@ -599,11 +629,49 @@ var httpGetWithoutResponse = function (url) {
     $scope.onTabSelected('Processlist');
   };
 
-  $scope.longQueryTime =  "0"
+  $scope.longQueryTime =  "0";
+
 
   $scope.updateLongQueryTime = function (time,name)  {
     if (confirm("Confirm change Long Query Time" +   time  + " on server "+  name  )) httpGetWithoutResponse(getClusterUrl() + '/servers/' + name +'/actions/set-long-query-time/'+time);
   };
+
+  $scope.explainPlan = undefined;
+
+  $scope.queryExplainPFS = function (digest) {
+    $scope.selectedQuery=digest;
+    ExplainPlanPFS.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer, queryDigest: $scope.selectedQuery}, function (data) {
+      $scope.explainPlan = data;
+      $scope.reserror = false;
+
+    }, function () {
+      $scope.reserror = true;
+    });
+
+
+  };
+
+  $scope.queryExplainSlowLog = function (digest) {
+    $scope.selectedQuery=digest;
+    ExplainPlanSlowLog.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer, queryDigest: $scope.selectedQuery}, function (data) {
+      $scope.explainPlan = data;
+      $scope.reserror = false;
+    }, function () {
+      $scope.reserror = true;
+    });
+  };
+
+  $scope.closeExplain = function () {
+    $scope.selectedQuery=undefined;
+  };
+
+var httpGetExplainPlan = function (url) {
+    $http.get(url)
+    .subscribe(res => {
+                $scope.explainPlan= res._body;
+      });
+
+    };
 
   $scope.toggleLeft = buildToggler('left');
   $scope.toggleRight = buildToggler('right');

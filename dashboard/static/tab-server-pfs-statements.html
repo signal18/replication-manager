@@ -21,9 +21,10 @@
               </p>
               </md-card-content>
                    <table border=1 class="slowlog" >
+                     <col width="2%">
                      <col width="12%"/>
                      <col width="8%"/>
-                     <col width="34%"/>
+                     <col width="32%"/>
                      <col width="5%"/>
                      <col width="5%"/>
                      <col width="5%"/>
@@ -36,7 +37,7 @@
                      <col width="5%"/>
 
                       <tr>
-                         <th rowspan=2>At</th>
+                         <th colspan="2" rowspan=2>At</th>
                         <th rowspan=2>Schema</th>
                          <th rowspan=2>Query</th>
                          <th rowspan=2>Count</th>
@@ -60,20 +61,29 @@
                          <th align="center">Mem</th>
                       </tr>
                       <tr ng-repeat="logline in pfsstatements">
-                         <td class="stamp">{{logline.Last_seen }}</td>
-                         <td class="stamp">{{logline.Schema_name }}</td>
-                         <td class="text">{{ logline.Query }}</td>
-                         <td class="text">{{ logline.Exec_count }}</td>
-                         <td class="text">{{ logline.Exec_time_total }}</td>
-                         <td class="text">{{ logline.Exec_time_max.Float64 }}</td>
-                         <td class="text">{{ logline.Exec_time_avg_ms.Float64 }}</td>
+                        <th align="center" ng-click="queryExplainPFS(logline.digest)">
+                           <i href="queryExplainPFS(logline.digest)" class="fas fa-eye"></i>
+                            <!--
+                              <div ng-include src="'static/menu-query-pfs.html'"></div>
+                            -->
+                          </th>
 
-                        <td class="text">{{ logline.Rows_sent   }}</td>
-                          <td class="text">{{ logline.Rows_sent_avg   }}</td>
-                          <td class="text">{{ logline.Rows_scanned  }}</td>
-                          <td class="text">{{ logline.Plan_full_scan   }}</td>
-                            <td class="text">{{ logline.Plan_tmp_disk   }}</td>
-                            <td class="text">{{ logline.Plan_tmp_mem  }}</td>
+
+
+                         <td class="stamp">{{logline.lastSeen }}</td>
+                         <td class="stamp">{{logline.schemaName }}</td>
+                         <td class="text">{{ logline.query }}</td>
+                         <td class="text">{{ logline.execCount }}</td>
+                         <td class="text">{{ logline.execTimeTotal }}</td>
+                         <td class="text">{{ logline.execTimeMax.Float64 }}</td>
+                         <td class="text">{{ logline.execTimeAvgMs.Float64 }}</td>
+
+                        <td class="text">{{ logline.rowsSent   }}</td>
+                          <td class="text">{{ logline.rowsSentAvg   }}</td>
+                          <td class="text">{{ logline.rowsScanned  }}</td>
+                          <td class="text">{{ logline.planFullScan   }}</td>
+                            <td class="text">{{ logline.planTmpDisk   }}</td>
+                            <td class="text">{{ logline.planTmpMem  }}</td>
                       </tr>
                    </table>
 

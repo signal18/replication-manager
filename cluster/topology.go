@@ -15,7 +15,6 @@ import (
 	"sync"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
 
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -72,7 +71,7 @@ func (cluster *Cluster) pingServerList() {
 			defer wg.Done()
 			//	tcpAddr, err := net.ResolveTCPAddr("tcp4", sv.)
 			if sv.Conn != nil {
-				conn, err := sqlx.Connect("mysql", sv.DSN)
+				conn, err := sv.GetNewDBConn()
 				defer conn.Close()
 				if err != nil {
 					if driverErr, ok := err.(*mysql.MySQLError); ok {
