@@ -214,7 +214,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 
-	server.Conn, err = server.GetNewDBConn()
+	server.Conn, err = sqlx.Open("mysql", server.DSN)
 
 	return server, err
 }
