@@ -266,6 +266,17 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 
 }
 
+func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	for _, cluster := range repman.Clusters {
+		for _, server := range cluster.Servers {
+			res := server.GetPrometheusMetrics()
+			w.Write([]byte(res))
+		}
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -302,17 +313,6 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 		}
 	} else {
 		http.Error(w, "token parse error", 500)
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	for _, cluster := range repman.Clusters {
-		for _, server := range cluster.Servers {
-			res := server.GetPrometheusMetrics()
-			w.Write([]byte(res))
-		}
 	}
 }
 
