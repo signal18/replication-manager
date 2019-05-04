@@ -95,11 +95,7 @@ func cliGetpasswd() string {
 
 func cliInit(needcluster bool) {
 	var err error
-	cliClusters, err = cliGetClusters()
-	if err != nil {
-		log.WithError(err).Fatal()
-		return
-	}
+
 	cliToken, err = cliLogin()
 	if err != nil {
 		cliPassword = cliGetpasswd()
@@ -109,6 +105,11 @@ func cliInit(needcluster bool) {
 			fmt.Printf("\n'%s'\n", err)
 			os.Exit(14)
 		}
+	}
+	cliClusters, err = cliGetClusters()
+	if err != nil {
+		log.WithError(err).Fatal()
+		return
 	}
 	allCLusters, _ := cliGetAllClusters()
 	if len(cliClusters) != 1 && needcluster && cfgGroup == "" {
@@ -988,9 +989,9 @@ func cliLogin() (string, error) {
 }
 
 func cliGetAllClusters() ([]string, error) {
-	var r server.Settings
+	var r server.ReplicationManager
 	var res []string
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/monitor"
 	var bearer = "Bearer " + cliToken
 	req, err := http.NewRequest("GET", urlpost, nil)
 	if err != nil {
@@ -1008,13 +1009,14 @@ func cliGetAllClusters() ([]string, error) {
 		log.Println("ERROR", err)
 		return res, err
 	}
-
+	log.Printf("%s", body)
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		log.Println("ERROR in cluster list", err)
+
 		return res, err
 	}
-	return r.Clusters, nil
+	return r.ClusterList, nil
 }
 
 func cliGetSettings() (cluster.Cluster, error) {

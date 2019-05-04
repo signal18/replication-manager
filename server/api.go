@@ -305,21 +305,6 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 	}
 }
 
-func (repman *ReplicationManager) handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	s := new(Settings)
-	s.Clusters = repman.ClusterList
-	regtest := new(regtest.RegTest)
-	s.RegTests = regtest.GetTests()
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(s)
-	if err != nil {
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}
-
 func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -367,6 +352,21 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		}
 	} else {
 		http.Error(w, "token parse error", 500)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	s := new(Settings)
+	s.Clusters = repman.ClusterList
+	regtest := new(regtest.RegTest)
+	s.RegTests = regtest.GetTests()
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err := e.Encode(s)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
 	}
 }
 
