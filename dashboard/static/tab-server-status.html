@@ -31,25 +31,37 @@
                 text-overflow: ellipsis;
                 }
       </style>
-                   <table  border=1 >
+
+     <table  bs-table-control="bsTableStatus"></table>
+                <!--   <table id="tableStatus" border=1 >
+                     <thead>
                       <col  width="30%"/>
                       <col  width="60%"/>
 
                       <tr>
-                         <th >Status</th>
-                         <th >Value</th>
+                         <th data-field="variableName" >Status</th>
+                         <th  data-field="value" >Value</th>
 
                       </tr>
-
+                      </thead>
                       <tr ng-repeat="v in status">
                          <td class="process">{{ v.variableName }}</td>
                          <td class="process">{{ v.value }}    </td>
                       </tr>
-                   <table>
 
+                   </table>
+                     <script>
+                       $(function() {
+
+                       var $table = $('#tableStatus')
+                       $table.bootstrapTable({data: status})
+                         })
+                       </script>
+-->
              </md-card>
 
            </div>
+
              <BR><BR>
 
 

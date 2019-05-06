@@ -51,9 +51,13 @@ type PFSQuery struct {
 
 type PFSQuerySorter []PFSQuery
 
-func (a PFSQuerySorter) Len() int           { return len(a) }
-func (a PFSQuerySorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a PFSQuerySorter) Less(i, j int) bool { return a[i].Value > a[j].Value }
+func (a PFSQuerySorter) Len() int      { return len(a) }
+func (a PFSQuerySorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a PFSQuerySorter) Less(i, j int) bool {
+	l, _ := strconv.ParseFloat(a[i].Value, 64)
+	r, _ := strconv.ParseFloat(a[j].Value, 64)
+	return l > r
+}
 
 type Table struct {
 	Table_schema   string `json:"tableSchema"`

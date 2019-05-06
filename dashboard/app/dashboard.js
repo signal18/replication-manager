@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog ) {
+function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedServer = undefined;
@@ -235,13 +235,81 @@ function ($scope, $routeParams, $interval, $http, $location, $mdSidenav, $mdDial
 
       } // End Selected Server
 
+      $scope.bsTableStatus = {
+              options: {
+                data: $scope.status,
+                rowStyle: function (row, index) {
+                  return { classes: 'none' }
+                },
+                cache: false,
+                height: 600,
+                striped: true,
+                pagination: false,
+                pageSize: 20,
+                pageList: [5, 10, 25, 50, 10],
+                search: true,
+                showColumns: false,
+                showRefresh: false,
+                clickToSelect: false,
+                showToggle: false,
+                maintainSelected: true,
+                columns: [ {
+                  field: 'variableName',
+                  title: 'Name',
+                  align: 'left',
+                  valign: 'bottom',
+                  sortable: true
+                }, {
+                  field: 'value',
+                  title: 'Value',
+                  align: 'center',
+                  valign: 'bottom',
+                  sortable: true
+                }]
+              }
+            };
+            $scope.bsTableSlow = {
+                    options: {
+                      data: $scope.status,
+                      rowStyle: function (row, index) {
+                        return { classes: 'none' }
+                      },
+                      cache: false,
+                      height: 600,
+                      striped: true,
+                      pagination: false,
+                      pageSize: 20,
+                      pageList: [5, 10, 25, 50, 10],
+                      search: true,
+                      showColumns: false,
+                      showRefresh: false,
+                      clickToSelect: false,
+                      showToggle: false,
+                      maintainSelected: true,
+                      columns: [ {
+                        field: 'variableName',
+                        title: 'Name',
+                        align: 'left',
+                        valign: 'bottom',
+                        sortable: true
+                      }, {
+                        field: 'value',
+                        title: 'Value',
+                        align: 'center',
+                        valign: 'bottom',
+                        sortable: true
+                      }]
+                    }
+                  };
+
+
 };
 
 
 function startPromise(){
 
-  promise = $interval(function() {
-    callServices()
+  promise = $timeout(function() {
+    callServices();startPromise();
   }, $scope.refreshInterval);
 }
 
@@ -254,7 +322,7 @@ $scope.start = function() {
 $scope.calculateInterval = function(number) {
   $scope.refreshInterval += Number(number);
   //change the interval
-  $interval.cancel(promise);
+  $timeout.cancel(promise);
   startPromise();
 };
 
@@ -267,7 +335,7 @@ $scope.checkIfAllowedInterval = function(number){
 };
 
 $scope.cancel = function () {
-  $interval.cancel(promise);
+  $timeout.cancel(promise);
   promise = undefined;
 };
 
@@ -704,6 +772,9 @@ var httpGetExplainPlan = function (url) {
   $scope.getTablePct  = function (table,index) {
     return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
   };
+
+
+
 
   $scope.start();
 

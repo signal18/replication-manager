@@ -308,13 +308,14 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 		if val, ok := SlowPFSQueries[s.Digest]; ok {
 			val.Exec_count = val.Exec_count + 1
 			sum, _ := strconv.ParseFloat(val.Exec_time_total, 64)
-			val.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"]+sum, 'g', 1, 64)
+			val.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"]/1000+sum, 'g', 1, 64)
 			avg, _ := strconv.ParseFloat(val.Exec_time_total, 64)
 			avg = avg / float64(val.Exec_count)
 			val.Exec_time_avg_ms.Float64 = avg
 			if s.TimeMetrics["queryTime"] > val.Exec_time_max.Float64 {
 				val.Exec_time_max.Float64 = s.TimeMetrics["queryTime"]
 			}
+			val.Value = val.Exec_time_total
 			SlowPFSQueries[s.Digest] = val
 		} else {
 			var nval dbhelper.PFSQuery
@@ -323,8 +324,9 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 			nval.Query = s.Query
 			nval.Last_seen = s.Timestamp
 			nval.Exec_count = 1
-			nval.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"], 'g', 1, 64)
+			nval.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"]/1000, 'g', 1, 64)
 			nval.Exec_time_max.Float64 = s.TimeMetrics["queryTime"]
+			nval.Value = nval.Exec_time_total
 			avg, _ := strconv.ParseFloat(nval.Exec_time_total, 64)
 			avg = avg / float64(nval.Exec_count)
 			nval.Exec_time_avg_ms.Float64 = avg

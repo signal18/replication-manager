@@ -20,7 +20,34 @@
                          <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
               </p>
               </md-card-content>
-                   <table border=1 class="slowlog" >
+                <style>
+              table th:hover{
+      text-decoration: underline;
+      cursor: pointer;
+  }
+  .table .action-column{
+      width: 230px;
+  }
+  .table .action-column:hover{
+      text-decoration: none;
+      cursor: default;
+  }
+  .table tfoot .pagination{
+      float: right;
+      margin: 0;
+  }
+  .table tfoot .pagination li{
+      cursor: pointer;
+  }
+  .table tfoot select{
+      width: 90px;
+      float: right;
+      margin-right: 8px;
+  }
+    </style>
+
+                   <table id="dtslowqueries" bs-table border=1 class="table slowlog" >
+                     <thead>
                      <col width="3%"/>
                      <col width="12%"/>
                      <col width="34%"/>
@@ -50,6 +77,8 @@
                          <th align="center">Send</th>
                          <th align="center">Affected</th>
                       </tr>
+                    </thead>
+                    <tbody>
                       <tr ng-repeat="logline in slowqueries" >
                       <th ng-click="queryExplainPFS(logline.digest)">
                          <i href="queryExplainPFS(logline.digest)" class="fas fa-eye"></i>
@@ -69,6 +98,7 @@
                          <td class="text">{{ logline.numberMetrics.rowsSent }}</td>
                          <td class="text">{{ logline.numberMetrics.rowsAffected }}</td>
                       </tr>
+                      <tbody>
                    </table>
 
              </md-card>
