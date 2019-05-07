@@ -860,7 +860,7 @@ func (repman *ReplicationManager) handlerMuxServerSlowLog(w http.ResponseWriter,
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetSlowLog()
-			err := e.Encode(l.Buffer)
+			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)
 				return

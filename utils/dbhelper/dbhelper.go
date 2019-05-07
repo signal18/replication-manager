@@ -986,6 +986,20 @@ func GetEngineInnoDB(db *sqlx.DB) (map[string]string, error) {
 	return vars, nil
 }
 
+func EnablePFSQueries(db *sqlx.DB) error {
+
+	query := "UPDATE setup_consumers SET ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')"
+	_, err := db.Exec(query)
+	return err
+}
+
+func DisablePFSQueries(db *sqlx.DB) error {
+
+	query := "UPDATE setup_consumers SET ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')"
+	_, err := db.Exec(query)
+	return err
+}
+
 func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 
 	vars := make(map[string]PFSQuery)

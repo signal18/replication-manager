@@ -330,8 +330,8 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 			avg, _ := strconv.ParseFloat(nval.Exec_time_total, 64)
 			avg = avg / float64(nval.Exec_count)
 			nval.Exec_time_avg_ms.Float64 = avg
-			nval.Rows_scanned = int64(s.NumberMetrics["rowExamined"])
-			nval.Rows_sent = int64(s.NumberMetrics["rowSent"])
+			nval.Rows_scanned = int64(s.NumberMetrics["rowsExamined"])
+			nval.Rows_sent = int64(s.NumberMetrics["rowsSent"])
 			SlowPFSQueries[s.Digest] = nval
 			//	val.Plan_tmp_disk = s.BoolMetrics[""]
 		}
@@ -354,8 +354,32 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 	return limits
 }
 
-func (server *ServerMonitor) GetSlowLog() s18log.SlowLog {
-	return server.SlowLog
+func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
+	var rows []dbhelper.PFSQuery
+	for _, s := range server.SlowLog.Buffer {
+
+		var nval dbhelper.PFSQuery
+		nval.Digest_text = dbhelper.GetQueryDigest(s.Query)
+		nval.Digest = s.Digest
+		nval.Query = s.Query
+		nval.Last_seen = s.Timestamp
+		nval.Exec_count = 1
+		nval.Exec_time_total = strconv.FormatFloat(s.TimeMetrics["queryTime"]/1000, 'g', 1, 64)
+		nval.Exec_time_max.Float64 = s.TimeMetrics["queryTime"]
+		nval.Value = nval.Exec_time_total
+		avg, _ := strconv.ParseFloat(nval.Exec_time_total, 64)
+		avg = avg / float64(nval.Exec_count)
+		nval.Exec_time_avg_ms.Float64 = avg
+		nval.Rows_scanned = int64(s.NumberMetrics["rowsExamined"])
+		nval.Rows_sent = int64(s.NumberMetrics["rowsSent"])
+		nval.Schema_name = s.Db
+
+		//	val.Plan_tmp_disk = s.BoolMetrics[""]
+
+		rows = append(rows, nval)
+	}
+	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	return rows
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {

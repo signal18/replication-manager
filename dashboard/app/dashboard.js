@@ -242,7 +242,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                   return { classes: 'none' }
                 },
                 cache: false,
-                height: 600,
                 striped: true,
                 pagination: false,
                 pageSize: 20,
@@ -262,7 +261,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                 }, {
                   field: 'value',
                   title: 'Value',
-                  align: 'center',
+                  align: 'right',
                   valign: 'bottom',
                   sortable: true
                 }]
@@ -270,37 +269,149 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
             };
             $scope.bsTableSlow = {
                     options: {
-                      data: $scope.status,
+                      data: $scope.slowqueries,
                       rowStyle: function (row, index) {
                         return { classes: 'none' }
                       },
+                      paginationLoop: false,
                       cache: false,
-                      height: 600,
                       striped: true,
-                      pagination: false,
+                      pagination: true,
                       pageSize: 20,
-                      pageList: [5, 10, 25, 50, 10],
+                      pageList: [5, 10, 25, 50, 100],
                       search: true,
                       showColumns: false,
                       showRefresh: false,
                       clickToSelect: false,
                       showToggle: false,
-                      maintainSelected: true,
-                      columns: [ {
-                        field: 'variableName',
-                        title: 'Name',
+                      maintainSelected: false,
+                      columns: [
+                      {
+          field: 'id',
+          title: '#',
+          formatter: function (value, row, index) {
+            return index + 1
+          }
+        },
+                        {
+                        field: 'lastSeen',
+                        title: 'Time',
                         align: 'left',
                         valign: 'bottom',
                         sortable: true
                       }, {
-                        field: 'value',
-                        title: 'Value',
-                        align: 'center',
+                        field: 'schemaName',
+                        title: 'Schema',
+                        align: 'left',
+                        valign: 'bottom',
+                        sortable: true,
+                        width: "15%"
+                      }, {
+                        field: 'query',
+                        title: 'Query',
+                        align: 'left',
+                        valign: 'bottom',
+                        sortable: true,
+                        width: "50%"
+                      }, {
+                        field: 'execTimeTotal',
+                        title: 'Time',
+                        align: 'left',
                         valign: 'bottom',
                         sortable: true
-                      }]
+                      }, {
+                        field: 'rowsScanned',
+                        title: 'Rows Examined',
+                        align: 'tlef',
+                        valign: 'bottom',
+                        sortable: true
+                      }, {
+                        field: 'rowsSent',
+                        title: 'Rows Sent',
+                        align: 'true',
+                        valign: 'bottom',
+                        sortable: true
+                      }
+                    ]
                     }
                   };
+
+
+$scope.bsTableProcessList = {
+        options: {
+          data: $scope.processlist,
+          rowStyle: function (row, index) {
+            return { classes: 'none' }
+          },
+          cache: false,
+          striped: true,
+          pagination: true,
+          pageSize: 20,
+          search: false,
+          showColumns: false,
+          showRefresh: false,
+          clickToSelect: false,
+          showToggle: false,
+          maintainSelected: false,
+          columns: [
+            {
+              field: 'id',
+              title: 'Id',
+              align: 'left',
+              valign: 'bottom',
+              width: "4%"
+            }, {
+            field: 'user',
+            title: 'User',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "8%"
+          }, {
+            field: 'host',
+            title: 'Host',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "8%"
+          },
+          {
+            field: 'db.String',
+            title: 'Db',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          },
+           {
+            field: 'command',
+            title: 'Command',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "10%"
+          }, {
+            field: 'time.Float64',
+            title: 'Time',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          }, {
+            field: 'state.String',
+            title: 'State',
+            align: 'tlef',
+            valign: 'bottom',
+            sortable: true
+          }, {
+            field: 'info.String',
+            title: 'Info',
+            align: 'true',
+            valign: 'bottom',
+            sortable: true,
+            width: "40%"
+          }
+        ]
+        }
+      };
 
 
 };

@@ -45,7 +45,8 @@
       margin-right: 8px;
   }
     </style>
-
+    <table  bs-table-control="bsTableSlow"></table>
+<!--
                    <table id="dtslowqueries" bs-table border=1 class="table slowlog" >
                      <thead>
                      <col width="3%"/>
@@ -82,9 +83,7 @@
                       <tr ng-repeat="logline in slowqueries" >
                       <th ng-click="queryExplainPFS(logline.digest)">
                          <i href="queryExplainPFS(logline.digest)" class="fas fa-eye"></i>
-                          <!--
-                            <div ng-include src="'static/menu-query-slowlog.html'"></div>
-                          -->
+                        
                         </th>
 
                          <td class="stamp">{{ logline.timestamp }}</td>
@@ -100,7 +99,7 @@
                       </tr>
                       <tbody>
                    </table>
-
+-->
              </md-card>
              <BR><BR>
 </div>
