@@ -75,6 +75,9 @@ func (mv *MySQLVersion) IsMySQL57() bool {
 }
 
 func (mv *MySQLVersion) IsMySQLOrPercona57() bool {
+	if mv == nil {
+		return false
+	}
 	if (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && mv.Major == 5 && mv.Minor > 6 {
 		return true
 	}
