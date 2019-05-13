@@ -13,6 +13,17 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
+func (server *ServerMonitor) HasInstallPlugin(name string) bool {
+	val, ok := server.Plugins[name]
+	if !ok {
+		return false
+	}
+	if val.Status == "ACTIVE" {
+		return true
+	}
+	return false
+}
+
 // check if node see same master as the passed list
 func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 	for _, sl := range sib {

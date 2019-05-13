@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog ) {
+function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedServer = undefined;
@@ -151,7 +151,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           Processlist.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.processlist = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
@@ -162,7 +161,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           PFSStatements.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.pfsstatements = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
@@ -170,7 +168,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
             PFSStatementsSlowLog.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
               $scope.pfsstatements = data;
               $scope.reserror = false;
-
             }, function () {
               $scope.reserror = true;
             });
@@ -186,12 +183,10 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
             $scope.reserror = true;
           });
         }
-
         if ( $scope.selectedTab=='Tables') {
           Tables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.tables = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
@@ -200,16 +195,31 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           Status.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.status = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
         }
+
         if ( $scope.selectedTab=='Variables') {
           Variables.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.variables = data;
             $scope.reserror = false;
-
+          }, function () {
+            $scope.reserror = true;
+          });
+        }
+        if ( $scope.selectedTab=='MetaDataLocks') {
+          MetaDataLocks.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+            $scope.metadatalocks = data;
+            $scope.reserror = false;
+          }, function () {
+            $scope.reserror = true;
+          });
+        }
+        if ( $scope.selectedTab=='QueryResponseTime') {
+          QueryResponseTime.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
+            $scope.queryresponsetime = data;
+            $scope.reserror = false;
           }, function () {
             $scope.reserror = true;
           });
@@ -218,16 +228,15 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           StatusInnoDB.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.statusinnodb = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
         }
+
         if ( $scope.selectedTab=='ServiceOpenSVC') {
           ServiceOpenSVC.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.serviceopensvc = data;
             $scope.reserror = false;
-
           }, function () {
             $scope.reserror = true;
           });
@@ -289,6 +298,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                       {
           field: 'id',
           title: '#',
+          width: "4%",
           formatter: function (value, row, index) {
             return index + 1
           }
@@ -298,21 +308,22 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                         title: 'Time',
                         align: 'left',
                         valign: 'bottom',
-                        sortable: true
+                        sortable: true,
+                        width: "15%"
                       }, {
                         field: 'schemaName',
                         title: 'Schema',
                         align: 'left',
                         valign: 'bottom',
                         sortable: true,
-                        width: "15%"
+                        width: "10%"
                       }, {
                         field: 'query',
                         title: 'Query',
                         align: 'left',
                         valign: 'bottom',
                         sortable: true,
-                        width: "50%"
+                        width: "40%"
                       }, {
                         field: 'execTimeTotal',
                         title: 'Time',
@@ -322,7 +333,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                       }, {
                         field: 'rowsScanned',
                         title: 'Rows Examined',
-                        align: 'tlef',
+                        align: 'left',
                         valign: 'bottom',
                         sortable: true
                       }, {
@@ -335,6 +346,128 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
                     ]
                     }
                   };
+                  $scope.bsMetaDataLocks = {
+                          options: {
+                            data: $scope.metadatalocks,
+                            rowStyle: function (row, index) {
+                              return { classes: 'none' }
+                            },
+                            paginationLoop: false,
+                            cache: false,
+                            striped: true,
+                            pagination: true,
+                            pageSize: 20,
+                            pageList: [5, 10, 25, 50, 100],
+                            search: true,
+                            showColumns: false,
+                            showRefresh: false,
+                            clickToSelect: false,
+                            showToggle: false,
+                            maintainSelected: false,
+                            columns: [
+                            {
+                field: 'threadId',
+                title: '#',
+                width: "4%",
+                formatter: function (value, row, index) {
+                  return index + 1
+                }
+              },
+                              {
+                              field: 'lastSeen',
+                              title: 'Time',
+                              align: 'left',
+                              valign: 'bottom',
+                              sortable: true,
+                              width: "15%"
+                            }, {
+                              field: 'lockMode.String',
+                              title: 'Schema',
+                              align: 'left',
+                              valign: 'bottom',
+                              sortable: true,
+                              width: "20%"
+                            }, {
+                              field: 'lockDuration.String',
+                              title: 'Duration',
+                              align: 'left',
+                              valign: 'bottom',
+                              sortable: true,
+                              width: "15%"
+                            }, {
+                              field: 'lockType.String',
+                              title: 'Lock Type',
+                              align: 'left',
+                              valign: 'bottom',
+                              sortable: true
+                            }, {
+                              field: 'lockSchema.String',
+                              title: 'Schema',
+                              align: 'left',
+                              valign: 'bottom',
+                              sortable: true
+                            }, {
+                              field: 'lockName.String',
+                              title: 'Table',
+                              align: 'true',
+                              valign: 'bottom',
+                              sortable: true
+                            }
+                          ]
+                          }
+                        };
+                        $scope.bsQueryResponseTime = {
+                                options: {
+                                  data: $scope.queryresponsetime,
+                                  rowStyle: function (row, index) {
+                                    return { classes: 'none' }
+                                  },
+                                  paginationLoop: false,
+                                  cache: false,
+                                  striped: true,
+                                  pagination: true,
+                                  pageSize: 20,
+                                  pageList: [5, 10, 25, 50, 100],
+                                  search: true,
+                                  showColumns: false,
+                                  showRefresh: false,
+                                  clickToSelect: false,
+                                  showToggle: false,
+                                  maintainSelected: false,
+                                  columns: [
+                                  {
+                      field: 'time',
+                      title: '#',
+                      width: "4%",
+                      formatter: function (value, row, index) {
+                        return index + 1
+                      }
+                    },
+                                    {
+                                    field: 'time',
+                                    title: 'Time',
+                                    align: 'left',
+                                    valign: 'bottom',
+                                    sortable: true,
+                                    width: "30%"
+                                  }, {
+                                    field: 'count',
+                                    title: 'Count',
+                                    align: 'left',
+                                    valign: 'bottom',
+                                    sortable: true,
+                                    width: "20%"
+                                  }, {
+                                    field: 'total',
+                                    title: 'Total',
+                                    align: 'left',
+                                    valign: 'bottom',
+                                    sortable: true,
+                                    width: "15%"
+                                  }
+                                ]
+                                }
+                              };
 
 
 $scope.bsTableProcessList = {
@@ -524,13 +657,26 @@ var httpGetWithoutResponse = function (url) {
   $scope.dbtoogleinnodbmonitor = function (server) {
     if (confirm("Confirm toogle innodb monitor server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-innodb-monitor');
   };
+  $scope.dbtooglemetadalocks= function (server) {
+    if (confirm("Confirm toogle metadata lock plugin server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-meta-data-locks');
+  };
+  $scope.dbtooglequeryresponsetime= function (server) {
+    if (confirm("Confirm toogle query response time plugin server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-query-response-time');
+  };
   $scope.dbtoogleslowquerycapture = function (server) {
     if (confirm("Confirm toogle slow query capture server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
   };
-  $scope.dbtoogleslowquery = function (server) {
-    if (confirm("Confirm toogle slow query : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
-  };
 
+
+  $scope.dbtoogleslowquery = function (server) {
+    if (confirm("Confirm toogle slow query log capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
+  };
+  $scope.dbtooglepfsslowquery = function (server) {
+    if (confirm("Confirm toogle slow query PFS capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-pfs-slow-query');
+  };
+  $scope.dbresetpfsslow = function (server) {
+    if (confirm("Confirm toogle slow query PFS capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-pfs-queries');
+  };
   $scope.dbtoogleslowquerytable = function (server) {
     if (confirm("Confirm toogle slow query mode between TABLE and FILE server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
   };

@@ -7,12 +7,24 @@
     <td width="5%">
         <div ng-include src="'static/menu-server.html'"></div>
     </td>
-    <td width="15%">
+    <td width="30%">
       <md-button ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquery(server.id)">
-        <md-icon ng-if="server.slowQueryLog=='ON'"class="fa fa-stop"></md-icon><md-icon ng-if="server.slowQueryLog=='OFF'" class="fa fa-play"></md-icon>
+        <md-icon ng-if="server.slowQueryLog=='ON' "class="fa fa-stop"></md-icon><md-icon ng-if="server.slowQueryLog=='OFF'" class="fa fa-play"></md-icon>
+      </md-button>
+      <md-button ng-if="selectedTab=='PFSQueries'" class="md-raised" aria-label="Tabular" ng-click="dbtooglepfsslowquery(server.id)">
+        <md-icon ng-if="server.havePFSSlowQueryLog" class="fa fa-stop"></md-icon><md-icon ng-if="!server.havePFSSlowQueryLog" class="fa fa-play"></md-icon>
+      </md-button>
+      <md-button ng-if="selectedTab=='MetaDataLocks'" class="md-raised" aria-label="Tabular" ng-click="dbtooglemetadalocks(server.id)">
+        <md-icon ng-if="server.haveMetaDataLocksLog" class="fa fa-stop"></md-icon><md-icon ng-if="!server.haveMetaDataLocksLog" class="fa fa-play"></md-icon>
+      </md-button>
+      <md-button ng-if="selectedTab=='QueryResponseTime'" class="md-raised" aria-label="Tabular" ng-click="dbtooglequeryresponsetime(server.id)">
+        <md-icon ng-if="server.haveQueryResponseTimeLog" class="fa fa-stop"></md-icon><md-icon ng-if="!server.haveQueryResponseTimeLog" class="fa fa-play"></md-icon>
       </md-button>
       <md-button ng-if="selectedTab=='PFSQueries'" class="md-raised" aria-label="Tabular" ng-click="dbtooglepfsslow(server.id)" >
         <div ng-if="digestmode=='pfs'"><md-icon ng-if="digestmode=='pfs'"class="fa fa-object-group"></md-icon> PFS</div><div ng-if="digestmode=='slow'"><md-icon ng-if="digestmode=='slow'" class="fa fa-object-group" ></md-icon> SLOW</div>
+      </md-button>
+      <md-button ng-if="selectedTab=='PFSQueries' && digestmode=='pfs' " class="md-raised" aria-label="Tabular" ng-click="dbresetpfsslow(server.id)" >
+        <div ng-if="digestmode=='pfs'"><md-icon ng-if="digestmode=='pfs'"class="fa fa-recycle"></md-icon></div>
       </md-button>
     </td>
     <td width="30%">
@@ -24,7 +36,7 @@
     <td  width="40%">
 
       <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
-        <input type="text" ng-blur="toogleRefresh()" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.longQueryTime"></input>
+        <input type="text" onchange="updateLongQueryTime(longQueryTime,server.id)" ng-blur="toogleRefresh()" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.longQueryTime"></input>
 
         <md-button class="md-raised"  ng-click="updateLongQueryTime(longQueryTime,server.id)"  >
             <md-icon class="fa fa-save"/>

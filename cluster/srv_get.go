@@ -181,6 +181,16 @@ func (server *ServerMonitor) GetTableFromDict(URI string) (dbhelper.Table, error
 	}
 }
 
+func (server *ServerMonitor) GetMetaDataLocks() []dbhelper.MetaDataLock {
+	return server.MetaDataLocks
+}
+
+func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
+	var qrt []dbhelper.ResponseTime
+	qrt, _ = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
+	return qrt
+}
+
 func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	var variables []dbhelper.Variable
 	for k, v := range server.Variables {
@@ -423,20 +433,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
 		)
 	}
-	Conn, err := server.GetNewDBConn()
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
-		return
-	}
-	defer Conn.Close()
-	_, err = Conn.Exec("set sql_log_bin=0")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
-	}
-	_, err = Conn.Exec("TRUNCATE mysql.slow_log")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Error cleaning slow queries table %s", err)
-	}
+	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
 }
 
 func (server *ServerMonitor) GetTables() []dbhelper.Table {

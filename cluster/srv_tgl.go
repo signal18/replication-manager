@@ -38,6 +38,35 @@ func (server *ServerMonitor) SwitchSlowQuery() {
 	}
 }
 
+func (server *ServerMonitor) SwitchMetaDataLocks() {
+	if server.HaveMetaDataLocksLog {
+		server.UnInstallPlugin("METADATA_LOCK_INFO")
+		server.HaveMetaDataLocksLog = false
+	} else {
+		server.InstallPlugin("METADATA_LOCK_INFO")
+		server.HaveMetaDataLocksLog = true
+	}
+}
+
+func (server *ServerMonitor) SwitchQueryResponseTime() {
+	if server.HaveQueryResponseTimeLog {
+		server.UnInstallPlugin("QUERY_RESPONSE_TIME")
+		server.HaveQueryResponseTimeLog = false
+	} else {
+		server.InstallPlugin("QUERY_RESPONSE_TIME")
+		server.ExecQueryNoBinLog("set global query_response_time_stats=1")
+		server.HaveQueryResponseTimeLog = true
+	}
+}
+
+func (server *ServerMonitor) SwitchSqlErrorLog() {
+	if server.HaveSQLErrorLog {
+		server.UnInstallPlugin("SQL_ERROR_LOG")
+	} else {
+		server.InstallPlugin("SQL_ERROR_LOG")
+	}
+}
+
 func (server *ServerMonitor) SwitchSlowQueryCapture() {
 	if !server.SlowQueryCapture {
 		server.LongQueryTimeSaved = server.Variables["LONG_QUERY_TIME"]
@@ -48,6 +77,18 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 		server.SlowQueryCapture = false
 		server.SetLongQueryTime(server.LongQueryTimeSaved)
 
+	}
+}
+
+func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
+	if !server.HavePFS {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Could not capture queries with performance schema disable")
+		return
+	}
+	if !server.HavePFSSlowQueryLog {
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')")
+	} else {
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')")
 	}
 }
 

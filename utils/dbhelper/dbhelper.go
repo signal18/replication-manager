@@ -28,6 +28,29 @@ import (
 
 const debug = false
 
+type Plugin struct {
+	Name    string         `json:"name"`
+	Status  string         `json:"status"`
+	Type    string         `json:"type"`
+	Library sql.NullString `json:"library"`
+	License string         `json:"license"`
+}
+
+type MetaDataLock struct {
+	Thread_id     uint64         `json:"threadId" db:"THREAD_ID"`
+	Lock_mode     sql.NullString `json:"lockMode" db:"LOCK_MODE"`
+	Lock_duration sql.NullString `json:"lockDuration" db:"LOCK_DURATION"`
+	Lock_type     sql.NullString `json:"lockType" db:"LOCK_TYPE"`
+	Lock_schema   sql.NullString `json:"lockSchema" db:"TABLE_SCHEMA"`
+	Lock_name     sql.NullString `json:"lockName" db:"TABLE_NAME"`
+}
+
+type ResponseTime struct {
+	Time  string `json:"time" db:"TIME"`
+	Count uint64 `json:"count" db:"COUNT"`
+	Total string `json:"total" db:"TOTAL"`
+}
+
 type PFSQuery struct {
 	Digest           string          `json:"digest"`
 	Query            string          `json:"query"`
@@ -259,6 +282,32 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 	}
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+	}
+	return pl, nil
+}
+
+func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, error) {
+	pl := []MetaDataLock{}
+	var err error
+	if version.IsMariaDB() {
+		//MariaDB
+		err = db.Select(&pl, "SELECT * FROM information_schema.metadata_lock_info")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: Could not get MetaDataLock: %s", err)
+	}
+	return pl, nil
+}
+
+func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, error) {
+	pl := []ResponseTime{}
+	var err error
+	//if version.IsMariaDB() {
+	//MariaDB
+	err = db.Select(&pl, "SELECT * FROM INFORMATION_SCHEMA.QUERY_RESPONSE_TIME")
+	//}
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: Could not get query response time: %s", err)
 	}
 	return pl, nil
 }
@@ -954,22 +1003,29 @@ func GetStatus(db *sqlx.DB) (map[string]string, error) {
 	return vars, nil
 }
 
-func GetEngineInnoDB(db *sqlx.DB) (map[string]string, error) {
-	vars := make(map[string]string)
+func GetEngineInnoDBSatus(db *sqlx.DB) (string, error) {
 	rows, err := db.Query("SHOW ENGINE INNODB STATUS")
 	if err != nil {
-		return vars, err
+		return "", err
 	}
 	defer rows.Close()
-
 	var typeCol, nameCol, statusCol string
 	// First row should contain the necessary info. If many rows returned then it's unknown case.
 	if rows.Next() {
 		if err := rows.Scan(&typeCol, &nameCol, &statusCol); err != nil {
-			return vars, err
+			return statusCol, nil
 		}
 	}
+	return statusCol, err
+}
 
+func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, error) {
+
+	statusCol, err := GetEngineInnoDBSatus(db)
+	if err != nil {
+		return nil, err
+	}
+	vars := make(map[string]string)
 	// 0 queries inside InnoDB, 0 queries in queue
 	// 0 read views open inside InnoDB
 	rQueries, _ := regexp.Compile(`(\d+) queries inside InnoDB, (\d+) queries in queue`)
@@ -1046,6 +1102,28 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	return vars, nil
 }
 
+func GetPlugins(db *sqlx.DB) (map[string]Plugin, error) {
+
+	vars := make(map[string]Plugin)
+
+	query := `SHOW plugins soname`
+
+	rows, err := db.Queryx(query)
+	defer rows.Close()
+	if err != nil {
+		return nil, errors.New("Could not get queries")
+	}
+	for rows.Next() {
+		var v Plugin
+		err := rows.Scan(&v.Name, &v.Status, &v.Type, &v.Library, &v.License)
+		if err != nil {
+			return nil, errors.New("Could not get results from plugins scan")
+		}
+		vars[v.Name] = v
+	}
+	return vars, nil
+}
+
 func GetStatusAsInt(db *sqlx.DB) (map[string]int64, error) {
 	type Variable struct {
 		Variable_name string
@@ -1070,6 +1148,24 @@ func GetVariables(db *sqlx.DB) (map[string]string, error) {
 	source := GetVariableSource(db)
 	vars := make(map[string]string)
 	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables")
+	if err != nil {
+		return vars, err
+	}
+	for rows.Next() {
+		var v Variable
+		err = rows.Scan(&v.Variable_name, &v.Value)
+		if err != nil {
+			return vars, err
+		}
+		vars[v.Variable_name] = v.Value
+	}
+	return vars, err
+}
+
+func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, error) {
+
+	vars := make(map[string]string)
+	rows, err := db.Queryx("SELECT 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'")
 	if err != nil {
 		return vars, err
 	}

@@ -63,8 +63,6 @@ type ServerMonitor struct {
 	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
 	RplMasterStatus             bool                         `json:"rplMasterStatus"`
 	EventScheduler              bool                         `json:"eventScheduler"`
-	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
-	FullProcessList             []dbhelper.Processlist       `json:"-"`
 	ClusterGroup                *Cluster                     `json:"-"` //avoid recusive json
 	BinaryLogFile               string                       `json:"binaryLogFile"`
 	BinaryLogPos                string                       `json:"binaryLogPos"`
@@ -84,6 +82,12 @@ type ServerMonitor struct {
 	HaveGtidStrictMode          bool                         `json:"haveGtidStrictMode"`
 	HaveMySQLGTID               bool                         `json:"haveMysqlGtid"`
 	HaveMariaDBGTID             bool                         `json:"haveMariadbGtid"`
+	HaveSlowQueryLog            bool                         `json:"haveSlowQueryLog"`
+	HavePFSSlowQueryLog         bool                         `json:"havePFSSlowQueryLog"`
+	HaveMetaDataLocksLog        bool                         `json:"haveMetaDataLocksLog"`
+	HaveQueryResponseTimeLog    bool                         `json:"haveQueryResponseTimeLog"`
+	HaveSQLErrorLog             bool                         `json:"haveSQLErrorLog"`
+	HavePFS                     bool                         `json:"havePFS"`
 	HaveWsrep                   bool                         `json:"haveWsrep"`
 	HaveReadOnly                bool                         `json:"haveReadOnly"`
 	IsWsrepSync                 bool                         `json:"isWsrepSync"`
@@ -95,6 +99,11 @@ type ServerMonitor struct {
 	IsMaintenance               bool                         `json:"isMaintenance"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
+	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
+	LongQueryTime               string                       `json:"longQueryTime"`
+	LogOutput                   string                       `json:"logOutput"`
+	SlowQueryLog                string                       `json:"slowQueryLog"`
+	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
 	BinlogDumpThreads           int                          `json:"binlogDumpThreads"`
 	MxsVersion                  int                          `json:"maxscaleVersion"`
 	MxsHaveGtid                 bool                         `json:"maxscaleHaveGtid"`
@@ -112,22 +121,21 @@ type ServerMonitor struct {
 	QPS                         int64                        `json:"qps"`
 	ReplicationHealth           string                       `json:"replicationHealth"`
 	TestConfig                  string                       `json:"testConfig"`
+	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
+	FullProcessList             []dbhelper.Processlist       `json:"-"`
 	Variables                   map[string]string            `json:"-"`
 	EngineInnoDB                map[string]string            `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
 	SlowLog                     s18log.SlowLog               `json:"-"`
-	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
-	LongQueryTime               string                       `json:"longQueryTime"`
-	LogOutput                   string                       `json:"logOutput"`
-	SlowQueryLog                string                       `json:"slowQueryLog"`
-	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
 	Status                      map[string]string            `json:"-"`
 	PrevStatus                  map[string]string            `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
 	DictTables                  map[string]dbhelper.Table    `json:"-"`
+	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Tables                      []dbhelper.Table             `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`
+	MetaDataLocks               []dbhelper.MetaDataLock      `json:"-"`
 	ErrorLogTailer              *tail.Tail                   `json:"-"`
 	SlowLogTailer               *tail.Tail                   `json:"-"`
 	MonitorTime                 int64                        `json:"-"`
@@ -534,6 +542,22 @@ func (server *ServerMonitor) Refresh() error {
 		} else {
 			server.HaveWsrep = true
 		}
+		if server.Variables["SLOW_QUERY_LOG"] != "ON" {
+			server.HaveSlowQueryLog = false
+		} else {
+			server.HaveSlowQueryLog = true
+		}
+		if server.Variables["PERFORMANCE_SCHEMA"] != "ON" {
+			server.HavePFS = false
+		} else {
+			server.HavePFS = true
+			ConsumerVariables, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
+			if ConsumerVariables["SLOW_QUERY_PFS"] != "ON" {
+				server.HavePFSSlowQueryLog = false
+			} else {
+				server.HavePFSSlowQueryLog = true
+			}
+		}
 		if server.Variables["ENFORCE_GTID_CONSISTENCY"] == "ON" && server.Variables["GTID_MODE"] == "ON" {
 			server.HaveMySQLGTID = true
 		}
@@ -591,16 +615,16 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	if server.ClusterGroup.Conf.MonitorInnoDBStatus {
 		// SHOW ENGINE INNODB STATUS
-		server.EngineInnoDB, err = dbhelper.GetEngineInnoDB(server.Conn)
+		server.EngineInnoDB, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("WARNING", "Could not get engine")
+			server.ClusterGroup.LogPrintf(LvlWarn, "Could not get engine innodb status variables")
 		}
 	}
 	if server.ClusterGroup.Conf.MonitorPFS {
 		// GET PFS query digest
 		server.PFSQueries, err = dbhelper.GetQueries(server.Conn)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("WARNING", "Could not get PFS queries")
+			server.ClusterGroup.LogPrintf(LvlWarn, "Could not get PFS queries")
 		}
 	}
 	if server.Variables["LOG_OUTPUT"] == "TABLE" {
@@ -675,6 +699,17 @@ func (server *ServerMonitor) Refresh() error {
 		if server.MonitorTime-server.PrevMonitorTime > 0 {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
+	}
+	// monitor plulgins plugins
+	if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
+		server.Plugins, _ = dbhelper.GetPlugins(server.Conn)
+		server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
+		server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
+		server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
+
+	}
+	if server.HaveMetaDataLocksLog {
+		server.MetaDataLocks, _ = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
 	}
 
 	// Initialize graphite monitoring
@@ -807,6 +842,10 @@ func (server *ServerMonitor) ResetMaster() error {
 	return dbhelper.ResetMaster(server.Conn)
 }
 
+func (server *ServerMonitor) ResetPFSQueries() error {
+	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest")
+}
+
 func (server *ServerMonitor) StopSlaveIOThread() error {
 	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 }
@@ -843,4 +882,65 @@ func (server *ServerMonitor) KillThread(id string) error {
 
 func (server *ServerMonitor) KillQuery(id string) error {
 	return dbhelper.KillQuery(server.Conn, id)
+}
+
+func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error connection in exec query no log %s", err)
+		return err
+	}
+	defer Conn.Close()
+	_, err = Conn.Exec("set sql_log_bin=0")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error disabling binlog %s", err)
+		return err
+	}
+	_, err = Conn.Exec(query)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Error query %s %s", query, err)
+		return err
+	}
+	return err
+}
+
+func (server *ServerMonitor) InstallPlugin(name string) error {
+	val, ok := server.Plugins[name]
+
+	if !ok {
+		return errors.New("Plugin not loaded")
+	} else {
+		if val.Status == "NOT INSTALLED" {
+			query := "INSTALL PLUGIN " + name + " SONAME '" + val.Library.String + "'"
+			err := server.ExecQueryNoBinLog(query)
+			if err != nil {
+				return err
+			}
+			val.Status = "ACTIVE"
+			server.Plugins[name] = val
+		} else {
+			return errors.New("Already Install Plugin")
+		}
+	}
+	return nil
+}
+
+func (server *ServerMonitor) UnInstallPlugin(name string) error {
+	val, ok := server.Plugins[name]
+	if !ok {
+		return errors.New("Plugin not loaded")
+	} else {
+		if val.Status == "ACTIVE" {
+			query := "UNINSTALL PLUGIN " + name
+			err := server.ExecQueryNoBinLog(query)
+			if err != nil {
+				return err
+			}
+			val.Status = "NOT INSTALLED"
+			server.Plugins[name] = val
+		} else {
+			return errors.New("Already not installed Plugin")
+		}
+	}
+	return nil
 }

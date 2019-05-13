@@ -62,6 +62,14 @@ app.factory('StatusInnoDB', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/status-innodb', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('MetaDataLocks', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/meta-data-locks', {clusterName: '@clusters',serverName: '@server',queryDigest: '@digest'});
+});
+
+app.factory('QueryResponseTime', function ($resource) {
+    return $resource('api/clusters/:clusterName/servers/:serverName/query-response-time', {clusterName: '@clusters',serverName: '@server',queryDigest: '@digest'});
+});
+
 app.factory('ExplainPlanPFS', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/queries/:queryDigest/actions/explain-pfs', {clusterName: '@clusters',serverName: '@server',queryDigest: '@digest'});
 });
