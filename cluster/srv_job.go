@@ -310,12 +310,17 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		rows.Scan(&task.task, &task.ct)
 		if task.ct > 0 {
 			if task.ct > 10 {
-				server.ClusterGroup.sme.AddState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB"})
+				server.ClusterGroup.sme.AddState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				purge := "DELETE from replication_manager_schema.jobs WHERE task='" + task.task + "' AND done=0 AND result IS NULL order by start asc limit  " + strconv.Itoa(task.ct-1)
+				err := server.ExecQueryNoBinLog(purge)
+				if err != nil {
+					server.ClusterGroup.LogPrintf(LvlErr, "Scheduler error purging replication_manager_schema.jobs %s", err)
+				}
 			} else {
 				if task.task == "optimized" {
-					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB"})
+					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "xtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB"})
+					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedxtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmysqldump" {
@@ -325,6 +330,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				} else if task.task == "flashbackmysqldump" {
 					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				}
+
 			}
 		}
 

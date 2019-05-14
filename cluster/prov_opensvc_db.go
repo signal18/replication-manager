@@ -43,12 +43,12 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 
 	// Unprovision if already in OpenSVC
 	var idsrv string
-	mysrv, err := svc.GetServiceFromName(cluster.Name + "/" + s.Name)
+	mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
 	if err == nil {
 		cluster.LogPrintf(LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/"+s.Name, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
 	} else {
-		idsrv, err = svc.CreateService(cluster.Name+"/"+s.Name, "MariaDB")
+		idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC service")
 			cluster.errorChan <- err
@@ -136,7 +136,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
-	service, err := svc.GetServiceFromName(cluster.Name + "/" + server.Name)
+	service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
 	if err != nil {
 		return err
 	}

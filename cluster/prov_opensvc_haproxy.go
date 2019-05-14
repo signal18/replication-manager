@@ -69,6 +69,6 @@ run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:
 
 func (cluster *Cluster) OpenSVCProvisionReloadHaproxyConf(Conf string) string {
 	svc := cluster.OpenSVCConnect()
-	svc.SetRulesetVariableValue("mariadb.svc.mrm.proxt.cnf.haproxy", "proxy_cnf_haproxy", Conf)
+	svc.SetRulesetVariableValue("mariadb.svc.mrm.proxy.cnf.haproxy", "proxy_cnf_haproxy", Conf)
 	return ""
 }
