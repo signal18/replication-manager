@@ -1087,10 +1087,10 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 	LIMIT 50`
 
 	rows, err := db.Queryx(query)
-	defer rows.Close()
 	if err != nil {
 		return nil, errors.New("Could not get queries")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v PFSQuery
 		err := rows.Scan(&v.Digest, &v.Query, &v.Digest_text, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
@@ -1109,10 +1109,10 @@ func GetPlugins(db *sqlx.DB) (map[string]Plugin, error) {
 	query := `SHOW plugins soname`
 
 	rows, err := db.Queryx(query)
-	defer rows.Close()
 	if err != nil {
 		return nil, errors.New("Could not get queries")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v Plugin
 		err := rows.Scan(&v.Name, &v.Status, &v.Type, &v.Library, &v.License)
