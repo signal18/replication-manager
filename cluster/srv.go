@@ -11,9 +11,11 @@ package cluster
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc64"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -141,6 +143,7 @@ type ServerMonitor struct {
 	MonitorTime                 int64                        `json:"-"`
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
+	InCaptureMode               bool                         `json:"inCaptureMode"`
 }
 
 type serverList []*ServerMonitor
@@ -584,7 +587,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn)
 		if err != nil {
-			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
+			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 		}
 		// get Users
 		server.Users, _ = dbhelper.GetUsers(server.Conn)
@@ -595,11 +598,13 @@ func (server *ServerMonitor) Refresh() error {
 		if server.ClusterGroup.Conf.MonitorProcessList {
 			server.FullProcessList, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 			if err != nil {
-				server.ClusterGroup.SetState("ERR00075", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
+				server.ClusterGroup.SetState("ERR00075", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
 		}
 	}
-
+	if server.InCaptureMode {
+		server.ClusterGroup.SetState("WARN0085", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0085"], err), ServerUrl: server.URL, ErrFrom: "MON"})
+	}
 	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 	if err != nil {
 		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
@@ -943,4 +948,41 @@ func (server *ServerMonitor) UnInstallPlugin(name string) error {
 		}
 	}
 	return nil
+}
+
+func (server *ServerMonitor) Capture() error {
+
+	if server.InCaptureMode {
+		return nil
+	}
+
+	go server.CaptureLoop(server.ClusterGroup.GetStateMachine().GetHeartbeats())
+	return nil
+}
+
+func (server *ServerMonitor) CaptureLoop(start int64) {
+	server.InCaptureMode = true
+
+	type Save struct {
+		ProcessList  []dbhelper.Processlist `json:"processlist"`
+		InnoDBStatus string                 `json:"innodbstatus"`
+		Status       map[string]string      `json:"status"`
+	}
+
+	t := time.Now()
+
+	for ok := true; ok; ok = server.ClusterGroup.GetStateMachine().GetHeartbeats() < start+5 {
+		var clsave Save
+		clsave.ProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+		clsave.InnoDBStatus, _ = dbhelper.GetEngineInnoDBSatus(server.Conn)
+		clsave.Status, _ = dbhelper.GetStatus(server.Conn)
+		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
+		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Name+"_capture_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		if err != nil {
+			return
+		}
+		time.Sleep(40 * time.Millisecond)
+
+	}
+	server.InCaptureMode = false
 }

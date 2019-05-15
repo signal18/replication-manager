@@ -377,6 +377,11 @@ func (cluster *Cluster) Run() {
 				for i := range states {
 					cluster.LogPrintf("STATE", states[i])
 				}
+				// trigger action on resolving states
+				ostates := cluster.sme.GetOpenStates()
+				for _, s := range ostates {
+					cluster.CheckCapture(s)
+				}
 				cluster.sme.ClearState()
 				if cluster.sme.GetHeartbeats()%60 == 0 {
 					cluster.Save()

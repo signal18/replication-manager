@@ -125,4 +125,5 @@ var clusterError = map[string]string{
 	"WARN0082": "Cluster arbitrator error in arbitration %s",
 	"WARN0083": "Arbitration winner",
 	"WARN0084": "Variable diff:\n %s",
+	"WARN0085": "Server in capture mode %s",
 }

@@ -316,6 +316,17 @@ func (SM *StateMachine) GetResolvedStates() []State {
 	return log
 }
 
+func (SM *StateMachine) GetOpenStates() []State {
+	var log []State
+	SM.Lock()
+	for _, state := range *SM.CurState {
+		log = append(log, state)
+	}
+
+	SM.Unlock()
+	return log
+}
+
 func (SM *StateMachine) GetOpenErrors() []StateHttp {
 	var log []StateHttp
 	SM.Lock()
