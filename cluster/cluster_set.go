@@ -249,11 +249,12 @@ func (cluster *Cluster) SetUnDiscovered() {
 }
 func (cluster *Cluster) SetActiveStatus(status string) {
 	cluster.Status = status
-
-	if cluster.Status == ConstMonitorActif {
-		cluster.scheduler.Start()
-	} else {
-		cluster.scheduler.Stop()
+	if cluster.Conf.MonitorScheduler {
+		if cluster.Status == ConstMonitorActif {
+			cluster.scheduler.Start()
+		} else {
+			cluster.scheduler.Stop()
+		}
 	}
 }
 

@@ -40,7 +40,7 @@ func (cluster *Cluster) GetPersitentState() error {
 		return err
 	}
 	if len(clsave.Crashes) > 0 {
-		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+".json")
+		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
 	cluster.Crashes = clsave.Crashes
 	cluster.sme.SetSla(clsave.SLA)
