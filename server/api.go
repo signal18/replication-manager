@@ -137,7 +137,7 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiClusterProtectedHandler(router)
 	repman.apiProxyProtectedHandler(router)
 
-	log.Info("Starting JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
+	log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	var err error
 	if repman.Conf.MonitoringSSLCert == "" {
 		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", router)

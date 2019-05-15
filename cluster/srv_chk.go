@@ -10,13 +10,23 @@ package cluster
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-/* CheckReplication Check replication health and return status string */
+// CheckMaxConnections Check 80% of max connection reach
+func (server *ServerMonitor) CheckMaxConnections() {
+	maxCx, _ := strconv.ParseInt(server.Variables["MAX_CONNECTIONS"], 10, 64)
+	curCx, _ := strconv.ParseInt(server.Status["THREADS_CONNECTED"], 10, 64)
+	if curCx > maxCx*80/100 {
+		server.ClusterGroup.sme.AddState("ERR00076", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00076"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+	}
+}
+
+// CheckReplication Check replication health and return status string
 func (server *ServerMonitor) CheckReplication() string {
 	if server.ClusterGroup.sme.IsInFailover() {
 		return "In Failover"
@@ -264,7 +274,7 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 	return true
 }
 
-// CheckPriviledges replication manager user privileges on live servers
+// CheckPrivileges replication manager user privileges on live servers
 func (server *ServerMonitor) CheckPrivileges() {
 	if server.ClusterGroup.Conf.LogLevel > 2 {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
@@ -306,7 +316,6 @@ func (server *ServerMonitor) CheckPrivileges() {
 				if rpriv.Repl_slave_priv == "N" {
 					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
-
 			}
 		}
 	}

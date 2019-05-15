@@ -185,7 +185,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 	files, err := ioutil.ReadDir(conf.ClusterConfigPath)
 	if err != nil {
-		log.Warningf("Can't found include path %s %s", conf.ClusterConfigPath, err)
+		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
 	}
 	for _, f := range files {
 		if !f.IsDir() {
@@ -369,7 +369,7 @@ func (repman *ReplicationManager) Run() error {
 		}
 	}
 	repman.termlength = 40
-	log.WithField("version", repman.Version).Info("replication-manager started in daemon mode")
+	log.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(80)

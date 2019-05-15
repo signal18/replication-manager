@@ -717,6 +717,8 @@ func (server *ServerMonitor) Refresh() error {
 		server.MetaDataLocks, _ = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
 	}
 
+	server.CheckMaxConnections()
+
 	// Initialize graphite monitoring
 	if server.ClusterGroup.Conf.GraphiteMetrics {
 		go server.SendDatabaseStats()

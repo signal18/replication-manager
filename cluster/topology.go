@@ -54,7 +54,7 @@ func (cluster *Cluster) newServerList() error {
 		}
 
 		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "New server monitored: %v", cluster.Servers[k].URL)
+			cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 		}
 
 	}

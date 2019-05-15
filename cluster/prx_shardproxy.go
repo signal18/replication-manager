@@ -131,7 +131,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 	defer c.Close()
 	var tbl, ddl string
 	if len(duplicates) == 0 {
-		cluster.LogPrintf(LvlInfo, "Creating table in shard proxy %s", schema+"."+table)
+		cluster.LogPrintf(LvlInfo, "Creating table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.TableGetDLL(schema, table, cluster.master)
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		_, err = c.Exec(query)

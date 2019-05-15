@@ -207,7 +207,7 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 	err := cluster.loadDBCertificate()
 	if err != nil {
 		cluster.haveDBTLSCert = false
-		cluster.LogPrintf(LvlInfo, "Database TLS certificates absent")
+		cluster.LogPrintf(LvlInfo, "No database TLS certificates")
 	} else {
 		cluster.haveDBTLSCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS certificates correctly loaded")

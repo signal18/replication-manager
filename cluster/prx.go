@@ -456,7 +456,7 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "Init Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
+		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.Type, pr.Host, pr.Port)
 		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {
 			cluster.initHaproxy(nil, pr)
 		}
