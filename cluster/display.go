@@ -148,7 +148,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			if status == "OPENED" {
 				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code}).Warnf(err, args...)
 			} else {
-				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code}).Infof(err, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code}).Warnf(err, args...)
 			}
 		default:
 			log.Printf(cliformat, args...)
