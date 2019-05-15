@@ -243,11 +243,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 				currentClusterName = gl
 				log.WithField("group", gl).Debug("Reading configuration group")
+
+				def := viper.Sub("Default")
+				if def != nil {
+					repman.initAlias(def)
+					def.Unmarshal(&clusterconf)
+				}
 				cf2 := viper.Sub(gl)
 				repman.initAlias(cf2)
 				if cf2 == nil {
 					log.WithField("group", gl).Fatal("Could not parse configuration group")
 				}
+				cf2.Unmarshal(&def)
 				cf2.Unmarshal(&clusterconf)
 				/*cf2 = viper.Sub("Default")
 				if cf2 != nil {
