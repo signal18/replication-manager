@@ -46,6 +46,7 @@ type Cluster struct {
 	IsFailedArbitrator   bool                 `json:"isFailedArbitrator"`
 	IsLostMajority       bool                 `json:"isLostMajority"`
 	IsDown               bool                 `json:"isDown"`
+	IsClusterDown        bool                 `json:"isClusterDown"`
 	IsProvisioned        bool                 `json:"isProvisioned"`
 	IsFailable           bool                 `json:"isFailable"`
 	Conf                 config.Config        `json:"config"`
