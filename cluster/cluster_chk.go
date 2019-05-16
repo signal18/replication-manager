@@ -437,3 +437,7 @@ func (cluster *Cluster) CheckCapture(state state.State) {
 		}
 	}
 }
+
+func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
+	//ddl, err := cluster.GetTableDLL(schema, table, cluster.master)
+}

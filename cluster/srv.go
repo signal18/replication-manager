@@ -134,8 +134,8 @@ type ServerMonitor struct {
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
 	DictTables                  map[string]dbhelper.Table    `json:"-"`
-	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Tables                      []dbhelper.Table             `json:"-"`
+	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`
 	MetaDataLocks               []dbhelper.MetaDataLock      `json:"-"`
 	ErrorLogTailer              *tail.Tail                   `json:"-"`

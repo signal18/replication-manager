@@ -30,6 +30,8 @@ func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
 	} else {
 		mv.Flavor = "MySQL"
 	}
+	infos := strings.Split(version, "-")
+	version = infos[0]
 	tokens := strings.Split(version, ".")
 	if len(tokens) >= 2 {
 		mv.Major, _ = strconv.Atoi(tokens[0])

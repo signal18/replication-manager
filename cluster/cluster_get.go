@@ -448,3 +448,15 @@ func (cluster *Cluster) GetClusterFromShardProxy(shardproxy string) map[string]*
 	}
 	return clusters
 }
+
+func (cluster *Cluster) GetTableDLL(schema string, table string, srv *ServerMonitor) (string, error) {
+	query := "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
+	var tbl, ddl string
+	err := srv.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+	if err != nil {
+		return "", err
+	}
+	pos := strings.Index(ddl, "ENGINE=")
+	ddl = ddl[12:pos]
+	return ddl, err
+}

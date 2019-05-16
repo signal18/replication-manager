@@ -105,18 +105,6 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	return nil
 }
 
-func (cluster *Cluster) TableGetDLL(schema string, table string, srv *ServerMonitor) (string, error) {
-	query := "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
-	var tbl, ddl string
-	err := srv.Conn.QueryRowx(query).Scan(&tbl, &ddl)
-	if err != nil {
-		return "", err
-	}
-	pos := strings.Index(ddl, "ENGINE=")
-	ddl = ddl[12:pos]
-	return ddl, err
-}
-
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
@@ -132,7 +120,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 	var tbl, ddl string
 	if len(duplicates) == 0 {
 		cluster.LogPrintf(LvlInfo, "Creating table in MdbShardProxy %s", schema+"."+table)
-		ddl, err = cluster.TableGetDLL(schema, table, cluster.master)
+		ddl, err = cluster.GetTableDLL(schema, table, cluster.master)
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 		_, err = c.Exec(query)
 		if err != nil {

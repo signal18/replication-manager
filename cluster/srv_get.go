@@ -467,3 +467,14 @@ func (server *ServerMonitor) GetTableDefinition(schema string, table string) (st
 	}
 	return ddl, nil
 }
+
+func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {
+	query := "SELECT group_concat( distinct column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
+	var pk string
+	err := server.Conn.QueryRowx(query).Scan(&pk)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+		return "", nil
+	}
+	return pk, nil
+}
