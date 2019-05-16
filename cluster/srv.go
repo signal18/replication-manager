@@ -969,22 +969,31 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		ProcessList  []dbhelper.Processlist `json:"processlist"`
 		InnoDBStatus string                 `json:"innodbstatus"`
 		Status       map[string]string      `json:"status"`
+		SlaveSatus   []dbhelper.SlaveStatus `json:"slavestatus"`
 	}
 
 	t := time.Now()
 
-	for ok := true; ok; ok = server.ClusterGroup.GetStateMachine().GetHeartbeats() < start+5 {
+	for true {
+
 		var clsave Save
 		clsave.ProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 		clsave.InnoDBStatus, _ = dbhelper.GetEngineInnoDBSatus(server.Conn)
 		clsave.Status, _ = dbhelper.GetStatus(server.Conn)
+		if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+			clsave.SlaveSatus, _ = dbhelper.GetAllSlavesStatus(server.Conn)
+		} else {
+			clsave.SlaveSatus, _ = dbhelper.GetChannelSlaveStatus(server.Conn)
+		}
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Name+"_capture_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {
 			return
 		}
+		if server.ClusterGroup.GetStateMachine().GetHeartbeats() < start+5 {
+			break
+		}
 		time.Sleep(40 * time.Millisecond)
-
 	}
 	server.InCaptureMode = false
 }
