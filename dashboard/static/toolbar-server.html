@@ -7,7 +7,7 @@
     <td width="5%">
         <div ng-include src="'static/menu-server.html'"></div>
     </td>
-    <td width="30%">
+    <td width="40%">
       <md-button ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquery(server.id)">
         <md-icon ng-if="server.slowQueryLog=='ON' "class="fa fa-stop"></md-icon><md-icon ng-if="server.slowQueryLog=='OFF'" class="fa fa-play"></md-icon>
       </md-button>

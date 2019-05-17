@@ -125,6 +125,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumTable)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/schema", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchema)),
@@ -941,6 +946,21 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 		}
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}

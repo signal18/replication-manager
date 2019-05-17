@@ -36,6 +36,13 @@ type Plugin struct {
 	License string         `json:"license"`
 }
 
+type chunk struct {
+	ChunkId       uint64 `json:"chunkId"`
+	ChunkMinKey   string `json:"chunkMinKey"`
+	ChunkMaxKey   string `json:"chunkMaxKey"`
+	ChunkCheckSum uint64 `json:"chunkCheckSum"`
+}
+
 type MetaDataLock struct {
 	Thread_id     uint64         `json:"threadId" db:"THREAD_ID"`
 	Lock_mode     sql.NullString `json:"lockMode" db:"LOCK_MODE"`
@@ -1098,6 +1105,24 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 			return nil, errors.New("Could not get results from status scan")
 		}
 		vars[v.Digest] = v
+	}
+	return vars, nil
+}
+
+func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, error) {
+	vars := make(map[uint64]chunk)
+
+	rows, err := db.Queryx("SELECT * from replication_manager_schema.table_checksum")
+	if err != nil {
+		return vars, err
+	}
+	for rows.Next() {
+		var v chunk
+		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, v.ChunkCheckSum)
+		if err != nil {
+			return vars, err
+		}
+		vars[v.ChunkId] = v
 	}
 	return vars, nil
 }

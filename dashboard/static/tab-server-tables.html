@@ -33,11 +33,12 @@
                 }
       </style>
                    <table  border=1 >
-                      <col  width="20%"/>
-                      <col  width="20%"/>
+                     <col  width="20%"/>
+                      <col width="20%"/>
+                      <col width="20%"/>
 
                       <tr>
-                         <th >Schema</th>
+                         <th colspan=2>Schema</th>
                          <th >Name</th>
                          <th >Engine</th>
                          <th >Rows</th>
@@ -47,6 +48,7 @@
                       </tr>
 
                       <tr ng-repeat="table in tables">
+                         <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
                          <td class="process">{{ table.tableSchema }}</td>
                          <td class="process">{{ table.tableName }}    </td>
                          <td class="process">{{ table.engine }} </td>

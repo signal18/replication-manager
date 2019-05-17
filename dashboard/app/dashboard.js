@@ -776,6 +776,13 @@ var httpGetWithoutResponse = function (url) {
     httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);
   };
 
+  $scope.reshardtable = function (schema,table) {
+    httpGetWithoutResponse(getClusterUrl() + '/schema/'+schema+'/'+table+'/actions/reshard-table');
+  };
+
+  $scope.checksumtable = function (schema,table) {
+    httpGetWithoutResponse(getClusterUrl() + '/schema/'+schema+'/'+table+'/actions/checksum-table');
+  };
 
   $scope.$watch('settings.maxdelay', function (newVal, oldVal) {
     if (typeof newVal != 'undefined') {

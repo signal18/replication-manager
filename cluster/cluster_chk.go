@@ -148,7 +148,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 		return true
 	}
 	if cluster.FailoverCtr == cluster.Conf.FailLimit {
-		cluster.sme.AddState("ERR00027", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00027", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -162,7 +162,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	}
 	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
-		cluster.sme.AddState("ERR00029", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00029", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -189,7 +189,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.sme.AddState("ERR00028", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
+					cluster.sme.AddState("ERR00028", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
 					return true
 				}
 			}
@@ -249,7 +249,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
-		cluster.sme.AddState("ERR00030", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00030", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -259,7 +259,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 
 	key := cluster.electFailoverCandidate(cluster.slaves, false)
 	if key == -1 {
-		cluster.sme.AddState("ERR00032", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00032", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -286,7 +286,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err.Error())
-		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	defer resp.Body.Close()
@@ -300,14 +300,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Arbitrator sent invalid JSON")
-		cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
 		cluster.LogPrintf(LvlInfo, "Arbitrator says: winner")
 		return true
 	}
-	cluster.sme.AddState("ERR00022", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+	cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 	return false
 }
 
@@ -325,7 +325,7 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
-		cluster.sme.AddState("ERR00031", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00031", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -340,7 +340,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.master == nil {
-		cluster.sme.AddState("ERR00026", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
+		cluster.sme.AddState("ERR00026", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return false
 	}
 
@@ -439,5 +439,94 @@ func (cluster *Cluster) CheckCapture(state state.State) {
 }
 
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
-	//ddl, err := cluster.GetTableDLL(schema, table, cluster.master)
+
+	cluster.LogPrintf(LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
+
+	Conn, err := cluster.master.GetNewDBConn()
+	if err != nil {
+		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Error connection in exec query no log %s", err)
+		return
+	}
+	defer Conn.Close()
+	pk, _ := cluster.master.GetTablePK(schema, table)
+	if pk == "" {
+		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum failed, no primary key for table %s.%s", schema, table)
+		return
+	}
+	if strings.Contains(pk, ",") {
+		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum failed composit primary key not allow for table %s.%s", schema, table)
+		return
+	}
+	Conn.Exec("USE replication_manager_schema")
+	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
+	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
+	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MEMORY")
+	Conn.Exec("CREATE TEMPORARY TABLE replication_manager_schema.table_chunck ENGINE=MEMORY SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(" + pk + ") as chunkMinKey, MAX(" + pk + ") as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId")
+	var md5Sum string
+	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ERROR: Could not get SQL md5Sum", err)
+		return
+	}
+	for true {
+		_, err := Conn.Exec("INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunck limit 1) B on A." + pk + " >= B.chunkMinKey and A." + pk + "<=B.chunkMaxKey")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck", err)
+			return
+		}
+		res, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunck limit 1")
+		if err2 != nil {
+			cluster.LogPrintf(LvlErr, "Checksum error deleting chunck %s", err)
+			return
+		}
+		i, err3 := res.RowsAffected()
+		if err3 != nil {
+			cluster.LogPrintf(LvlErr, "Checksum can't fetch rows affected ", err)
+			return
+		}
+		if i == 0 {
+			cluster.LogPrintf(LvlInfo, "Finished checksum table %s.%s", schema, table)
+			break
+		}
+	}
+	cluster.master.Refresh()
+	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
+	cluster.LogPrintf(LvlInfo, "Wait sync: Master sequence %d", masterSeq)
+
+	for _, s := range cluster.slaves {
+		if !s.IsFailed() && !s.IsReplicationBroken() {
+			for true {
+				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
+				cluster.LogPrintf(LvlInfo, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
+				if slaveSeq >= masterSeq {
+					break
+				} else {
+					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+
+				}
+				time.Sleep(1 * time.Second)
+
+			}
+
+		}
+	}
+	// check slave result
+	masterChecksums, _ := dbhelper.GetTableChecksumResult(cluster.master.Conn)
+
+	for _, s := range cluster.slaves {
+		slaveChecksums, _ := dbhelper.GetTableChecksumResult(s.Conn)
+
+		checkok := true
+		for _, chunk := range masterChecksums {
+			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
+				checkok = false
+				cluster.LogPrintf(LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
+			}
+
+		}
+		if checkok {
+			cluster.LogPrintf(LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
+		}
+	}
 }

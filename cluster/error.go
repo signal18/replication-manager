@@ -127,4 +127,5 @@ var clusterError = map[string]string{
 	"WARN0083": "Arbitration winner",
 	"WARN0084": "Variable diff:\n %s",
 	"WARN0085": "Server in capture mode %s",
+	"WARN0086": "Checksum table waiting replication sync on slave %s",
 }
