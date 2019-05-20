@@ -651,14 +651,18 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
 			myGtid_Slave_Pos = server.SlaveGtid
 
-			server.ClusterGroup.LogPrintf("INFO", "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
+			server.ClusterGroup.LogPrintf("INFO", "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn)
 		if err != nil {
 			return err
 		}
-		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
+		for true {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile, ss.ReadMasterLogPos.String, ss.RelayMasterLogFile, ss.ExecMasterLogPos.String)
+			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
+				break
+			}
 			ss, err = dbhelper.GetSlaveStatus(server.Conn)
 			if err != nil {
 				return err
