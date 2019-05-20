@@ -788,13 +788,16 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		if err != nil {
 			return err
 		}
-		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos != ss.ExecMasterLogPos {
+		for true {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile, ss.ReadMasterLogPos, ss.RelayMasterLogFile, ss.ExecMasterLogPos)
+			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
+				break
+			}
 			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
-			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile, ss.ReadMasterLogPos, ss.RelayMasterLogFile, ss.ExecMasterLogPos)
 		}
 	}
 	return nil
