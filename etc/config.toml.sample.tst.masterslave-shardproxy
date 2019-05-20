@@ -4,7 +4,7 @@
 # change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 # replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[Cluster_Mdbshardproxy_Shard1]
+[Cluster-Mdbshardproxy-Shard1]
 title = "Shard1"
 db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
 db-servers-prefered-master = "127.0.0.1:3331"
@@ -12,8 +12,13 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 
-
-
+[Cluster-Mdbshardproxy-Shard2]
+title = "Shard2"
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
 
 [Default]
 shardproxy = true

@@ -291,6 +291,15 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetFirstWorkingSlave() *ServerMonitor {
+	for _, server := range cluster.slaves {
+		if !server.IsDown() && !server.IsReplicationBroken() {
+			return server
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) GetDBServerIdList() []string {
 	cluster.Lock()
 	ret := make([]string, len(cluster.Servers))
@@ -439,6 +448,7 @@ func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 	return nil
 }
 
+//GetClusterFromShardProxy return all clusters sharing same proxy
 func (cluster *Cluster) GetClusterFromShardProxy(shardproxy string) map[string]*Cluster {
 	var clusters map[string]*Cluster
 	for _, c := range cluster.clusterList {

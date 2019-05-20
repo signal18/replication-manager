@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime ) {
+function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, VTables ,Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedServer = undefined;
@@ -114,7 +114,14 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
         });
 
 
-
+      if ( $scope.selectedTab=='Shards' ) {
+          VTables.query({clusterName: $scope.selectedClusterName}, function (data) {
+            $scope.vtables = data;
+            $scope.reserror = false;
+          }, function () {
+            $scope.reserror = true;
+          });
+      }
 
 
   Alerts.query({clusterName: $scope.selectedClusterName}, function (data) {
@@ -191,6 +198,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
             $scope.reserror = true;
           });
         }
+
         if ( $scope.selectedTab=='Status') {
           Status.query({clusterName: $scope.selectedClusterName,serverName: $scope.selectedServer}, function (data) {
             $scope.status = data;

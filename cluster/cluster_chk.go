@@ -480,6 +480,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			cluster.LogPrintf(LvlErr, "Checksum error deleting chunck %s", err)
 			return
 		}
+
 		i, err3 := res.RowsAffected()
 		if err3 != nil {
 			cluster.LogPrintf(LvlErr, "Checksum can't fetch rows affected ", err)
@@ -488,6 +489,10 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		if i == 0 {
 			cluster.LogPrintf(LvlInfo, "Finished checksum table %s.%s", schema, table)
 			break
+		}
+		slave := cluster.GetFirstWorkingSlave()
+		if slave.GetReplicationDelay() > 5 {
+			//time.Sleep(slave.GetReplicationDelay() * time.Second)
 		}
 	}
 	cluster.master.Refresh()
@@ -503,10 +508,8 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 					break
 				} else {
 					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
-
 				}
 				time.Sleep(1 * time.Second)
-
 			}
 
 		}

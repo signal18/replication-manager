@@ -38,6 +38,10 @@ app.factory('Tables', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/tables', {clusterName: '@clusters',serverName: '@server'});
 });
 
+app.factory('VTables', function ($resource) {
+    return $resource('api/clusters/:clusterName/schema', {clusterName: '@clusters'});
+});
+
 app.factory('Status', function ($resource) {
     return $resource('api/clusters/:clusterName/servers/:serverName/status-delta', {clusterName: '@clusters',serverName: '@server'});
 });
