@@ -781,19 +781,20 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			myGtid_IO_Pos = gtid.NewList(ss.GtidIOPos.String)
 			myGtid_Slave_Pos = server.SlaveGtid
 
-			server.ClusterGroup.LogPrintf(LvlInfo, "Status IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
+			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
 		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 		if err != nil {
 			return err
 		}
-		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
+		for ss.MasterLogFile != ss.RelayMasterLogFile && ss.ReadMasterLogPos != ss.ExecMasterLogPos {
 			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
 			if err != nil {
 				return err
 			}
 			time.Sleep(500 * time.Millisecond)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile, ss.ReadMasterLogPos, ss.RelayMasterLogFile, ss.ExecMasterLogPos)
 		}
 	}
 	return nil
