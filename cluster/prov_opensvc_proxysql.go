@@ -44,10 +44,10 @@ func (cluster *Cluster) GetPodDockerProxysqlTemplate(collector opensvc.Collector
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = busybox:latest
-run_args =  --net=none  -i -t
--v /etc/localtime:/etc/localtime:ro
-run_command = /bin/sh
+hostname = {svcname}.{namespace}.svc.{clustername}
+image = google/pause
+rm = true
+
 
 [container#20` + pod + `]
 tags = pod` + pod + `

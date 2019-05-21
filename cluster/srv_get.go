@@ -10,8 +10,10 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -477,4 +479,23 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 		return "", nil
 	}
 	return pk, nil
+}
+
+func (server *ServerMonitor) GetMyConfig() string {
+	file := server.ClusterGroup.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
+	jsonFile, err := os.Open(file)
+	if err != nil {
+		server.ClusterGroup.LogPrintf("failed opened %s %s", file, err)
+	}
+	server.ClusterGroup.LogPrintf("Successfully opened %s", file)
+	// defer the closing of our jsonFile so that we can parse it later on
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var result map[string]interface{}
+	json.Unmarshal([]byte(byteValue), &result)
+
+	fmt.Println(result["rulesets"])
+	return ""
 }

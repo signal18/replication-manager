@@ -45,7 +45,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	var idsrv string
 	mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
 	if err == nil {
-		cluster.LogPrintf(LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/"+s.Name, mysrv.Svc_id)
+		cluster.LogPrintf(LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/svc/"+s.Name, mysrv.Svc_id)
 		idsrv = mysrv.Svc_id
 	} else {
 		idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
@@ -73,13 +73,13 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	}
 
 	// create template && bootstrap
-	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, cluster.Name+"/"+s.Name, agent.Node_name)
+	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, cluster.Name+"/svc/"+s.Name, agent.Node_name)
 	if err != nil {
 		cluster.errorChan <- err
 		return
 	}
-	idtemplate, _ := svc.CreateTemplate(cluster.Name+"/"+s.Name, res)
-	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/"+s.Name)
+	idtemplate, _ := svc.CreateTemplate(cluster.Name+"/svc/"+s.Name, res)
+	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+s.Name)
 	err = cluster.OpenSVCWaitDequeue(svc, idaction)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err)
@@ -109,9 +109,9 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/"+s.Name)
+				cluster.LogPrintf(LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+s.Name)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", cluster.Name+"/"+s.Name)
+				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+s.Name)
 			}
 		}
 	}
@@ -123,11 +123,11 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
 	node, _ := cluster.FoundDatabaseAgent(db)
 	for _, svc := range node.Svc {
-		if cluster.Name+"/"+db.Name == svc.Svc_name {
+		if cluster.Name+"/svc/"+db.Name == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/"+db.Name, err)
+				cluster.LogPrintf(LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+db.Name, err)
 			}
 		}
 	}
@@ -204,7 +204,7 @@ rollback = false
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod, agent)
-		conf = conf + `post_provision =  {svcmgr} -s  {namespace}/{svcname} push status;{svcmgr} -s  {namespace}/{svcname} compliance fix --attach --moduleset mariadb.svc.mrm.db;
+		conf = conf + `post_provision =  {svcmgr} -s  {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db;
 	`
 		conf = conf + server.GetSnapshot(collector)
 		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)

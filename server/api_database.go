@@ -32,6 +32,10 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortBackup)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
+	))
+
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -910,6 +914,24 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 		if node.IsDown() == false && node.IsMaintenance == false {
 			node.JobBackupPhysical()
 			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			node.GetMyConfig()
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))

@@ -157,7 +157,7 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/"+server.Name)
+	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	if cluster.Conf.Enterprise {
 		cluster.OpenSVCStartService(server)
 	} else {
