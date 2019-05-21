@@ -1,0 +1,60 @@
+
+ <div layout="row" flex>
+<md-content  class="md-padding">
+
+
+
+
+           <md-card>
+             <md-card-content>
+              </md-card-content>
+              <style>
+                table{
+                  table-layout: fixed;
+                  width: 100%;
+
+
+                }
+                td {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                }
+      </style>
+                   <table  border=1 >
+                     <col  width="20%"/>
+                      <col width="20%"/>
+                      <col width="20%"/>
+
+                      <tr>
+                         <th colspan=2>Schema</th>
+                         <th >Name</th>
+                         <th >Engine</th>
+                         <th >Rows</th>
+                         <th>Data</th>
+                         <th >Index</th>
+                         <th >%</th>
+                      </tr>
+
+                      <tr ng-repeat="table in vtables">
+                         <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
+                         <td class="process">{{ table.tableSchema }}</td>
+                         <td class="process">{{ table.tableName }}    </td>
+                         <td class="process">{{ table.engine }} </td>
+                         <td class="process">{{ table.tableRows }}</td>
+                         <td class="process">{{ table.dataLength }}</td>
+                         <td class="process">{{ table.indexLength }}</td>
+                         <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
+                           thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" /> </td>
+
+                      </tr>
+                   <table>
+
+             </md-card>
+
+           </div>
+             <BR><BR>
+               <div ng-include src="'static/dashboard/server-log.html'"></div>
+</md-content>
+
+</div>
