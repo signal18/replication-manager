@@ -72,7 +72,7 @@
                 <md-tab ng-if="selectedQuery" ng-click="onTabClicked('QueryExplain')" md-select-id="QueryExplain" md-on-select="onTabSelected" label="Explain Plan">
                     <div ng-include src="'static/tab-query-explain.html'"></div>
                 </md-tab>
-                <md-tab ng-click="onTabClicked('Shards')" md-on-select="onTabSelected" label="Shards">
+                <md-tab ng-if="!selectedServer" ng-click="onTabClicked('Shards')" md-on-select="onTabSelected" label="Shards">
                     <div ng-include src="'static/tab-cluster-shards.html'"></div>
                 </md-tab>
             </md-tabs>
