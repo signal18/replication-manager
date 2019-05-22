@@ -533,3 +533,21 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		}
 	}
 }
+
+//CheckSameServerID Check against the servers that all server id are differents
+func (cluster *Cluster) CheckSameServerID() {
+	for _, s := range cluster.Servers {
+		if s.IsFailed() {
+			continue
+		}
+		for _, sothers := range cluster.Servers {
+			if sothers.IsFailed() || s.URL == sothers.URL {
+				continue
+			}
+			if s.ServerID == sothers.ServerID {
+				cluster.SetState("WARN0087", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0087"], s.URL, sothers.URL), ErrFrom: "MON", ServerUrl: s.URL})
+
+			}
+		}
+	}
+}

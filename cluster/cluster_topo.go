@@ -131,6 +131,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	cluster.TopologyClusterDown()
 	// Check topology Cluster all servers down
 	cluster.AllServersFailed()
+	cluster.CheckSameServerID()
 	// Spider shard discover
 	if cluster.Conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
