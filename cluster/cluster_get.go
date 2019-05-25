@@ -470,3 +470,11 @@ func (cluster *Cluster) GetTableDLL(schema string, table string, srv *ServerMoni
 	ddl = ddl[12:pos]
 	return ddl, err
 }
+
+func (cluster *Cluster) GetDBModuleTags() []string {
+	var tags []string
+	for _, value := range cluster.DBModule.Filtersets {
+		tags = append(tags, value.Name)
+	}
+	return tags
+}

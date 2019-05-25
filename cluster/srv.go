@@ -144,6 +144,7 @@ type ServerMonitor struct {
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
 	InCaptureMode               bool                         `json:"inCaptureMode"`
+	Datadir                     string                       `json:"-"`
 }
 
 type serverList []*ServerMonitor
@@ -205,9 +206,17 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.State = stateSuspect
 	server.PrevState = stateSuspect
+	server.Datadir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
+	if _, err := os.Stat(server.Datadir); os.IsNotExist(err) {
+		os.MkdirAll(server.Datadir, os.ModePerm)
+		os.MkdirAll(server.Datadir+"/log", os.ModePerm)
+		os.MkdirAll(server.Datadir+"/var", os.ModePerm)
+		os.MkdirAll(server.Datadir+"/etc", os.ModePerm)
+		os.MkdirAll(server.Datadir+"/bck", os.ModePerm)
+	}
 
-	errLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_error.log"
-	slowLogFile := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_log_slow_query.log"
+	errLogFile := server.Datadir + "/log/log_error.log"
+	slowLogFile := server.Datadir + "/log/log_slow_query.log"
 	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()

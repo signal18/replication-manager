@@ -79,7 +79,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		return 0, nil
 	}
 
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_xtrabackup.xbtream", ConstJobCreateFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/bck/xtrabackup.xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -205,7 +205,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_error.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/log/log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -270,7 +270,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -408,7 +408,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//}
 		//stdout := io.MultiWriter(w, &outDump)
 
-		f, err := os.Create(server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Id + "_mysqldump.sql.gz")
+		f, err := os.Create(server.Datadir + "/bck/mysqldump.sql.gz")
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
+			return err
+		}
 		wf := bufio.NewWriter(f)
 		gw := gzip.NewWriter(wf)
 		//fw := bufio.NewWriter(gw)

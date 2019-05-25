@@ -339,3 +339,22 @@ type Config struct {
 	BackupRepoAwsURI                   string `mapstructure:"backup-repo-aws-uri" toml:"backup-repo-aws-uri" json:"backupRepoAwsUri"`
 	ClusterConfigPath                  string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 }
+
+//Compliance created in OpenSVC collector and exported as JSON
+type Compliance struct {
+	Filtersets []struct {
+		ID    uint   `json:"id"`
+		Stats bool   `json:"fset_stats"`
+		Name  string `json:"fset_name"`
+	} `json:"filtersets"`
+	Rulesets []struct {
+		ID        uint   `json:"id"`
+		Name      string `json:"ruleset_name"`
+		Filter    string `json:"fset_name"`
+		Variables []struct {
+			Value string `json:"var_value"`
+			Class string `json:"var_class"`
+			Name  string `json:"var_name"`
+		} `json:"variables"`
+	} `json:"rulesets"`
+}

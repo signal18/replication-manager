@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -196,4 +197,18 @@ func CopyDir(src string, dst string) (err error) {
 	}
 
 	return
+}
+
+func ExtractKey(s string, r map[string]string) string {
+	s2 := s
+	matches := regexp.MustCompile(`\%%(.*?)\%%`).FindAllStringSubmatch(s, -1)
+
+	if matches == nil {
+		return s2
+	}
+
+	for _, match := range matches {
+		s2 = strings.Replace(s2, match[0], r[match[0]], -1)
+	}
+	return s2
 }

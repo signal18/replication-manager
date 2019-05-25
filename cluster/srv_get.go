@@ -13,14 +13,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
 
@@ -403,7 +404,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 func (server *ServerMonitor) GetSlowLogTable() {
 
-	f, err := os.OpenFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Id+"_log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
 		return
@@ -481,21 +482,84 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	return pk, nil
 }
 
-func (server *ServerMonitor) GetMyConfig() string {
-	file := server.ClusterGroup.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		server.ClusterGroup.LogPrintf("failed opened %s %s", file, err)
+func (server *ServerMonitor) IsFilterInTags(filter string) bool {
+	tags := server.ClusterGroup.GetDatabaseTags()
+	for _, tag := range tags {
+		if strings.Contains(filter, tag) {
+			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
+			return true
+		}
 	}
-	server.ClusterGroup.LogPrintf("Successfully opened %s", file)
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
+	return false
+}
 
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+func (server *ServerMonitor) GetMyConfig() string {
+	type File struct {
+		Path    string `json:"path"`
+		Content string `json:"fmt"`
+	}
 
-	var result map[string]interface{}
-	json.Unmarshal([]byte(byteValue), &result)
+	// Extract files
+	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
+			if !server.IsFilterInTags(rule.Filter) {
 
-	fmt.Println(result["rulesets"])
+				for _, variable := range rule.Variables {
+					if variable.Class == "file" || variable.Class == "fileprop" {
+						var f File
+						json.Unmarshal([]byte(variable.Value), &f)
+						fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir, -1)
+						dir := filepath.Dir(fpath)
+						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+						// create directory
+						if _, err := os.Stat(dir); os.IsNotExist(err) {
+							err := os.MkdirAll(dir, os.ModePerm)
+							if err != nil {
+								server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
+							}
+						}
+
+						if fpath[len(fpath)-1:] != "/" {
+							content := misc.ExtractKey(f.Content, server.GetDBEnv())
+							outFile, err := os.Create(fpath)
+							if err != nil {
+								server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
+							} else {
+								_, err = outFile.WriteString(content)
+
+								if err != nil {
+									server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
+								}
+								outFile.Close()
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	// processing symlink
+	type Link struct {
+		Symlink string `json:"symlink"`
+		Target  string `json:"target"`
+	}
+	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
+			for _, variable := range rule.Variables {
+				if variable.Class == "symlink" {
+					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						var f Link
+						json.Unmarshal([]byte(variable.Value), &f)
+						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir, -1)
+						server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						os.Symlink(f.Target, fpath)
+						//	keys := strings.Split(variable.Value, " ")
+					}
+				}
+			}
+		}
+	}
+
+	//fmt.Println(result["rulesets"])
 	return ""
 }

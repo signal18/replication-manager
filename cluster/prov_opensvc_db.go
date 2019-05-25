@@ -310,3 +310,21 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 	}
 	return vm
 }
+
+func (server *ServerMonitor) GetDBEnv() map[string]string {
+	return map[string]string{
+		"%%ENV:NODES_CPU_CORES%%":                  server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":           server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":            string(server.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%": server.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":             server.ClusterGroup.Conf.ProvMem,
+		"%%ENV:IBPINSTANCES%%":                     "1",
+		"%%ENV:CHECKPOINTIOPS%%":                   server.ClusterGroup.Conf.ProvIops,
+		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":            server.ClusterGroup.Conf.ProvIops,
+		"%%ENV:SVC_CONF_ENV_GCOMM%%":               server.ClusterGroup.GetGComm(),
+		"%%ENV:SERVER_IP%%":                        "0.0.0.0",
+		"%%ENV:SERVER_PORT%%":                      server.Port,
+	}
+
+	//	size = ` + collector.ProvDisk + `
+}

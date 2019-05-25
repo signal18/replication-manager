@@ -596,6 +596,25 @@
         },
         {
             "fset_stats": false,
+            "id": 301,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noodirect",
+                        "f_table": "v_tags",
+                        "id": 244
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.svc.prov.noodirect"
+        },
+        {
+            "fset_stats": false,
             "id": 302,
             "filters": [
                 {
@@ -1030,8 +1049,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\"}",
-                    "var_updated": "2018-09-28 14:05:30",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\\n\\n[MariaDB 10.2] \\neq_range_index_dive_limit=10\\n\\n[MariaDB 10.3] \\neq_range_index_dive_limit=10\\n\"}",
+                    "var_updated": "2018-10-08 10:27:40",
                     "var_name": "db_cnf_default_optimizer",
                     "id": 5913
                 },
@@ -1214,8 +1233,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_aria.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# ARIA\\n# ----\\n\\n[mariadb]\\n\\naria_pagecache_buffer_size = 256M\\naria_group_commit = hard\\n#aria_used_for_temp_tables = 1\\naria_pagecache_file_hash_size = 1024\\n\"}",
-                    "var_updated": "2018-09-28 13:51:07",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_aria.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# ARIA\\n# ----\\n\\n[mariadb]\\n\\naria_pagecache_buffer_size = 256M\\naria_group_commit = hard\\n#aria_used_for_temp_tables = 1\\naria_pagecache_file_hash_size = 1024\\naria_block_size=1024\"}",
+                    "var_updated": "2019-03-10 09:45:34",
                     "var_name": "db_cnf_engine_aria",
                     "id": 5936
                 },
@@ -1310,8 +1329,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nignore_db_dir=.system\\nlog_error = ./.system/logs/errors.log\\ntmpdir = ./.system/tmp\\nslave_load_tmpdir = ./.system/tmp\\ngeneral_log_file= ./.system/logs/sql-all \\ninnodb_data_home_dir = ./.system/innodb\\ninnodb_log_group_home_dir = ./.system/innodb/redo\\ninnodb_undo_directory  = ./.system/innodb/undo\\nlog_bin= ./.system/repl/log-bin\\nlog_bin_index= ./.system/repl/log-bin.index \\nrelay_log = ./.system/repl/relay-bin\\nrelay_log_index=./.system/repl/relay-bin.index\\nslow_query_log_file = ./.system/logs/sql-slow\\n\\n[mariadb]\\naria_log_dir_path = ./.system/aria\\nloose_server_audit_file_path =  ./.system/logs/audit.log\\nloose_sql_error_log_filename = ./.system/logs/sql-errors \"}",
-                    "var_updated": "2018-09-28 19:38:40",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nignore_db_dir=.system\\nlog_error = ./.system/logs/errors.log\\ntmpdir = ./.system/tmp\\nslave_load_tmpdir = ./.system/tmp\\ngeneral_log_file= ./.system/logs/sql-all \\ninnodb_data_home_dir = ./.system/innodb\\ninnodb_log_group_home_dir = ./.system/innodb/redo\\ninnodb_undo_directory  = /./.system/innodb/undo\\nlog_bin= ./.system/repl/log-bin\\nlog_bin_index= ./.system/repl/log-bin.index \\n\\nrelay_log = ./.system/repl/relay-bin\\nrelay_log_index=./.system/repl/relay-bin.index\\nslow_query_log_file = ./.system/logs/sql-slow\\n\\n[mariadb]\\naria_log_dir_path = ./.system/aria\\nloose_server_audit_file_path =  ./.system/logs/audit.log\\nloose_sql_error_log_filename = ./.system/logs/sql-errors \"}",
+                    "var_updated": "2018-12-26 22:55:07",
                     "var_name": "db_cnf_default_path",
                     "id": 5948
                 },
@@ -1406,8 +1425,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nUSER=root\\nPASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nERROLOG=/var/lib/mysql/.system/logs/errors.log\\nSLOWLOG=/var/lib/mysql/.system/logs/sql-slow\\nBACKUPDIR=/var/lib/mysql/.system/backup\\nDATADIR=/var/lib/mysql/\\nJOBS=( \\\"xtrabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" \\\"reseedxtrabackup\\\" \\\"reseedmysqldump\\\" \\\"flashbackxtrabackup\\\" \\\"flashbackmysqldump\\\" )\\n\\ndoneJob()\\n{\\n /usr/bin/mysql -u$USER -p$PASSWORD -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npauseJob()\\n{\\n /usr/bin/mysql -u$USER -p$PASSWORD -e \\\"select sleep(6);set sql_log_bin=0;UPDATE replication_manager_schema.jobs set result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npartialRestore()\\n{\\n chown -R mysql:mysql $BACKUPDIR\\n /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'\\\"\\n for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema') ; do\\n /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;\\\"\\n\\n\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.exp\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\\\\x06\\\\x00\\\\x49\\\\x6E\\\\x6E\\\\x6F\\\\x44\\\\x42\\\\x00\\\\x00\\\\x00/\\\\x09\\\\x00\\\\x42\\\\x4C\\\\x41\\\\x43\\\\x4B\\\\x48\\\\x4F\\\\x4C\\\\x45/g' > $DATADIR/$dir/mrm_pivo.frm\\n   chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm\\n   /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;\\\"\\n   mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd\\n   mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp\\n   mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg\\n   mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG\\n   /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.CSV\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n done\\n for file in $(find $BACKUPDIR/mysql/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/\\n   /usr/bin/mysql -p$PASSWORD -u$USER -e \\\"set sql_log_bin=0;FLUSH TABLE mysql.$file\\\"\\n done\\n cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | /usr/bin/mysql -p$PASSWORD -u$USER\\n /usr/bin/mysql -p$PASSWORD -u$USER  -e\\\"flush privileges;start slave;\\\"\\n}\\n\\nfor job in \\\"${JOBS[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"select concat(id,'@',server,':',port) from replication_manager_schema.jobs WHERE task='$job' and done=0 order by task desc limit 1\\\" | /usr/bin/mysql -p$PASSWORD -u$USER -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n /usr/bin/mysql -uroot -p$PASSWORD -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE task='$job';\\\"\\n\\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n  else\\n    echo \\\"Processing $job\\\"\\n    case \\\"$job\\\" in\\n      reseedmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | gunzip | /usr/bin/mysql -p$PASSWORD -u$USER > /tmp/dbjob.out 2>&1\\n        /usr/bin/mysql -p$PASSWORD -u$USER -e 'start slave;'\\n      ;;\\n      flashbackmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | gunzip | /usr/bin/mysql -p$PASSWORD -u$USER > /tmp/dbjob.out 2>&1\\n        /usr/bin/mysql -p$PASSWORD -u$USER -e 'start slave;'\\n      ;;\\n      reseedxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | xbstream -x -C $BACKUPDIR\\n       xtrabackup --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | xbstream -x -C $BACKUPDIR\\n       xtrabackup --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      xtrabackup)\\n       cd /docker-entrypoint-initdb.d\\n       /usr/bin/innobackupex  --defaults-file=/etc/mysql/my.cnf --socket='/var/run/mysqld/mysqld.sock'  --no-version-check  --user=$USER --password=$PASSWORD --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      error)\\n       cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $ERROLOG\\n      ;;\\n      slowquery)\\n       cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $SLOWLOG\\n      ;;\\n      zfssnapback)\\n       LASTSNAP=`zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1`\\n       %%ENV:SERVICES_SVCNAME%% stop\\n       zfs rollback $LASTSNAP\\n       %%ENV:SERVICES_SVCNAME%% start\\n      ;;\\n      optimize)\\n       /usr/bin/mysqloptimize -u$USER -p$PASSWORD --all-databases &>/tmp/dbjob.out\\n      ;;\\n  esac\\n  doneJob\\n  fi\\n\\ndone\\n\"}",
-                    "var_updated": "2018-06-25 16:40:24",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nUSER=root\\nPASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nERROLOG=/var/lib/mysql/.system/logs/errors.log\\nSLOWLOG=/var/lib/mysql/.system/logs/sql-slow\\nBACKUPDIR=/var/lib/mysql/.system/backup\\nDATADIR=/var/lib/mysql/\\nJOBS=( \\\"xtrabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" \\\"reseedxtrabackup\\\" \\\"reseedmysqldump\\\" \\\"flashbackxtrabackup\\\" \\\"flashbackmysqldump\\\" )\\n\\ndoneJob()\\n{\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npauseJob()\\n{\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"select sleep(6);set sql_log_bin=0;UPDATE replication_manager_schema.jobs set result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npartialRestore()\\n{\\n chown -R mysql:mysql $BACKUPDIR\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'\\\"\\n for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema') ; do\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;\\\"\\n\\n\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.exp\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\\\\x06\\\\x00\\\\x49\\\\x6E\\\\x6E\\\\x6F\\\\x44\\\\x42\\\\x00\\\\x00\\\\x00/\\\\x09\\\\x00\\\\x42\\\\x4C\\\\x41\\\\x43\\\\x4B\\\\x48\\\\x4F\\\\x4C\\\\x45/g' > $DATADIR/$dir/mrm_pivo.frm\\n   chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm\\n   /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;\\\"\\n   mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd\\n   mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp\\n   mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg\\n   mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG\\n   /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.CSV\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n done\\n for file in $(find $BACKUPDIR/mysql/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/\\n   /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE mysql.$file\\\"\\n done\\n cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | /usr/bin/mysql -p$PASSWORD -u$USER\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf   -e\\\"flush privileges;start slave;\\\"\\n}\\n\\nfor job in \\\"${JOBS[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"select concat(id,'@',server,':',port) from replication_manager_schema.jobs WHERE task='$job' and done=0 order by task desc limit 1\\\" | /usr/bin/mysql -p$PASSWORD -u$USER -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n #purge de past\\n /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job';\\\"\\n\\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n  else\\n    echo \\\"Processing $job\\\"\\n    case \\\"$job\\\" in\\n      reseedmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | gunzip | /usr/bin/mysql -p$PASSWORD -u$USER > /tmp/dbjob.out 2>&1\\n        /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      flashbackmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | gunzip | /usr/bin/mysql -p$PASSWORD -u$USER > /tmp/dbjob.out 2>&1\\n        /usr/bin/mysql --defaults-extra-file=/etc/mysql/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      reseedxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | xbstream -x -C $BACKUPDIR\\n       xtrabackup --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socat -u TCP-LISTEN:4444,reuseaddr STDOUT | xbstream -x -C $BACKUPDIR\\n       xtrabackup --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      xtrabackup)\\n       cd /docker-entrypoint-initdb.d\\n       /usr/bin/innobackupex  --defaults-file=/etc/mysql/my.cnf --socket='/var/run/mysqld/mysqld.sock'  --no-version-check  --user=$USER --password=$PASSWORD --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      error)\\n       cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $ERROLOG\\n      ;;\\n      slowquery)\\n       cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $SLOWLOG\\n      ;;\\n      zfssnapback)\\n       LASTSNAP=`zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1`\\n       %%ENV:SERVICES_SVCNAME%% stop\\n       zfs rollback $LASTSNAP\\n       %%ENV:SERVICES_SVCNAME%% start\\n      ;;\\n      optimize)\\n       /usr/bin/mysqloptimize --defaults-extra-file=/etc/mysql/dbjob.cnf --all-databases --skip-write-binlog &>/tmp/dbjob.out\\n      ;;\\n  esac\\n  doneJob\\n  fi\\n\\ndone\\n\"}",
+                    "var_updated": "2019-04-18 15:25:59",
                     "var_name": "db_cnf_script_dbjobs",
                     "id": 5960
                 },
@@ -1428,10 +1447,10 @@
                     "id": 5962
                 },
                 {
-                    "var_author": "replication-manager replication-manager@signal18.io",
+                    "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/trigger-dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash -ue\\n\\nsvcmgr -s %%ENV:SERVICES_SVCNAME%% docker exec -i %%ENV:SERVICES_SVCNAME%%.container.2001 /bin/bash -c \\\"/docker-entrypoint-initdb.d/dbjobs\\\"\"}",
-                    "var_updated": "2018-04-09 15:30:18",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/trigger-dbjobs\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash -ue\\n\\nsvcmgr -s %%ENV:SVC_PATH%% docker exec -i %%ENV:SVC_NAMESPACE%%..%%ENV:SVC_NAME%%.container.2001 /bin/bash -c \\\"/docker-entrypoint-initdb.d/dbjobs\\\"\"}",
+                    "var_updated": "2019-04-12 10:20:19",
                     "var_name": "db_cnf_script_trigger_dbjobs",
                     "id": 5963
                 },
@@ -1502,16 +1521,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_odirect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysql]\\ninnodb_flush_method = O_DSYNC\"}",
-                    "var_updated": "2018-09-28 13:53:46",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_odirect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_flush_method = O_DSYNC\"}",
+                    "var_updated": "2018-10-11 08:22:53",
                     "var_name": "db_cnf_no_odirect",
                     "id": 6022
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_independentstatistics.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\noptimizer_use_condition_selectivity = 3\\n# for histogram\\n# optimizer_use_condition_selectivity = 4 \\nhistogram_size = 255; \\nuse_stat_tables = 2\"}",
-                    "var_updated": "2018-09-28 14:00:35",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_independentstatistics.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\noptimizer_use_condition_selectivity = 3\\n# for histogram\\n# optimizer_use_condition_selectivity = 4 \\nhistogram_size = 255 \\nuse_stat_tables = 2\"}",
+                    "var_updated": "2018-10-12 10:26:13",
                     "var_name": "db_cnf_with_independentstatistics",
                     "id": 6023
                 },
@@ -1542,16 +1561,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_paralleloptimistic.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = optimistic\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\"}",
-                    "var_updated": "2018-09-28 16:56:06",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_paralleloptimistic.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = optimistic\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\n\"}",
+                    "var_updated": "2019-02-02 11:38:29",
                     "var_name": "db_cnf_with_rep_paralleloptimistic",
                     "id": 6029
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_parallelconservative.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = conservative\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\"}",
-                    "var_updated": "2018-09-28 16:56:39",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_parallelconservative.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = conservative\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\n\"}",
+                    "var_updated": "2019-02-02 11:40:37",
                     "var_name": "db_cnf_with_rep_parallelconservative",
                     "id": 6030
                 },
@@ -1590,8 +1609,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_ssd.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_flush_neighbors = 1\"}",
-                    "var_updated": "2018-09-30 16:13:15",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_ssd.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ninnodb_flush_neighbors = 0\"}",
+                    "var_updated": "2019-02-27 13:28:40",
                     "var_name": "db_cnf_with_ssd",
                     "id": 6038
                 },
@@ -1602,26 +1621,42 @@
                     "var_updated": "2018-09-30 21:42:36",
                     "var_name": "db_cnf_no_ssd",
                     "id": 6039
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_autocommit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nautocommit=0\"}",
+                    "var_updated": "2019-01-10 18:21:45",
+                    "var_name": "db_cnf_no_autocommit",
+                    "id": 6059
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/dbjob.cnf\",\"mode\":644,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[client]\\nuser=root\\npassword=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\"}",
+                    "var_updated": "2019-04-18 15:37:25",
+                    "var_name": "db_cnf_script_dbjobs_credential",
+                    "id": 6072
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "explicit",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.withinnodbpagecompression",
-                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
-                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
-                "mariadb.svc.mrm.db.cnf.generic.noquerycache",
                 "mariadb.svc.mrm.db.cnf.generic.withrepsemisync",
+                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
+                "mariadb.svc.mrm.db.cnf.generic.withthreadpool",
+                "mariadb.svc.mrm.db.cnf.generic.noquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.withinnodbpagecompression",
+                "mariadb.svc.mrm.db.cnf.generic.enginespider",
+                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
+                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
                 "mariadb.svc.mrm.db.cnf.generic.withloggeneral",
                 "mariadb.svc.mrm.db.cnf.generic.withlogmetadatalock",
+                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
                 "mariadb.svc.mrm.db.cnf.generic.withlogsqlerror",
-                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
-                "mariadb.svc.mrm.db.cnf.generic.enginespider",
-                "mariadb.svc.mrm.db.cnf.generic.withthreadpool",
-                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
                 "mariadb.svc.mrm.db.cnf.generic.withrepmultidomains",
-                "mariadb.svc.mrm.db.cnf.generic.nologslaveupdates",
                 "mariadb.svc.mrm.db.cnf.generic.withrepmysqlgtid",
+                "mariadb.svc.mrm.db.cnf.generic.nologslaveupdates",
                 "mariadb.svc.mrm.db.cnf.generic.withsmallredolog",
                 "mariadb.svc.mrm.db.cnf.generic.withrepwsrep",
                 "mariadb.svc.mrm.db.cnf.generic.noautocommit",
@@ -1636,7 +1671,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withloguserstats",
                 "mariadb.svc.mrm.with_loguserstats",
                 "mariadb.svc.mrm.db.cnf.generic.withreadonly",
-                "mariadb.svc.mrm.db.cnf.generic.witheits"
+                "mariadb.svc.mrm.db.cnf.generic.witheits",
+                "mariadb.svc.mrm.db.cnf.generic.noodirect"
             ],
             "publications": [
                 "replication-manager"
@@ -2061,8 +2097,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_autocommit.cnf\",\"target\":\"../with_no_autocommit.cnf\"}",
-                    "var_updated": "2018-09-28 14:49:22",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_autocommit.cnf\",\"target\":\"../no_autocommit.cnf\"}",
+                    "var_updated": "2019-02-20 21:23:07",
                     "var_name": "db_link_noautocommit",
                     "id": 5981
                 }
@@ -2434,6 +2470,30 @@
                 "replication-manager"
             ],
             "id": 1048,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.svc.prov.noodirect",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noodirect",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_odirect.cnf\",\"target\":\"../no_odirect.cnf\"}",
+                    "var_updated": "2019-02-25 14:19:40",
+                    "var_name": "db_link_noodirect",
+                    "id": 6069
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1052,
             "responsibles": [
                 "replication-manager"
             ]

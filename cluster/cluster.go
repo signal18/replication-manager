@@ -108,6 +108,10 @@ type Cluster struct {
 	scheduler            *cron.Cron           `json:"-"`
 	tunnel               *ssh.Client          `json:"-"`
 	sync.Mutex           `json:"-"`
+	DBModule             config.Compliance `json:"-"`
+	DBModuleTags         map[string]string `json:"-"`
+
+	ProxyModule config.Compliance `json:"-"`
 }
 
 type ClusterSorter []*Cluster
@@ -216,6 +220,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
+	//Loading configuration compliances
+	cluster.LoadModules()
+
 	// Reload SLA and crashes
 	cluster.GetPersitentState()
 
@@ -345,7 +352,7 @@ func (cluster *Cluster) Run() {
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 						m := cluster.GetMaster()
 						if m != nil {
-							go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_xtrabackup.xbtream", servertoreseed)
+							go cluster.SSTRunSender(m.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
 						} else {
 							cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
 						}
@@ -355,7 +362,7 @@ func (cluster *Cluster) Run() {
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 						m := cluster.GetMaster()
 						if m != nil {
-							go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+m.Id+"_mysqldump.sql.gz", servertoreseed)
+							go cluster.SSTRunSender(m.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
 						} else {
 							cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
 						}
@@ -364,13 +371,13 @@ func (cluster *Cluster) Run() {
 						cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 
-						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_xtrabackup.xbtream", servertoreseed)
+						go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
 
 					}
 					if s.ErrKey == "WARN0077" {
 						cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
 						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-						go cluster.SSTRunSender(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+servertoreseed.Id+"_mysqldump.sql.gz", servertoreseed)
+						go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
 					}
 					//		cluster.statecloseChan <- s
 				}
@@ -750,6 +757,24 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Failed in GTID rejoin lost master to winner master %s", err)
 		}
+	}
+}
+
+func (cluster *Cluster) LoadModules() {
+	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
+	jsonFile, err := os.Open(file)
+	if err != nil {
+		cluster.LogPrintf("failed opened %s %s", file, err)
+	}
+	cluster.LogPrintf("Successfully loaded module %s", file)
+	// defer the closing of our jsonFile so that we can parse it later on
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	err = json.Unmarshal([]byte(byteValue), &cluster.DBModule)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
 	}
 
 }
