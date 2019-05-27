@@ -211,7 +211,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		os.MkdirAll(server.Datadir, os.ModePerm)
 		os.MkdirAll(server.Datadir+"/log", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/var", os.ModePerm)
-		os.MkdirAll(server.Datadir+"/etc", os.ModePerm)
+		os.MkdirAll(server.Datadir+"/init", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/bck", os.ModePerm)
 	}
 

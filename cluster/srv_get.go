@@ -10,9 +10,12 @@
 package cluster
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -501,37 +504,35 @@ func (server *ServerMonitor) GetMyConfig() string {
 
 	// Extract files
 	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
-			if !server.IsFilterInTags(rule.Filter) {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 
-				for _, variable := range rule.Variables {
-					if variable.Class == "file" || variable.Class == "fileprop" {
-						var f File
-						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir, -1)
-						dir := filepath.Dir(fpath)
-						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
-						// create directory
-						if _, err := os.Stat(dir); os.IsNotExist(err) {
-							err := os.MkdirAll(dir, os.ModePerm)
-							if err != nil {
-								server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
-							}
+			for _, variable := range rule.Variables {
+				if variable.Class == "file" || variable.Class == "fileprop" {
+					var f File
+					json.Unmarshal([]byte(variable.Value), &f)
+					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
+					dir := filepath.Dir(fpath)
+					server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					// create directory
+					if _, err := os.Stat(dir); os.IsNotExist(err) {
+						err := os.MkdirAll(dir, os.ModePerm)
+						if err != nil {
+							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
 						}
+					}
 
-						if fpath[len(fpath)-1:] != "/" {
-							content := misc.ExtractKey(f.Content, server.GetDBEnv())
-							outFile, err := os.Create(fpath)
+					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
+						content := misc.ExtractKey(f.Content, server.GetDBEnv())
+						outFile, err := os.Create(fpath)
+						if err != nil {
+							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
+						} else {
+							_, err = outFile.WriteString(content)
+
 							if err != nil {
-								server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
-							} else {
-								_, err = outFile.WriteString(content)
-
-								if err != nil {
-									server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
-								}
-								outFile.Close()
+								server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
 							}
+							outFile.Close()
 						}
 					}
 				}
@@ -550,7 +551,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir, -1)
+						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
 						server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
@@ -560,6 +561,89 @@ func (server *ServerMonitor) GetMyConfig() string {
 		}
 	}
 
-	//fmt.Println(result["rulesets"])
+	// tar directory
+	//err := archiver.Archive([]string{"testdata", "other/file.txt"}, "test.zip")
+
+	server.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
+	//server.TarAddDirectory(server.Datadir+"/data", tw)
 	return ""
+}
+
+func (server *ServerMonitor) TarGzWrite(_path string, tw *tar.Writer, fi os.FileInfo) {
+	fr, err := os.Open(_path)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+	defer fr.Close()
+	h := new(tar.Header)
+	var link string
+	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
+		if link, err = os.Readlink(_path); err != nil {
+			return
+		}
+
+	}
+	h, _ = tar.FileInfoHeader(fi, link)
+	if err != nil {
+		return
+	}
+	h.Name = strings.TrimPrefix(_path, server.Datadir)
+	//	h.Size = fi.Size()
+	//	h.Mode = int64(fi.Mode())
+	//	h.ModTime = fi.ModTime()
+
+	err = tw.WriteHeader(h)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+	if !fi.Mode().IsRegular() { //nothing more to do for non-regular
+		return
+	}
+	_, err = io.Copy(tw, fr)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+}
+
+func (server *ServerMonitor) IterDirectory(dirPath string, tw *tar.Writer) {
+	dir, err := os.Open(dirPath)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+	defer dir.Close()
+	fis, err := dir.Readdir(0)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+	for _, fi := range fis {
+		curPath := dirPath + "/" + fi.Name()
+		if fi.IsDir() {
+			//TarGzWrite( curPath, tw, fi )
+			server.IterDirectory(curPath, tw)
+		} else {
+			fmt.Printf("adding... %s\n", curPath)
+			server.TarGzWrite(curPath, tw, fi)
+		}
+	}
+}
+
+func (server *ServerMonitor) TarGz(outFilePath string, inPath string) {
+	// file write
+	fw, err := os.Create(outFilePath)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+	}
+	defer fw.Close()
+
+	// gzip write
+	gw := gzip.NewWriter(fw)
+	defer gw.Close()
+
+	// tar write
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	server.IterDirectory(inPath, tw)
+
+	fmt.Println("tar.gz ok")
 }

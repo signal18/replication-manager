@@ -237,6 +237,22 @@ func (cluster *Cluster) SetClusterCredential(credential string) {
 	}
 	cluster.SetUnDiscovered()
 }
+func (cluster *Cluster) DropDBTag(dtag string) {
+	var newtags []string
+	for _, tag := range cluster.DBTags {
+		if dtag != tag {
+			newtags = append(newtags, tag)
+		}
+	}
+	cluster.Conf.ProvTags = strings.Join(newtags, ",")
+	cluster.SetClusterVariablesFromConfig()
+}
+
+func (cluster *Cluster) AddDBTag(tag string) {
+	cluster.DBTags = append(cluster.DBTags, tag)
+	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
+	cluster.SetClusterVariablesFromConfig()
+}
 
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential

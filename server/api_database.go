@@ -9,6 +9,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/codegangsta/negroni"
@@ -932,6 +933,15 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			node.GetMyConfig()
+			data, err := ioutil.ReadFile(string(node.Datadir + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				return
+			}
+			w.Write(data)
+
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))

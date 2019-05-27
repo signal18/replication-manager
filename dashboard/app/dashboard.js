@@ -10,6 +10,8 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
   $scope.selectedUserIndex = undefined;
   $scope.refreshInterval = 2000;
   $scope.digestmode = "pfs";
+
+  $scope.missingTags = undefined;
   var promise = undefined;
 
 
@@ -108,6 +110,17 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
       if ($scope.selectedClusterName && $scope.selectedServer==undefined ) {
         Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
         $scope.selectedCluster = data;
+        function isInTags(array,array2, test){
+          var passedTest =[];
+          for (var i = 0; i < array.length; i++) {
+            if(test( array[i].name,array2))
+            passedTest.push(array[i]);
+          }
+          return passedTest;
+        }
+        $scope.missingTags=isInTags(data.configTags,data.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
+      //  console.log($scope.missingTags);
+
         $scope.reserror = false;
         }, function () {
           $scope.reserror = true;
@@ -554,7 +567,6 @@ $scope.bsTableProcessList = {
         }
       };
 
-
 };
 
 
@@ -594,7 +606,6 @@ $scope.cancel = function () {
 $scope.$on('$destroy', function() {
   $scope.cancel();
 });
-
 
 
 var httpGetWithoutResponse = function (url) {
@@ -765,11 +776,12 @@ var httpGetWithoutResponse = function (url) {
   };
 
   $scope.runonetest = function () {
-    if (confirm("Confirm run one test !")) {
+    if (confirm("Confirm run one test !"+$scope.tests)) {
       httpGetWithoutResponse(getClusterUrl() + '/tests/actions/run/' + $scope.tests);
       $scope.tests = "";
     }
   };
+
 
   $scope.optimizeAll = function () {
     httpGetWithoutResponse(getClusterUrl() + '/actions/optimize');
@@ -779,6 +791,13 @@ var httpGetWithoutResponse = function (url) {
     if (confirm("Confirm master physical backup")) httpGetWithoutResponse(getClusterUrl() + '/actions/master-physical-backup');
   };
 
+
+  $scope.cladddbtag = function (tag) {
+      if (confirm("Confirm add tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/add-db-tag/'+tag);
+  };
+  $scope.cldropdbtag = function (tag) {
+      if (confirm("Confirm drop tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/drop-db-tag/'+tag);
+  };
 
   $scope.switchsettings = function (setting) {
     httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);
@@ -1044,8 +1063,6 @@ var httpGetExplainPlan = function (url) {
   $scope.getTablePct  = function (table,index) {
     return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
   };
-
-
 
 
   $scope.start();

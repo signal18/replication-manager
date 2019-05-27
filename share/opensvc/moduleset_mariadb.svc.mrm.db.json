@@ -54,7 +54,7 @@
                     "filterset": null
                 }
             ],
-            "fset_name": "linux servers"
+            "fset_name": "linux"
         },
         {
             "fset_stats": false,
@@ -73,7 +73,7 @@
                     "filterset": null
                 }
             ],
-            "fset_name": "servers osx"
+            "fset_name": "osx"
         },
         {
             "fset_stats": false,
@@ -803,7 +803,7 @@
             ]
         },
         {
-            "fset_name": "servers osx",
+            "fset_name": "osx",
             "ruleset_name": "mariadb.svc.env.osx",
             "variables": [
                 {
@@ -829,7 +829,7 @@
             ]
         },
         {
-            "fset_name": "linux servers",
+            "fset_name": "linux",
             "ruleset_name": "mariadb.svc.env.linux",
             "variables": [
                 {

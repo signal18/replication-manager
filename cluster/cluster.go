@@ -52,6 +52,7 @@ type Cluster struct {
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
+	ConfigTags           []Tag                `json:"configTags"`
 	DBTags               []string             `json:"dbServersTags"`
 	ProxyTags            []string             `json:"proxyServersTags"`
 	Topology             string               `json:"topology"`
@@ -110,8 +111,7 @@ type Cluster struct {
 	sync.Mutex           `json:"-"`
 	DBModule             config.Compliance `json:"-"`
 	DBModuleTags         map[string]string `json:"-"`
-
-	ProxyModule config.Compliance `json:"-"`
+	ProxyModule          config.Compliance `json:"-"`
 }
 
 type ClusterSorter []*Cluster
@@ -130,6 +130,11 @@ type CronEntry struct {
 type Alerts struct {
 	Errors   []state.StateHttp `json:"errors"`
 	Warnings []state.StateHttp `json:"warnings"`
+}
+
+type Tag struct {
+	Id   uint   `json:"id"`
+	Name string `json:"name"`
 }
 
 const (
@@ -198,6 +203,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		topoMultiMasterRing:  "multi-master-ring",
 		topoMultiMasterWsrep: "multi-master-wsrep",
 	}
+
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
@@ -222,7 +228,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	}
 	//Loading configuration compliances
 	cluster.LoadModules()
-
+	cluster.ConfigTags = cluster.GetDBModuleTags()
 	// Reload SLA and crashes
 	cluster.GetPersitentState()
 

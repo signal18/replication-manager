@@ -471,10 +471,14 @@ func (cluster *Cluster) GetTableDLL(schema string, table string, srv *ServerMoni
 	return ddl, err
 }
 
-func (cluster *Cluster) GetDBModuleTags() []string {
-	var tags []string
+func (cluster *Cluster) GetDBModuleTags() []Tag {
+	var tags []Tag
 	for _, value := range cluster.DBModule.Filtersets {
-		tags = append(tags, value.Name)
+		var t Tag
+		t.Id = value.ID
+		s := strings.SplitAfter(value.Name, ".")
+		t.Name = s[len(s)-1]
+		tags = append(tags, t)
 	}
 	return tags
 }
