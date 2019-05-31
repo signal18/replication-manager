@@ -82,3 +82,12 @@ func (cluster *Cluster) IsInFailover() bool {
 func (cluster *Cluster) IsDiscovered() bool {
 	return cluster.sme.IsDiscovered()
 }
+
+func (cluster *Cluster) HaveTag(tag string) bool {
+	for _, t := range cluster.DBTags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}

@@ -52,8 +52,8 @@ type Cluster struct {
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
-	ConfigTags           []Tag                `json:"configTags"`
-	DBTags               []string             `json:"dbServersTags"`
+	ConfigTags           []Tag                `json:"configTags"`    //from module
+	DBTags               []string             `json:"dbServersTags"` //from conf
 	ProxyTags            []string             `json:"proxyServersTags"`
 	Topology             string               `json:"topology"`
 	Uptime               string               `json:"uptime"`
@@ -227,7 +227,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	cluster.LoadModules()
+	cluster.LoadDBModules()
 	cluster.ConfigTags = cluster.GetDBModuleTags()
 	// Reload SLA and crashes
 	cluster.GetPersitentState()
@@ -766,13 +766,13 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 }
 
-func (cluster *Cluster) LoadModules() {
+func (cluster *Cluster) LoadDBModules() {
 	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
 	jsonFile, err := os.Open(file)
 	if err != nil {
-		cluster.LogPrintf("failed opened %s %s", file, err)
+		cluster.LogPrintf(LvlErr, "Fsailed opened module %s %s", file, err)
 	}
-	cluster.LogPrintf("Successfully loaded module %s", file)
+	cluster.LogPrintf(LvlInfo, "Successfully loaded module %s", file)
 	// defer the closing of our jsonFile so that we can parse it later on
 	defer jsonFile.Close()
 

@@ -235,7 +235,7 @@ run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 	conf = conf + `
 [env]
 nodes = ` + agent + `
-size = ` + collector.ProvDisk + `
+size = ` + collector.ProvDisk + `g
 db_img = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
@@ -255,7 +255,10 @@ mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
 safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
 safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
 safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
-crc32_id = ` + string(server.Id[2:10]) + `
+server_id = ` + string(server.Id[2:10]) + `
+innodb_buffer_pool_size =` + server.ClusterGroup.GetConfigInnoDBBPSize() + `
+innodb_log_file_size =` + server.ClusterGroup.GetConfigInnoDBLogFileSize() + `
+innodb_buffer_pool_instances ` + server.ClusterGroup.GetConfigInnoDBBPInstances() + `
 `
 	log.Println(conf)
 
@@ -313,17 +316,23 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 
 func (server *ServerMonitor) GetDBEnv() map[string]string {
 	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                  server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":           server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":            string(server.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%": server.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":             server.ClusterGroup.Conf.ProvMem,
-		"%%ENV:IBPINSTANCES%%":                     "1",
-		"%%ENV:CHECKPOINTIOPS%%":                   server.ClusterGroup.Conf.ProvIops,
-		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":            server.ClusterGroup.Conf.ProvIops,
-		"%%ENV:SVC_CONF_ENV_GCOMM%%":               server.ClusterGroup.GetGComm(),
-		"%%ENV:SERVER_IP%%":                        "0.0.0.0",
-		"%%ENV:SERVER_PORT%%":                      server.Port,
+		"%%ENV:NODES_CPU_CORES%%":                           server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                    server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                     string(server.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                    string(server.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":          server.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":                      server.ClusterGroup.GetConfigInnoDBBPSize(),
+		"%%ENV:IBPINSTANCES%%":                              server.ClusterGroup.GetConfigInnoDBBPInstances(),
+		"%%ENV:SVC_CONF_ENV_GCOMM%%":                        server.ClusterGroup.GetGComm(),
+		"%%ENV:SERVER_IP%%":                                 "0.0.0.0",
+		"%%ENV:SERVER_PORT%%":                               server.Port,
+		"%%ENV:CHECKPOINTIOPS%%":                            server.ClusterGroup.GetConfigInnoDBIOCapacity(),
+		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                     server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
+		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY%%":           server.ClusterGroup.GetConfigInnoDBIOCapacity(),
+		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY_MAX%%":       server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
+		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%": server.ClusterGroup.GetConfigInnoDBBPInstances(),
+		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":      server.ClusterGroup.GetConfigInnoDBBPSize(),
+		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":       server.ClusterGroup.GetConfigInnoDBLogFileSize(),
 	}
 
 	//	size = ` + collector.ProvDisk + `

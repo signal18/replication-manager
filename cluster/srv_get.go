@@ -515,10 +515,11 @@ func (server *ServerMonitor) GetMyConfig() string {
 					server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.ModePerm)
+						err := os.MkdirAll(dir, os.FileMode(0775))
 						if err != nil {
 							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
 						}
+
 					}
 
 					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
@@ -533,7 +534,10 @@ func (server *ServerMonitor) GetMyConfig() string {
 								server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
 							}
 							outFile.Close()
+							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
+
 						}
+
 					}
 				}
 			}
@@ -562,8 +566,19 @@ func (server *ServerMonitor) GetMyConfig() string {
 	}
 
 	// tar directory
-	//err := archiver.Archive([]string{"testdata", "other/file.txt"}, "test.zip")
-
+	/*
+		if server.ClusterGroup.HaveTag("docker") && strings.Contains(variable.Name, "db_cnf_dir_data") {
+			err := os.Chown(fpath, 999, 999)
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", fpath, err)
+			}
+		}*/
+	if server.ClusterGroup.HaveTag("docker") {
+		err := misc.ChownR(server.Datadir+"/init/data", 999, 999)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", fpath, err)
+		}
+	}
 	server.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 	//server.TarAddDirectory(server.Datadir+"/data", tw)
 	return ""

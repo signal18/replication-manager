@@ -63,6 +63,19 @@ func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.Conf.Interactive = check
 }
 
+func (cluster *Cluster) SetDBDiskSize(value string) {
+	cluster.Conf.ProvDisk = value
+}
+func (cluster *Cluster) SetDBCores(value string) {
+	cluster.Conf.ProvCores = value
+}
+func (cluster *Cluster) SetDBMemorySize(value string) {
+	cluster.Conf.ProvMem = value
+}
+func (cluster *Cluster) SetDBDiskIOPS(value string) {
+	cluster.Conf.ProvIops = value
+}
+
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	//cluster.SetBenchMethod("table")
 	//cluster.PrepareBench()

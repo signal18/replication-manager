@@ -620,6 +620,12 @@ var httpGetWithoutResponse = function (url) {
   };
 
 
+$scope.isEqualLongQueryTime = function (a, b) {
+  if (Number(a)==Number(b)) {
+   return true;
+  }
+  return false;
+};
 
 
   $scope.switch = function (fail) {
@@ -798,6 +804,24 @@ var httpGetWithoutResponse = function (url) {
   $scope.cldropdbtag = function (tag) {
       if (confirm("Confirm drop tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/drop-db-tag/'+tag);
   };
+
+  $scope.clsetdbcore = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-cpu-cores/'+value.toString());
+  };
+  $scope.clsetdbdisk = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-size/'+value.toString());
+  };
+  $scope.clsetdbio = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString(),add)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-iops/'+value.toString());
+  };
+  $scope.clsetdbmem = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-memory/'+value.toString());
+  };
+
 
   $scope.switchsettings = function (setting) {
     httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);

@@ -50,7 +50,7 @@ orchestrate = start
 	conf = conf + `
 [env]
 nodes = ` + agent.Node_name + `
-size = ` + collector.ProvDisk + `
+size = ` + collector.ProvProxDisk + `b
 ` + ipPods + `
 port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + strconv.Itoa(prx.WritePort) + `
 mysql_root_password = ` + cluster.dbPass + `

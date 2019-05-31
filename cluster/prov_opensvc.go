@@ -33,6 +33,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvCores = cluster.Conf.ProvCores
 	svc.ProvTags = cluster.Conf.ProvTags
 	svc.ProvDisk = cluster.Conf.ProvDisk
+	svc.ProvProxDisk = cluster.Conf.ProvProxDisk
 	svc.ProvNetMask = cluster.Conf.ProvNetmask
 	svc.ProvNetGateway = cluster.Conf.ProvGateway
 	svc.ProvNetIface = cluster.Conf.ProvNetIface

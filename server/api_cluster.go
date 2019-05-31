@@ -697,6 +697,14 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetClusterCredential(vars["settingValue"])
 		case "replication-credential":
 			mycluster.SetReplicationCredential(vars["settingValue"])
+		case "prov-db-disk-size":
+			mycluster.SetDBDiskSize(vars["settingValue"])
+		case "prov-db-cpu-cores":
+			mycluster.SetDBCores(vars["settingValue"])
+		case "prov-db-memory":
+			mycluster.SetDBMemorySize(vars["settingValue"])
+		case "prov-db-disk-iops":
+			mycluster.SetDBDiskIOPS(vars["settingValue"])
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

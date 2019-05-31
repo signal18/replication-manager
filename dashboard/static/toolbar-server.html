@@ -5,7 +5,7 @@
 <table border=0 >
   <tr>
     <td width="5%">
-        <div ng-include src="'static/menu-server.html'"></div>
+        <div  class="md-toolbar-tools" ng-include src="'static/menu-server.html'"></div>
     </td>
     <td width="40%">
       <md-button ng-if="selectedTab=='LogSlow'" class="md-raised" aria-label="Tabular" ng-click="dbtoogleslowquery(server.id)">
@@ -34,14 +34,61 @@
     </td>
 
     <td  width="40%">
-
+<!--
       <form novalidate class="simple-form" ng-if="selectedTab=='LogSlow'">
         <input type="text" onchange="updateLongQueryTime(longQueryTime,server.id)" ng-blur="toogleRefresh()" ng-focus="toogleRefresh()"  ng-model="longQueryTime" ng-init="longQueryTime=server.longQueryTime"></input>
 
         <md-button class="md-raised"  ng-click="updateLongQueryTime(longQueryTime,server.id)"  >
             <md-icon class="fa fa-save"/>
           </md-button>
-      </from>
+        -->
+        <div  ng-if="selectedTab=='LogSlow' || selectedTab=='PFSQueries' " >
+
+          <md-button ng-if="!isEqualLongQueryTime(server.longQueryTime,'10')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(10,server.id)"  >
+              10<sup>1</sup>
+          </md-button>
+          <md-button ng-if="isEqualLongQueryTime(server.longQueryTime,'10')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(10,server.id)"  >
+              10<sup>1</sup>
+          </md-button>
+
+          <md-button ng-if="!isEqualLongQueryTime(server.longQueryTime,'1')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(1,server.id)"  >
+              10<sup>-1</sup>
+            </md-button>
+            <md-button ng-if="isEqualLongQueryTime(server.longQueryTime,'1')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(1,server.id)"  >
+                10<sup>-1</sup>
+              </md-button>
+
+            <md-button ng-if="!isEqualLongQueryTime(server.longQueryTime,'0.1')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(0.1,server.id)"  >
+                10<sup>-2</sup>
+            </md-button>
+            <md-button ng-if="isEqualLongQueryTime(server.longQueryTime,'0.1')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(0.1,server.id)"  >
+                10<sup>-2</sup>
+            </md-button>
+
+            <md-button ng-if="!isEqualLongQueryTime(server.longQueryTime,'0.01')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(0.01,server.id)"  >
+                10<sup>-3</sup>
+            </md-button>
+            <md-button ng-if="isEqualLongQueryTime(server.longQueryTime,'0.01')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(0.01,server.id)"  >
+                10<sup>-3</sup>
+            </md-button>
+
+            <md-button ng-if="!isEqualLongQueryTime(server.longQueryTime,'0.001')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(0.001,server.id)"  >
+                10<sup>-4</sup>
+            </md-button>
+
+            <md-button ng-if="isEqualLongQueryTime(server.longQueryTime,'0.001')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(0.001,server.id)"  >
+                10<sup>-4</sup>
+            </md-button>
+
+            <md-button  ng-if="!isEqualLongQueryTime(server.longQueryTime,'0.00001')" style="min-width: 1%;" class="md-raised"  ng-click="updateLongQueryTime(0.00001,server.id)"  >
+                10<sup>-5</sup>
+            </md-button>
+            <md-button  ng-if="isEqualLongQueryTime(server.longQueryTime,'0.00001')" style="min-width: 1%;" class="md-warn md-raised"  ng-click="updateLongQueryTime(0.00001,server.id)"  >
+                10<sup>-5</sup>
+            </md-button>
+
+
+    <!--  </form> -->
     </td>
     <td width="10%"></td>
   </tr>
