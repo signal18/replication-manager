@@ -576,7 +576,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 	if server.ClusterGroup.HaveTag("docker") {
 		err := misc.ChownR(server.Datadir+"/init/data", 999, 999)
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", fpath, err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
 	}
 	server.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")

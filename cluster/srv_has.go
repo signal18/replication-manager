@@ -10,6 +10,8 @@
 package cluster
 
 import (
+	"strconv"
+
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
@@ -199,4 +201,17 @@ func (server *ServerMonitor) IsMariaDB() bool {
 
 func (server *ServerMonitor) HasSuperReadOnly() bool {
 	return server.DBVersion.IsMySQLOrPercona57()
+}
+
+func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
+	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
+	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
+	if server.MonitorTime-server.PrevMonitorTime > 0 {
+		qpssecond := (slowquerynow - slowquerybefore) / (server.MonitorTime - server.PrevMonitorTime)
+		if qpssecond > 20 {
+			return true
+		}
+	}
+	return false
+
 }

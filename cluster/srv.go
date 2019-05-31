@@ -714,6 +714,10 @@ func (server *ServerMonitor) Refresh() error {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
 	}
+
+	if server.HasHighNumberSlowQueries() {
+		server.ClusterGroup.SetState("WARN0088", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+	}
 	// monitor plulgins plugins
 	if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
 		server.Plugins, _ = dbhelper.GetPlugins(server.Conn)
