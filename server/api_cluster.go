@@ -1071,7 +1071,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetMaster().DictTables)
+		err := e.Encode(mycluster.GetMaster().GetDictTables())
 		if err != nil {
 			http.Error(w, "Encoding error in settings", 500)
 			return

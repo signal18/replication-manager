@@ -445,8 +445,18 @@ func (server *ServerMonitor) GetSlowLogTable() {
 func (server *ServerMonitor) GetTables() []dbhelper.Table {
 	return server.Tables
 }
+
 func (server *ServerMonitor) GetVTables() map[string]dbhelper.Table {
 	return server.DictTables
+}
+
+func (server *ServerMonitor) GetDictTables() []dbhelper.Table {
+	var tables []dbhelper.Table
+	for _, t := range server.DictTables {
+		tables = append(tables, t)
+
+	}
+	return tables
 }
 
 func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {

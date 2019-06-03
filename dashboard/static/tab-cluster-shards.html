@@ -33,6 +33,7 @@
                          <th >Rows</th>
                          <th>Data</th>
                          <th >Index</th>
+                        <th >Shards</th>
                          <th >%</th>
                       </tr>
 
@@ -44,6 +45,7 @@
                          <td class="process">{{ table.tableRows }}</td>
                          <td class="process">{{ table.dataLength }}</td>
                          <td class="process">{{ table.indexLength }}</td>
+                         <td class="process">{{ table.tableClusters }}</td>
                          <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
                            thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" /> </td>
 

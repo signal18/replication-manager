@@ -50,7 +50,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	} else {
 		idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can't create OpenSVC service")
+			cluster.LogPrintf(LvlErr, "Can't create OpenSVC service %s", err)
 			cluster.errorChan <- err
 			return
 		}
