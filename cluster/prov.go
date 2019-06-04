@@ -474,11 +474,11 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 
-	cluster.LogPrintf(LvlInfo, "Waiting for databases to start")
+	cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
 	for exitloop < 30 {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting for databases to start")
+			cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
 			exitloop++
 			if cluster.AllDatabaseCanConn() && cluster.IsProvision() {
 				exitloop = 100

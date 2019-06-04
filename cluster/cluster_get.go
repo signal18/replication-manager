@@ -508,13 +508,13 @@ func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
 	return s10
 }
 
-// GetConfigInnoDBBPInstances configure BP/16G of the ConfigMemory in Megabyte
+// GetConfigInnoDBBPInstances configure BP/8G of the ConfigMemory in Megabyte
 func (cluster *Cluster) GetConfigInnoDBBPInstances() string {
 	value, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
 	if err != nil {
 		return "1"
 	}
-	value = value / 16
+	value = value/8000 + 1
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }

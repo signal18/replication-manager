@@ -133,7 +133,7 @@ type ServerMonitor struct {
 	PrevStatus                  map[string]string            `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
-	DictTables                  map[string]dbhelper.Table    `json:"debug"`
+	DictTables                  map[string]dbhelper.Table    `json:"-"`
 	Tables                      []dbhelper.Table             `json:"-"`
 	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`

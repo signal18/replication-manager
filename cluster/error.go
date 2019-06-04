@@ -83,7 +83,7 @@ var clusterError = map[string]string{
 	"ERR00073": "Could not get events on server %s",
 	"ERR00074": "Prefered server %s not found in configured server list",
 	"ERR00075": "Can't fecth Processlist %s",
-	"ERR00076": "Connections reach 80% threshold: %s",
+	"ERR00076": "Connections reach 80 pourcent threshold: %s",
 	"ERR00077": "All databases state down",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",

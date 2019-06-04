@@ -256,9 +256,9 @@ safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
 safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
 safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
 server_id = ` + string(server.Id[2:10]) + `
-innodb_buffer_pool_size =` + server.ClusterGroup.GetConfigInnoDBBPSize() + `
-innodb_log_file_size =` + server.ClusterGroup.GetConfigInnoDBLogFileSize() + `
-innodb_buffer_pool_instances ` + server.ClusterGroup.GetConfigInnoDBBPInstances() + `
+innodb_buffer_pool_size = ` + server.ClusterGroup.GetConfigInnoDBBPSize() + `
+innodb_log_file_size = ` + server.ClusterGroup.GetConfigInnoDBLogFileSize() + `
+innodb_buffer_pool_instances = ` + server.ClusterGroup.GetConfigInnoDBBPInstances() + `
 `
 	log.Println(conf)
 
