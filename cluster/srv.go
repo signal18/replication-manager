@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -659,13 +660,16 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			return err
 		}
 		for true {
-			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile, ss.ReadMasterLogPos.String, ss.RelayMasterLogFile, ss.ExecMasterLogPos.String)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s/%s, Slave_Pos:%s %s", ss.MasterLogFile.String, ss.ReadMasterLogPos.String, ss.RelayMasterLogFile.String, ss.ExecMasterLogPos.String)
 			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 				break
 			}
 			ss, err = dbhelper.GetSlaveStatus(server.Conn)
 			if err != nil {
 				return err
+			}
+			if strings.Contains(ss.SlaveSQLRunningState.String, "Slave has read all relay log") {
+				break
 			}
 			time.Sleep(500 * time.Millisecond)
 		}

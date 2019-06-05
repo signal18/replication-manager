@@ -98,6 +98,7 @@ type SlaveStatus struct {
 	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period"`
 	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set"`
 	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set"`
+	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State"`
 }
 
 type Privileges struct {
@@ -768,7 +769,7 @@ func GetQueries(db *sqlx.DB) (map[string]string, error) {
 	query = "select digest_text as digest, round(sum_timer_wait/1000000000000, 6) as value from performance_schema.events_statements_summary_by_digest where digest_text is not null order by sum_timer_wait desc limit 20"
 
 	rows, err := db.Queryx(query)
-	defer rows.Close();
+	defer rows.Close()
 	if err != nil {
 		return nil, errors.New("Could not get queries")
 	}
