@@ -810,6 +810,10 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			if err != nil {
 				return err
 			}
+			if strings.Contains(ss.SlaveSQLRunningState.String, "Slave has read all relay log") {
+				break
+			}
+
 			time.Sleep(500 * time.Millisecond)
 		}
 	}

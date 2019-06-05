@@ -180,6 +180,7 @@ type SlaveStatus struct {
 	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
 	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
 	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
+	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
 }
 
 type Privileges struct {
