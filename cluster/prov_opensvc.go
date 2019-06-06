@@ -192,7 +192,7 @@ tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
 `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
-container_rid = container#00` + pod + `
+netns = container#00` + pod + `
 network = repman
 `
 		// if proxy
@@ -203,7 +203,7 @@ network = repman
 	} else if collector.ProvMicroSrv == "docker" {
 		net = net + `type = docker
 
-container_rid = container#00` + pod + `
+netns = container#00` + pod + `
 `
 
 	}
