@@ -711,23 +711,23 @@ func (cluster *Cluster) schemaMonitor() {
 			haschanged = true
 			cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
 		}
-		if haschanged {
 
-			for _, cl := range cluster.clusterList {
-				//	if cl.GetName() != cluster.GetName() {
-				m := cl.GetMaster()
-				if m != nil {
-					cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
-					if cltbldef.Table_name == t.Table_name {
-						duplicates = append(duplicates, cl.GetMaster())
-						tableCluster = append(tableCluster, cl.GetName())
-						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
-					}
+		for _, cl := range cluster.clusterList {
+			//	if cl.GetName() != cluster.GetName() {
+			m := cl.GetMaster()
+			if m != nil {
+				cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+				if cltbldef.Table_name == t.Table_name {
+					duplicates = append(duplicates, cl.GetMaster())
+					tableCluster = append(tableCluster, cl.GetName())
+					cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
 				}
-				//}
 			}
-			t.Table_clusters = strings.Join(tableCluster, ",")
-			tables[t.Table_schema+"."+t.Table_name] = t
+			//}
+		}
+		t.Table_clusters = strings.Join(tableCluster, ",")
+		tables[t.Table_schema+"."+t.Table_name] = t
+		if haschanged {
 			for _, pr := range cluster.Proxies {
 				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
 					cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)

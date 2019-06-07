@@ -1,13 +1,10 @@
 
- <div layout="row" flex>
+
 <md-content  class="md-padding">
 
+          <md-card>
 
 
-
-           <md-card>
-             <md-card-content>
-              </md-card-content>
               <style>
                 table{
                   table-layout: fixed;
@@ -21,7 +18,7 @@
                 text-overflow: ellipsis;
                 }
       </style>
-                   <table  border=1 >
+                   <table  >
                      <col  width="20%"/>
                       <col width="20%"/>
                       <col width="20%"/>
@@ -47,16 +44,19 @@
                          <td class="process">{{ table.indexLength }}</td>
                          <td class="process">{{ table.tableClusters }}</td>
                          <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
-                           thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" /> </td>
+                           thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" > </td>
 
                       </tr>
-                   <table>
+                   </table>
+
+
+
 
              </md-card>
 
-           </div>
-             <BR><BR>
-               <div ng-include src="'static/dashboard/server-log.html'"></div>
-</md-content>
 
-</div>
+             <BR><BR>
+<div ng-include src="'static/dashboard/server-log.html'"></div>
+
+
+        </md-content>
