@@ -9,10 +9,10 @@ title = "ClusterTestMasterSlave"
 
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
 db-servers-prefered-master = "127.0.0.1:3310"
-db-servers-credential = "root:test"
+db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 
-replication-credential = "root:test"
+replication-credential = "root:mariadb"
 
 haproxy = true
 haproxy-write-port = 3303

@@ -286,6 +286,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Reset slave failed on new master, reason:%s ", err)
 		}
 	}
+	if fail == false {
+		// Get Fresh GTID pos before open traffic
+		cluster.master.Refresh()
+	}
 	err = cluster.master.SetReadWrite()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
@@ -318,8 +322,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	if fail == false {
 		// Get latest GTID pos
+		//cluster.master.Refresh() moved just before opening writes
 		cluster.oldMaster.Refresh()
-		cluster.master.Refresh()
+
 		// ********
 		// Phase 4: Demote old master to slave
 		// ********
