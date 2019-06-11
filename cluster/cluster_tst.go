@@ -14,6 +14,7 @@ import (
 	"log"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,7 +39,7 @@ type Test struct {
 func (cluster *Cluster) PrepareBench() error {
 	if cluster.benchmarkType == "sysbench" {
 		var prepare = cluster.conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=127.0.0.1 --mysql-port=" + strconv.Itoa(cluster.conf.HaproxyWritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
-		cluster.LogPrintf("BENCH", "%s", prepare)
+		cluster.LogPrintf("BENCH", "%s", strings.Replace(prepare, cluster.rplPass, "XXXXX", -1))
 		var cmdprep *exec.Cmd
 
 		cmdprep = exec.Command(cluster.conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--mysql-db=test", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host=127.0.0.1", "--mysql-port="+strconv.Itoa(cluster.conf.HaproxyWritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
@@ -50,7 +51,7 @@ func (cluster *Cluster) PrepareBench() error {
 			cluster.LogPrintf(LvlErr, "%s", cmdprepErr)
 			return cmdprepErr
 		}
-		cluster.LogPrintf("BENCH", "%s", outprep.String())
+		cluster.LogPrintf("BENCH", "%s", strings.Replace(outprep.String(), cluster.rplPass, "XXXXX", -1))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
@@ -77,7 +78,7 @@ func (cluster *Cluster) CleanupBench() error {
 			cluster.LogPrintf(LvlErr, "%s", cmdclsErr)
 			return cmdclsErr
 		}
-		cluster.LogPrintf("BENCH", "%s", outcls.String())
+		cluster.LogPrintf("BENCH", "%s", strings.Replace(outcls.String(), cluster.rplPass, "XXXXX", -1))
 	}
 	if cluster.benchmarkType == "table" {
 
