@@ -2900,7 +2900,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/50_with_ssd.cnf\",\"target\":\"../with_ssd.cnf\"}",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_ssd.cnf\",\"target\":\"../with_ssd.cnf\"}",
                     "var_updated": "2019-06-07 12:58:04",
                     "var_name": "db_link_withssd",
                     "id": 6085
