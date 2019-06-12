@@ -204,8 +204,9 @@ rollback = false
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod, agent)
-		conf = conf + `post_provision =  {svcmgr} -s  {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db;
-	`
+		conf = conf + server.GetInitContainer()
+		//		conf = conf + `post_provision =  {svcmgr} -s  {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db;
+		//	`
 		conf = conf + server.GetSnapshot(collector)
 		conf = conf + server.ClusterGroup.GetPodNetTemplate(collector, pod, i)
 		conf = conf + server.GetPodDockerDBTemplate(collector, pod, i)
@@ -264,6 +265,23 @@ innodb_log_buffer_size = 8
 	log.Println(conf)
 
 	return conf, nil
+}
+
+func (server *ServerMonitor) GetInitContainer() string {
+	var vm string
+	if collector.ProvMicroSrv == "docker" {
+		vm = vm + `
+[container#0002]
+detach = false
+type = docker
+image = busybox
+netns = container#0001
+rm = true
+volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data
+command = sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'
+ `
+	}
+	return vm
 }
 
 func (server *ServerMonitor) GetPodDockerDBTemplate(collector opensvc.Collector, pod string, i int) string {
