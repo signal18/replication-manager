@@ -612,7 +612,7 @@ func (server *ServerMonitor) TarGzWrite(_path string, tw *tar.Writer, fi os.File
 	if err != nil {
 		return
 	}
-	h.Name = strings.TrimPrefix(_path, server.Datadir)
+	h.Name = strings.TrimPrefix(_path, server.Datadir+"/init/")
 	//	h.Size = fi.Size()
 	//	h.Mode = int64(fi.Mode())
 	//	h.ModTime = fi.ModTime()
@@ -643,7 +643,7 @@ func (server *ServerMonitor) IterDirectory(dirPath string, tw *tar.Writer) {
 	for _, fi := range fis {
 		curPath := dirPath + "/" + fi.Name()
 		if fi.IsDir() {
-			//TarGzWrite( curPath, tw, fi )
+			server.TarGzWrite(curPath, tw, fi)
 			server.IterDirectory(curPath, tw)
 		} else {
 			fmt.Printf("adding... %s\n", curPath)

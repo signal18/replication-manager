@@ -782,7 +782,7 @@
                     "filterset": null
                 }
             ],
-            "fset_name": "system.zfs"
+            "fset_name": "mariadb.disk.zfs"
         },
         {
             "fset_stats": false,
@@ -1290,8 +1290,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------ \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = 10\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size = 1024M\\n# Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_change_buffering=none\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n\\n\"}",
-                    "var_updated": "2019-06-04 21:54:37",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------ \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = 10\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size = 1024M\\n# Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_change_buffering=none\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\n\"}",
+                    "var_updated": "2019-06-11 18:33:12",
                     "var_name": "db_cnf_engine_innodb",
                     "id": 5917
                 },
@@ -1894,6 +1894,14 @@
                     "var_updated": "2019-06-07 17:17:24",
                     "var_name": "db_cnf_net_with_resolvdns",
                     "id": 6092
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_aio.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_GID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\",\"fmt\":\"[mysqld]\\n\\ninnodb_use_native_aio = false\"}",
+                    "var_updated": "2019-06-11 21:31:47",
+                    "var_name": "db_cnf_disk_no_aio",
+                    "id": 6098
                 }
             ],
             "ruleset_public": false,
@@ -1926,7 +1934,6 @@
                 "mariadb.svc.mrm.db.cnf.generic.withsqlmodeoracle",
                 "mariadb.svc.mrm.db.cnf.generic.withsqlmodeunstrict",
                 "mariadb.svc.mrm.db.cnf.generic.withloguserstats",
-                "mariadb.svc.mrm.with_loguserstats",
                 "mariadb.svc.mrm.db.cnf.generic.withreadonly",
                 "mariadb.svc.mrm.db.cnf.generic.witheits",
                 "mariadb.svc.mrm.db.cnf.generic.noodirect",
@@ -1937,7 +1944,7 @@
                 "mariadb.svc.mrm.db.cnf.generic.engineconnect",
                 "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
                 "mariadb.svc.mrm.db.cnf.generic.withssd",
-                "mariadb.svc.mrm.db.cnf.generic.zfs",
+                "mariadb.svc.mrm.db.cnf.generic.withzfs",
                 "mariadb.svc.mrm.db.cnf.generic.withkeyfileencrypt",
                 "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.withresolvdns"
@@ -2533,8 +2540,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_doublewrite.cnf\",\"target\":\"../no_doublewrite.cnf\"}",
-                    "var_updated": "2018-09-28 14:35:14",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_no_doublewrite.cnf\",\"target\":\"../no_doublewrite.cnf\"}",
+                    "var_updated": "2019-06-11 21:51:59",
                     "var_name": "db_link_nodoublewrite",
                     "id": 5990
                 }
@@ -2672,30 +2679,6 @@
         },
         {
             "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.with_loguserstats",
-            "variables": [
-                {
-                    "var_author": "admin Manager",
-                    "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/01_with_loguserstats.cnf\",\"target\":\"../with_loguserstats.cnf\"}",
-                    "var_updated": "2018-09-28 16:22:56",
-                    "var_name": "db_link_withloguserstats",
-                    "id": 6027
-                }
-            ],
-            "ruleset_public": false,
-            "ruleset_type": "contextual",
-            "rulesets": [],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 1046,
-            "responsibles": [
-                "replication-manager"
-            ]
-        },
-        {
-            "fset_name": null,
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreadonly",
             "variables": [
                 {
@@ -2750,7 +2733,7 @@
                     "var_author": "admin Manager",
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_no_odirect.cnf\",\"target\":\"../no_odirect.cnf\"}",
-                    "var_updated": "2019-06-07 13:10:06",
+                    "var_updated": "2019-06-11 21:52:21",
                     "var_name": "db_link_noodirect",
                     "id": 6069
                 }
@@ -2799,7 +2782,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/01_engine_blackhole.cnf\",\"target\":\"../engine_blackhole.cnf\"}",
                     "var_updated": "2019-06-07 12:38:21",
-                    "var_name": "link_engine_blackhole",
+                    "var_name": "db_link_blackhole",
                     "id": 6084
                 }
             ],
@@ -2823,7 +2806,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/01_engine_oqgraph.cnf\",\"target\":\"../engine_oqgraph.cnf\"}",
                     "var_updated": "2019-06-07 12:39:48",
-                    "var_name": "link_engine_oqgraph",
+                    "var_name": "db_link_engine_oqgraph",
                     "id": 6083
                 }
             ],
@@ -2871,7 +2854,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/01_with_pwdchecksimple.cnf\",\"target\":\"../with_pwdchecksimple.cnf\"}",
                     "var_updated": "2019-06-07 12:44:33",
-                    "var_name": "link_with_checkpwdsimple",
+                    "var_name": "db_link_with_checkpwdsimple",
                     "id": 6081
                 }
             ],
@@ -2895,7 +2878,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/01_with_pwdcheckcracklib.cnf\",\"target\":\"../with_pwdcheckcracklib.cnf\"}",
                     "var_updated": "2019-06-07 12:43:40",
-                    "var_name": "link_with_checkpwdcracklib",
+                    "var_name": "db_link_with_checkpwdcracklib",
                     "id": 6080
                 }
             ],
@@ -2919,7 +2902,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/50_with_ssd.cnf\",\"target\":\"../with_ssd.cnf\"}",
                     "var_updated": "2019-06-07 12:58:04",
-                    "var_name": "link_withssd",
+                    "var_name": "db_link_withssd",
                     "id": 6085
                 }
             ],
@@ -2935,24 +2918,32 @@
             ]
         },
         {
-            "fset_name": "system.zfs",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.zfs",
+            "fset_name": "mariadb.disk.zfs",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withzfs",
             "variables": [
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_odirect.cnf\",\"target\":\"../no_odirect.cnf\"}",
-                    "var_updated": "2019-06-07 13:10:50",
-                    "var_name": "link_noodirect",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/60_zfs_no_odirect.cnf\",\"target\":\"../no_odirect.cnf\"}",
+                    "var_updated": "2019-06-11 21:51:16",
+                    "var_name": "db_link_noodirect",
                     "id": 6086
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_doublewrite.cnf\",\"target\":\"../no_doublewrite.cnf\"}",
-                    "var_updated": "2019-06-07 13:11:36",
-                    "var_name": "link_nodoublewrite",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/60_no_doublewrite.cnf\",\"target\":\"../no_doublewrite.cnf\"}",
+                    "var_updated": "2019-06-11 21:50:56",
+                    "var_name": "db_link_nodoublewrite",
                     "id": 6087
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/60_zfz_no_aio.cnf\",\"target\":\"../no_aio.cnf\"}",
+                    "var_updated": "2019-06-11 21:50:41",
+                    "var_name": "db_link_noaio",
+                    "id": 6096
                 }
             ],
             "ruleset_public": false,
@@ -2975,7 +2966,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/50_with_eyfileencrypt.cnf\",\"target\":\"../with_keyfileencrypt.cnf\"}",
                     "var_updated": "2019-06-07 16:37:08",
-                    "var_name": "link_withkeyfileencrypt",
+                    "var_name": "db_link_withkeyfileencrypt",
                     "id": 6090
                 }
             ],
@@ -2999,7 +2990,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_resolvdns.cnf\",\"target\":\"../with_resolvdns.cnf\"}",
                     "var_updated": "2019-06-07 17:41:35",
-                    "var_name": "link_withresolvdns",
+                    "var_name": "db_link_withresolvdns",
                     "id": 6094
                 }
             ],
@@ -3023,7 +3014,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_proxyprotocol.cnf\",\"target\":\"../with_proxyprotocol.cnf\"}",
                     "var_updated": "2019-06-07 17:40:56",
-                    "var_name": "link_withproxyprotocol",
+                    "var_name": "db_link_withproxyprotocol",
                     "id": 6093
                 }
             ],
