@@ -1436,7 +1436,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_logaudit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n\\n[mysqld]\\nserver_audit  = FORCE_PLUS_PERMANENT\\nserver_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML\\nserver_audit_logging = ON\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n# server_audit_incl_users = include,users,here\\nserver_audit_output_type = SYSLOG\\nserver_audit_query_log_limit = 1024\\nserver_audit_syslog_facility = LOG_USER\\nserver_audit_syslog_ident = mysql-server_auditing\\n#server_audit_syslog_infod =\\nserver_audit_syslog_priority = LOG_INFO\"}",
                     "var_updated": "2018-09-28 18:35:56",
-                    "var_name": "db_cnf_with_logaudit",
+                    "var_name": "db_cnf_log_with_audit",
                     "id": 5935
                 },
                 {
@@ -1468,7 +1468,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_logmetadatalock.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add =\\\"metadata_lock_info.so\\\"\\n\\n\\n\"}",
                     "var_updated": "2018-09-28 14:14:15",
-                    "var_name": "db_cnf_with_logmetadatalock",
+                    "var_name": "db_cnf_log_with_metadatalock",
                     "id": 5939
                 },
                 {
@@ -1476,7 +1476,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_loggeneral.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ngeneral_log=1\\n\\n\"}",
                     "var_updated": "2018-09-28 14:14:57",
-                    "var_name": "db_cnf_with_loggeneral",
+                    "var_name": "db_cnf_log_with_general",
                     "id": 5940
                 },
                 {
@@ -1484,7 +1484,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_logsqlerror.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add =\\\"sql_errlog.so\\\"\\nloose_sql_error_log_rotate = 1\"}",
                     "var_updated": "2018-09-28 14:14:47",
-                    "var_name": "db_cnf_with_logsqlerror",
+                    "var_name": "db_cnf_log_with_sqlerror",
                     "id": 5941
                 },
                 {
@@ -1506,8 +1506,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_multidomains.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ngtid_domain_id = %%ENV:SVC_CONF_ENV_CRC32_ID%%\"}",
-                    "var_updated": "2018-09-28 16:57:25",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_multidomains.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ngtid_domain_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\"}",
+                    "var_updated": "2019-06-11 16:43:45",
                     "var_name": "db_cnf_rep_with_mulidomains",
                     "id": 5944
                 },
@@ -1548,7 +1548,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_logpfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nperformance_schema\\nperformance_schema_instrument=\\\"events_statements_history_long=ON\\\"\\nperformance_schema_consumer_events_statements_history=ON\\nperformance_schema_consumer_events_statements_history_long=ON\"}",
                     "var_updated": "2018-09-28 15:37:43",
-                    "var_name": "db_cnf_with_logpfs",
+                    "var_name": "db_cnf_log_with_pfs",
                     "id": 5949
                 },
                 {
@@ -1756,7 +1756,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_loguserstats.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nuserstat = 1\"}",
                     "var_updated": "2018-09-28 15:48:55",
-                    "var_name": "db_cnf_with_loguserstats",
+                    "var_name": "db_cnf_log_with_userstats",
                     "id": 6026
                 },
                 {
@@ -1826,8 +1826,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:CNF_MYSQL_UID%%\",\"gid\":\"%%ENV:CNF_MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ninnodb_defragment = ON\\ninnodb_defragment_fill_factor = 0.9\\ninnodb_defragment_fill_factor_n_recs = 20\\ninnodb_defragment_frequency = 40\\ninnodb_defragment_n_pages = 7\\ninnodb_defragment_stats_accuracy = 0\"}",
-                    "var_updated": "2019-06-06 16:46:07",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ninnodb_defragment = ON\\ninnodb_defragment_fill_factor = 0.9\\ninnodb_defragment_fill_factor_n_recs = 20\\ninnodb_defragment_frequency = 40\\ninnodb_defragment_n_pages = 7\\ninnodb_defragment_stats_accuracy = 0\"}",
+                    "var_updated": "2019-06-11 16:37:32",
                     "var_name": "db_cnf_opt_with_defrag",
                     "id": 6073
                 },
@@ -1860,7 +1860,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_pwdcheckcracklib.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add=cracklib_password_check\"}",
                     "var_updated": "2019-06-07 12:12:25",
-                    "var_name": "db_cnf_rep_with_sec_checkpwdcracklib",
+                    "var_name": "db_cnf_sec_with_checkpwdcracklib",
                     "id": 6078
                 },
                 {
@@ -1876,7 +1876,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/data/.system/keys.txt\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"1;a7addd9adea9978fda19f21e6be987880e68ac92632ca052e5bb42b1a506939a\"}",
                     "var_updated": "2019-06-07 16:04:48",
-                    "var_name": "db_cnf_encryption_keys",
+                    "var_name": "db_cnf_sec_encryption_keys",
                     "id": 6089
                 },
                 {

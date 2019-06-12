@@ -259,6 +259,7 @@ server_id = ` + string(server.Id[2:10]) + `
 innodb_buffer_pool_size = ` + server.ClusterGroup.GetConfigInnoDBBPSize() + `
 innodb_log_file_size = ` + server.ClusterGroup.GetConfigInnoDBLogFileSize() + `
 innodb_buffer_pool_instances = ` + server.ClusterGroup.GetConfigInnoDBBPInstances() + `
+innodb_log_buffer_size = 8
 `
 	log.Println(conf)
 
