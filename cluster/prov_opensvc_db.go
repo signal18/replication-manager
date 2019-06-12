@@ -204,7 +204,7 @@ rollback = false
 	for i, host := range servers {
 		pod := fmt.Sprintf("%02d", i+1)
 		conf = conf + server.ClusterGroup.GetPodDiskTemplate(collector, pod, agent)
-		conf = conf + server.GetInitContainer()
+		conf = conf + server.GetInitContainer(collector)
 		//		conf = conf + `post_provision =  {svcmgr} -s  {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db;
 		//	`
 		conf = conf + server.GetSnapshot(collector)
@@ -267,7 +267,7 @@ innodb_log_buffer_size = 8
 	return conf, nil
 }
 
-func (server *ServerMonitor) GetInitContainer() string {
+func (server *ServerMonitor) GetInitContainer(collector opensvc.Collector) string {
 	var vm string
 	if collector.ProvMicroSrv == "docker" {
 		vm = vm + `
