@@ -231,14 +231,14 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyUser)
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
-			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Name = proxyHost
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 				prx.Port = "3306"
 			}
-
+			prx.WritePort, _ = strconv.Atoi(prx.Port)
+			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)

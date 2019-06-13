@@ -70,7 +70,11 @@ micro_srv = ` + collector.ProvMicroSrv + `
 gcomm	 = ` + cluster.GetGComm() + `
 mrm_api_addr = ` + cluster.Conf.BindAddr + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
-crc32_id = ` + string(prx.Id[2:10]) + `
+server_id = ` + string(prx.Id[2:10]) + `
+innodb_buffer_pool_size = ` + cluster.GetConfigInnoDBBPSize() + `
+innodb_log_file_size = ` + cluster.GetConfigInnoDBLogFileSize() + `
+innodb_buffer_pool_instances = ` + cluster.GetConfigInnoDBBPInstances() + `
+innodb_log_buffer_size = 8
 `
 	log.Println(conf)
 	return conf, nil
