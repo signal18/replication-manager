@@ -53,8 +53,8 @@ nodes = ` + agent.Node_name + `
 size = ` + collector.ProvProxDisk + `g
 ` + ipPods + `
 port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + strconv.Itoa(prx.WritePort) + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
+mysql_root_password = ` + prx.Pass + `
+mysql_root_user = ` + prx.User + `
 network = ` + network + `
 gateway =  ` + collector.ProvProxNetGateway + `
 netmask =  ` + collector.ProvProxNetMask + `
@@ -101,7 +101,7 @@ run_args = -e SHARDPROXY_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
- -v {env.base_dir}/pod` + pod + `/data:/var/lib/shardproxy:rw
+ -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
  -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
  -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
 `
