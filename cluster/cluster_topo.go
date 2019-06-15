@@ -342,7 +342,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.SetState("WARN0080", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0080"]), ErrFrom: "ARB"})
 		}
 		if cluster.IsFailedArbitrator {
-			cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"]), ErrFrom: "ARB"})
+			cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], "arbitrator", cluster.Conf.ArbitratorAddress), ErrFrom: "ARB"})
 		}
 	}
 	if cluster.sme.CanMonitor() {
