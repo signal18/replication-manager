@@ -794,21 +794,21 @@ func (cluster *Cluster) RollingRestart() error {
 				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
 				return err
 			}
-			err = cluster.StartDatabaseService(slave)
+			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
 				return err
 			}
 		}
 	}
-	cluster.SwitchOver()
+	cluster.SwitchoverWaitTest()
 	if !master.IsDown() {
 		err := cluster.StopDatabaseService(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
 			return err
 		}
-		err = cluster.StartDatabaseService(master)
+		err = cluster.StartDatabaseWaitRejoin(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
 			return err
