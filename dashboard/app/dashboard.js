@@ -636,6 +636,14 @@ $scope.isEqualLongQueryTime = function (a, b) {
     }
   };
 
+  $scope.rolling = function (fail) {
+    if (fail) {
+      if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
+    } else {
+      if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
+    }
+  };
+  
   $scope.clbootstrap = function (topo) {
     if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
   };

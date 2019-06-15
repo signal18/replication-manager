@@ -770,7 +770,7 @@ func (cluster *Cluster) LoadDBModules() {
 	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
 	jsonFile, err := os.Open(file)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Fsailed opened module %s %s", file, err)
+		cluster.LogPrintf(LvlErr, "Failed opened module %s %s", file, err)
 	}
 	cluster.LogPrintf(LvlInfo, "Successfully loaded module %s", file)
 	// defer the closing of our jsonFile so that we can parse it later on
@@ -783,4 +783,37 @@ func (cluster *Cluster) LoadDBModules() {
 		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
 	}
 
+}
+
+func (cluster *Cluster) RollingRestart() error {
+	master := cluster.GetMaster()
+	for _, slave := range cluster.slaves {
+		if !slave.IsDown() {
+			err := cluster.StopDatabaseService(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+				return err
+			}
+			err = cluster.StartDatabaseService(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+				return err
+			}
+		}
+	}
+	cluster.SwitchOver()
+	if !master.IsDown() {
+		err := cluster.StopDatabaseService(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+			return err
+		}
+		err = cluster.StartDatabaseService(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+			return err
+		}
+		cluster.SwitchOver()
+	}
+	return nil
 }

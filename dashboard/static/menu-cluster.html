@@ -9,6 +9,12 @@
   Reset Failover Counter
     </md-button>
   </md-menu-item>
+  <md-menu-item ng-if="master.State !='Failed'" ng-click="rolling()">
+    <md-button>
+      <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+  Rolling Restart
+    </md-button>
+  </md-menu-item>
   <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
     <md-button>
       <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>

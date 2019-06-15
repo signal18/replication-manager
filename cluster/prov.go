@@ -144,24 +144,24 @@ func (cluster *Cluster) RollingUpgrade() {
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCStopDatabaseService(server)
+		return cluster.OpenSVCStopDatabaseService(server)
 	} else {
-		cluster.LocalhostStopDatabaseService(server)
+		return cluster.LocalhostStopDatabaseService(server)
 	}
 	return nil
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
-	_, _ = server.Conn.Exec("SHUTDOWN")
-	return nil
+	_, err := server.Conn.Exec("SHUTDOWN")
+	return err
 }
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	if cluster.Conf.Enterprise {
-		cluster.OpenSVCStartService(server)
+		return cluster.OpenSVCStartService(server)
 	} else {
-		cluster.LocalhostStartDatabaseService(server)
+		return cluster.LocalhostStartDatabaseService(server)
 	}
 	return nil
 }
