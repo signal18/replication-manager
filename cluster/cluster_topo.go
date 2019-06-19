@@ -163,7 +163,11 @@ func (cluster *Cluster) TopologyDiscover() error {
 				} else {
 					cluster.master = cluster.Servers[k]
 					cluster.master.State = stateMaster
-					cluster.master.SetReadWrite()
+
+					if cluster.master.IsReadOnly() {
+						cluster.master.SetReadWrite()
+						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
+					}
 				}
 			}
 		}
