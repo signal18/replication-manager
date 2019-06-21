@@ -21,10 +21,12 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 	agent, err := cluster.FoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
+		cluster.LogPrintf(LvlErr, "Can't FoundDatabaseAgent in service config %s", err)
 		return ""
 	}
 	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can't GenerateDBTemplate in service config %s", err)
 		return ""
 	}
 	return res
@@ -311,11 +313,12 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 
 `
 
-		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() && server.ClusterGroup.GetMaster().Id == server.Id {
+		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
 			//Proceed with galera specific
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
 			}
+			// && server.ClusterGroup.GetMaster().Id == server.Id
 			//s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
 			//if err != nil {
 			//	return err
