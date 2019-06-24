@@ -115,15 +115,17 @@ type Event struct {
 }
 
 type Processlist struct {
-	Id       uint64          `json:"id"`
-	User     string          `json:"user"`
-	Host     string          `json:"host"`
-	Db       sql.NullString  `json:"db" db:"db"`
-	Command  string          `json:"command"`
-	Time     sql.NullFloat64 `json:"time"`
-	State    sql.NullString  `json:"state"`
-	Info     sql.NullString  `json:"info"`
-	Progress sql.NullFloat64 `json:"progress"`
+	Id           uint64          `json:"id"`
+	User         string          `json:"user"`
+	Host         string          `json:"host"`
+	Db           sql.NullString  `json:"db" db:"db"`
+	Command      string          `json:"command"`
+	Time         sql.NullFloat64 `json:"time"`
+	State        sql.NullString  `json:"state"`
+	Info         sql.NullString  `json:"info"`
+	Progress     sql.NullFloat64 `json:"progress"`
+	RowsSent     uint64          `json:"rowsSent" db:"Rows_sent"`
+	RowsExamined uint64          `json:"rowsExamined" db:"Rows_examined"`
 }
 
 type LogSlow struct {
@@ -289,7 +291,7 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 		err = db.Select(&pl, "Explain "+query)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+		return nil, fmt.Errorf("ERROR: Could not get Explain: %s", err)
 	}
 	return pl, nil
 }
