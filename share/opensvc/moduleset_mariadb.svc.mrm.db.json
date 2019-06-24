@@ -634,6 +634,25 @@
         },
         {
             "fset_stats": false,
+            "id": 304,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readonly",
+                        "f_table": "v_tags",
+                        "id": 248
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.security.readonly"
+        },
+        {
+            "fset_stats": false,
             "id": 305,
             "filters": [
                 {
@@ -2678,7 +2697,7 @@
             ]
         },
         {
-            "fset_name": null,
+            "fset_name": "mariadb.security.readonly",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreadonly",
             "variables": [
                 {
