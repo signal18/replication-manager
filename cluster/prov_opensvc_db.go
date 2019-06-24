@@ -317,6 +317,8 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 			//Proceed with galera specific
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
+				vm = vm + `run_command = mysqld --wsrep_new_cluster
+				`
 			}
 			// && server.ClusterGroup.GetMaster().Id == server.Id
 			//s.Conn.Exec("set global wsrep_provider_option='pc.bootstrap=1'")
@@ -325,8 +327,7 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 			//}
 			//			vm = vm + `run_command = galera_new_cluster
 			//`
-			vm = vm + `run_command = mysqld --wsrep_new_cluster
-`
+
 		}
 
 		if dockerMinusRm {
