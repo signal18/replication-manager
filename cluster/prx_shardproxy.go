@@ -23,10 +23,8 @@ var crcTable = crc64.MakeTable(crc64.ECMA)
 
 func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
-	err := cluster.refreshMdbsproxy(oldmaster, proxy)
-	if err == nil {
-		cluster.createMdbShardServers(proxy)
-	}
+	cluster.refreshMdbsproxy(oldmaster, proxy)
+
 }
 
 func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
@@ -35,7 +33,7 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	if cluster.Conf.MdbsProxyLoadSystem {
 		cluster.ShardProxyCreateSystemTable(proxy)
 	}
-	cluster.failoverMdbsproxy(oldmaster, proxy)
+	cluster.CheckMdbShardServersSchema(proxy)
 }
 
 func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
@@ -65,6 +63,30 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 		cluster.LogPrintf("ERROR: query %s %s", query, err)
 	}
 }
+
+func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
+
+	schemas, err := cluster.master.GetSchemas()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not fetch master schemas %s", err)
+	}
+	for _, s := range schemas {
+		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
+
+		query := "CREATE SERVER IF NOT EXISTS s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
+		_, err = proxy.ShardProxy.Conn.Exec(query)
+		if err != nil {
+			cluster.LogPrintf("ERROR: query %s %s", query, err)
+		}
+		query = "CREATE DATABASE IF NOT EXISTS " + s
+		_, err = proxy.ShardProxy.Conn.Exec(query)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+		}
+
+	}
+}
+
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
 	err := proxy.ShardProxy.Refresh()
 	if err != nil {
@@ -75,7 +97,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
 
-	servers, err := dbhelper.GetServers(proxy.ShardProxy.Conn)
+	servers, _ := dbhelper.GetServers(proxy.ShardProxy.Conn)
 	for _, s := range servers {
 		myport := strconv.FormatUint(uint64(s.Port), 10)
 		var bke = Backend{
@@ -102,6 +124,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 		}
 		proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 	}
+	cluster.CheckMdbShardServersSchema(proxy)
 	return nil
 }
 
@@ -166,6 +189,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		}
 
 		query = query + "\n)"
+		c.Exec("CREATE DATABASE IF NOT EXISTS " + schema)
 		_, err = c.Exec(query)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)

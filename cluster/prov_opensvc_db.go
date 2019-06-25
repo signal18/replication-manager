@@ -229,7 +229,7 @@ rollback = false
 
 	conf = conf + `[task#01]
 schedule = @1
-command = {env.base_dir}/pod01/init/trigger-dbjobs
+command = svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs
 user = root
 run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 
@@ -358,6 +358,8 @@ func (server *ServerMonitor) GetDBEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%": server.ClusterGroup.GetConfigInnoDBBPInstances(),
 		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":      server.ClusterGroup.GetConfigInnoDBBPSize(),
 		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":       server.ClusterGroup.GetConfigInnoDBLogFileSize(),
+		"%%ENV:SVC_NAMESPACE%%":                             server.ClusterGroup.Name,
+		"%%ENV:SVC_NAME%%":                                  server.Name,
 	}
 
 	//	size = ` + collector.ProvDisk + `

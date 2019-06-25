@@ -289,3 +289,17 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 	return conf
 }
+
+func (server *Proxy) GetPRXEnv() map[string]string {
+	return map[string]string{
+		//	"%%ENV:NODES_CPU_CORES%%":                  server.ClusterGroup.Conf.ProvCores,
+		//	"%%ENV:SVC_CONF_ENV_MAX_CORES%%":           server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":  string(server.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%": string(server.Id[2:10]),
+		//		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%": server.ClusterGroup.dbPass,
+
+		"%%ENV:SERVER_IP%%":   "0.0.0.0",
+		"%%ENV:SERVER_PORT%%": server.Port,
+	}
+
+}
