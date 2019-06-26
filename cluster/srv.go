@@ -29,6 +29,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -176,9 +177,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	crcTable := crc64.MakeTable(crc64.ECMA)
 	server := new(ServerMonitor)
 	server.ClusterGroup = cluster
-	server.Name = url
+	server.Name, _ = misc.SplitHostPort(url)
 
-	server.ServiceName = url + "/" + cluster.Name
+	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
 		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
