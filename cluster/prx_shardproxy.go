@@ -301,7 +301,7 @@ func (cluster *Cluster) ShardProxyRunQuery(c *sqlx.DB, query string) error {
 func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 
 	var err error
-	proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
+	proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Name+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
 	return err
 }
 

@@ -1270,6 +1270,24 @@ func GetSchemas(db *sqlx.DB) ([]string, error) {
 	return sch, nil
 }
 
+func GetSchemasMap(db *sqlx.DB) (map[string]string, error) {
+
+	schemas := make(map[string]string)
+	rows, err := db.Queryx("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
+	if err != nil {
+		return nil, errors.New("Could not get schema list")
+	}
+	for rows.Next() {
+		var schema string
+		err = rows.Scan(&schema)
+		if err != nil {
+			return schemas, err
+		}
+		schemas[schema] = schema
+	}
+	return schemas, nil
+}
+
 func GetVariableByName(db *sqlx.DB, name string) (string, error) {
 	var value string
 	source := GetVariableSource(db)
