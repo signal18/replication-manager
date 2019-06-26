@@ -183,7 +183,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	if cluster.Conf.ProvNetCNI {
 		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
-	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name), crcTable), 10)
+	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
 
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()

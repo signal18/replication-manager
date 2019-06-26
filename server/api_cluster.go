@@ -142,6 +142,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/move-table/{clusterShard}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaMoveTable)),
+	))
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumTable)),
@@ -1059,7 +1063,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 	if mycluster != nil {
 		for _, pr := range mycluster.Proxies {
 			if mycluster.Conf.MdbsProxyOn {
-				clusters := mycluster.GetClusterFromShardProxy(mycluster.Conf.MdbsProxyHosts)
+				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
 				if vars["clusterList"] == "" {
 					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clusters)
 				} else {
@@ -1077,6 +1081,33 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 		http.Error(w, "No cluster", 500)
 		return
 	}
+	return
+
+}
+
+func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+
+	if mycluster != nil {
+		for _, pr := range mycluster.Proxies {
+			if mycluster.Conf.MdbsProxyOn {
+				if vars["clusterShard"] != "" {
+					destcluster := repman.getClusterByName(vars["clusterShard"])
+					if mycluster != nil {
+						mycluster.ShardProxyMoveTable(pr, vars["schemaName"], vars["tableName"], destcluster)
+						return
+					}
+				}
+			}
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	http.Error(w, "Unrichable code", 500)
 	return
 
 }

@@ -196,6 +196,76 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		}
 	}
 }
+func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table string, destCluster *Cluster) {
+	master := cluster.GetMaster()
+	if master == nil {
+		return
+	}
+	ddl, err := master.GetTableDefinition(schema, table)
+	if err != nil {
+		return
+	}
+	pos := strings.Index(ddl, "(")
+	query := "CREATE OR REPLACE TABLE " + schema + "." + table + "_copy " + ddl[pos:len(ddl)]
+
+	destmaster := destCluster.GetMaster()
+	if destmaster != nil {
+
+		_, err := destmaster.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + schema)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Copy table %s", err)
+		}
+		cluster.LogPrintf(LvlInfo, "Copy table %s %s", query, destmaster.URL)
+		_, err = destmaster.Conn.Exec(query)
+
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Copy table %s %s", query, err)
+		}
+
+	}
+
+	dsn := proxy.User + ":" + proxy.Pass + "@"
+	dsn += "tcp(" + proxy.Host + ":" + proxy.Port + ")/" + fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
+	c, err := sqlx.Open("mysql", dsn)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not connect to MariaDB Sharding Proxy %s", err)
+		return
+	}
+	defer c.Close()
+
+	for _, pr := range cluster.Proxies {
+		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+			destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", nil, false)
+
+			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + pr.Host + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
+			cluster.ShardProxyRunQuery(c, query)
+			cluster.ShardProxyRunQuery(c, "CREATE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
+			cluster.ShardProxyRunQuery(c, "RENAME TABLE "+schema+"."+table+"_old TO "+schema+"."+table+"_back, "+schema+"."+table+"_back TO "+schema+"."+table+"_old")
+			query = "CREATE OR REPLACE TABLE " + schema + "." + table + "_rpl ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "_old " + table + "_copy\", srv \"local_" + schema + " local_" + schema + "\", link_status \"0 1\"'"
+			cluster.ShardProxyRunQuery(c, query)
+			cluster.ShardProxyRunQuery(c, "DROP VIEW "+schema+"."+table+"_old ")
+
+			query = "RENAME TABLE " + schema + "." + table + " TO " + schema + "." + table + "_old, " + schema + "." + table + "_rpl TO  " + schema + "." + table
+			cluster.ShardProxyRunQuery(c, query)
+			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
+			cluster.ShardProxyRunQuery(c, query)
+
+			destmaster.Conn.Exec("DROP TABLE IF EXISTS " + schema + "." + table)
+			destmaster.Conn.Exec("CREATE OR REPLACE VIEW " + schema + "." + table + "  AS SELECT * FROM " + schema + "." + table + "_copy")
+			destmaster.Conn.Exec("RENAME TABLE " + schema + "." + table + " TO " + schema + "." + table + "_back, " + schema + "." + table + "_back TO  " + schema + "." + table)
+
+			cluster.ShardProxyCreateVTable(pr, schema, table, nil, false)
+			destmaster.Conn.Exec("RENAME TABLE  " + schema + "." + table + " TO " + schema + "." + table + "_old , " + schema + "." + table + "_copy TO " + schema + "." + table)
+			destmaster.Conn.Exec("DROP VIEW  " + schema + "." + table + "_old")
+			master.Conn.Exec("DROP TABLE IF EXISTS " + schema + "." + table)
+			query = "DROP TABLE " + schema + "." + table + "_copy,  " + schema + "." + table + "_old"
+			cluster.ShardProxyRunQuery(c, query)
+			//work can be done to a single proxy
+			return
+		}
+	}
+
+}
 
 func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, table string, clusters map[string]*Cluster) {
 
@@ -289,12 +359,13 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 
 }
 func (cluster *Cluster) ShardProxyRunQuery(c *sqlx.DB, query string) error {
+
 	_, err := c.Exec(query)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Sharding Proxy %s %s", query, err)
 		return err
 	}
-
+	cluster.LogPrintf(LvlInfo, "Sharding Proxy %s", query)
 	return nil
 }
 

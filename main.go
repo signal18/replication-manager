@@ -344,6 +344,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
+		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.jobs", "MariaDB spider proxy table list that are federarated to all master")
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")

@@ -449,10 +449,19 @@ func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 }
 
 //GetClusterFromShardProxy return all clusters sharing same proxy
-func (cluster *Cluster) GetClusterFromShardProxy(shardproxy string) map[string]*Cluster {
-	var clusters map[string]*Cluster
+func (cluster *Cluster) GetClusterListFromShardProxy(shardproxy string) map[string]*Cluster {
+	var clusters = make(map[string]*(Cluster))
 	for _, c := range cluster.clusterList {
 		if c.Conf.MdbsProxyHosts == shardproxy {
+			clusters[c.GetName()] = c
+		}
+	}
+	return clusters
+}
+func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster {
+	var clusters = make(map[string]*(Cluster))
+	for _, c := range cluster.clusterList {
+		if cluster.Name == name {
 			clusters[c.GetName()] = c
 		}
 	}
