@@ -130,4 +130,5 @@ var clusterError = map[string]string{
 	"WARN0086": "Checksum table waiting replication sync on slave %s",
 	"WARN0087": "Cluster same server_id %s %s",
 	"WARN0088": "High number of slow queries %s ",
+	"WARN0089": "ShardProxy Could not fetch master schemas %s",
 }
