@@ -2705,7 +2705,7 @@
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_with_readonly.cnf\",\"target\":\"../with_readonly.cnf\"}",
                     "var_updated": "2018-09-29 17:36:28",
-                    "var_name": "db_link.with_readonly",
+                    "var_name": "db_link_with_readonly",
                     "id": 6035
                 }
             ],
