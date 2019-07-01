@@ -138,11 +138,13 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	var err error
-	var tbl, ddl string
-	if len(duplicates) == 0 {
+	var ddl string
+	if len(duplicates) == 1 {
 		cluster.LogPrintf(LvlInfo, "Creating federation table in MdbShardProxy %s", schema+"."+table)
-		ddl, err = cluster.GetTableDLL(schema, table, cluster.master)
+		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
+
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
 		if err != nil {
 			return err
@@ -160,24 +162,16 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		if strings.Contains(strings.ToLower(ftype), "char") {
 			hashFunc = "KEY"
 		}
-		query = "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
-
-		err = cluster.master.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
 		if err != nil {
 			cluster.LogPrintf(LvlWarn, "Failed query %s %s", query, err)
-
-			query = "SHOW CREATE TABLE `" + schema + "`.`" + table + "_reshard`"
-			cluster.LogPrintf(LvlWarn, "Failed query trying _reshard if  view %s", query)
-			err = cluster.master.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+			ddl, err = cluster.GetTableDLLNoFK(schema, table+"_reshard`", cluster.master)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 				return err
 			}
 			ddl = strings.Replace(ddl, table+"_reshard", table, 1)
 		}
-		pos := strings.Index(ddl, "ENGINE=")
-
-		ddl = ddl[12:pos]
 
 		query = "CREATE OR REPLACE TABLE `" + schema + "`." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\"' PARTITION BY " + hashFunc + " (" + pk + ") (\n"
 		i := 1

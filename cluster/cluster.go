@@ -685,16 +685,17 @@ func (cluster *Cluster) schemaMonitor() {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
 	}
-	var duplicates []*ServerMonitor
-	var tableCluster []string
 
+	var tableCluster []string
+	var duplicates []*ServerMonitor
 	var tottablesize, totindexsize int64
 	for _, t := range tables {
-
+		duplicates = nil
+		tableCluster = nil
 		tottablesize += t.Data_length
 		totindexsize += t.Index_length
 		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
-		tableCluster = nil
+
 		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
 		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
@@ -714,6 +715,7 @@ func (cluster *Cluster) schemaMonitor() {
 
 		for _, cl := range cluster.clusterList {
 			if cl.GetName() != cluster.GetName() {
+
 				m := cl.GetMaster()
 				if m != nil {
 					cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
@@ -730,7 +732,8 @@ func (cluster *Cluster) schemaMonitor() {
 		if haschanged {
 			for _, pr := range cluster.Proxies {
 				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-					if !(strings.Contains(t.Table_name, "_copy") || strings.Contains(t.Table_name, "_back") || strings.Contains(t.Table_name, "_old") || strings.Contains(t.Table_name, "_reshard")) {
+					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
+						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
 						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
 					}
 				}

@@ -452,7 +452,7 @@ func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 func (cluster *Cluster) GetClusterListFromShardProxy(shardproxy string) map[string]*Cluster {
 	var clusters = make(map[string]*(Cluster))
 	for _, c := range cluster.clusterList {
-		if c.Conf.MdbsProxyHosts == shardproxy {
+		if c.Conf.MdbsProxyHosts == shardproxy && cluster.Conf.MdbsProxyOn {
 			clusters[c.GetName()] = c
 		}
 	}
@@ -477,6 +477,44 @@ func (cluster *Cluster) GetTableDLL(schema string, table string, srv *ServerMoni
 	}
 	pos := strings.Index(ddl, "ENGINE=")
 	ddl = ddl[12:pos]
+	return ddl, err
+}
+
+func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *ServerMonitor) (string, error) {
+
+	ddl, err := cluster.GetTableDLL(schema, table, cluster.master)
+	if err != nil {
+		return "", err
+	}
+	ddl = strings.TrimPrefix(ddl, " `"+table+"`")
+
+	cluster.RunQueryWithLog(srv, "CREATE OR REPLACE TABLE replication_manager_schema.`"+table+"`"+ddl+" engine=MEMORY")
+	//Loop over foreign keys
+	query := "SELECT CONSTRAINT_NAME from information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "' AND CONSTRAINT_TYPE='FOREIGN KEY'"
+	rows, err := srv.Conn.Query(query)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Contraint fetch failed %s %s", query, err)
+		return "", err
+	}
+	var fk string
+	for rows.Next() {
+
+		err = rows.Scan(&fk)
+		if err != nil {
+			return "", err
+		}
+		cluster.RunQueryWithLog(srv, "ALTER TABLE replication_manager_schema.`"+table+"` DROP FOREIGN KEY "+fk)
+	}
+
+	query = "SHOW CREATE TABLE replication_manager_schema.`" + table + "`"
+	var tbl string
+	err = srv.Conn.QueryRowx(query).Scan(&tbl, &ddl)
+	if err != nil {
+		return "", err
+	}
+	pos := strings.Index(ddl, "ENGINE=")
+	ddl = ddl[12:pos]
+	cluster.RunQueryWithLog(srv, "DROP TABLE IF EXISTS replication_manager_schema.`"+table+"`")
 	return ddl, err
 }
 
