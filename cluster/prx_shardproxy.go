@@ -241,7 +241,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 			if err != nil {
 				return err
 			}
-			err = cluster.RunQueryWithLog(pr.ShardProxy, "CREATE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
+			err = cluster.RunQueryWithLog(pr.ShardProxy, "CREATE OR REPLACE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
 			if err != nil {
 				return err
 			}

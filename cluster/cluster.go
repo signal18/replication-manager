@@ -695,7 +695,7 @@ func (cluster *Cluster) schemaMonitor() {
 		totindexsize += t.Index_length
 		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
 		tableCluster = nil
-		duplicates = nil
+		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
 		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
 		haschanged := false
@@ -713,24 +713,26 @@ func (cluster *Cluster) schemaMonitor() {
 		}
 
 		for _, cl := range cluster.clusterList {
-			//	if cl.GetName() != cluster.GetName() {
-			m := cl.GetMaster()
-			if m != nil {
-				cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
-				if cltbldef.Table_name == t.Table_name {
-					duplicates = append(duplicates, cl.GetMaster())
-					tableCluster = append(tableCluster, cl.GetName())
-					cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+			if cl.GetName() != cluster.GetName() {
+				m := cl.GetMaster()
+				if m != nil {
+					cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+					if cltbldef.Table_name == t.Table_name {
+						duplicates = append(duplicates, cl.GetMaster())
+						tableCluster = append(tableCluster, cl.GetName())
+						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+					}
 				}
 			}
-			//}
 		}
 		t.Table_clusters = strings.Join(tableCluster, ",")
 		tables[t.Table_schema+"."+t.Table_name] = t
 		if haschanged {
 			for _, pr := range cluster.Proxies {
 				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-					cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
+					if !(strings.Contains(t.Table_name, "_copy") || strings.Contains(t.Table_name, "_back") || strings.Contains(t.Table_name, "_old") || strings.Contains(t.Table_name, "_reshard")) {
+						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
+					}
 				}
 			}
 		}

@@ -18,13 +18,19 @@
                 text-overflow: ellipsis;
                 }
       </style>
-                   <table  >
-                     <col  width="20%"/>
+                   <table  class="table table-condensed fixed"  >
+                       <col width="10%"/>
+                      <col width="15%"/>
+                      <col width="15%"/>
+                      <col width="5%"/>
+                      <col width="5%"/>
+                      <col width="5%"/>
+                      <col width="5%"/>
                       <col width="20%"/>
-                      <col width="20%"/>
-
+                      <col width="5%"/>
                       <tr>
-                         <th colspan=2>Schema</th>
+                         <th >Actions</th>
+                         <th >Schema</th>
                          <th >Name</th>
                          <th >Engine</th>
                          <th >Rows</th>
@@ -36,13 +42,13 @@
 
                       <tr ng-repeat="table in vtables">
                          <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
-                         <td class="process">{{ table.tableSchema }}</td>
-                         <td class="process">{{ table.tableName }}    </td>
-                         <td class="process">{{ table.engine }} </td>
-                         <td class="process">{{ table.tableRows }}</td>
-                         <td class="process">{{ table.dataLength }}</td>
-                         <td class="process">{{ table.indexLength }}</td>
-                         <td class="process">{{ table.tableClusters }}</td>
+                         <td class="text">{{ table.tableSchema }}</td>
+                         <td class="text"">{{ table.tableName }}    </td>
+                         <td class="text">{{ table.engine }} </td>
+                         <td class="text">{{ table.tableRows }}</td>
+                         <td class="text">{{ (table.dataLength/1024/1024).toFixed(2);}}M</td>
+                         <td class="text">{{ (table.indexLength/1024/1024).toFixed(2) }}M</td>
+                         <td class="text" style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{ table.tableClusters }}</td>
                          <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
                            thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" > </td>
 
