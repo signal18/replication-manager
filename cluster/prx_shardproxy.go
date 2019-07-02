@@ -324,6 +324,10 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			if err != nil {
 				return err
 			}
+			err = cluster.RunQueryWithLog(master, "CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+			if err != nil {
+				return err
+			}
 			err = cluster.RunQueryWithLog(master, query)
 			if err != nil {
 				return err
