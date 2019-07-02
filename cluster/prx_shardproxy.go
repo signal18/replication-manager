@@ -176,6 +176,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		query = "CREATE OR REPLACE TABLE `" + schema + "`." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\"' PARTITION BY " + hashFunc + " (" + pk + ") (\n"
 		i := 1
 		for _, cl := range cluster.clusterList {
+			cl.CheckMdbShardServersSchema(proxy)
 			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
 			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"s" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
 			if i != len(cluster.clusterList) {
@@ -342,7 +343,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			if err != nil {
 				return err
 			}
-			err = cluster.RunQueryWithLog(pr.ShardProxy, "CREATE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
+			err = cluster.RunQueryWithLog(pr.ShardProxy, "CREATE OR REPLACE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
 			if err != nil {
 				return err
 			}
