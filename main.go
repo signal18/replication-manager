@@ -259,6 +259,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:repman", "Rest API user:password")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
+	monitorCmd.Flags().BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true

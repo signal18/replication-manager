@@ -317,6 +317,7 @@ type Config struct {
 	APIUser                            string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
 	APIPort                            string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                            string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
+	APIHttpsBind                       bool   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
 	AlertScript                        string `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                         string `mapstructure:"config" toml:"-" json:"-"`
 	Backup                             bool   `mapstructure:"backup" toml:"backup" json:"backup"`

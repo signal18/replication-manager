@@ -124,13 +124,14 @@ func (repman *ReplicationManager) httpserver() {
 	))
 
 	//USER PROTECTED ENDPOINTS
-	repman.apiClusterProtectedHandler(router)
+
 	repman.apiClusterUnprotectedHandler(router)
-
 	repman.apiDatabaseUnprotectedHandler(router)
-	repman.apiDatabaseProtectedHandler(router)
-	repman.apiProxyProtectedHandler(router)
-
+	if !repman.Conf.APIHttpsBind {
+		repman.apiClusterProtectedHandler(router)
+		repman.apiDatabaseProtectedHandler(router)
+		repman.apiProxyProtectedHandler(router)
+	}
 	// create mux router
 	router.HandleFunc("/repocomp/current", repman.handlerRepoComp)
 	router.HandleFunc("/heartbeat", repman.handlerHeartbeat)

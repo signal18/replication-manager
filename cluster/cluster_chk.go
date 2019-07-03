@@ -457,6 +457,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum failed composit primary key not allow for table %s.%s", schema, table)
 		return
 	}
+	Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	Conn.Exec("USE replication_manager_schema")
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")

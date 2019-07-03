@@ -125,6 +125,10 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/repocomp/current", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerRepoComp)),
 	))
+	//UNPROTECTED ENDPOINTS FOR SETTINGS
+	router.Handle("/api/monitor", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
+	))
 	//PROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/monitor", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
