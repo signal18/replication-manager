@@ -89,6 +89,14 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
+type TableSizeSorter []Table
+
+func (a TableSizeSorter) Len() int      { return len(a) }
+func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a TableSizeSorter) Less(i, j int) bool {
+	return a[i].Data_length+a[i].Index_length > a[j].Data_length+a[j].Index_length
+}
+
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`

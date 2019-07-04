@@ -142,7 +142,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 	if len(duplicates) == 1 {
 		cluster.LogPrintf(LvlInfo, "Creating federation table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
-
+		cluster.CheckMdbShardServersSchema(proxy)
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
 
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
@@ -218,15 +218,16 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 	if err != nil {
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "Copy table %s %s", query, destmaster.URL)
 	err = cluster.RunQueryWithLog(destmaster, query)
 	if err != nil {
 		return err
 	}
+	var duplicates []*ServerMonitor
+	duplicates = append(duplicates, destmaster)
 
 	for _, pr := range cluster.Proxies {
 		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
-			err := destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", nil, false)
+			err := destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
 			}
@@ -276,7 +277,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 				return err
 			}
 
-			err = cluster.ShardProxyCreateVTable(pr, schema, table, nil, false)
+			err = cluster.ShardProxyCreateVTable(pr, schema, table, duplicates, false)
 			if err != nil {
 				return err
 			}

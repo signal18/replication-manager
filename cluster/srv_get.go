@@ -456,6 +456,7 @@ func (server *ServerMonitor) GetDictTables() []dbhelper.Table {
 		tables = append(tables, t)
 
 	}
+	sort.Sort(dbhelper.TableSizeSorter(tables))
 	return tables
 }
 
