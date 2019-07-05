@@ -106,6 +106,7 @@ type Table struct {
 	Index_length   int64  `json:"indexLength"`
 	Table_crc      uint64 `json:"tableCrc"`
 	Table_clusters string `json:"tableClusters"`
+	Table_sync     string `json:"tableSync"`
 }
 
 type Grant struct {

@@ -438,6 +438,12 @@ func (cluster *Cluster) CheckCapture(state state.State) {
 	}
 }
 
+func (cluster *Cluster) CheckAllTableChecksum() {
+	for _, t := range cluster.master.Tables {
+		cluster.CheckTableChecksum(t.Table_schema, t.Table_name)
+	}
+}
+
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	cluster.LogPrintf(LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
@@ -448,32 +454,61 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		return
 	}
 	defer Conn.Close()
+	Conn.SetConnMaxLifetime(3595 * time.Second)
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
-		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum failed, no primary key for table %s.%s", schema, table)
+		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
+		t := cluster.master.DictTables[schema+"."+table]
+		t.Table_sync = "NA"
+		cluster.master.DictTables[schema+"."+table] = t
 		return
 	}
 	if strings.Contains(pk, ",") {
-		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum failed composit primary key not allow for table %s.%s", schema, table)
-		return
+		cluster.master.ClusterGroup.LogPrintf(LvlInfo, "Checksum, composit primary key for table %s.%s", schema, table)
 	}
 	Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	Conn.Exec("USE replication_manager_schema")
 	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
+
+	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MYISAM")
+	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunck ENGINE=MYISAM SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(CONCAT_WS('/*;*/'," + pk + ")) as chunkMinKey, MAX(CONCAT_WS('/*;*/'," + pk + ")) as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+	_, err = Conn.Exec(query)
 	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
-	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MEMORY")
-	Conn.Exec("CREATE TEMPORARY TABLE replication_manager_schema.table_chunck ENGINE=MEMORY SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(" + pk + ") as chunkMinKey, MAX(" + pk + ") as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+		return
+	}
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ERROR: Could not get SQL md5Sum", err)
 		return
 	}
+
+	// build predicate iterating over each pk columns
+	predicate := " 1=1"
+	pks := strings.Split(pk, ",")
+	//	var ftype string
+	for i, p := range pks {
+		/*	query := "SELECT (select COLUMN_TYPE from information_schema.columns C where C.TABLE_NAME=TABLE_NAME AND C.COLUMN_NAME=COLUMN_NAME AND C.TABLE_SCHEMA=TABLE_SCHEMA LIMIT 1) as TYPE   from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "' AND  ORDINAL_POSITION=" + strconv.Itoa(i+1)
+			err := Conn.QueryRowx(query).Scan(&ftype)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "ERROR: Could not fetch  datatype %s %s", query, err)
+				return
+			}
+			separator := ""
+			if strings.Contains(strings.ToLower(ftype), "char") || strings.Contains(strings.ToLower(ftype), "date") || strings.Contains(strings.ToLower(ftype), "enum") || strings.Contains(strings.ToLower(ftype), "timestamp") {
+				separator = "'"
+			}*/
+		predicate = predicate + " AND A." + p + " >= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMinKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1) and A." + p + "<= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMaxKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1)"
+	}
+
 	for true {
-		_, err := Conn.Exec("INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunck limit 1) B on A." + pk + " >= B.chunkMinKey and A." + pk + "<=B.chunkMaxKey")
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunck limit 1) B on " + predicate
+		_, err := Conn.Exec(query)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck", err)
+			cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 			return
 		}
 		res, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunck limit 1")
@@ -491,10 +526,12 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			cluster.LogPrintf(LvlInfo, "Finished checksum table %s.%s", schema, table)
 			break
 		}
-		slave := cluster.GetFirstWorkingSlave()
-		if slave.GetReplicationDelay() > 5 {
-			//time.Sleep(slave.GetReplicationDelay() * time.Second)
-		}
+		/*	slave := cluster.GetFirstWorkingSlave()
+			if slave != nil {
+				if slave.GetReplicationDelay() > 5 {
+					time.Sleep(time.Duration(slave.GetReplicationDelay()) * time.Second)
+				}
+			}*/
 	}
 	cluster.master.Refresh()
 	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
@@ -526,11 +563,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
 				cluster.LogPrintf(LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
+				t := cluster.master.DictTables[schema+"."+table]
+				t.Table_sync = "ER"
+				cluster.master.DictTables[schema+"."+table] = t
 			}
 
 		}
 		if checkok {
 			cluster.LogPrintf(LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
+			t := cluster.master.DictTables[schema+"."+table]
+			t.Table_sync = "OK"
+			cluster.master.DictTables[schema+"."+table] = t
 		}
 	}
 }

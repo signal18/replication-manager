@@ -207,7 +207,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 	if destmaster == nil {
 		return errors.New("Reshard no valid master on dest cluster")
 	}
-	ddl, err := master.GetTableDefinition(schema, table)
+	ddl, err := cluster.GetTableDLLNoFK(schema, table, master)
 	if err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 	if master == nil {
 		return errors.New("Reshard no valid master on current cluster")
 	}
-	ddl, err := master.GetTableDefinition(schema, table)
+	ddl, err := cluster.GetTableDLLNoFK(schema, table, master)
 	if err != nil {
 		return errors.New("Reshard error getting table definition")
 	}
@@ -370,10 +370,22 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			if err != nil {
 				return err
 			}
-			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
-			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
-			if err != nil {
-				return err
+			query = "SELECT *  from " + schema + "." + table + " limit 1"
+			cluster.RunQueryWithLog(pr.ShardProxy, query)
+
+			ct := 0
+			cluster.LogPrintf(LvlInfo, "Online data copy...")
+			for {
+				query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
+				err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+				if err != nil {
+					if ct == 2 {
+						return err
+					}
+				} else {
+					break
+				}
+				ct++
 			}
 			duplicates = nil
 			for _, cl := range clusters {

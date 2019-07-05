@@ -1,6 +1,7 @@
 
 
 <md-content  class="md-padding">
+  <md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" class="md-mini md-raised" ng-click="checksumalltables()">Checksum</md-button>
 
           <md-card>
 
@@ -18,15 +19,17 @@
                 text-overflow: ellipsis;
                 }
       </style>
+
                    <table  class="table table-condensed fixed"  >
-                       <col width="10%"/>
-                      <col width="15%"/>
-                      <col width="15%"/>
+                       <col width="6%"/>
+                      <col width="10%"/>
+                      <col width="12%"/>
                       <col width="5%"/>
                       <col width="5%"/>
                       <col width="5%"/>
                       <col width="5%"/>
-                      <col width="20%"/>
+                      <col width="25%"/>
+                      <col width="2%"/>
                       <col width="5%"/>
                       <tr>
                          <th >Actions</th>
@@ -37,11 +40,13 @@
                          <th>Data</th>
                          <th >Index</th>
                         <th >Shards</th>
+                        <th >Sync</th>
                          <th >%</th>
                       </tr>
 
                       <tr ng-repeat="table in vtables">
-                         <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
+                         <td><md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" class="md-mini md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button>
+                           <md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" ng-if="settings.config.shardproxy" class="md-mini md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
                          <td class="text">{{ table.tableSchema }}</td>
                          <td class="text"">{{ table.tableName }}    </td>
                          <td class="text">{{ table.engine }} </td>
@@ -49,8 +54,10 @@
                          <td class="text">{{ (table.dataLength/1024/1024).toFixed(2);}}M</td>
                          <td class="text">{{ (table.indexLength/1024/1024).toFixed(2) }}M</td>
                          <td class="text" style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{ table.tableClusters }}</td>
+                          <td class="text">{{ table.tableSync }}</td>
                          <td class="process" align="center"><ng-gauge type="arch" value="getTablePct(table.dataLength ,table.indexLength)"
                            thick="3" size="40"  duration="300" min="0" max="100"  cap="round" append="%" > </td>
+
 
                       </tr>
                    </table>

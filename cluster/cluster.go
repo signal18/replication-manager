@@ -708,11 +708,14 @@ func (cluster *Cluster) schemaMonitor() {
 				cluster.LogPrintf(LvlDbg, "New table %s", t.Table_schema+"."+t.Table_name)
 				haschanged = true
 			}
-		} else if oldtable.Table_crc != t.Table_crc {
-			haschanged = true
-			cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+		} else {
+			if oldtable.Table_crc != t.Table_crc {
+				haschanged = true
+				cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+			}
+			t.Table_sync = oldtable.Table_sync
 		}
-
+		// lookup other clusters
 		for _, cl := range cluster.clusterList {
 			if cl.GetName() != cluster.GetName() {
 

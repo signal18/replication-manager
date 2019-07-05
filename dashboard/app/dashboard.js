@@ -643,7 +643,7 @@ $scope.isEqualLongQueryTime = function (a, b) {
       if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
     }
   };
-  
+
   $scope.clbootstrap = function (topo) {
     if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
   };
@@ -843,6 +843,9 @@ $scope.isEqualLongQueryTime = function (a, b) {
     httpGetWithoutResponse(getClusterUrl() + '/schema/'+schema+'/'+table+'/actions/checksum-table');
   };
 
+  $scope.checksumalltables = function (schema,table) {
+    httpGetWithoutResponse(getClusterUrl() + '/actions/checksum-all-tables');
+  };
   $scope.$watch('settings.maxdelay', function (newVal, oldVal) {
     if (typeof newVal != 'undefined') {
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-max-slave-delay/' + newVal);
