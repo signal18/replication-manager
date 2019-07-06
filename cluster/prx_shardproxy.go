@@ -14,6 +14,7 @@ import (
 	"hash/crc64"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -260,6 +261,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 				return err
 			}
 			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
+			pr.ShardProxy.Conn.SetConnMaxLifetime(3595 * time.Second)
 			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 			if err != nil {
 				return err
@@ -376,6 +378,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			ct := 0
 			cluster.LogPrintf(LvlInfo, "Online data copy...")
 			for {
+				pr.ShardProxy.Conn.SetConnMaxLifetime(3595 * time.Second)
 				query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
 				err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 				if err != nil {
