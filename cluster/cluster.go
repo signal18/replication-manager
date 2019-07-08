@@ -679,6 +679,7 @@ func (cluster *Cluster) schemaMonitor() {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()
+	cluster.master.Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, err := dbhelper.GetTables(cluster.master.Conn)
 	cluster.master.Tables = tablelist
