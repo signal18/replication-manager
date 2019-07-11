@@ -97,7 +97,7 @@ var clusterError = map[string]string{
 	"WARN0052": "No InnoDB durability on slave %s",
 	"WARN0053": "No replication checksum on slave %s",
 	"WARN0054": "No log of replication queries in slow query on slave %s",
-	"WARN0055": "RBR is on and binlog annotation is off on slave %s",
+	"WARN0055": "ROW or MIXED binlog format and replicate_annotate_row_events is off on slave %s",
 	"WARN0056": "No compression of binlog on slave %s",
 	"WARN0057": "No log-slave-updates on slave %s",
 	"WARN0058": "No GTID strict mode on slave %s",

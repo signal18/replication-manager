@@ -49,6 +49,7 @@ type Config struct {
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	MonitorCapture                     bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureTrigger              string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
+	MonitorIgnoreError                 string `mapstructure:"monitoring-ignore-error" toml:"monitoring-ignore-error" json:"monitoringIgnoreError"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                            string `mapstructure:"log-file" toml:"log-file" json:"logFile"`
@@ -168,6 +169,7 @@ type Config struct {
 	MdbsProxyCopyGrants                bool   `mapstructure:"shardproxy-copy-grants" toml:"shardproxy-copy-grants" json:"shardproxyCopyGrants"`
 	MdbsProxyLoadSystem                bool   `mapstructure:"shardproxy-load-system" toml:"shardproxy-load-system" json:"shardproxyLoadSystem"`
 	MdbsUniversalTables                string `mapstructure:"shardproxy-universal-tables" toml:"shardproxy-universal-tables" json:"shardproxyUniversalTables"`
+	MdbsIngoreTables                   string `mapstructure:"shardproxy-ignore-tables" toml:"shardproxy-ignore-tables" json:"shardproxyUniversalTables"`
 	MxsOn                              bool   `mapstructure:"maxscale" toml:"maxscale" json:"maxscale"`
 	MxsHost                            string `mapstructure:"maxscale-servers" toml:"maxscale-servers" json:"maxscaleServers"`
 	MxsPort                            string `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`

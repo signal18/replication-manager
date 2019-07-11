@@ -159,6 +159,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	monitorCmd.Flags().BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
 	monitorCmd.Flags().BoolVar(&conf.MonitorInnoDBStatus, "monitoring-innodb-status", true, "Monitor innodb status")
+	monitorCmd.Flags().StringVar(&conf.MonitorIgnoreError, "monitoring-ignore-error", "", "Comma separated list of error or warning to ignore")
 	monitorCmd.Flags().BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	monitorCmd.Flags().StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
 	monitorCmd.Flags().StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
@@ -345,7 +346,8 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
-		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.jobs", "MariaDB spider proxy table list that are federarated to all master")
+		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.bench", "MariaDB spider proxy table list that are federarated to all master")
+		monitorCmd.Flags().StringVar(&conf.MdbsIngoreTables, "shardproxy-ignore-tables", "", "MariaDB spider proxy master table list that are ignored")
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")

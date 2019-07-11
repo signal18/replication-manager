@@ -300,7 +300,9 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {
-	cluster.sme.AddState(key, s)
+	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
+		cluster.sme.AddState(key, s)
+	}
 }
 
 func (cl *Cluster) SetArbitratorReport() error {
