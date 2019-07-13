@@ -471,12 +471,11 @@ func init() {
 				}
 			}
 			dbConfig.ReadConfig(bytes.NewBuffer(file))
-			log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))
+			//	log.Printf("OpenSVC user account: %s", dbConfig.Get("email").(string))
 			conf.ProvUser = dbConfig.Get("email").(string) + ":" + dbConfig.Get("hashed_password").(string)
 			crcTable := crc64.MakeTable(crc64.ECMA)
 			conf.ProvCodeApp = "ns" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
-			log.Printf("OpenSVC code application: %s", conf.ProvCodeApp)
-
+			//	log.Printf("OpenSVC code application: %s", conf.ProvCodeApp)
 			//	} else {
 			//		monitorCmd.Flags().StringVar(&conf.ProvUser, "opensvc-user", "replication-manager@localhost.localdomain:mariadb", "OpenSVC collector provisioning user")
 			//		monitorCmd.Flags().StringVar(&conf.ProvCodeApp, "opensvc-codeapp", "MariaDB", "OpenSVC collector applicative code")

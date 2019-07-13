@@ -1009,7 +1009,7 @@ func cliGetAllClusters() ([]string, error) {
 		log.Println("ERROR", err)
 		return res, err
 	}
-	log.Printf("%s", body)
+	//	log.Printf("%s", body)
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		log.Println("ERROR in cluster list", err)
