@@ -49,7 +49,7 @@ type Config struct {
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	MonitorCapture                     bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureTrigger              string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
-	MonitorIgnoreError                 string `mapstructure:"monitoring-ignore-error" toml:"monitoring-ignore-error" json:"monitoringIgnoreError"`
+	MonitorIgnoreError                 string `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                            bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                            string `mapstructure:"log-file" toml:"log-file" json:"logFile"`

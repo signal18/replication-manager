@@ -159,7 +159,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	monitorCmd.Flags().BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
 	monitorCmd.Flags().BoolVar(&conf.MonitorInnoDBStatus, "monitoring-innodb-status", true, "Monitor innodb status")
-	monitorCmd.Flags().StringVar(&conf.MonitorIgnoreError, "monitoring-ignore-error", "", "Comma separated list of error or warning to ignore")
+	monitorCmd.Flags().StringVar(&conf.MonitorIgnoreError, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	monitorCmd.Flags().BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	monitorCmd.Flags().StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
 	monitorCmd.Flags().StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
