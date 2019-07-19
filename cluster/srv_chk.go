@@ -162,7 +162,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
 		server.ClusterGroup.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.GetReplicationUsingGtid() == "Yes" {
+	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.IsReplicationUsingGtidStrict() == false {
 		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID strict mode on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false {
