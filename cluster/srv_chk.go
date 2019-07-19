@@ -137,6 +137,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false {
 		server.ClusterGroup.sme.AddState("WARN0048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
+
 	if server.ClusterGroup.Conf.ForceBinlogRow && sl.HaveBinlogRow == false {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		dbhelper.SetBinlogFormat(sl.Conn, "ROW")
@@ -161,6 +162,13 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
 		server.ClusterGroup.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
+	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.GetReplicationUsingGtid() == "Yes" {
+		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID strict mode on slave %s", sl.URL)
+	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false {
+		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+	}
+
 	if server.ClusterGroup.Conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
 		dbhelper.SetSyncInnodb(sl.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce InnoDB durability on slave %s", sl.URL)
@@ -194,9 +202,6 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	}
 	if sl.IsIgnored() == false && sl.HaveLogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
-	}
-	if sl.IsIgnored() == false && sl.HaveGtidStrictMode == false {
-		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {

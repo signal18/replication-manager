@@ -1433,6 +1433,19 @@ func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, IsMariaDB bool, 
 	return err
 }
 
+func SetSlaveGTIDModeStrict(db *sqlx.DB, IsMariaDB bool, IsMySQL bool) error {
+	var err error
+	//MySQL is strict per default with GTID tracking gap trx
+	if IsMariaDB {
+		stmt := "set global gtid_strict_mode=1"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func StopAllSlaves(db *sqlx.DB) error {
 	_, err := db.Exec("STOP ALL SLAVES")
 	return err

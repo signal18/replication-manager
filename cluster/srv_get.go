@@ -92,6 +92,18 @@ func (server *ServerMonitor) GetReplicationUsingGtid() string {
 	}
 }
 
+func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
+	if server.IsMariaDB() {
+		if server.Variables["GTID_STRICT_MODE"] == "ON" {
+			return true
+		} else {
+			return false
+		}
+	} else {
+		return true
+	}
+}
+
 func (server *ServerMonitor) GetReplicationMasterHost() string {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {

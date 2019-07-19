@@ -136,6 +136,16 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	return nil
 }
 
+func (cluster *Cluster) ShardProxyGetShardClusters() map[string]*Cluster {
+	shardCluster := make(map[string]*Cluster)
+	for _, cl := range cluster.clusterList {
+		if cl.Conf.MdbsProxyOn {
+			shardCluster[cl.Name] = cl
+		}
+	}
+	return shardCluster
+}
+
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	var err error
@@ -145,6 +155,25 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
 		cluster.CheckMdbShardServersSchema(proxy)
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
+		if err != nil {
+			return err
+		}
+
+	} else if strings.Contains(cluster.Conf.MdbsUniversalTables, schema+"."+table) {
+		cluster.LogPrintf(LvlInfo, "Creating universal table in MdbShardProxy %s", schema+"."+table)
+		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
+		srv_def := " srv \""
+		link_status_def := " link_status \""
+		for _, cl := range cluster.ShardProxyGetShardClusters() {
+			cl.CheckMdbShardServersSchema(proxy)
+			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
+			srv_def = srv_def + "s" + strconv.FormatUint(checksum64, 10) + " "
+			link_status_def = link_status_def + "0 "
+		}
+		srv_def = srv_def + "\" "
+		link_status_def = link_status_def + "\" "
+		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\",  mbk \"2\", mkd \"2\", msi \"" + proxy.ShardProxy.Variables["SERVER_ID"] + "\", " + srv_def + ", " + link_status_def + "'"
 
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
 		if err != nil {
@@ -176,7 +205,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 
 		query = "CREATE OR REPLACE TABLE `" + schema + "`." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\"' PARTITION BY " + hashFunc + " (" + pk + ") (\n"
 		i := 1
-		for _, cl := range cluster.clusterList {
+		for _, cl := range cluster.ShardProxyGetShardClusters() {
 			cl.CheckMdbShardServersSchema(proxy)
 			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
 			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"s" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
@@ -199,14 +228,126 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 	return nil
 }
 
+func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, table string) error {
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("Universal table no valid master on current cluster")
+	}
+	var duplicates []*ServerMonitor
+	for _, cl := range cluster.ShardProxyGetShardClusters() {
+		destmaster := cl.GetMaster()
+		if destmaster == nil {
+			return errors.New("Universal table no valid master on dest cluster")
+		}
+		ddl, err := cluster.GetTableDLLNoFK(schema, table, master)
+		if err != nil {
+			return err
+		}
+		pos := strings.Index(ddl, "(")
+		query := "CREATE OR REPLACE TABLE " + schema + "." + table + "_copy " + ddl[pos:len(ddl)]
+
+		err = cluster.RunQueryWithLog(destmaster, "CREATE DATABASE IF NOT EXISTS "+schema)
+		if err != nil {
+			return err
+		}
+		err = cluster.RunQueryWithLog(destmaster, query)
+		if err != nil {
+			return err
+		}
+
+		duplicates = append(duplicates, destmaster)
+	}
+	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table + "_copy"
+	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table
+
+	for _, pr := range cluster.Proxies {
+		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
+			if err != nil {
+				return err
+			}
+
+			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + pr.Host + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
+			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+			if err != nil {
+				return err
+			}
+			err = cluster.RunQueryWithLog(pr.ShardProxy, "CREATE OR REPLACE VIEW "+schema+"."+table+"_old AS SELECT * FROM "+schema+"."+table)
+			if err != nil {
+				return err
+			}
+			err = cluster.RunQueryWithLog(pr.ShardProxy, "RENAME TABLE "+schema+"."+table+"_old TO "+schema+"."+table+"_back, "+schema+"."+table+"_back TO "+schema+"."+table+"_old")
+			if err != nil {
+				return err
+			}
+			query = "CREATE OR REPLACE TABLE " + schema + "." + table + "_rpl ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "_old " + table + "_copy\", srv \"local_" + schema + " local_" + schema + "\", link_status \"0 1\"'"
+			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+			if err != nil {
+				return err
+			}
+			err = cluster.RunQueryWithLog(pr.ShardProxy, "DROP VIEW "+schema+"."+table+"_old ")
+			if err != nil {
+				return err
+			}
+			query = "RENAME TABLE " + schema + "." + table + " TO " + schema + "." + table + "_old, " + schema + "." + table + "_rpl TO  " + schema + "." + table
+			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+			if err != nil {
+				return err
+			}
+			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
+			pr.ShardProxy.Conn.SetConnMaxLifetime(3595 * time.Second)
+			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+			if err != nil {
+				return err
+			}
+			cluster.ShardProxyCreateVTable(pr, schema, table, duplicates, false)
+			for _, cl := range cluster.ShardProxyGetShardClusters() {
+				destmaster := cl.GetMaster()
+				if destmaster == nil {
+					return errors.New("Universal table, no valid master on dest cluster")
+				}
+				err = cluster.RunQueryWithLog(destmaster, "DROP TABLE IF EXISTS "+schema+"."+table)
+				if err != nil {
+					return err
+				}
+				err = cluster.RunQueryWithLog(destmaster, "CREATE OR REPLACE VIEW "+schema+"."+table+"  AS SELECT * FROM "+schema+"."+table+"_copy")
+				if err != nil {
+					return err
+				}
+				err = cluster.RunQueryWithLog(destmaster, "RENAME TABLE "+schema+"."+table+" TO "+schema+"."+table+"_back, "+schema+"."+table+"_back TO  "+schema+"."+table)
+				if err != nil {
+					return err
+				}
+
+				err = cluster.RunQueryWithLog(destmaster, "RENAME TABLE  "+schema+"."+table+" TO "+schema+"."+table+"_old , "+schema+"."+table+"_copy TO "+schema+"."+table)
+				if err != nil {
+					return err
+				}
+				err = cluster.RunQueryWithLog(destmaster, "DROP VIEW  "+schema+"."+table+"_old")
+				if err != nil {
+					return err
+				}
+			}
+			query = "DROP TABLE " + schema + "." + table + "_copy,  " + schema + "." + table + "_old"
+			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+			if err != nil {
+				return err
+			}
+			//work can be done to a single proxy
+			return nil
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table string, destCluster *Cluster) error {
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("Reshard no valid master on current cluster")
+		return errors.New("Move table no valid master on current cluster")
 	}
 	destmaster := destCluster.GetMaster()
 	if destmaster == nil {
-		return errors.New("Reshard no valid master on dest cluster")
+		return errors.New("Move table no valid master on dest cluster")
 	}
 	ddl, err := cluster.GetTableDLLNoFK(schema, table, master)
 	if err != nil {
