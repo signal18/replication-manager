@@ -16,7 +16,7 @@
     <div style="padding: 0px 20px 10px 4px;">
       <b><u>Using</u></b><br>
       <span ng-click="clsetdbtag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.dbServersTags"
-                                                   class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="clsetdbtag(tag)"></i></span></div>
+                                                   class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="cldropdbtag(tag)"></i></span></div>
       <b><u>Ressources</u></b><br>
 <table><tr><td>
   <ng-gauge type="arch" value="selectedCluster.config.provDbMemory" thick="5" size="120"   min="1" max="25600"  cap="round" append="MB" label="Memory" />

@@ -48,7 +48,7 @@
                       </tr>
 
                       <tr ng-repeat="table in tables">
-                         <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
+                         <td><md-button class="md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button> <md-button  ng-if="settings.config.shardproxy" class="md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
                          <td class="process">{{ table.tableSchema }}</td>
                          <td class="process">{{ table.tableName }}    </td>
                          <td class="process">{{ table.engine }} </td>
