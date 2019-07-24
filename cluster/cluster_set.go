@@ -253,11 +253,13 @@ func (cluster *Cluster) SetClusterCredential(credential string) {
 func (cluster *Cluster) DropDBTag(dtag string) {
 	var newtags []string
 	for _, tag := range cluster.DBTags {
+		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
 		if dtag != tag {
 			newtags = append(newtags, tag)
 		}
 	}
-	cluster.Conf.ProvTags = strings.Join(newtags, ",")
+	cluster.DBTags = newtags
+	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
 }
 
