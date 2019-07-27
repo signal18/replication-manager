@@ -132,3 +132,7 @@
 [[constraint]]
   branch = "master"
   name = "github.com/percona/go-mysql"
+
+[[constraint]]
+  name = "gopkg.in/natefinch/lumberjack.v2"
+  version = "2.1.0"

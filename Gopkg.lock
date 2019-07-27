@@ -601,6 +601,14 @@
   version = "v0.11.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:3fc4078979c7bed217c0cf61db5311d19b47ce7989d03976eaa9f4447564375f"
+  name = "github.com/pires/go-proxyproto"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2c19fd512994b0cd3d16abb295029bf257d48a56"
+
+[[projects]]
   digest = "1:87d657fe2a38c018c33f867e7d6e6208d4997279b2c9e25d31aed22e461ad010"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -824,6 +832,14 @@
   version = "v1.4.7"
 
 [[projects]]
+  digest = "1:c805e517269b0ba4c21ded5836019ed7d16953d4026cb7d00041d039c7906be9"
+  name = "gopkg.in/natefinch/lumberjack.v2"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a96e63847dc3c67d17befa69c303767e2f84e54f"
+  version = "v2.1"
+
+[[projects]]
   digest = "1:3c839a777de0e6da035c9de900b60cbec463b0a89351192c1ea083eaf9e0fce0"
   name = "gopkg.in/tomb.v1"
   packages = ["."]
@@ -889,6 +905,7 @@
     "github.com/nsf/termbox-go",
     "github.com/percona/go-mysql/query",
     "github.com/peterbourgon/g2g",
+    "github.com/pires/go-proxyproto",
     "github.com/satori/go.uuid",
     "github.com/siddontang/go-mysql-elasticsearch/elastic",
     "github.com/siddontang/go-mysql/canal",
@@ -907,6 +924,7 @@
     "github.com/xwb1989/sqlparser",
     "golang.org/x/crypto/ssh",
     "golang.org/x/crypto/ssh/terminal",
+    "gopkg.in/natefinch/lumberjack.v2",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
