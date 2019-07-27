@@ -362,6 +362,26 @@ func (repman *ReplicationManager) Run() error {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	if repman.Conf.LogFile != "" {
+
+		hook, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   repman.Conf.LogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.GetLevel(),
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if err != nil {
+			log.WithError(err).Error("Can't init log file")
+		}
+		log.AddHook(hook)
+	}
+
 	if !repman.Conf.Daemon {
 		err := termbox.Init()
 		if err != nil {

@@ -196,6 +196,9 @@ func (server *ServerMonitor) IsMySQL() bool {
 }
 
 func (server *ServerMonitor) IsMariaDB() bool {
+	if server.DBVersion == nil {
+		return true
+	}
 	return server.DBVersion.IsMariaDB()
 }
 

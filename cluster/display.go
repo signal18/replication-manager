@@ -103,9 +103,10 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		// Only print debug messages if loglevel > 1
 	} else {
 		if cluster.Conf.LogFile != "" {
-			f := fmt.Sprintln(stamp, format)
+			//			f := fmt.Sprintln(stamp, format)
 
-			io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
+			//	io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
+			log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
 		}
 		if cluster.tlog != nil && cluster.tlog.Len > 0 {
 			cluster.tlog.Add(fmt.Sprintf(format, args...))

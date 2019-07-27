@@ -45,7 +45,7 @@ type Config struct {
 	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorLongQueryWithTable          bool   `mapstructure:"monitoring-long-query-with-table" toml:"monitoring-long-query-with-table" json:"monitoringLongQueryWithTable"`
 	MonitorLongQueryLogLength          int    `mapstructure:"monitoring-long-query-log-length" toml:""monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
-	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:""monitoring-erreur-log-length" json:"monitoringErruerLogLength"`
+	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:""monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	MonitorCapture                     bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureTrigger              string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
@@ -55,7 +55,10 @@ type Config struct {
 	LogFile                            string `mapstructure:"log-file" toml:"log-file" json:"logFile"`
 	LogSyslog                          bool   `mapstructure:"log-syslog" toml:"log-syslog" json:"logSyslog"`
 	LogLevel                           int    `mapstructure:"log-level" toml:"log-level" json:"logLevel"`
-	LogSST                             bool   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`
+	LogRotateMaxSize                   int    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
+	LogRotateMaxBackup                 int    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
+	LogRotateMaxAge                    int    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
+	LogSST                             bool   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"` // internal replication-manager sst
 	LogHeartbeat                       bool   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	User                               string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                              string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`

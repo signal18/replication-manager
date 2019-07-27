@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -353,7 +352,9 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 func (cluster *Cluster) isValidConfig() error {
 	if cluster.Conf.LogFile != "" {
 		var err error
-		cluster.logPtr, err = os.OpenFile(cluster.Conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+
+		//cluster.logPtr, err = os.OpenFile(cluster.Conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		//log.
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Failed opening logfile, disabling for the rest of the session")
 			cluster.Conf.LogFile = ""
