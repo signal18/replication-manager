@@ -207,6 +207,9 @@ func (server *ServerMonitor) HasSuperReadOnly() bool {
 }
 
 func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
+	if server.Variables["LONG_QUERY_TIME"] == "0" || server.Variables["LONG_QUERY_TIME"] == "0.000010" {
+		return false
+	}
 	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
 	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
 	if server.MonitorTime-server.PrevMonitorTime > 0 {
