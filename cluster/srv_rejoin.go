@@ -545,6 +545,24 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	return nil
 }
 
+func (cluster *Cluster) RejoinClone(source *ServerMonitor, dest *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Rejoining via master clone ")
+	if dest.DBVersion.IsMySQL() && dest.DBVersion.Major >= 8 {
+		if !dest.HasInstallPlugin("CLONE") {
+			cluster.LogPrintf(LvlInfo, "Installing Clone plugin")
+			dest.InstallPlugin("CLONE")
+		}
+		dest.ExecQueryNoBinLog("set global clone_valid_donor_list = '" + source.Host + ":" + source.Port + "'")
+		dest.ExecQueryNoBinLog("CLONE INSTANCE FROM " + dest.User + "@" + source.Host + ":" + source.Port + " identified by '" + dest.Pass + "'")
+		cluster.LogPrintf(LvlInfo, "Start slave after dump")
+		dest.SetReplicationGTIDSlavePosFromServer(source)
+		dest.StartSlave()
+	} else {
+		return errors.New("Version does not support cloning Master")
+	}
+	return nil
+}
+
 func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Rejoining via master mysqldump ")
 	usegtid := ""

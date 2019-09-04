@@ -1238,18 +1238,28 @@ func GetTables(db *sqlx.DB) (map[string]Table, []Table, error) {
 		if err != nil {
 			return nil, nil, errors.New("Could not get table list")
 		}
+		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
 			var v Table
-			var crcTable uint64
+
 			err = rows.Scan(&v.Table_schema, &v.Table_name, &v.Engine, &v.Table_rows, &v.Data_length, &v.Index_length, &v.Table_crc)
 			if err != nil {
 				return vars, tblList, err
 			}
+			//This produce 12 temp table on disk
+			/*	query := "SELECT COALESCE(CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10),0)  FROM information_schema.COLUMNS b inner join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  AND  b.table_name=c.table_name where b.table_schema='" + schema + "' AND  b.table_name='" + v.Table_name + "'"
+			 */
 
-			query := "SELECT COALESCE(CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10),0)  FROM information_schema.COLUMNS b inner join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  AND  b.table_name=c.table_name where b.table_schema='" + schema + "' AND  b.table_name='" + v.Table_name + "'"
-			err = db.QueryRowx(query).Scan(&crcTable)
+			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.Table_name + "`"
+			var tbl, ddl string
+			err := db.QueryRowx(query).Scan(&tbl, &ddl)
+
+			//	err = db.QueryRowx(query).Scan(&crcTable)
 			if err == nil {
-				v.Table_crc = crcTable
+				//	md5 := md5.Sum([]byte(ddl))
+				//	v.Table_crc = crcTable
+				crc64Int := crc64.Checksum([]byte(ddl), crc64Table)
+				v.Table_crc = crc64Int
 			}
 			tblList = append(tblList, v)
 			vars[v.Table_schema+"."+v.Table_name] = v
