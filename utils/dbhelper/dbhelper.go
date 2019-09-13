@@ -995,7 +995,7 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
 func GetVariableSource(db *sqlx.DB) string {
 	myver, _ := GetDBVersion(db)
 	var source string
-	if !myver.IsMariaDB() && myver.Major >= 5 && myver.Minor >= 7 {
+	if !myver.IsMariaDB() && ((myver.Major >= 5 && myver.Minor >= 7) || myver.Major >= 6) {
 		source = "performance_schema"
 	} else {
 		source = "information_schema"
