@@ -1301,8 +1301,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_log.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# LOGS\\n# ---- \\n\\n\\n[mariadb]\\nlog_slow_verbosity=query_plan,explain \\n[mysqld]\\n\\nslow_query_log = 1\\nlog_slow_admin_statements = 1\\nlog_slow_slave_statements = 1\\nlong_query_time = 10\\n\\n[mysqld]\\n\\ninnodb_print_all_deadlocks = 1\\nlog_warnings = 2 \\n\\n\\n\\n\"}",
-                    "var_updated": "2018-09-28 14:12:58",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_log.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# LOGS\\n# ---- \\n\\n\\n[mariadb]\\nlog_slow_verbosity=query_plan,explain \\nlog_warnings = 2 \\n\\n[mysqld]\\n\\nslow_query_log = 1\\nlog_slow_admin_statements = 1\\nlog_slow_slave_statements = 1\\nlong_query_time = 10\\ninnodb_print_all_deadlocks = 1\\n\\n\\n\\n\\n\"}",
+                    "var_updated": "2019-09-17 16:45:41",
                     "var_name": "db_cnf_default_log",
                     "id": 5916
                 },
