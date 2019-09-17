@@ -547,6 +547,10 @@ func (server *ServerMonitor) GetMyConfig() string {
 
 					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
 						content := misc.ExtractKey(f.Content, server.GetDBEnv())
+
+						if server.IsFilterInTags("docker") {
+							content = strings.Replace(content, "./.system", "/var/lib/.system", -1)
+						}
 						outFile, err := os.Create(fpath)
 						if err != nil {
 							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
