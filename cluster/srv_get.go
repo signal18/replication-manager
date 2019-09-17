@@ -549,7 +549,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 						content := misc.ExtractKey(f.Content, server.GetDBEnv())
 
 						if server.IsFilterInTags("docker") {
-							content = strings.Replace(content, "./.system", "/var/lib/.system", -1)
+							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
 						}
 						outFile, err := os.Create(fpath)
 						if err != nil {
