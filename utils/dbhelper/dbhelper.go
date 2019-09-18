@@ -962,12 +962,17 @@ func GetSlaveHostsDiscovery(db *sqlx.DB) ([]string, error) {
 	return slaveList, nil
 }
 
-func GetEventStatus(db *sqlx.DB) ([]Event, error) {
+func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 
 	ss := []Event{}
-	err := udb.Select(&ss, "SELECT db as Db, name as Name, definer as Definer, status+0  AS Status FROM mysql.event")
+
+	query := "SELECT db as Db, name as Name, definer as Definer, status+0  AS Status FROM mysql.event"
+	if version.IsMySQL() && version.Major >= 8 {
+		query = "SELECT EVENT_SCHEMA as Db, EVENT_NAME as Name, definer as Definer, status+0  AS Status FROM information_schema.EVENTS"
+	}
+	err := udb.Select(&ss, query)
 	if err != nil {
 		return nil, errors.New("Could not get event status")
 	}
