@@ -76,11 +76,11 @@ func (mv *MySQLVersion) IsMySQL57() bool {
 	return false
 }
 
-func (mv *MySQLVersion) IsMySQLOrPercona57() bool {
+func (mv *MySQLVersion) IsMySQLOrPerconaGreater57() bool {
 	if mv == nil {
 		return false
 	}
-	if (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && mv.Major == 5 && mv.Minor > 6 {
+	if (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 5 && mv.Minor > 6) || mv.Major > 5) {
 		return true
 	}
 	return false

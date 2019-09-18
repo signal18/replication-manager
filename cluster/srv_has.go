@@ -203,7 +203,7 @@ func (server *ServerMonitor) IsMariaDB() bool {
 }
 
 func (server *ServerMonitor) HasSuperReadOnly() bool {
-	return server.DBVersion.IsMySQLOrPercona57()
+	return server.DBVersion.IsMySQLOrPerconaGreater57()
 }
 
 func (server *ServerMonitor) HasHighNumberSlowQueries() bool {

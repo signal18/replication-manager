@@ -208,7 +208,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 		}
-	} else if cluster.master.DBVersion.IsMySQLOrPercona57() && cluster.master.HasGTIDReplication() {
+	} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
 		crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -588,7 +588,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 
-		} else if cluster.oldMaster.DBVersion.IsMySQLOrPercona57() && hasMyGTID == true {
+		} else if cluster.oldMaster.DBVersion.IsMySQLOrPerconaGreater57() && hasMyGTID == true {
 			changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:      cluster.master.Host,
 				Port:      cluster.master.Port,
@@ -649,7 +649,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 		if changeMasterErr != nil {
-			cluster.LogPrintf(LvlErr, "Change master failed on slave %s, %s", sl.URL, err)
+			cluster.LogPrintf(LvlErr, "Change master failed on slave %s, %s", sl.URL, changeMasterErr)
 		}
 		err = sl.StartSlave()
 		if err != nil {
@@ -1151,7 +1151,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			}
-		} else if cluster.master.DBVersion.IsMySQLOrPercona57() && cluster.master.HasGTIDReplication() {
+		} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
 			crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -1309,7 +1309,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 	var changeMasterErr error
 
 	// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
-	if parent.DBVersion.IsMySQLOrPercona57() && hasMyGTID == true {
+	if parent.DBVersion.IsMySQLOrPerconaGreater57() && hasMyGTID == true {
 		changeMasterErr = dbhelper.ChangeMaster(child.Conn, dbhelper.ChangeMasterOpt{
 			Host:      parent.Host,
 			Port:      parent.Port,

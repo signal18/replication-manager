@@ -143,7 +143,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) error {
 	var err error
-	if server.DBVersion.IsMySQLOrPercona57() {
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		// We can do MySQL 5.7 style failover
 		server.ClusterGroup.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
