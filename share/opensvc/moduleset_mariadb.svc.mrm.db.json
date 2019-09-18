@@ -1781,16 +1781,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_paralleloptimistic.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = optimistic\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\n\"}",
-                    "var_updated": "2019-02-02 11:38:29",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_paralleloptimistic.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = optimistic\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\nslave_parallel_type=LOGICAL_CLOCK\"}",
+                    "var_updated": "2019-09-18 15:38:31",
                     "var_name": "db_cnf_rep_with_paralleloptimistic",
                     "id": 6029
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_parallelconservative.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = conservative\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\n\"}",
-                    "var_updated": "2019-02-02 11:40:37",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_parallelconservative.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nslave_parallel_mode = conservative\\nslave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nslave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld-5.7]\\nslave-parallel-type=LOGICAL_CLOCK\\nslave_parallel_workers= %%ENV:NODES_CPU_CORES%%\\n \\n\\n[mysqld-8.0]\\ntransaction-write-set-extraction=XXHASH64\\nslave_preserve_commit_order=on\\nslave_parallel_type=LOGICAL_CLOCK\\n\"}",
+                    "var_updated": "2019-09-18 15:37:54",
                     "var_name": "db_cnf_rep_with_parallelconservative",
                     "id": 6030
                 },
