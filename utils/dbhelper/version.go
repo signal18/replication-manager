@@ -25,24 +25,41 @@ func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
 	mv := new(MySQLVersion)
 	if strings.Contains(version, "MariaDB") {
 		mv.Flavor = "MariaDB"
+	} else if strings.Contains(version, "PostgreSQL") {
+		mv.Flavor = "PostgreSQL"
 	} else if strings.Contains(versionComment, "Percona") {
 		mv.Flavor = "Percona"
 	} else {
 		mv.Flavor = "MySQL"
 	}
-	infos := strings.Split(version, "-")
-	version = infos[0]
-	tokens := strings.Split(version, ".")
-	if len(tokens) >= 2 {
+	if mv.Flavor == "PostgreSQL" {
+		infos := strings.Split(version, " ")
+		version = infos[1]
+		tokens := strings.Split(version, ".")
 		mv.Major, _ = strconv.Atoi(tokens[0])
 		mv.Minor, _ = strconv.Atoi(tokens[1])
-		mv.Release, _ = strconv.Atoi(tokens[2])
+	} else {
+		infos := strings.Split(version, "-")
+		version = infos[0]
+		tokens := strings.Split(version, ".")
+		if len(tokens) >= 2 {
+			mv.Major, _ = strconv.Atoi(tokens[0])
+			mv.Minor, _ = strconv.Atoi(tokens[1])
+			mv.Release, _ = strconv.Atoi(tokens[2])
+		}
 	}
 	return mv
 }
 
 func (mv *MySQLVersion) IsMySQL() bool {
 	if mv.Flavor == "MySQL" {
+		return true
+	}
+	return false
+}
+
+func (mv *MySQLVersion) IsPPostgreSQL() bool {
+	if mv.Flavor == "PostgreSQL" {
 		return true
 	}
 	return false

@@ -157,7 +157,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		cluster.oldMaster.freeze()
 		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
-		err = dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn)
+		err = dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not lock tables on %s (old master) %s", cluster.oldMaster.URL, err)
 		}
@@ -229,7 +229,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 			binlogfiletoreach, _ := strconv.Atoi(strings.Split(rs.MasterLogFile.String, ".")[1])
 			cluster.LogPrintf(LvlInfo, "Relay server log pos reached %d", binlogfiletoreach)
-			dbhelper.ResetMaster(cluster.master.Conn)
+			dbhelper.ResetMaster(cluster.master.Conn, cluster.master.DBVersion)
 			cluster.LogPrintf(LvlInfo, "Reset Master on candidate Master")
 			ctbinlog := 0
 			for ctbinlog < binlogfiletoreach {
@@ -238,7 +238,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				dbhelper.FlushLogs(cluster.master.Conn)
 			}
 			time.Sleep(2 * time.Second)
-			ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn)
+			ms, _ := dbhelper.GetMasterStatus(cluster.master.Conn, cluster.master.DBVersion)
 			cluster.master.FailoverMasterLogFile = ms.File
 			cluster.master.FailoverMasterLogPos = "4"
 			crash.FailoverMasterLogFile = ms.File
@@ -342,7 +342,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 			one_shoot_slave_pos = true
 		}
-		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.oldMaster.Conn)
+		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not get MySQL GTID status: ", err)
 		}
@@ -365,7 +365,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 				IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-			})
+			}, cluster.oldMaster.DBVersion)
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
 			}
@@ -388,7 +388,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 				IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-			})
+			}, cluster.oldMaster.DBVersion)
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
 			}
@@ -413,7 +413,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 					IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-				})
+				}, cluster.oldMaster.DBVersion)
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.Host,
@@ -427,7 +427,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 					IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-				})
+				}, cluster.oldMaster.DBVersion)
 			}
 			if changeMasterErr != nil {
 				cluster.LogPrintf(LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -452,7 +452,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 					IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-				})
+				}, cluster.oldMaster.DBVersion)
 			} else {
 				err = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
 					Host:      relaymaster.Host,
@@ -468,7 +468,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: cluster.oldMaster.DBVersion.IsMariaDB(),
 					IsMySQL:   cluster.oldMaster.DBVersion.IsMySQLOrPercona(),
-				})
+				}, cluster.oldMaster.DBVersion)
 			}
 		}
 
@@ -531,7 +531,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
-		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.master.Conn)
+		hasMyGTID, err := dbhelper.HasMySQLGTID(cluster.master.Conn, cluster.master.DBVersion)
 		var changeMasterErr error
 
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
@@ -582,7 +582,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: sl.DBVersion.IsMariaDB(),
 					IsMySQL:   sl.DBVersion.IsMySQLOrPercona(),
-				})
+				}, sl.DBVersion)
 			} else {
 				sl.SetMaintenance()
 			}
@@ -601,7 +601,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: sl.DBVersion.IsMariaDB(),
 				IsMySQL:   sl.DBVersion.IsMySQLOrPercona(),
-			})
+			}, sl.DBVersion)
 		} else if cluster.Conf.MxsBinlogOn == false {
 			//MariaDB all cases use GTID
 
@@ -617,7 +617,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Channel:   cluster.Conf.MasterConn,
 				IsMariaDB: sl.DBVersion.IsMariaDB(),
 				IsMySQL:   sl.DBVersion.IsMySQLOrPercona(),
-			})
+			}, sl.DBVersion)
 		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
 
 			cluster.LogPrintf(LvlInfo, "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
@@ -634,7 +634,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Channel:   cluster.Conf.MasterConn,
 					IsMariaDB: sl.DBVersion.IsMariaDB(),
 					IsMySQL:   sl.DBVersion.IsMySQLOrPercona(),
-				})
+				}, sl.DBVersion)
 			} else {
 				changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.Host,
@@ -645,7 +645,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "MXS",
 					SSL:       cluster.Conf.ReplicationSSL,
-				})
+				}, sl.DBVersion)
 			}
 		}
 		if changeMasterErr != nil {
@@ -948,7 +948,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 	/* binlog + ping  */
-	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host) == false {
+	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
 		cluster.sme.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
@@ -1110,7 +1110,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 		cluster.oldMaster.freeze()
 		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
-		err = dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn)
+		err = dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Could not lock tables on %s (old master) %s", cluster.oldMaster.URL, err)
 		}
@@ -1305,7 +1305,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		cluster.LogPrintf(LvlErr, "Could not stop slave on server %s, %s", child.URL, err)
 	}
 
-	hasMyGTID, err := dbhelper.HasMySQLGTID(parent.Conn)
+	hasMyGTID, err := dbhelper.HasMySQLGTID(parent.Conn, parent.DBVersion)
 	var changeMasterErr error
 
 	// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
@@ -1322,7 +1322,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Channel:   cluster.Conf.MasterConn,
 			IsMariaDB: child.DBVersion.IsMariaDB(),
 			IsMySQL:   child.DBVersion.IsMySQLOrPercona(),
-		})
+		}, child.DBVersion)
 	} else {
 		//MariaDB all cases use GTID
 
@@ -1338,7 +1338,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Channel:   cluster.Conf.MasterConn,
 			IsMariaDB: child.DBVersion.IsMariaDB(),
 			IsMySQL:   child.DBVersion.IsMySQLOrPercona(),
-		})
+		}, child.DBVersion)
 	}
 	if changeMasterErr != nil {
 		cluster.LogPrintf(LvlErr, "Could not change masteron server %s, %s", child.URL, changeMasterErr)

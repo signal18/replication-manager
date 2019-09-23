@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/lib/pq"
+
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
@@ -43,13 +45,13 @@ type ServerMonitor struct {
 	User                        string                       `json:"user"`
 	Pass                        string                       `json:"-"`
 	URL                         string                       `json:"url"`
-	DSN                         string                       `json:"-"`
+	DSN                         string                       `json:"dsn"`
 	Host                        string                       `json:"host"`
 	Port                        string                       `json:"port"`
 	TunnelPort                  string                       `json:"tunnelPort"`
 	IP                          string                       `json:"ip"`
 	Strict                      string                       `json:"strict"`
-	ServerID                    uint                         `json:"serverId"`
+	ServerID                    uint64                       `json:"serverId"`
 	LogBin                      string                       `json:"logBin"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
@@ -146,6 +148,8 @@ type ServerMonitor struct {
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
 	InCaptureMode               bool                         `json:"inCaptureMode"`
 	Datadir                     string                       `json:"-"`
+	PostgressDB                 string                       `json:"postgressDB"`
+	CrcTable                    *crc64.Table                 `json:"-"`
 }
 
 type serverList []*ServerMonitor
@@ -174,17 +178,21 @@ const (
 /* Initializes a server object */
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 	var err error
-	crcTable := crc64.MakeTable(crc64.ECMA)
+
 	server := new(ServerMonitor)
+	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
-	server.Name, _ = misc.SplitHostPort(url)
+	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
+	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
 		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
 	}
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
-
+	var sid uint64
+	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
+	server.ServerID = sid
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()
 	}
@@ -234,9 +242,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
-
-	server.Conn, err = sqlx.Open("mysql", server.DSN)
-
+	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+		server.Conn, err = sqlx.Open("postgres", server.DSN)
+	} else {
+		server.Conn, err = sqlx.Open("mysql", server.DSN)
+	}
 	return server, err
 }
 
@@ -272,9 +282,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		}
-		server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
+		//	server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
+
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
-			server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
+			//	server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
+			server.ClusterGroup.LogPrintf(LvlErr, "Driver Error %s %d ", server.URL, driverErr.Number)
+
 			// access denied
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
@@ -376,7 +390,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	var ss dbhelper.SlaveStatus
-	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 	// We have no replicatieon can this be the old master
 	//  1617 is no multi source channel found
 	noChannel := false
@@ -477,131 +491,132 @@ func (server *ServerMonitor) Refresh() error {
 		// maxscale don't support show variables
 		server.PrevMonitorTime = server.MonitorTime
 		server.MonitorTime = time.Now().Unix()
-		server.Variables, err = dbhelper.GetVariables(server.Conn)
-
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not get variables %s", err)
-			return nil
-		}
-		server.Version = dbhelper.MariaDBVersion(server.Variables["VERSION"]) // Deprecated
 		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Could not get database version")
 		}
-
-		if server.Variables["EVENT_SCHEDULER"] != "ON" {
-			server.EventScheduler = false
-		} else {
-			server.EventScheduler = true
+		server.Variables, err = dbhelper.GetVariables(server.Conn, server.DBVersion)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Could not get variables %s", err)
+			return nil
 		}
-		server.Strict = server.Variables["GTID_STRICT_MODE"]
-		server.LogBin = server.Variables["LOG_BIN"]
-		server.ReadOnly = server.Variables["READ_ONLY"]
-		server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
-		server.LogOutput = server.Variables["LOG_OUTPUT"]
-		server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
-
-		if server.Variables["READ_ONLY"] != "ON" {
-			server.HaveReadOnly = false
-		} else {
-			server.HaveReadOnly = true
-		}
-		if server.Variables["LOG_BIN_COMPRESS"] != "ON" {
-			server.HaveBinlogCompress = false
-		} else {
-			server.HaveBinlogCompress = true
-		}
-		if server.Variables["GTID_STRICT_MODE"] != "ON" {
-			server.HaveGtidStrictMode = false
-		} else {
-			server.HaveGtidStrictMode = true
-		}
-		if server.Variables["LOG_SLAVE_UPDATES"] != "ON" {
-			server.HaveLogSlaveUpdates = false
-		} else {
-			server.HaveLogSlaveUpdates = true
-		}
-		if server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
-			server.HaveInnodbTrxCommit = false
-		} else {
-			server.HaveInnodbTrxCommit = true
-		}
-		if server.Variables["SYNC_BINLOG"] != "1" {
-			server.HaveSyncBinLog = false
-		} else {
-			server.HaveSyncBinLog = true
-		}
-		if server.Variables["INNODB_CHECKSUM"] == "NONE" {
-			server.HaveChecksum = false
-		} else {
-			server.HaveChecksum = true
-		}
-		if server.Variables["BINLOG_FORMAT"] != "ROW" {
-			server.HaveBinlogRow = false
-		} else {
-			server.HaveBinlogRow = true
-		}
-		if server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
-			server.HaveBinlogAnnotate = false
-		} else {
-			server.HaveBinlogAnnotate = true
-		}
-		if server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
-			server.HaveBinlogSlowqueries = false
-		} else {
-			server.HaveBinlogSlowqueries = true
-		}
-		if server.Variables["WSREP_ON"] != "ON" {
-			server.HaveWsrep = false
-		} else {
-			server.HaveWsrep = true
-		}
-		if server.Variables["SLOW_QUERY_LOG"] != "ON" {
-			server.HaveSlowQueryLog = false
-		} else {
-			server.HaveSlowQueryLog = true
-		}
-		if server.Variables["PERFORMANCE_SCHEMA"] != "ON" {
-			server.HavePFS = false
-		} else {
-			server.HavePFS = true
-			ConsumerVariables, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
-			if ConsumerVariables["SLOW_QUERY_PFS"] != "ON" {
-				server.HavePFSSlowQueryLog = false
+		if !server.DBVersion.IsPPostgreSQL() {
+			if server.Variables["EVENT_SCHEDULER"] != "ON" {
+				server.EventScheduler = false
 			} else {
-				server.HavePFSSlowQueryLog = true
+				server.EventScheduler = true
 			}
-		}
-		if server.Variables["ENFORCE_GTID_CONSISTENCY"] == "ON" && server.Variables["GTID_MODE"] == "ON" {
-			server.HaveMySQLGTID = true
-		}
+			server.Strict = server.Variables["GTID_STRICT_MODE"]
+			server.LogBin = server.Variables["LOG_BIN"]
+			server.ReadOnly = server.Variables["READ_ONLY"]
+			server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
+			server.LogOutput = server.Variables["LOG_OUTPUT"]
+			server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
 
-		server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+			if server.Variables["READ_ONLY"] != "ON" {
+				server.HaveReadOnly = false
+			} else {
+				server.HaveReadOnly = true
+			}
+			if server.Variables["LOG_BIN_COMPRESS"] != "ON" {
+				server.HaveBinlogCompress = false
+			} else {
+				server.HaveBinlogCompress = true
+			}
+			if server.Variables["GTID_STRICT_MODE"] != "ON" {
+				server.HaveGtidStrictMode = false
+			} else {
+				server.HaveGtidStrictMode = true
+			}
+			if server.Variables["LOG_SLAVE_UPDATES"] != "ON" {
+				server.HaveLogSlaveUpdates = false
+			} else {
+				server.HaveLogSlaveUpdates = true
+			}
+			if server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
+				server.HaveInnodbTrxCommit = false
+			} else {
+				server.HaveInnodbTrxCommit = true
+			}
+			if server.Variables["SYNC_BINLOG"] != "1" {
+				server.HaveSyncBinLog = false
+			} else {
+				server.HaveSyncBinLog = true
+			}
+			if server.Variables["INNODB_CHECKSUM"] == "NONE" {
+				server.HaveChecksum = false
+			} else {
+				server.HaveChecksum = true
+			}
+			if server.Variables["BINLOG_FORMAT"] != "ROW" {
+				server.HaveBinlogRow = false
+			} else {
+				server.HaveBinlogRow = true
+			}
+			if server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
+				server.HaveBinlogAnnotate = false
+			} else {
+				server.HaveBinlogAnnotate = true
+			}
+			if server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
+				server.HaveBinlogSlowqueries = false
+			} else {
+				server.HaveBinlogSlowqueries = true
+			}
+			if server.Variables["WSREP_ON"] != "ON" {
+				server.HaveWsrep = false
+			} else {
+				server.HaveWsrep = true
+			}
+			if server.Variables["SLOW_QUERY_LOG"] != "ON" {
+				server.HaveSlowQueryLog = false
+			} else {
+				server.HaveSlowQueryLog = true
+			}
+			if server.Variables["PERFORMANCE_SCHEMA"] != "ON" {
+				server.HavePFS = false
+			} else {
+				server.HavePFS = true
+				ConsumerVariables, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
+				if ConsumerVariables["SLOW_QUERY_PFS"] != "ON" {
+					server.HavePFSSlowQueryLog = false
+				} else {
+					server.HavePFSSlowQueryLog = true
+				}
+			}
+			if server.Variables["ENFORCE_GTID_CONSISTENCY"] == "ON" && server.Variables["GTID_MODE"] == "ON" {
+				server.HaveMySQLGTID = true
+			}
 
-		if server.DBVersion.IsMariaDB() {
-			server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
-			server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
-			server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-		} else {
-			server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
-			server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
-			server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
-			server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-		}
+			server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 
-		var sid uint64
-		sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not parse server_id, reason: %s", err)
-		}
-		server.ServerID = uint(sid)
+			if server.DBVersion.IsMariaDB() {
+				server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
+				server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
+				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
 
-		server.EventStatus, err = dbhelper.GetEventStatus(server.Conn, server.DBVersion)
-		if err != nil {
-			server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
-		}
+			} else {
+				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
+				server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+			}
+
+			var sid uint64
+			sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Could not parse server_id, reason: %s", err)
+			}
+			server.ServerID = uint64(sid)
+
+			server.EventStatus, err = dbhelper.GetEventStatus(server.Conn, server.DBVersion)
+			if err != nil {
+				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
+			}
+		} // end not postgress
+
 		// get Users
-		server.Users, _ = dbhelper.GetUsers(server.Conn)
+		server.Users, _ = dbhelper.GetUsers(server.Conn, server.DBVersion)
 		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
@@ -616,45 +631,50 @@ func (server *ServerMonitor) Refresh() error {
 	if server.InCaptureMode {
 		server.ClusterGroup.SetState("WARN0085", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0085"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
-	err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
-	if err != nil {
-		server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
-	}
-
 	// SHOW MASTER STATUS
-	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn)
+
+	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
 	if err != nil {
 		// binary log might be closed for that server
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 	}
-	if server.ClusterGroup.Conf.MonitorInnoDBStatus {
-		// SHOW ENGINE INNODB STATUS
-		server.EngineInnoDB, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
+
+	if !server.DBVersion.IsPPostgreSQL() {
+		err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlWarn, "Could not get engine innodb status variables")
+			server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
 		}
-	}
-	if server.ClusterGroup.Conf.MonitorPFS {
-		// GET PFS query digest
-		server.PFSQueries, err = dbhelper.GetQueries(server.Conn)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlWarn, "Could not get PFS queries")
+
+		if server.ClusterGroup.Conf.MonitorInnoDBStatus {
+			// SHOW ENGINE INNODB STATUS
+			server.EngineInnoDB, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlWarn, "Could not get engine innodb status variables")
+			}
 		}
-	}
-	if server.Variables["LOG_OUTPUT"] == "TABLE" {
-		server.GetSlowLogTable()
-	}
+		if server.ClusterGroup.Conf.MonitorPFS {
+			// GET PFS query digest
+			server.PFSQueries, err = dbhelper.GetQueries(server.Conn)
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlWarn, "Could not get PFS queries")
+			}
+		}
+		if server.Variables["LOG_OUTPUT"] == "TABLE" {
+			server.GetSlowLogTable()
+		}
+
+	} // End not PG
 
 	// Set channel source name is dangerous with multi cluster
 
 	// SHOW SLAVE STATUS
 
-	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
-		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn)
+	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPPostgreSQL() {
+		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 	} else {
-		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn)
+		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 	}
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
@@ -666,22 +686,40 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsSlave = false
 	} else {
 		server.IsSlave = true
-		if server.SlaveStatus.UsingGtid.String == "Slave_Pos" || server.SlaveStatus.UsingGtid.String == "Current_Pos" {
-			server.HaveMariaDBGTID = true
+		if server.DBVersion.IsPPostgreSQL() {
+			//PostgresQL as no server_id concept mimic via internal server id for topology detection
+			var sid uint64
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.CrcTable), 10), 10, 64)
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not zssign server_id s", err)
+			}
+			server.SlaveStatus.MasterServerID = sid
+			for i := range server.Replications {
+				server.Replications[i].MasterServerID = sid
+			}
+
+			server.SlaveGtid = gtid.NewList(server.SlaveStatus.GtidSlavePos.String)
+
 		} else {
-			server.HaveMariaDBGTID = false
-		}
-		if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
-			server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
+			if server.SlaveStatus.UsingGtid.String == "Slave_Pos" || server.SlaveStatus.UsingGtid.String == "Current_Pos" {
+				server.HaveMariaDBGTID = true
+			} else {
+				server.HaveMariaDBGTID = false
+			}
+			if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
+				server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
+			}
 		}
 	}
 	server.ReplicationHealth = server.CheckReplication()
 	// if MaxScale exit at fetch variables and status part as not supported
+
 	if server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
 	server.PrevStatus = server.Status
-	server.Status, _ = dbhelper.GetStatus(server.Conn)
+
+	server.Status, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
 	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
 	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
 		server.HaveSemiSync = false
@@ -721,17 +759,19 @@ func (server *ServerMonitor) Refresh() error {
 		server.ClusterGroup.SetState("WARN0088", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
 	// monitor plulgins plugins
-	if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
-		server.Plugins, _ = dbhelper.GetPlugins(server.Conn)
-		server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
-		server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
-		server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
+	if !server.DBVersion.IsPPostgreSQL() {
+		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
 
-	}
-	if server.HaveMetaDataLocksLog {
-		server.MetaDataLocks, _ = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
-	}
+			server.Plugins, _ = dbhelper.GetPlugins(server.Conn)
+			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
+			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
+			server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
 
+		}
+		if server.HaveMetaDataLocksLog {
+			server.MetaDataLocks, _ = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
+		}
+	}
 	server.CheckMaxConnections()
 
 	// Initialize graphite monitoring
@@ -756,7 +796,7 @@ func (server *ServerMonitor) freeze() bool {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	server.maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS")
+	server.maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get max_connections value on demoted leader")
 	} else {
@@ -776,7 +816,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
-		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "")
+		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
 		if err != nil {
 			return err
 		}
@@ -788,7 +828,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
-			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn)
+			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 			if err != nil {
 				return err
 			}
@@ -799,7 +839,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 		if err != nil {
 			return err
 		}
@@ -808,7 +848,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 				break
 			}
-			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 			if err != nil {
 				return err
 			}
@@ -860,16 +900,16 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) StopSlave() error {
-	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) StartSlave() error {
-	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 
 }
 
 func (server *ServerMonitor) ResetMaster() error {
-	return dbhelper.ResetMaster(server.Conn)
+	return dbhelper.ResetMaster(server.Conn, server.DBVersion)
 }
 
 func (server *ServerMonitor) ResetPFSQueries() error {
@@ -877,15 +917,15 @@ func (server *ServerMonitor) ResetPFSQueries() error {
 }
 
 func (server *ServerMonitor) StopSlaveIOThread() error {
-	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) StopSlaveSQLThread() error {
-	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) ResetSlave() error {
-	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) FlushTables() error {
@@ -902,7 +942,7 @@ func (server *ServerMonitor) Provision() {
 
 func (server *ServerMonitor) SkipReplicationEvent() {
 	server.StopSlave()
-	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQLOrPercona())
+	dbhelper.SkipBinlogEvent(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 	server.StartSlave()
 }
 
@@ -1002,11 +1042,11 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		var clsave Save
 		clsave.ProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 		clsave.InnoDBStatus, _ = dbhelper.GetEngineInnoDBSatus(server.Conn)
-		clsave.Status, _ = dbhelper.GetStatus(server.Conn)
+		clsave.Status, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
 		if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
-			clsave.SlaveSatus, _ = dbhelper.GetAllSlavesStatus(server.Conn)
+			clsave.SlaveSatus, _ = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		} else {
-			clsave.SlaveSatus, _ = dbhelper.GetChannelSlaveStatus(server.Conn)
+			clsave.SlaveSatus, _ = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 		}
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Name+"_capture_"+t.Format("20060102150405")+".json", saveJSON, 0644)

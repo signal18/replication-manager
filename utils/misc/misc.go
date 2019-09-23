@@ -31,6 +31,22 @@ func SplitHostPort(s string) (string, string) {
 	return items[0], items[1]
 }
 
+func SplitHostPortDB(s string) (string, string, string) {
+	dbitems := strings.Split(s, "/")
+	s = dbitems[0]
+	items := strings.Split(s, ":")
+	if len(dbitems) == 1 {
+		if len(items) == 1 {
+			return items[0], "3306", ""
+		}
+		return items[0], items[1], ""
+	}
+	if len(items) == 1 {
+		return items[0], "3306", dbitems[1]
+	}
+	return items[0], items[1], dbitems[1]
+}
+
 /* Returns generic items from a pair, e.g. user:pass */
 func SplitPair(s string) (string, string) {
 	items := strings.Split(s, ":")

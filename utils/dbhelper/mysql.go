@@ -4,16 +4,16 @@ package dbhelper
 
 import "github.com/jmoiron/sqlx"
 
-func HasMySQLGTID(db *sqlx.DB) (bool, error) {
+func HasMySQLGTID(db *sqlx.DB, myver *MySQLVersion) (bool, error) {
 	myvar, _ := GetDBVersion(db)
 	if myvar.IsMariaDB() {
 		return false, nil
 	}
-	val, err := GetVariableByName(db, "ENFORCE_GTID_CONSISTENCY")
+	val, err := GetVariableByName(db, "ENFORCE_GTID_CONSISTENCY", myver)
 	if err != nil || val == "OFF" {
 		return false, err
 	}
-	val, err = GetVariableByName(db, "GTID_MODE")
+	val, err = GetVariableByName(db, "GTID_MODE", myver)
 	if err != nil || val == "OFF" {
 		return false, err
 	}

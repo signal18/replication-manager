@@ -6,7 +6,7 @@
 
 package cluster
 
-func (cluster *Cluster) SwitchServerMaintenance(serverid uint) {
+func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
 	server.SwitchMaintenance()
 	cluster.SetProxyServerMaintenance(server.ServerID)

@@ -508,7 +508,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "SetDefaultMasterConn on server %s ", server.URL)
 		}
-		err = dbhelper.SetDefaultMasterConn(server.Conn, cluster.Conf.MasterConn)
+		err = dbhelper.SetDefaultMasterConn(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 		if err != nil {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
@@ -518,7 +518,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 		cluster.LogPrintf(LvlInfo, "Reset Master on server %s ", server.URL)
 
-		err = dbhelper.ResetMaster(server.Conn)
+		err = dbhelper.ResetMaster(server.Conn, server.DBVersion)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Reset Master on server %s %s", server.URL, err)
 		}
@@ -526,7 +526,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
 		if server.DBVersion.IsMariaDB() {
-			err = dbhelper.StopAllSlaves(server.Conn)
+			err = dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
 		} else {
 			err = server.StopSlave()
 		}
@@ -622,7 +622,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			} else {
 				// A slave
 				var hasMyGTID bool
-				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn)
+				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn, server.DBVersion)
 				//mariadb
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					cluster.Servers[masterKey].Refresh()
@@ -641,7 +641,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
 						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-					})
+					}, server.DBVersion)
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 
@@ -656,7 +656,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
 						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-					})
+					}, server.DBVersion)
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.Servers[masterKey].URL)
 
@@ -676,7 +676,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 						Channel:   cluster.Conf.MasterConn,
 						IsMariaDB: server.DBVersion.IsMariaDB(),
 						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-					})
+					}, server.DBVersion)
 
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with old replication style and %s as master", cluster.Servers[masterKey].URL)
@@ -709,8 +709,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				server.SetReadWrite()
 				continue
 			} else {
-				dbhelper.StopAllSlaves(server.Conn)
-				dbhelper.ResetAllSlaves(server.Conn)
+				dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
+				dbhelper.ResetAllSlaves(server.Conn, server.DBVersion)
 
 				if relaykey == key {
 					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Conf.MasterConn, cluster.Servers[masterKey].Host, cluster.Servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)

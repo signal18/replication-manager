@@ -637,7 +637,7 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *Proxy) error {
 		}
 
 		var sv map[string]string
-		sv, err = dbhelper.GetVariables(c)
+		sv, err = dbhelper.GetVariables(c, proxy.ShardProxy.DBVersion)
 
 		cluster.LogPrintf(LvlInfo, "Spider release is %s", sv["SPIDER_VERSION"])
 

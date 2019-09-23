@@ -11,8 +11,6 @@ package cluster
 
 import (
 	"strconv"
-
-	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 func (server *ServerMonitor) HasInstallPlugin(name string) bool {
@@ -62,11 +60,18 @@ func (sl serverList) checkAllSlavesRunning() bool {
 
 /* Check Consistency parameters on server */
 func (server *ServerMonitor) IsAcid() bool {
-	syncBin, _ := dbhelper.GetVariableByName(server.Conn, "SYNC_BINLOG")
-	logFlush, _ := dbhelper.GetVariableByName(server.Conn, "INNODB_FLUSH_LOG_AT_TRX_COMMIT")
-	if syncBin == "1" && logFlush == "1" {
-		return true
+	if server.DBVersion.IsPPostgreSQL() {
+		if server.Variables["FSYNC"] == "ON" && server.Variables["SYNCHRONOUS_COMMIT"] == "ON" {
+			return true
+		}
+	} else {
+		syncBin := server.Variables["SYNC_BINLOG"]
+		logFlush := server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"]
+		if syncBin == "1" && logFlush == "1" {
+			return true
+		}
 	}
+
 	return false
 }
 

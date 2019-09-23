@@ -177,13 +177,13 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 		relaycheck, _ := cluster.GetMasterFromReplication(s)
 		if relaycheck != nil {
 			if relaycheck.IsRelay == false {
-				status, _ := dbhelper.GetStatusAsInt(s.Conn)
+				status, _ := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
 				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
 				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
-				status2, _ := dbhelper.GetStatusAsInt(s.Conn)
+				status2, _ := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}

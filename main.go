@@ -209,9 +209,10 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterWsrep, "replication-multi-master-wsrep", false, "Enable Galera multi-master")
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterRing, "replication-multi-master-ring", false, "Multi-master ring topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
+	monitorCmd.Flags().BoolVar(&conf.MasterSlavePgStream, "replication-master-slave-pg-stream", false, "Postgres streaming replication")
+	monitorCmd.Flags().BoolVar(&conf.MasterSlavePgLogical, "replication-master-slave-pg-locgical", false, "Postgres logical replication")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
 	monitorCmd.Flags().StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
-
 	monitorCmd.Flags().StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	monitorCmd.Flags().StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")

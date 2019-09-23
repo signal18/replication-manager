@@ -49,6 +49,7 @@ type Cluster struct {
 	IsClusterDown        bool                 `json:"isClusterDown"`
 	IsProvisioned        bool                 `json:"isProvisioned"`
 	IsFailable           bool                 `json:"isFailable"`
+	IsPostgres           bool                 `json:"isPostgres"`
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
@@ -196,12 +197,14 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		"sphinx":     "proxy",
 	}
 	cluster.TopologyType = map[string]string{
-		topoMasterSlave:      "master-slave",
-		topoBinlogServer:     "binlog-server",
-		topoMultiTierSlave:   "multi-tier-slave",
-		topoMultiMaster:      "multi-master",
-		topoMultiMasterRing:  "multi-master-ring",
-		topoMultiMasterWsrep: "multi-master-wsrep",
+		topoMasterSlave:         "master-slave",
+		topoBinlogServer:        "binlog-server",
+		topoMultiTierSlave:      "multi-tier-slave",
+		topoMultiMaster:         "multi-master",
+		topoMultiMasterRing:     "multi-master-ring",
+		topoMultiMasterWsrep:    "multi-master-wsrep",
+		topoMasterSlavePgLog:    "master-slave-pg-logical",
+		topoMasterSlavePgStream: "master-slave-pg-stream",
 	}
 
 	// Initialize the state machine at this stage where everything is fine.
@@ -681,7 +684,7 @@ func (cluster *Cluster) schemaMonitor() {
 	cluster.sme.SetMonitorSchemaState()
 	cluster.master.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, err := dbhelper.GetTables(cluster.master.Conn)
+	tables, tablelist, err := dbhelper.GetTables(cluster.master.Conn, cluster.master.DBVersion)
 	cluster.master.Tables = tablelist
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)

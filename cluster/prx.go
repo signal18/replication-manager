@@ -353,7 +353,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			}
 			defer db.Close()
 			var sv map[string]string
-			sv, err = dbhelper.GetVariables(db)
+			sv, err = dbhelper.GetVariables(db, pr.ShardProxy.DBVersion)
 			if err != nil {
 				if cluster.IsVerbose() {
 					cluster.LogPrintf(LvlErr, "Can't get variables: %s", err)
@@ -371,7 +371,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			if cluster.IsVerbose() {
 				cluster.LogPrintf(LvlInfo, "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
 			}
-			if cluster.GetMaster().ServerID == uint(sid) || pr.Type == proxySpider {
+			if cluster.GetMaster().ServerID == uint64(sid) || pr.Type == proxySpider {
 				return true
 			}
 		}
@@ -379,7 +379,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 	return false
 }
 
-func (cluster *Cluster) SetProxyServerMaintenance(serverid uint) {
+func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
 	for _, pr := range cluster.Proxies {
 		if cluster.Conf.HaproxyOn && pr.Type == proxyHaproxy {

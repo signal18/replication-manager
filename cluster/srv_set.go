@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -79,14 +80,29 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.User = user
 	server.Pass = pass
 	server.URL = url
-	server.Host, server.Port = misc.SplitHostPort(url)
+	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
 		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
 	}
-	params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.Conf.Timeout, server.ClusterGroup.Conf.ReadTimeout)
+	if server.PostgressDB == "" {
+		server.PostgressDB = "test"
+	}
+	pgdsn := func() string {
+		dsn := ""
+		//push the password at the end because empty password may consider next parameter is paswword
+		if server.ClusterGroup.haveDBTLSCert {
+			dsn += "sslmode=enable"
+		} else {
+			dsn += "sslmode=disable"
+		}
+		dsn += fmt.Sprintf(" host=%s port=%s user=%s dbname=%s connect_timeout=%d password=%s ", server.Host, server.Port, server.User, server.PostgressDB, server.ClusterGroup.Conf.Timeout, server.Pass)
+		//dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s connect_timeout=1", server.Host, server.Port, server.User, server.Pass, "postgres")
 
+		return dsn
+	}
 	mydsn := func() string {
+		params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.Conf.Timeout, server.ClusterGroup.Conf.ReadTimeout)
 		dsn := server.User + ":" + server.Pass + "@"
 		if server.ClusterGroup.Conf.TunnelHost != "" {
 			dsn += "tcp(127.0.0.1:" + server.TunnelPort + ")/" + params
@@ -100,13 +116,20 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 		} else {
 			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
 		}
+		if server.ClusterGroup.haveDBTLSCert {
+			dsn += "&tls=tlsconfig"
+		}
 		return dsn
 	}
-	server.DSN = mydsn()
-	if server.ClusterGroup.haveDBTLSCert {
-		mysql.RegisterTLSConfig("tlsconfig", server.ClusterGroup.tlsconf)
-		server.DSN = server.DSN + "&tls=tlsconfig"
+	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+		server.DSN = pgdsn()
+	} else {
+		server.DSN = mydsn()
+		if server.ClusterGroup.haveDBTLSCert {
+			mysql.RegisterTLSConfig("tlsconfig", server.ClusterGroup.tlsconf)
+		}
 	}
+
 }
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
@@ -124,7 +147,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 			Channel:   server.ClusterGroup.Conf.MasterConn,
 			IsMariaDB: server.DBVersion.IsMariaDB(),
 			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-		})
+		}, server.DBVersion)
 	}
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      master.Host,
@@ -138,7 +161,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Channel:   server.ClusterGroup.Conf.MasterConn,
 		IsMariaDB: server.DBVersion.IsMariaDB(),
 		IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-	})
+	}, server.DBVersion)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) error {
@@ -158,7 +181,7 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Channel:   server.ClusterGroup.Conf.MasterConn,
 			IsMariaDB: server.DBVersion.IsMariaDB(),
 			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-		})
+		}, server.DBVersion)
 	} else {
 		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      master.Host,
@@ -172,7 +195,7 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Channel:   server.ClusterGroup.Conf.MasterConn,
 			IsMariaDB: server.DBVersion.IsMariaDB(),
 			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-		})
+		}, server.DBVersion)
 	}
 	return err
 }
@@ -188,12 +211,12 @@ func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonit
 		Mode:      "MXS",
 		Logfile:   master.FailoverMasterLogFile,
 		Logpos:    master.FailoverMasterLogPos,
-	})
+	}, server.DBVersion)
 }
 
 func (server *ServerMonitor) SetReplicationChannel(source string) error {
 	if server.DBVersion.IsMariaDB() {
-		err := dbhelper.SetDefaultMasterConn(server.Conn, source)
+		err := dbhelper.SetDefaultMasterConn(server.Conn, source, server.DBVersion)
 		if err != nil {
 			return err
 		}

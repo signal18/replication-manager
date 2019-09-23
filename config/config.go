@@ -81,6 +81,8 @@ type Config struct {
 	MultiMasterWsrep                   bool   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
 	MultiMaster                        bool   `mapstructure:"replication-multi-master" toml:"replication-multi-master" json:"replicationMultiMaster"`
 	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
+	MasterSlavePgStream                bool   `mapstructure:"replication-master-slave-pg-stream" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgStream"`
+	MasterSlavePgLogical               bool   `mapstructure:"replication-master-slave-pg-logical" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgLogical"`
 	ReplicationNoRelay                 bool   `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill" toml:"switchover-wait-kill" json:"switchoverWaitKill"`
 	SwitchWaitTrx                      int64  `mapstructure:"switchover-wait-trx" toml:"switchover-wait-trx" json:"switchoverWaitTrx"`

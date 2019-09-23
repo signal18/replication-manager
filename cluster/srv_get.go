@@ -50,7 +50,7 @@ func (server *ServerMonitor) GetPrometheusMetrics() string {
 	return s
 }
 
-func (server *ServerMonitor) GetReplicationServerID() uint {
+func (server *ServerMonitor) GetReplicationServerID() uint64 {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {
 		return 0
@@ -414,7 +414,13 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
-	return sqlx.Connect("mysql", server.DSN)
+	// get topology is call to late
+	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+		return sqlx.Connect("postgres", server.DSN)
+
+	} else {
+		return sqlx.Connect("mysql", server.DSN)
+	}
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {

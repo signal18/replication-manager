@@ -166,7 +166,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logfile:   crash.FailoverMasterLogFile,
 			Logpos:    crash.FailoverMasterLogPos,
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-		})
+		}, server.DBVersion)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 			return err
@@ -188,7 +188,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Channel:   server.ClusterGroup.Conf.MasterConn,
 			IsMariaDB: server.DBVersion.IsMariaDB(),
 			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-		})
+		}, server.DBVersion)
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
 			return err
@@ -267,7 +267,7 @@ func (server *ServerMonitor) RejoinMasterDump() error {
 			Logfile:   realmaster.FailoverMasterLogFile,
 			Logpos:    realmaster.FailoverMasterLogPos,
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-		})
+		}, server.DBVersion)
 	}
 	if err3 != nil {
 		return err3
@@ -415,7 +415,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Channel:   server.ClusterGroup.Conf.MasterConn,
 								IsMariaDB: server.DBVersion.IsMariaDB(),
 								IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
-							})
+							}, server.DBVersion)
 							if changeMasterErr != nil {
 								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.URL)
 							}

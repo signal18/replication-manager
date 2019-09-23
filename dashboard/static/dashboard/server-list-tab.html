@@ -22,6 +22,7 @@
              <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb.svg"  class="vicon" />
               <img ng-if="server.dbVersion.flavor=='MySQL'"   src="static/img/mysql.png"    class="vicon"/>
               <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png"  class="vicon"/>
+              <img ng-if="server.dbVersion.flavor=='PostgreSQL'" src="static/img/postgreesql.png"  style="padding: 0px;width: 24px;vertical-align: top;" />
       </th>
       <th colspan=2> {{server.host}}:{{server.port}}  </th>
       <th align="right">

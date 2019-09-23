@@ -25,13 +25,15 @@ type topologyError struct {
 }
 
 const (
-	topoMasterSlave      string = "master-slave"
-	topoUnknown          string = "unknown"
-	topoBinlogServer     string = "binlog-server"
-	topoMultiTierSlave   string = "multi-tier-slave"
-	topoMultiMaster      string = "multi-master"
-	topoMultiMasterRing  string = "multi-master-ring"
-	topoMultiMasterWsrep string = "multi-master-wsrep"
+	topoMasterSlave         string = "master-slave"
+	topoUnknown             string = "unknown"
+	topoBinlogServer        string = "binlog-server"
+	topoMultiTierSlave      string = "multi-tier-slave"
+	topoMultiMaster         string = "multi-master"
+	topoMultiMasterRing     string = "multi-master-ring"
+	topoMultiMasterWsrep    string = "multi-master-wsrep"
+	topoMasterSlavePgLog    string = "master-slave-pg-logical"
+	topoMasterSlavePgStream string = "master-slave-pg-stream"
 )
 
 func (cluster *Cluster) newServerList() error {
@@ -248,6 +250,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
 			sid := cluster.slaves[0].GetReplicationServerID()
+
 			for k, s := range cluster.Servers {
 				if cluster.Conf.MultiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {

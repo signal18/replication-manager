@@ -105,7 +105,7 @@ func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-	})
+	}, server.DBVersion)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
@@ -134,7 +134,7 @@ func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-	})
+	}, server.DBVersion)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
@@ -163,7 +163,7 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-	})
+	}, server.DBVersion)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
@@ -191,7 +191,7 @@ func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-	})
+	}, server.DBVersion)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err

@@ -151,19 +151,19 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		server.ClusterGroup.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
 	}
 	if server.ClusterGroup.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
-		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
 		server.ClusterGroup.sme.AddState("WARN0050", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if server.ClusterGroup.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
-		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", server.ClusterGroup.Conf.MasterConn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
 		server.ClusterGroup.sme.AddState("WARN0051", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.IsReplicationUsingGtidStrict() == false {
-		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion.IsMariaDB(), server.DBVersion.IsMySQL())
+		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID strict mode on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false {
 		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
@@ -285,7 +285,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
 	}
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
-		myhost, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser)
+		myhost, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser, server.DBVersion)
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		}
@@ -296,7 +296,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.URL, err), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
-			priv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip)
+			priv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip, server.DBVersion)
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
@@ -314,7 +314,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		for _, sv2 := range server.ClusterGroup.Servers {
 			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(sv2.Host)
-				rpriv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost)
+				rpriv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost, server.DBVersion)
 				if err != nil {
 					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}

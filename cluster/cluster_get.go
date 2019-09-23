@@ -212,7 +212,7 @@ func (cluster *Cluster) GetIndiceServerFromId(Id string) int {
 	return 0
 }
 
-func (cluster *Cluster) GetServerFromId(serverid uint) *ServerMonitor {
+func (cluster *Cluster) GetServerFromId(serverid uint64) *ServerMonitor {
 	for _, server := range cluster.Servers {
 		if server.ServerID == serverid {
 			return server
@@ -330,6 +330,12 @@ func (cluster *Cluster) GetTopology() string {
 		cluster.Conf.Topology = topoBinlogServer
 	} else if cluster.Conf.MultiTierSlave {
 		cluster.Conf.Topology = topoMultiTierSlave
+	} else if cluster.Conf.MasterSlavePgStream {
+		cluster.Conf.Topology = topoMasterSlavePgStream
+		cluster.IsPostgres = true
+	} else if cluster.Conf.MasterSlavePgLogical {
+		cluster.Conf.Topology = topoMasterSlavePgLog
+		cluster.IsPostgres = true
 	} else {
 		relay := cluster.GetRelayServer()
 		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
