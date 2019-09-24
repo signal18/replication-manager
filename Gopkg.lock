@@ -492,6 +492,18 @@
   revision = "04ef93e285313c8978cbc7cad26d2aa7a9927451"
 
 [[projects]]
+  digest = "1:12cb143f2148bf54bcd9fe622abac17325e85eeb1d84b8ec6caf1c80232108fd"
+  name = "github.com/lib/pq"
+  packages = [
+    ".",
+    "oid",
+    "scram",
+  ]
+  pruneopts = "UT"
+  revision = "3427c32cb71afc948325f299f040e53c1dd78979"
+  version = "v1.2.0"
+
+[[projects]]
   digest = "1:5149009cc36718234a9ad2896b04b04716808b8d72143b5687c0a15b53132b27"
   name = "github.com/magiconair/properties"
   packages = ["."]
@@ -898,6 +910,7 @@
     "github.com/kisielk/og-rek",
     "github.com/lestrrat/go-file-rotatelogs",
     "github.com/lestrrat/go-strftime",
+    "github.com/lib/pq",
     "github.com/magneticio/vamp-router/helpers",
     "github.com/mattn/go-sqlite3",
     "github.com/micro/go-micro/registry",
