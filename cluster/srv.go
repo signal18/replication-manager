@@ -283,7 +283,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		}
 		//	server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
-		server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
+		//		server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
@@ -390,7 +390,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	var ss dbhelper.SlaveStatus
-	ss, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+	ss, _, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 	// We have no replicatieon can this be the old master
 	//  1617 is no multi source channel found
 	noChannel := false
@@ -491,13 +491,13 @@ func (server *ServerMonitor) Refresh() error {
 		// maxscale don't support show variables
 		server.PrevMonitorTime = server.MonitorTime
 		server.MonitorTime = time.Now().Unix()
-		server.DBVersion, err = dbhelper.GetDBVersion(server.Conn)
+		logs := ""
+		server.DBVersion, logs, err = dbhelper.GetDBVersion(server.Conn)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get database version %s %s", server.URL, err)
+
+		server.Variables, logs, err = dbhelper.GetVariables(server.Conn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not get database version")
-		}
-		server.Variables, err = dbhelper.GetVariables(server.Conn, server.DBVersion)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Could not get variables %s", err)
 			return nil
 		}
 		if !server.DBVersion.IsPPostgreSQL() {
@@ -577,7 +577,8 @@ func (server *ServerMonitor) Refresh() error {
 				server.HavePFS = false
 			} else {
 				server.HavePFS = true
-				ConsumerVariables, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
+				ConsumerVariables, logs, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
 				if ConsumerVariables["SLOW_QUERY_PFS"] != "ON" {
 					server.HavePFSSlowQueryLog = false
 				} else {
@@ -609,20 +610,23 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			server.ServerID = uint64(sid)
 
-			server.EventStatus, err = dbhelper.GetEventStatus(server.Conn, server.DBVersion)
+			server.EventStatus, logs, err = dbhelper.GetEventStatus(server.Conn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get events status %s %s", server.URL, err)
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 			}
 		} // end not postgress
 
 		// get Users
-		server.Users, _ = dbhelper.GetUsers(server.Conn, server.DBVersion)
+		server.Users, logs, err = dbhelper.GetUsers(server.Conn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get database users %s %s", server.URL, err)
 		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
 
 		if server.ClusterGroup.Conf.MonitorProcessList {
-			server.FullProcessList, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+			server.FullProcessList, logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get process %s %s", server.URL, err)
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00075", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
@@ -632,8 +636,9 @@ func (server *ServerMonitor) Refresh() error {
 		server.ClusterGroup.SetState("WARN0085", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0085"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
 	// SHOW MASTER STATUS
-
-	server.MasterStatus, err = dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
+	logs := ""
+	server.MasterStatus, logs, err = dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get master status %s %s", server.URL, err)
 	if err != nil {
 		// binary log might be closed for that server
 	} else {
@@ -642,24 +647,21 @@ func (server *ServerMonitor) Refresh() error {
 	}
 
 	if !server.DBVersion.IsPPostgreSQL() {
-		err = server.Conn.Get(&server.BinlogDumpThreads, "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'")
+		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binoDumpthreads status %s %s", server.URL, err)
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
 		}
 
 		if server.ClusterGroup.Conf.MonitorInnoDBStatus {
 			// SHOW ENGINE INNODB STATUS
-			server.EngineInnoDB, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
-			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlWarn, "Could not get engine innodb status variables")
-			}
+			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
 		if server.ClusterGroup.Conf.MonitorPFS {
 			// GET PFS query digest
-			server.PFSQueries, err = dbhelper.GetQueries(server.Conn)
-			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlWarn, "Could not get PFS queries")
-			}
+			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
 		}
 		if server.Variables["LOG_OUTPUT"] == "TABLE" {
 			server.GetSlowLogTable()
@@ -672,13 +674,12 @@ func (server *ServerMonitor) Refresh() error {
 	// SHOW SLAVE STATUS
 
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPPostgreSQL() {
-		server.Replications, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
+		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 	} else {
-		server.Replications, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
+		server.Replications, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 	}
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slaves status %s", err)
-	}
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get slaves status %s %s", server.URL, err)
+
 	// select a replication status get an err if repliciations array is empty
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
@@ -691,7 +692,7 @@ func (server *ServerMonitor) Refresh() error {
 			var sid uint64
 			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.CrcTable), 10), 10, 64)
 			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not zssign server_id s", err)
+				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}
 			server.SlaveStatus.MasterServerID = sid
 			for i := range server.Replications {
@@ -719,7 +720,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	server.PrevStatus = server.Status
 
-	server.Status, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
+	server.Status, logs, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
 	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
 	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
 		server.HaveSemiSync = false
@@ -762,14 +763,16 @@ func (server *ServerMonitor) Refresh() error {
 	if !server.DBVersion.IsPPostgreSQL() {
 		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
 
-			server.Plugins, _ = dbhelper.GetPlugins(server.Conn)
+			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get plugins  %s %s", server.URL, err)
 			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
 			server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
 
 		}
 		if server.HaveMetaDataLocksLog {
-			server.MetaDataLocks, _ = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
+			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get Metat data locks  %s %s", server.URL, err)
 		}
 	}
 	server.CheckMaxConnections()
@@ -783,28 +786,28 @@ func (server *ServerMonitor) Refresh() error {
 
 /* Handles write freeze and existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
-	err := dbhelper.SetReadOnly(server.Conn, true)
+	logs, err := dbhelper.SetReadOnly(server.Conn, true)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 		return false
 	}
 	for i := server.ClusterGroup.Conf.SwitchWaitKill; i > 0; i -= 500 {
-		threads := dbhelper.CheckLongRunningWrites(server.Conn, 0)
+		threads, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, 0)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not check long running Writes %s as read-only: %s", server.URL, err)
 		if threads == 0 {
 			break
 		}
 		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
-	server.maxConn, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
+	server.maxConn, logs, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not get max_connections value on demoted leader")
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Could not get max_connections value on demoted leader")
+
 	} else {
 		if server.ClusterGroup.Conf.SwitchDecreaseMaxConn {
-			_, err = server.Conn.Exec("SET GLOBAL max_connections=" + strconv.FormatInt(server.ClusterGroup.Conf.SwitchDecreaseMaxConnValue, 10))
-			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlErr, "Could not set max_connections to 1 on demoted leader")
-			}
+			logs, err := dbhelper.SetMaxConnections(server.Conn, strconv.FormatInt(server.ClusterGroup.Conf.SwitchDecreaseMaxConnValue, 10), server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not set max_connections to 1 on demoted leader %s %s", server.URL, err)
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
@@ -816,7 +819,8 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
-		ss, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
+		ss, logs, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", LvlErr, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -828,7 +832,9 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
-			ss, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+			ss, logs, err = dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", LvlErr, "Could not get slave status %s %s", server.URL, err)
+
 			if err != nil {
 				return err
 			}
@@ -839,7 +845,8 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			server.ClusterGroup.LogPrintf(LvlInfo, "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		ss, logs, err := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", LvlErr, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -848,7 +855,8 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 				break
 			}
-			ss, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+			ss, logs, err = dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", LvlErr, "Could not get slave status %s %s", server.URL, err)
 			if err != nil {
 				return err
 			}
@@ -899,36 +907,36 @@ func (server *ServerMonitor) delete(sl *serverList) {
 	*sl = lsm
 }
 
-func (server *ServerMonitor) StopSlave() error {
+func (server *ServerMonitor) StopSlave() (string, error) {
 	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
-func (server *ServerMonitor) StartSlave() error {
+func (server *ServerMonitor) StartSlave() (string, error) {
 	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 
 }
 
-func (server *ServerMonitor) ResetMaster() error {
-	return dbhelper.ResetMaster(server.Conn, server.DBVersion)
+func (server *ServerMonitor) ResetMaster() (string, error) {
+	return dbhelper.ResetMaster(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) ResetPFSQueries() error {
 	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest")
 }
 
-func (server *ServerMonitor) StopSlaveIOThread() error {
+func (server *ServerMonitor) StopSlaveIOThread() (string, error) {
 	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
-func (server *ServerMonitor) StopSlaveSQLThread() error {
+func (server *ServerMonitor) StopSlaveSQLThread() (string, error) {
 	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
-func (server *ServerMonitor) ResetSlave() error {
+func (server *ServerMonitor) ResetSlave() (string, error) {
 	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
-func (server *ServerMonitor) FlushTables() error {
+func (server *ServerMonitor) FlushTables() (string, error) {
 	return dbhelper.FlushTables(server.Conn)
 }
 
@@ -946,11 +954,11 @@ func (server *ServerMonitor) SkipReplicationEvent() {
 	server.StartSlave()
 }
 
-func (server *ServerMonitor) KillThread(id string) error {
+func (server *ServerMonitor) KillThread(id string) (string, error) {
 	return dbhelper.KillThread(server.Conn, id)
 }
 
-func (server *ServerMonitor) KillQuery(id string) error {
+func (server *ServerMonitor) KillQuery(id string) (string, error) {
 	return dbhelper.KillQuery(server.Conn, id)
 }
 
@@ -1036,18 +1044,27 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	}
 
 	t := time.Now()
-
+	logs := ""
+	var err error
 	for true {
 
 		var clsave Save
-		clsave.ProcessList, _ = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
-		clsave.InnoDBStatus, _ = dbhelper.GetEngineInnoDBSatus(server.Conn)
-		clsave.Status, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
+		clsave.ProcessList,
+			logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "CaptureLoop", LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
+
+		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBSatus(server.Conn)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "CaptureLoop", LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
+		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "CaptureLoop", LvlErr, "Failed Status for server %s: %s ", server.URL, err)
+
 		if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
-			clsave.SlaveSatus, _ = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
+			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		} else {
-			clsave.SlaveSatus, _ = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
+			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 		}
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "CaptureLoop", LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
+
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Name+"_capture_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {

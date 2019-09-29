@@ -149,13 +149,13 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
 	if server.HasGTIDReplication() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
-		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		logs, err := server.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed in GTID rejoin old master in sync %s, %s", server.URL, err)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Failed in GTID rejoin old Master in sync %s", err)
 			return err
 		}
 	} else if server.ClusterGroup.Conf.MxsBinlogOn {
-		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
@@ -167,30 +167,29 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logpos:    crash.FailoverMasterLogPos,
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 		}, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 			return err
 		}
 	} else {
 		// not maxscale the new master coordonate are in crash
 		server.ClusterGroup.LogPrintf("INFO", "Change master to positional in Rejoin old Master")
-		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.Host,
-			Port:      realmaster.Port,
-			User:      server.ClusterGroup.rplUser,
-			Password:  server.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "POSITIONAL",
-			Logfile:   crash.NewMasterLogFile,
-			Logpos:    crash.NewMasterLogPos,
-			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-			Channel:   server.ClusterGroup.Conf.MasterConn,
-			IsMariaDB: server.DBVersion.IsMariaDB(),
-			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        realmaster.Host,
+			Port:        realmaster.Port,
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "POSITIONAL",
+			Logfile:     crash.NewMasterLogFile,
+			Logpos:      crash.NewMasterLogPos,
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Change master positional failed in Rejoin old Master in sync %s", err)
 			return err
 		}
 	}
@@ -228,21 +227,24 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, clientCmd.Path)
 		return err
 	}
-	server.ClusterGroup.LogPrintf("INFO", "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
-	_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + crash.FailoverIOGtid.Sprint() + "\"")
+	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
 	if err != nil {
 		return err
 	}
 	var err2 error
 	if server.MxsHaveGtid || server.IsMaxscale == false {
-		err2 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
+		logs, err2 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
 	} else {
-		err2 = server.SetReplicationFromMaxsaleServer(realmaster)
+		logs, err2 = server.SetReplicationFromMaxsaleServer(realmaster)
 	}
+	server.ClusterGroup.LogSQL(logs, err2, server.URL, "Rejoin", LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err2)
 	if err2 != nil {
 		return err2
 	}
-	server.StartSlave()
+	logs, err = server.StartSlave()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "Failed stop slave on %s: %s", server.URL, err)
+
 	return nil
 }
 
@@ -254,9 +256,11 @@ func (server *ServerMonitor) RejoinMasterDump() error {
 	}
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || server.IsMaxscale == false {
-		err3 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
+		logs, err3 := server.SetReplicationGTIDSlavePosFromServer(realmaster)
+		server.ClusterGroup.LogSQL(logs, err3, server.URL, "Rejoin", LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
+
 	} else {
-		err3 = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		logs, err3 := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
 			Port:      realmaster.Port,
 			User:      server.ClusterGroup.rplUser,
@@ -268,6 +272,7 @@ func (server *ServerMonitor) RejoinMasterDump() error {
 			Logpos:    realmaster.FailoverMasterLogPos,
 			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 		}, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err3, server.URL, "Rejoin", LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
 		return err3
@@ -283,8 +288,8 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 	server.Refresh()
 	if server.ClusterGroup.Conf.ReadOnly {
-		server.SetReadOnly()
-		server.ClusterGroup.LogPrintf("INFO", "Setting Read Only on rejoined %s", server.URL)
+		logs, err := server.SetReadOnly()
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	}
 
 	if crash.FailoverIOGtid != nil {
@@ -329,13 +334,16 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	realmaster := server.ClusterGroup.lastmaster
 	server.ClusterGroup.LogPrintf("INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
-	err := server.SetReadOnly()
+	logs, err := server.SetReadOnly()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	if err == nil {
-		err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		logs, err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to autojoin indirect master server %s, stopping slave as a precaution %s ", server.URL, err)
 		if err == nil {
-			server.StartSlave()
+			logs, err = server.StartSlave()
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave on erver %s, %s ", server.URL, err)
 		} else {
-			server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect master server %s, stopping slave as a precaution %s ", server.URL, err)
+
 			return err
 		}
 	} else {
@@ -379,52 +387,55 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				//		master_gtid := crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//	if slave_gtid < master_gtid {
 				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave via GTID")
-				err := server.StopSlave()
+				logs, err := server.StopSlave()
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave server %s, stopping slave as a precaution %s", server.URL, err)
 				if err == nil {
-					err = server.SetReplicationGTIDSlavePosFromServer(realmaster)
+					logs, err := server.SetReplicationGTIDSlavePosFromServer(realmaster)
+					server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
 					if err == nil {
-						server.StartSlave()
-					} else {
-						server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
+						logs, err := server.StartSlave()
+						server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to start  slave server %s, stopping slave as a precaution %s", server.URL, err)
 					}
-				} else {
-					server.ClusterGroup.LogPrintf("ERROR", "Can't stop slave in rejoin slave %s", err)
 				}
 			} else {
 				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
-					err := mycurrentmaster.StopSlave()
+					logs, err := mycurrentmaster.StopSlave()
+					server.ClusterGroup.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
 					if err == nil {
-						err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
+						logs, err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
+						server.ClusterGroup.LogSQL(logs, err2, server.URL, "Rejoin", LvlErr, "Failed positional rejoin wait pos %s %s", server.URL, err2)
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
 
-							server.StopSlave()
+							logs, err := server.StopSlave()
+							server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave on server %s: %s", server.URL, err)
 							server.ClusterGroup.LogPrintf("INFO", "Doing Positional switch of slave %s", server.URL)
-							changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-								Host:      server.ClusterGroup.master.Host,
-								Port:      server.ClusterGroup.master.Port,
-								User:      server.ClusterGroup.rplUser,
-								Password:  server.ClusterGroup.rplPass,
-								Logfile:   myparentss.MasterLogFile.String,
-								Logpos:    myparentss.ReadMasterLogPos.String,
-								Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-								Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-								Mode:      "POSITIONAL",
-								SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-								Channel:   server.ClusterGroup.Conf.MasterConn,
-								IsMariaDB: server.DBVersion.IsMariaDB(),
-								IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+								Host:        server.ClusterGroup.master.Host,
+								Port:        server.ClusterGroup.master.Port,
+								User:        server.ClusterGroup.rplUser,
+								Password:    server.ClusterGroup.rplPass,
+								Logfile:     myparentss.MasterLogFile.String,
+								Logpos:      myparentss.ReadMasterLogPos.String,
+								Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+								Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+								Mode:        "POSITIONAL",
+								SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+								Channel:     server.ClusterGroup.Conf.MasterConn,
+								PostgressDB: server.PostgressDB,
 							}, server.DBVersion)
-							if changeMasterErr != nil {
-								server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", server.URL)
-							}
-						} else {
-							server.ClusterGroup.LogPrintf("ERROR", "Rejoin Failed doing Positional switch of slave %s", err2)
+
+							server.ClusterGroup.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
+
 						}
-						server.StartSlave()
+						logs, err = server.StartSlave()
+						server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to start slave on %s: %s", server.URL, err)
+
 					}
 					mycurrentmaster.StartSlave()
+					server.ClusterGroup.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", LvlErr, "Failed to start slave on %s: %s", mycurrentmaster.URL, err)
+
 					if server.IsMaintenance {
 						server.SwitchMaintenance()
 					}
@@ -450,9 +461,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			server.ClusterGroup.slaves = append(server.ClusterGroup.slaves, server)
 		}
 		if server.ClusterGroup.Conf.ReadOnly {
-			err := dbhelper.SetReadOnly(server.Conn, true)
+			logs, err := dbhelper.SetReadOnly(server.Conn, true)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR", "Could not set rejoining slave %s as read-only, %s", server.URL, err)
 				return err
 			}
 		}
@@ -481,7 +492,8 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		if errss != nil {
 		 return	false
 		}*/
-		valid, err := dbhelper.HaveExtraEvents(server.Conn, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
+		valid, logs, err := dbhelper.HaveExtraEvents(server.Conn, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlDbg, "Failed to  get extra bin log events server %s, %s ", server.URL, err)
 		if err != nil {
 			return false
 		}

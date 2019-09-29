@@ -285,10 +285,8 @@ func (server *ServerMonitor) CheckPrivileges() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
 	}
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
-		myhost, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser, server.DBVersion)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
-		}
+		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser, server.DBVersion)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		myip, err := misc.GetIPSafe(myhost)
 		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)
@@ -296,7 +294,8 @@ func (server *ServerMonitor) CheckPrivileges() {
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.URL, err), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
-			priv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip, server.DBVersion)
+			priv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err))
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
@@ -314,7 +313,8 @@ func (server *ServerMonitor) CheckPrivileges() {
 		for _, sv2 := range server.ClusterGroup.Servers {
 			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(sv2.Host)
-				rpriv, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost, server.DBVersion)
+				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost, server.DBVersion)
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err))
 				if err != nil {
 					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}

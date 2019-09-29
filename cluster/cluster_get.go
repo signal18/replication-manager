@@ -536,6 +536,18 @@ func (cluster *Cluster) GetDBModuleTags() []Tag {
 	return tags
 }
 
+func (cluster *Cluster) GetProxyModuleTags() []Tag {
+	var tags []Tag
+	for _, value := range cluster.ProxyModule.Filtersets {
+		var t Tag
+		t.Id = value.ID
+		s := strings.SplitAfter(value.Name, ".")
+		t.Name = s[len(s)-1]
+		tags = append(tags, t)
+	}
+	return tags
+}
+
 // GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte
 func (cluster *Cluster) GetConfigInnoDBBPSize() string {
 	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)

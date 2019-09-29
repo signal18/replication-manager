@@ -32,7 +32,7 @@ func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
 }
 
-func (server *ServerMonitor) GetSchemas() ([]string, error) {
+func (server *ServerMonitor) GetSchemas() ([]string, string, error) {
 	return dbhelper.GetSchemas(server.Conn)
 }
 
@@ -169,19 +169,19 @@ func (server *ServerMonitor) GetMasterStatus() dbhelper.MasterStatus {
 	return server.MasterStatus
 }
 
-func (server *ServerMonitor) GetLastPseudoGTID() (string, error) {
+func (server *ServerMonitor) GetLastPseudoGTID() (string, string, error) {
 	return dbhelper.GetLastPseudoGTID(server.Conn)
 }
 
-func (server *ServerMonitor) GetBinlogPosFromPseudoGTID(GTID string) (string, string, error) {
+func (server *ServerMonitor) GetBinlogPosFromPseudoGTID(GTID string) (string, string, string, error) {
 	return dbhelper.GetBinlogEventPseudoGTID(server.Conn, GTID, server.BinaryLogFile)
 }
 
-func (server *ServerMonitor) GetBinlogPosAfterSkipNumberOfEvents(file string, pos string, skip int) (string, string, error) {
+func (server *ServerMonitor) GetBinlogPosAfterSkipNumberOfEvents(file string, pos string, skip int) (string, string, string, error) {
 	return dbhelper.GetBinlogPosAfterSkipNumberOfEvents(server.Conn, file, pos, skip)
 }
 
-func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) (int, error) {
+func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) (int, string, error) {
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
@@ -205,7 +205,10 @@ func (server *ServerMonitor) GetMetaDataLocks() []dbhelper.MetaDataLock {
 
 func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 	var qrt []dbhelper.ResponseTime
-	qrt, _ = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
+	logs := ""
+	var err error
+	qrt, logs, err = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Can't fetch Query Response Time ")
 	return qrt
 }
 
@@ -241,14 +244,12 @@ func (server *ServerMonitor) GetQueryFromSlowLogDigest(digest string) (string, s
 }
 
 func (server *ServerMonitor) GetQueryExplain(schema string, query string) ([]dbhelper.Explain, error) {
-	explainPlan, err := dbhelper.GetQueryExplain(server.Conn, server.DBVersion, schema, query)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlInfo, "GetExplain %s %s ", query, err)
-	}
+	explainPlan, logs, err := dbhelper.GetQueryExplain(server.Conn, server.DBVersion, schema, query)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Can't get Explain %s %s ", server.URL, err)
 	return explainPlan, err
 }
 
-func (server *ServerMonitor) GetQueryAnalyze(schema string, query string) (string, error) {
+func (server *ServerMonitor) GetQueryAnalyze(schema string, query string) (string, string, error) {
 	return dbhelper.AnalyzeQuery(server.Conn, server.DBVersion, schema, query)
 }
 
@@ -260,10 +261,10 @@ func (server *ServerMonitor) GetQueryExplainPFS(digest string) ([]dbhelper.Expla
 	return server.GetQueryExplain(schema, query)
 }
 
-func (server *ServerMonitor) GetQueryAnalyzePFS(digest string) (string, error) {
+func (server *ServerMonitor) GetQueryAnalyzePFS(digest string) (string, string, error) {
 	schema, query, err := server.GetQueryFromPFSDigest(digest)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	return server.GetQueryAnalyze(schema, query)
 }
@@ -276,10 +277,10 @@ func (server *ServerMonitor) GetQueryExplainSlowLog(digest string) ([]dbhelper.E
 	return server.GetQueryExplain(schema, query)
 }
 
-func (server *ServerMonitor) GetQueryAnalyzeSlowLog(digest string) (string, error) {
+func (server *ServerMonitor) GetQueryAnalyzeSlowLog(digest string) (string, string, error) {
 	schema, query, err := server.GetQueryFromSlowLogDigest(digest)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	return server.GetQueryAnalyze(schema, query)
 }

@@ -192,6 +192,7 @@ type SlaveStatus struct {
 	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
 	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
+	PGExternalID         sql.NullString `db:"external_id" json:"postgresExternalId"`
 }
 
 type Privileges struct {
@@ -286,140 +287,152 @@ func GetAddress(host string, port string, socket string) string {
 	return address
 }
 
-func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query string) ([]Explain, error) {
+func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query string) ([]Explain, string, error) {
 	pl := []Explain{}
 	var err error
 	if schema != "" {
 		_, err = db.Exec("USE " + schema)
 	}
+	stmt := "Explain " + query
 	if version.IsMariaDB() {
 		//MariaDB
-		err = db.Select(&pl, "Explain "+query)
+		err = db.Select(&pl, stmt)
 	} else {
 		//MySQL
-		err = db.Select(&pl, "Explain "+query)
+		err = db.Select(&pl, stmt)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get Explain: %s", err)
+		return nil, stmt, fmt.Errorf("ERROR: Could not get Explain: %s", err)
 	}
-	return pl, nil
+	return pl, stmt, nil
 }
 
-func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, error) {
+func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, string, error) {
 	pl := []MetaDataLock{}
 	var err error
+	query := "SELECT * FROM information_schema.metadata_lock_info"
 	if version.IsMariaDB() {
 		//MariaDB
-		err = db.Select(&pl, "SELECT * FROM information_schema.metadata_lock_info")
+		err = db.Select(&pl, query)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get MetaDataLock: %s", err)
+		return nil, query, fmt.Errorf("ERROR: Could not get MetaDataLock: %s", err)
 	}
-	return pl, nil
+	return pl, query, nil
 }
 
-func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, error) {
+func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, string, error) {
 	pl := []ResponseTime{}
 	var err error
-	//if version.IsMariaDB() {
-	//MariaDB
-	err = db.Select(&pl, "SELECT * FROM INFORMATION_SCHEMA.QUERY_RESPONSE_TIME")
-	//}
-	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get query response time: %s", err)
+	stmt := "SELECT * FROM INFORMATION_SCHEMA.QUERY_RESPONSE_TIME"
+	if version.IsMySQL() || version.IsPPostgreSQL() {
+		return nil, stmt, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on MySQL or PostgeSQL: %s", err)
 	}
-	return pl, nil
+	err = db.Select(&pl, stmt)
+	if err != nil {
+		return nil, stmt, fmt.Errorf("ERROR: Could not get query response time: %s", err)
+	}
+	return pl, stmt, nil
 }
 
-func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
+func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
+	stmt := ""
 	if version.IsMariaDB() {
 		//MariaDB
-		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info, CASE WHEN Max_Stage < 2 THEN Progress ELSE (Stage-1)/Max_Stage*100+Progress/Max_Stage END AS Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50")
+		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info, CASE WHEN Max_Stage < 2 THEN Progress ELSE (Stage-1)/Max_Stage*100+Progress/Max_Stage END AS Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50"
 	} else if version.IsMySQLOrPercona() {
 		//MySQL
-		err = db.Select(&pl, "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50")
+		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
 	} else if version.IsPPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
-		err = db.Select(&pl, `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`)
+		stmt = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	}
+	err = db.Select(&pl, stmt)
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+		return nil, stmt, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
-	return pl, nil
+	return pl, stmt, nil
 }
 
-func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, error) {
+func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, string, error) {
 	var res string
 	if schema != "" {
 		db.Exec("USE " + schema)
 	}
-	rows, err := db.Query("ANALYZE  FORMAT=JSON " + query)
+	stmt := "ANALYZE  FORMAT=JSON " + query
+	rows, err := db.Query(stmt)
 	if err != nil {
-		return "", err
+		return "", stmt, err
 	}
 	defer rows.Close()
 
 	if rows.Next() {
 		if err := rows.Scan(&res); err != nil {
-			return res, err
+			return res, stmt, err
 		}
 	}
-	return res, err
+	return res, stmt, err
 }
 
-func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, error) {
+func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
+	query := ""
 	if version.IsMariaDB() {
 		//MariaDB
-		err = db.Select(&pl, "SHOW FULL PROCESSLIST")
+		query = "SHOW FULL PROCESSLIST"
 	} else if version.IsPPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
-		err = db.Select(&pl, `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db ,COALESCE(application_name,'')  as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State", coalesce(query,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`)
+		query = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db ,COALESCE(application_name,'')  as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State", coalesce(query,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	} else {
 		//MySQL
-		err = db.Select(&pl, "SHOW FULL PROCESSLIST")
+		query = "SHOW FULL PROCESSLIST"
 	}
+	err = db.Select(&pl, query)
 	if err != nil {
-		return nil, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+		return nil, query, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
-	return pl, nil
+	return pl, query, nil
 }
 
-func GetServers(db *sqlx.DB) ([]MySQLServer, error) {
+func GetServers(db *sqlx.DB) ([]MySQLServer, string, error) {
 	db.MapperFunc(strings.Title)
 	var err error
 	ss := []MySQLServer{}
-	err = db.Select(&ss, "SELECT * FROM mysql.servers")
-	return ss, err
+	query := "SELECT * FROM mysql.servers"
+	err = db.Select(&ss, query)
+	return ss, query, err
 }
 
-func GetLastPseudoGTID(db *sqlx.DB) (string, error) {
+func GetLastPseudoGTID(db *sqlx.DB) (string, string, error) {
 	var value string
 	value = ""
-	err := db.QueryRowx("select * from replication_manager_schema.pseudo_gtid_v").Scan(&value)
-	return value, err
+	query := "select * from replication_manager_schema.pseudo_gtid_v"
+	err := db.QueryRowx(query).Scan(&value)
+	return value, query, err
 }
 
-func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string, string, error) {
+func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string, string, string, error) {
 
 	lastpos := "4"
 	exitloop := true
+	logs := ""
 	for exitloop {
 		events := []BinlogEvents{}
 		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 60"
+		logs += sql + "\n"
 		err := db.Select(&events, sql)
 		if err != nil {
-			return "", "", err
+			return "", "", logs, err
 		}
 
 		for _, row := range events {
 			pos := strconv.FormatUint(uint64(row.Pos), 10)
 			endpos := strconv.FormatUint(uint64(row.End_log_pos), 10)
 			if strings.Contains(row.Info, uuid) {
-				return row.Log_name, pos, err
+				return row.Log_name, pos, logs, err
 			}
 			lastpos = endpos
 		}
@@ -430,44 +443,47 @@ func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string
 			lastpos = "4"
 		}
 	}
-	return "", "", errors.New("Not found Psudo GTID")
+	return "", "", logs, errors.New("Not found Psudo GTID")
 }
 
-func GetBinlogPosAfterSkipNumberOfEvents(db *sqlx.DB, file string, pos string, skip int) (string, string, error) {
+func GetBinlogPosAfterSkipNumberOfEvents(db *sqlx.DB, file string, pos string, skip int) (string, string, string, error) {
 
 	events := []BinlogEvents{}
 	sql := "show binlog events IN '" + file + "'  from " + pos + " LIMIT " + strconv.Itoa(skip)
+
 	err := db.Select(&events, sql)
 	if err != nil {
-		return "", "", err
+		return "", "", sql, err
 	}
 	if len(events) == 0 {
-		return "", "", err
+		return "", "", sql, err
 	}
-	return events[(len(events) - 1)].Log_name, strconv.FormatUint(uint64(events[(len(events)-1)].Pos), 10), err
+	return events[(len(events) - 1)].Log_name, strconv.FormatUint(uint64(events[(len(events)-1)].Pos), 10), sql, err
 }
 
-func GetNumberOfEventsAfterPos(db *sqlx.DB, lastfile string, lastpos string) (int, error) {
+func GetNumberOfEventsAfterPos(db *sqlx.DB, lastfile string, lastpos string) (int, string, error) {
 
 	exitloop := true
+	logs := ""
 	ct := 0
 	for exitloop {
 		events := []BinlogEvents{}
 		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 1"
+		logs += sql + "\n"
 		err := db.Select(&events, sql)
 		if err != nil {
-			return 0, err
+			return 0, logs, err
 		}
 
 		for _, row := range events {
 			lastfile = strconv.FormatUint(uint64(row.End_log_pos), 10)
 		}
 		if len(events) == 0 {
-			return ct, nil
+			return ct, logs, nil
 		}
 		ct = ct + 1
 	}
-	return 0, errors.New("Not found Psudo GTID")
+	return 0, logs, errors.New("Not found Psudo GTID")
 }
 
 func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
@@ -488,48 +504,57 @@ type ChangeMasterOpt struct {
 	Logfile   string
 	Logpos    string
 	Mode      string
-	IsMySQL   bool
-	IsMariaDB bool
-	Channel   string
+
+	Channel     string
+	PostgressDB string
 	//	SSLCa     string
 	//	SSLCert   string
 	//	SSLKey    string
 }
 
-func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) error {
-
-	cm := "CHANGE MASTER "
-	if opt.IsMariaDB && opt.Channel != "" {
-		cm += " '" + opt.Channel + "'"
-	}
-	cm += " TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
-	switch opt.Mode {
-	case "SLAVE_POS":
-		cm += ", MASTER_USE_GTID=SLAVE_POS"
-	case "CURRENT_POS":
-		cm += ", MASTER_USE_GTID=CURRENT_POS"
-	case "MXS":
-		cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
-	case "POSITIONAL":
-		cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
-		if myver.IsMariaDB() {
-			cm += ", MASTER_USE_GTID=NO"
+func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
+	//CREATE PUBLICATION alltables FOR ALL TABLES;
+	cm := ""
+	if myver.IsPPostgreSQL() {
+		if opt.Channel == "" {
+			opt.Channel = "alltables"
 		}
-	case "MASTER_AUTO_POSITION":
-		cm += ", MASTER_AUTO_POSITION = 1"
-	}
-	if opt.SSL {
-		cm += ", MASTER_SSL=1"
-		//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
-	}
-	if myver.IsMySQLOrPercona() && opt.Channel != "" {
-		cm += " FOR CHANNEL '" + opt.Channel + "'"
+		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + opt.Host + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel
+	} else {
+
+		cm += "CHANGE MASTER "
+		if myver.IsMariaDB() && opt.Channel != "" {
+			cm += " '" + opt.Channel + "'"
+		}
+		cm += " TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+		switch opt.Mode {
+		case "SLAVE_POS":
+			cm += ", MASTER_USE_GTID=SLAVE_POS"
+		case "CURRENT_POS":
+			cm += ", MASTER_USE_GTID=CURRENT_POS"
+		case "MXS":
+			cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+		case "POSITIONAL":
+			cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+			if myver.IsMariaDB() {
+				cm += ", MASTER_USE_GTID=NO"
+			}
+		case "MASTER_AUTO_POSITION":
+			cm += ", MASTER_AUTO_POSITION = 1"
+		}
+		if opt.SSL {
+			cm += ", MASTER_SSL=1"
+			//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
+		}
+		if myver.IsMySQLOrPercona() && opt.Channel != "" {
+			cm += " FOR CHANNEL '" + opt.Channel + "'"
+		}
 	}
 	_, err := db.Exec(cm)
 	if err != nil {
-		return fmt.Errorf("Change master statement %s failed, reason: %s", cm, err)
+		return cm, fmt.Errorf("Change master statement %s failed, reason: %s", cm, err)
 	}
-	return nil
+	return cm, nil
 }
 
 func MariaDBVersion(server string) int {
@@ -548,41 +573,42 @@ func MariaDBVersion(server string) int {
 	//return ((versionSplit[0]*10000+versionSplit[1])*100 + versionSplit[2])
 }
 
-func GetDBVersion(db *sqlx.DB) (*MySQLVersion, error) {
+func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
 	stmt := "SELECT version()"
 	var version string
 	var versionComment string
 	err := db.QueryRowx(stmt).Scan(&version)
 	if err != nil {
-		return &MySQLVersion{}, err
+		return &MySQLVersion{}, stmt, err
 	}
 	v := NewMySQLVersion(version, "")
 	if !v.IsPPostgreSQL() {
 		stmt = "SELECT @@version_comment"
 		db.QueryRowx(stmt).Scan(&versionComment)
 	}
-	return NewMySQLVersion(version, versionComment), nil
+	return NewMySQLVersion(version, versionComment), stmt, nil
 }
 
 //Unused does not look like safe way or documenting it
-func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) string {
+func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
 	pl := []Processlist{}
 	var err error
-	pl, err = GetProcesslist(db, version)
+	logs := ""
+	pl, logs, err = GetProcesslist(db, version)
 	if err != nil {
-		return "N/A"
+		return "N/A", logs, err
 	}
 	for i := range pl {
 		if pl[i].User == user {
-			return strings.Split(pl[i].Host, ":")[0]
+			return strings.Split(pl[i].Host, ":")[0], logs, err
 		}
 	}
-	return "N/A"
+	return "N/A", logs, err
 }
 
-func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (string, error) {
+func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
 	if version == nil {
-		return "N/A", errors.New("No database version")
+		return "N/A", "", errors.New("No database version")
 	}
 	var value string
 	query := "select user()"
@@ -592,22 +618,22 @@ func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (str
 	err := db.QueryRowx(query).Scan(&value)
 	if err != nil {
 		log.Println("ERROR: Could not get SQL User()", err)
-		return "N/A", err
+		return "N/A", query, err
 	}
 	if version.IsPPostgreSQL() {
-		return value, nil
+		return value, query, nil
 	}
-	return strings.Split(value, "@")[1], nil
+	return strings.Split(value, "@")[1], query, nil
 
 }
 
-func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQLVersion) (Privileges, error) {
+func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQLVersion) (Privileges, string, error) {
 	db.MapperFunc(strings.Title)
-
+	stmt := ""
+	var err error
 	priv := Privileges{}
-
 	if ip == "" {
-		return priv, errors.New("Error getting privileges for non-existent IP address")
+		return priv, "", errors.New("Error getting privileges for non-existent IP address")
 	}
 
 	splitip := strings.Split(ip, ".")
@@ -615,14 +641,13 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 	iprange1 := splitip[0] + ".%.%.%"
 	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
-	var err error
 
 	if myver.IsPPostgreSQL() {
 		stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
 		row := db.QueryRowx(stmt)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-			return priv, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
 		}
 
 	} else {
@@ -630,27 +655,29 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-			return priv, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
 		}
 	}
-	return priv, err
+	return priv, stmt, err
 }
 
-func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *MySQLVersion) (bool, error) {
+func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *MySQLVersion) (bool, string, error) {
+
+	stmt := ""
 	if myver.IsPPostgreSQL() {
 		stmt := "SELECT passwd  AS pass ,passwd AS upass  FROM pg_catalog.pg_user u WHERE usename = ?"
 		rows, err := db.Query(stmt, user)
 		if err != nil {
-			return false, err
+			return false, stmt, err
 		}
 		for rows.Next() {
 			var pass, upass string
 			err = rows.Scan(&pass, &upass)
 			if err != nil {
-				return false, err
+				return false, stmt, err
 			}
 			if pass != upass {
-				return false, nil
+				return false, stmt, nil
 			}
 		}
 	} else {
@@ -665,47 +692,49 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 		stmt := "SELECT STRCMP(Password) AS pass, PASSWORD(?) AS upass FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 		rows, err := db.Query(stmt, pass, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 		if err != nil {
-			return false, err
+			return false, stmt, err
 		}
 		for rows.Next() {
 			var pass, upass string
 			err = rows.Scan(&pass, &upass)
 			if err != nil {
-				return false, err
+				return false, stmt, err
 			}
 			if pass != upass {
-				return false, nil
+				return false, stmt, nil
 			}
 		}
 	}
-	return true, nil
+	return true, stmt, nil
 }
 
-func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, error) {
+func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, string, error) {
 	db.MapperFunc(strings.Title)
 	evts := []BinlogEvents{}
 	udb := db.Unsafe()
-	err := udb.Get(&evts, "SHOW BINLOG EVENTS IN '"+file+"' FROM "+pos)
+	stmt := "SHOW BINLOG EVENTS IN '" + file + "' FROM " + pos
+	err := udb.Get(&evts, stmt)
 	if err != nil {
-		return true, err
+		return true, stmt, err
 	}
 	if len(evts) == 1 {
-		return false, nil
+		return false, stmt, nil
 	}
 	if len(evts) > 1 {
-		return true, nil
+		return true, stmt, nil
 	}
-	return false, nil
+	return false, stmt, nil
 }
 
-func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStatus, error) {
+func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	var err error
 	udb := db.Unsafe()
 	ss := SlaveStatus{}
+	query := ""
 	if Channel == "" {
 
-		query := "SHOW SLAVE STATUS"
+		query = "SHOW SLAVE STATUS"
 		if myver.IsPPostgreSQL() {
 			query = `select
 									received_lsn ,subname "Connection_name",
@@ -719,21 +748,23 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStat
 
 	} else {
 		if myver.IsMariaDB() {
-			err = udb.Get(&ss, "SHOW SLAVE '"+Channel+"' STATUS")
+			query = "SHOW SLAVE '" + Channel + "' STATUS"
+			err = udb.Get(&ss, query)
 		} else if myver.IsMySQLOrPercona() {
-			err = udb.Get(&ss, "SHOW SLAVE STATUS FOR CHANNEL '"+Channel+"'")
+			query = "SHOW SLAVE STATUS FOR CHANNEL '" + Channel + "'"
+			err = udb.Get(&ss, query)
 		}
 	}
 
-	return ss, err
+	return ss, query, err
 }
 
-func GetChannelSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
+func GetChannelSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
 	err := udb.Select(&ss, "SHOW SLAVE STATUS")
-	return ss, err
+	return ss, "SHOW SLAVE STATUS", err
 }
 
 func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
@@ -761,36 +792,37 @@ func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
 	return ss, err
 }
 
-func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus, error) {
+func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus, string, error) {
 
 	s := SlaveStatus{}
 	ss := []SlaveStatus{}
 	var err error
+	logs := ""
 
 	if myver.IsMariaDB() || myver.IsPPostgreSQL() {
-		ss, err = GetAllSlavesStatus(db, myver)
+		ss, logs, err = GetAllSlavesStatus(db, myver)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db, conn, myver)
+		s, logs, err = GetSlaveStatus(db, conn, myver)
 		ss = append(ss, s)
 	}
 
 	for _, s := range ss {
 		if s.ConnectionName.String == conn {
-			return s, err
+			return s, logs, err
 		}
 	}
-	return s, err
+	return s, logs, err
 }
 
-func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
+func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
 	var err error
 	/*
 
-		SELECT system_identifier FROM pg_control_system()
+
 
 
 
@@ -818,12 +850,15 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error)
 		   	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
 		   	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 		   	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
+
+				select * from pg_replication_origin_status
+
 		   }
 	*/
 
 	query := "SHOW ALL SLAVES STATUS"
 	if myver.IsPPostgreSQL() {
-		query = `select
+		query = `SELECT
 								CASE WHEN sqt.nbrep >1 THEN	 ss.subname ELSE '' END as "Connection_name",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[4],'port=') as "Master_Port",
@@ -843,219 +878,269 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error)
 								'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
 								'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
 								1 as "Slave_Heartbeat_Period" ,
-								'' as "Slave_SQL_Running_State"
-							from pg_catalog.pg_stat_subscription ss inner join  pg_catalog.pg_subscription s on ss.subname =s.subname , ( select count(*) as nbrep from pg_stat_subscription) as sqt `
+								'' as "Slave_SQL_Running_State",
+								ros.external_id
+							FROM pg_replication_origin_status ros
+							  LEFT JOIN (
+									pg_catalog.pg_stat_subscription ss
+								  	INNER JOIN  pg_catalog.pg_subscription s
+									  ON ss.subname =s.subname
+								) ON ros.external_id='pg_' || ss.subid::text ,
+							  (SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
 	}
 	err = udb.Select(&ss, query)
 
-	return ss, err
+	return ss, query, err
 }
 
-func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, master_user string, master_password string, master_filter string) error {
+func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, master_user string, master_password string, master_filter string) (string, error) {
 	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(master_host+":"+master_port), crcTable))
 
 	stmt := "CHANGE MASTER 'mrm_" + checksum64 + "' TO master_host='" + master_host + "', master_port=" + master_port + ", master_user='" + master_user + "', master_password='" + master_password + "' , master_use_gtid=slave_pos"
+	logs := stmt
 	_, err := db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
 	if master_filter != "" {
+
 		stmt = "SET GLOBAL mrm_" + checksum64 + ".replicate_do_table='" + master_filter + "'"
+		logs += "\n" + stmt
 		_, err = db.Exec(stmt)
 		if err != nil {
-			return err
+			return logs, err
 		}
 	}
 	stmt = "START SLAVE 'mrm_" + checksum64 + "'"
+	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
 
-	return err
+	return logs, err
 }
 
-func InstallSemiSync(db *sqlx.DB) error {
+func InstallSemiSync(db *sqlx.DB) (string, error) {
 	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
+	logs := stmt
 	_, err := db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
 	stmt = "INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'"
+	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	_, err = db.Exec("set global rpl_semi_sync_master_enabled='ON'")
+	stmt = "set global rpl_semi_sync_master_enabled='ON'"
+	logs += "\n" + stmt
+	_, err = db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	_, err = db.Exec("set global rpl_semi_sync_slave_enabled='ON'")
+	stmt = "set global rpl_semi_sync_slave_enabled='ON'"
+	logs += "\n" + stmt
+	_, err = db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return nil
+	return logs, nil
 }
 
-func SetBinlogFormat(db *sqlx.DB, format string) error {
-	_, err := db.Exec("set global binlog_format='" + format + "'")
+func SetBinlogFormat(db *sqlx.DB, format string) (string, error) {
+	query := "set global binlog_format='" + format + "'"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
-func SetBinlogAnnotate(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL binlog_annotate_row_events=ON")
+func SetBinlogAnnotate(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL binlog_annotate_row_events=ON"
+	logs := query
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	_, err = db.Exec("SET GLOBAL replicate_annotate_row_events=ON")
+	query = "SET GLOBAL replicate_annotate_row_events=ON"
+	logs += "\n" + query
+	_, err = db.Exec(query)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return nil
+	return logs, nil
 }
 
-func SetInnoDBLockMonitor(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL innodb_status_output=ON")
+func SetInnoDBLockMonitor(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL innodb_status_output=ON"
+	logs := query
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	_, err = db.Exec("SET GLOBAL innodb_status_output_locks=ON")
+	query = "SET GLOBAL innodb_status_output_locks=ON"
+	logs += "\n" + query
+	_, err = db.Exec(query)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return nil
+	return logs, nil
 }
 
-func UnsetInnoDBLockMonitor(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL innodb_status_output_locks=0")
+func UnsetInnoDBLockMonitor(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL innodb_status_output_locks=0"
+	logs := query
+	_, err := db.Exec(query)
+
 	if err != nil {
-		return err
+		return logs, err
 	}
-	_, err = db.Exec("SET GLOBAL innodb_status_output=0")
+	query = "SET GLOBAL innodb_status_output=0"
+	logs += "\n" + query
+	_, err = db.Exec(query)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return nil
+	return logs, nil
 }
 
-func SetRelayLogSpaceLimit(db *sqlx.DB, size string) error {
-	_, err := db.Exec("SET GLOBAL relay_log_space_limit=" + size)
+func SetRelayLogSpaceLimit(db *sqlx.DB, size string) (string, error) {
+	query := "SET GLOBAL relay_log_space_limit=" + size
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
 // SetBinlogSlowqueries Enable queries in replication to be reported in slow queries
-func SetBinlogSlowqueries(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL log_slow_slave_statements=ON")
+func SetBinlogSlowqueries(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL log_slow_slave_statements=ON"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
-func SetLongQueryTime(db *sqlx.DB, querytime string) error {
-	_, err := db.Exec("SET GLOBAL long_query_time=" + querytime)
+func SetLongQueryTime(db *sqlx.DB, querytime string) (string, error) {
+	query := "SET GLOBAL long_query_time=" + querytime
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
 // SetSyncBinlog Enable Binlog Durability
-func SetSyncBinlog(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL sync_binlog=1")
+func SetSyncBinlog(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL sync_binlog=1"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
 // SetSyncInnodb Enable InnoDB Durability
-func SetSyncInnodb(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL innodb_flush_log_at_trx_commit=1")
+func SetSyncInnodb(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL innodb_flush_log_at_trx_commit=1"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
 // SetBinlogChecksum Enable binlog checksum and check on master
-func SetBinlogChecksum(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL binlog_checksum=1")
+func SetBinlogChecksum(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL binlog_checksum=1"
+	logs := query
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	_, err = db.Exec("SET GLOBAL master_verify_checksum=1")
+
+	query = "SET GLOBAL master_verify_checksum=1"
+	logs += "\n" + query
+	_, err = db.Exec(query)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return nil
+	return logs, nil
 }
 
 // SetBinlogCompress Enable MaraiDB 10.2 binlog compression
-func SetBinlogCompress(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL log_bin_compress=1")
+func SetBinlogCompress(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL log_bin_compress=1"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
-func SetSlowQueryLogOn(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL slow_query_log=1")
+func SetSlowQueryLogOn(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL slow_query_log=1"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
-func SetSlowQueryLogOff(db *sqlx.DB) error {
-	_, err := db.Exec("SET GLOBAL slow_query_log=0")
+func SetSlowQueryLogOff(db *sqlx.DB) (string, error) {
+	query := "SET GLOBAL slow_query_log=0"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+		return query, err
 	}
-	return nil
+	return query, nil
 }
 
-func ResetAllSlaves(db *sqlx.DB, myver *MySQLVersion) error {
+func ResetAllSlaves(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 
 	ss := []SlaveStatus{}
 	var err error
+	logs := ""
 
 	if myver.IsMariaDB() {
-		ss, err = GetAllSlavesStatus(db, myver)
+		ss, logs, err = GetAllSlavesStatus(db, myver)
 	} else {
 		var s SlaveStatus
-		s, err = GetSlaveStatus(db, "", myver)
+		s, logs, err = GetSlaveStatus(db, "", myver)
 		ss = append(ss, s)
 	}
 	if err != nil {
-		return err
+		return logs, err
 	}
+
 	for _, src := range ss {
-		err = SetDefaultMasterConn(db, src.ConnectionName.String, myver)
+
+		log, err := SetDefaultMasterConn(db, src.ConnectionName.String, myver)
+		logs += "\n" + log
 		if err != nil {
-			return err
+			return logs, err
 		}
 
 		if myver.IsMySQLOrPercona() {
-			err = StopSlave(db, src.ConnectionName.String, myver)
+			log, _ = StopSlave(db, src.ConnectionName.String, myver)
+			logs += "\n" + log
 		}
-		err = ResetSlave(db, true, src.ConnectionName.String, myver)
+		log, err = ResetSlave(db, true, src.ConnectionName.String, myver)
+		logs += "\n" + log
 		if err != nil {
-			return err
+			return logs, err
 		}
 	}
-	return err
+	return logs, err
 }
 
-func GetMasterStatus(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, error) {
+func GetMasterStatus(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	ms := MasterStatus{}
 	udb := db.Unsafe()
@@ -1069,45 +1154,52 @@ func GetMasterStatus(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, error) {
 
 	}
 	err := udb.Get(&ms, query)
-	return ms, err
+	//Binlog can be off
+	if err == sql.ErrNoRows {
+		return ms, query, nil
+	}
+	return ms, query, err
 }
 
-func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, error) {
-	rows, err := db.Queryx("SHOW SLAVE HOSTS")
+func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, string, error) {
+	query := "SHOW SLAVE HOSTS"
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get slave hosts")
+		return nil, query, errors.New("Could not get slave hosts")
 	}
 	defer rows.Close()
 	results := make(map[string]interface{})
 	for rows.Next() {
 		err = rows.MapScan(results)
 		if err != nil {
-			return nil, err
+			return nil, query, err
 		}
 	}
-	return results, nil
+	return results, query, nil
 }
 
-func GetSlaveHostsArray(db *sqlx.DB) ([]SlaveHosts, error) {
+func GetSlaveHostsArray(db *sqlx.DB) ([]SlaveHosts, string, error) {
 	sh := []SlaveHosts{}
-	err := db.Select(&sh, "SHOW SLAVE HOSTS")
+	query := "SHOW SLAVE HOSTS"
+	err := db.Select(&sh, query)
 	if err != nil {
-		return nil, errors.New("Could not get slave hosts array")
+		return nil, query, errors.New("Could not get slave hosts array")
 	}
-	return sh, nil
+	return sh, query, nil
 }
 
-func GetSlaveHostsDiscovery(db *sqlx.DB) ([]string, error) {
+func GetSlaveHostsDiscovery(db *sqlx.DB) ([]string, string, error) {
 	slaveList := []string{}
 	/* This method does not return the server ports, so we cannot rely on it for the time being. */
-	err := db.Select(&slaveList, "select host from information_schema.processlist where command ='binlog dump'")
+	query := "select host from information_schema.processlist where command ='binlog dump'"
+	err := db.Select(&slaveList, query)
 	if err != nil {
-		return nil, errors.New("Could not get slave hosts from the processlist")
+		return nil, query, errors.New("Could not get slave hosts from the processlist")
 	}
-	return slaveList, nil
+	return slaveList, query, nil
 }
 
-func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, error) {
+func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 
@@ -1119,15 +1211,15 @@ func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, error) {
 	}
 	err := udb.Select(&ss, query)
 	if err != nil {
-		return nil, errors.New("Could not get event status")
+		return nil, query, errors.New("Could not get event status")
 	}
-	return ss, err
+	return ss, query, err
 }
 
-func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
+func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	definer := strings.Split(ev.Definer, "@")
 	if len(definer) != 2 {
-		return errors.New("Incorrect definer format")
+		return "", errors.New("Incorrect definer format")
 	}
 	stmt := fmt.Sprintf("ALTER DEFINER='%s'@'%s' EVENT ", definer[0], definer[1])
 	if status == 3 {
@@ -1137,9 +1229,9 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) error {
 	}
 	_, err := db.Exec(stmt)
 	if err != nil {
-		return err
+		return stmt, err
 	}
-	return nil
+	return stmt, nil
 }
 
 func GetVariableSource(db *sqlx.DB, myver *MySQLVersion) string {
@@ -1153,7 +1245,7 @@ func GetVariableSource(db *sqlx.DB, myver *MySQLVersion) string {
 	return source
 }
 
-func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, error) {
+func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
@@ -1175,40 +1267,41 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, error) {
 	rows, err := db.Queryx(query)
 
 	if err != nil {
-		return nil, errors.New("Could not get status variables")
+		return nil, query, errors.New("Could not get status variables")
 	}
 	for rows.Next() {
 		var v Variable
 		err := rows.Scan(&v.Variable_name, &v.Value)
 		if err != nil {
-			return nil, errors.New("Could not get results from status scan")
+			return nil, query, errors.New("Could not get results from status scan")
 		}
 		vars[v.Variable_name] = v.Value
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetEngineInnoDBSatus(db *sqlx.DB) (string, error) {
-	rows, err := db.Query("SHOW ENGINE INNODB STATUS")
+func GetEngineInnoDBSatus(db *sqlx.DB) (string, string, error) {
+	query := "SHOW ENGINE INNODB STATUS"
+	rows, err := db.Query(query)
 	if err != nil {
-		return "", err
+		return "", query, err
 	}
 	defer rows.Close()
 	var typeCol, nameCol, statusCol string
 	// First row should contain the necessary info. If many rows returned then it's unknown case.
 	if rows.Next() {
 		if err := rows.Scan(&typeCol, &nameCol, &statusCol); err != nil {
-			return statusCol, nil
+			return statusCol, query, nil
 		}
 	}
-	return statusCol, err
+	return statusCol, query, err
 }
 
-func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, error) {
+func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
 
-	statusCol, err := GetEngineInnoDBSatus(db)
+	statusCol, logs, err := GetEngineInnoDBSatus(db)
 	if err != nil {
-		return nil, err
+		return nil, logs, err
 	}
 	vars := make(map[string]string)
 	// 0 queries inside InnoDB, 0 queries in queue
@@ -1224,24 +1317,24 @@ func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, error) {
 			vars["read_views_open_inside_innodb"] = data[1]
 		}
 	}
-	return vars, nil
+	return vars, logs, nil
 }
 
-func EnablePFSQueries(db *sqlx.DB) error {
+func EnablePFSQueries(db *sqlx.DB) (string, error) {
 
 	query := "UPDATE setup_consumers SET ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')"
 	_, err := db.Exec(query)
-	return err
+	return query, err
 }
 
-func DisablePFSQueries(db *sqlx.DB) error {
+func DisablePFSQueries(db *sqlx.DB) (string, error) {
 
 	query := "UPDATE setup_consumers SET ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')"
 	_, err := db.Exec(query)
-	return err
+	return query, err
 }
 
-func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
+func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 
 	vars := make(map[string]PFSQuery)
 	query := "set session group_concat_max_len=2048"
@@ -1273,39 +1366,39 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, error) {
 
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get queries")
+		return nil, query, errors.New("Could not get queries")
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v PFSQuery
 		err := rows.Scan(&v.Digest, &v.Query, &v.Digest_text, &v.Last_seen, &v.Schema_name, &v.Plan_full_scan, &v.Plan_tmp_disk, &v.Plan_tmp_mem, &v.Exec_count, &v.Err_count, &v.Warn_count, &v.Exec_time_total, &v.Exec_time_max, &v.Exec_time_avg_ms, &v.Rows_sent, &v.Rows_sent_avg, &v.Rows_scanned, &v.Value)
 		if err != nil {
-			return nil, errors.New("Could not get results from status scan")
+			return nil, query, errors.New("Could not get results from status scan")
 		}
 		vars[v.Digest] = v
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, error) {
+func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	vars := make(map[uint64]chunk)
-
-	rows, err := db.Queryx("SELECT * from replication_manager_schema.table_checksum")
+	query := "SELECT * from replication_manager_schema.table_checksum"
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return vars, err
+		return vars, query, err
 	}
 	for rows.Next() {
 		var v chunk
 		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, v.ChunkCheckSum)
 		if err != nil {
-			return vars, err
+			return vars, query, err
 		}
 		vars[v.ChunkId] = v
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetPlugins(db *sqlx.DB) (map[string]Plugin, error) {
+func GetPlugins(db *sqlx.DB) (map[string]Plugin, string, error) {
 
 	vars := make(map[string]Plugin)
 
@@ -1313,108 +1406,113 @@ func GetPlugins(db *sqlx.DB) (map[string]Plugin, error) {
 
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get queries")
+		return nil, query, errors.New("Could not get queries")
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v Plugin
 		err := rows.Scan(&v.Name, &v.Status, &v.Type, &v.Library, &v.License)
 		if err != nil {
-			return nil, errors.New("Could not get results from plugins scan")
+			return nil, query, errors.New("Could not get results from plugins scan")
 		}
 		vars[v.Name] = v
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, error) {
+func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string, error) {
 	type Variable struct {
 		Variable_name string
 		Value         int64
 	}
 	vars := make(map[string]int64)
 	source := GetVariableSource(db, myver)
-	rows, err := db.Queryx("SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status")
+	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get status variables as integers")
+		return nil, query, errors.New("Could not get status variables as integers")
 	}
 	for rows.Next() {
 		var v Variable
 		rows.Scan(&v.Variable_name, &v.Value)
 		vars[v.Variable_name] = v.Value
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, error) {
+func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 
 	if myver.IsPPostgreSQL() {
-		query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings"
+		query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 	}
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return vars, err
+		return vars, query, err
 	}
 	for rows.Next() {
 		var v Variable
 		err = rows.Scan(&v.Variable_name, &v.Value)
 		if err != nil {
-			return vars, err
+			return vars, query, err
 		}
 		vars[v.Variable_name] = v.Value
 	}
-	return vars, err
+	return vars, query, err
 }
 
-func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, error) {
+func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 
 	vars := make(map[string]string)
-	rows, err := db.Queryx("SELECT 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'")
+	query := "SELECT 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'"
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return vars, err
+		return vars, query, err
 	}
 	for rows.Next() {
 		var v Variable
 		err = rows.Scan(&v.Variable_name, &v.Value)
 		if err != nil {
-			return vars, err
+			return vars, query, err
 		}
 		vars[v.Variable_name] = v.Value
 	}
-	return vars, err
+	return vars, query, err
 }
 
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, error) {
+func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, string, error) {
 	vars := make(map[string]Table)
 	var tblList []Table
-
+	logs := ""
 	query := "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	if myver.IsPPostgreSQL() {
 		query = "SELECT datname AS SCHEMA_NAME FROM pg_catalog.pg_database  WHERE datname not in ('information_schema','pg_catalog')"
 	}
 	databases, err := db.Queryx(query)
 	if err != nil {
-		return nil, nil, errors.New("Could not get table list")
+		return nil, nil, query, errors.New("Could not get table list")
 	}
+	logs += query
 	for databases.Next() {
 		var schema string
 		err = databases.Scan(&schema)
 		if err != nil {
-			return vars, tblList, err
+			return vars, tblList, query, err
 		}
 		query := "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
 		if myver.IsPPostgreSQL() {
 			query = "SELECT a.schemaname as Table_schema ,  a.tablename as Table_name ,'postgres' as Engine,COALESCE(b.n_live_tup,0) as Table_rows ,0 as Data_length,0 as Index_length , 0 as Table_crc  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='" + schema + "'"
 		}
+		logs += "\n" + query
+
 		rows, err := db.Queryx(query)
 
 		//	rows, err := db.Queryx("SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length ,COALESCE((select CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10)    FROM information_schema.COLUMNS b left join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  and  b.table_name=c.table_name where b.table_schema=a.table_schema  and  b.table_name=a.table_name ),0) as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' and a.TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
 		if err != nil {
-			return nil, nil, errors.New("Could not get table list")
+			return nil, nil, logs, errors.New("Could not get table list")
 		}
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
@@ -1422,7 +1520,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, err
 
 			err = rows.Scan(&v.Table_schema, &v.Table_name, &v.Engine, &v.Table_rows, &v.Data_length, &v.Index_length, &v.Table_crc)
 			if err != nil {
-				return vars, tblList, err
+				return vars, tblList, logs, err
 			}
 			//This produce 12 temp table on disk
 			/*	query := "SELECT COALESCE(CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10),0)  FROM information_schema.COLUMNS b inner join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  AND  b.table_name=c.table_name where b.table_schema='" + schema + "' AND  b.table_name='" + v.Table_name + "'"
@@ -1433,6 +1531,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, err
 			if myver.IsPPostgreSQL() {
 				query = "SELECT 'CREATE TABLE '`" + schema + "`.`" + v.Table_name + "`" + "' || ' (' || '\n' || '' || string_agg(column_list.column_expr, ', ' || '\n' || '') ||  '' || $2 || ') ENGINE=postgress;' FROM (   SELECT '    ' || column_name || ' ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = " + v.Table_name + " ORDER BY ordinal_position) column_list"
 			}
+			logs += "\n" + query
 			var tbl, ddl string
 			err := db.QueryRowx(query).Scan(&tbl, &ddl)
 			if err == nil {
@@ -1446,10 +1545,10 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, err
 			vars[v.Table_schema+"."+v.Table_name] = v
 		}
 	}
-	return vars, tblList, nil
+	return vars, tblList, logs, nil
 }
 
-func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, error) {
+func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
 	if myver.IsPPostgreSQL() {
@@ -1457,118 +1556,131 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, error) {
 	}
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get DB user list")
+		return nil, query, errors.New("Could not get DB user list")
 	}
 	for rows.Next() {
 		var g Grant
 		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash)
 		if err != nil {
-			return vars, err
+			return vars, query, err
 		}
 		vars["'"+g.User+"'@'"+g.Host+"'"] = g
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, error) {
+func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)
 	query := "SELECT username, password  FROM mysql_users"
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get proxySQL user list")
+		return nil, query, errors.New("Could not get proxySQL user list")
 	}
 	for rows.Next() {
 		var g Grant
 		err = rows.Scan(&g.User, &g.Password)
 		if err != nil {
-			return vars, err
+			return vars, query, err
 		}
 		vars[g.User+":"+g.Password] = g
 	}
-	return vars, nil
+	return vars, query, nil
 }
 
-func GetSchemas(db *sqlx.DB) ([]string, error) {
+func GetSchemas(db *sqlx.DB) ([]string, string, error) {
 	sch := []string{}
-	err := db.Select(&sch, "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
+	query := "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
+	err := db.Select(&sch, query)
 	if err != nil {
-		return nil, errors.New("Could not get table list")
+		return nil, query, errors.New("Could not get table list")
 	}
-	return sch, nil
+	return sch, query, nil
 }
 
-func GetSchemasMap(db *sqlx.DB) (map[string]string, error) {
-
+func GetSchemasMap(db *sqlx.DB) (map[string]string, string, error) {
+	query := "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	schemas := make(map[string]string)
-	rows, err := db.Queryx("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')")
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, errors.New("Could not get schema list")
+		return nil, query, errors.New("Could not get schema list")
 	}
 	for rows.Next() {
 		var schema string
 		err = rows.Scan(&schema)
 		if err != nil {
-			return schemas, err
+			return schemas, query, err
 		}
 		schemas[schema] = schema
 	}
-	return schemas, nil
+	return schemas, query, nil
 }
 
-func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, error) {
+func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, string, error) {
 	var value string
 	source := GetVariableSource(db, myver)
+	query := "SELECT UPPER(Variable_Value) AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
 	err := db.QueryRowx("SELECT UPPER(Variable_Value) AS Value FROM "+source+".global_variables WHERE Variable_Name = ?", name).Scan(&value)
 	if err != nil {
-		return "", errors.New("Could not get variable by name")
+		return "", query, errors.New("Could not get variable by name")
 	}
-	return value, nil
+	return value, query, nil
 }
 
-func FlushLogs(db *sqlx.DB) error {
+func FlushLogs(db *sqlx.DB) (string, error) {
 	_, err := db.Exec("FLUSH LOCAL BINARY LOGS")
-	return err
+	return "FLUSH LOCAL BINARY LOGS", err
 }
 
-func FlushTables(db *sqlx.DB) error {
+func FlushTables(db *sqlx.DB) (string, error) {
 	_, err := db.Exec("FLUSH TABLES")
-	return err
+	return "FLUSH TABLES", err
 }
 
-func FlushTablesNoLog(db *sqlx.DB) error {
+func FlushTablesNoLog(db *sqlx.DB) (string, error) {
 	_, err := db.Exec("FLUSH NO_WRITE_TO_BINLOG TABLES")
-	return err
+	return "FLUSH NO_WRITE_TO_BINLOG TABLES", err
 }
 
-func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) error {
-	_, err := db.Exec("SET STATEMENT max_statement_time=" + timeout + " FOR FLUSH NO_WRITE_TO_BINLOG TABLES")
+func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) (string, error) {
+	query := "SET STATEMENT max_statement_time=" + timeout + " FOR FLUSH NO_WRITE_TO_BINLOG TABLES"
+	_, err := db.Exec(query)
 	//MySQL does not support DML timeout only SELECT
-	return err
+	return query, err
 }
 
-func FlushTablesWithReadLock(db *sqlx.DB, myver *MySQLVersion) error {
-	_, err := db.Exec("FLUSH TABLES WITH READ LOCK")
-	return err
+func FlushTablesWithReadLock(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+	query := "FLUSH TABLES WITH READ LOCK"
+	_, err := db.Exec(query)
+	return query, err
 }
 
-func UnlockTables(db *sqlx.DB) error {
-	_, err := db.Exec("UNLOCK TABLES")
-	return err
+func UnlockTables(db *sqlx.DB) (string, error) {
+	query := "UNLOCK TABLES"
+	_, err := db.Exec(query)
+	return query, err
 }
 
-func StopSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
-	cmd := "STOP SLAVE"
-	if myver.IsMariaDB() && Channel != "" {
-		cmd += " '" + Channel + "'"
-	}
-	if myver.IsMySQLOrPercona() && Channel != "" {
-		cmd += " FOR CHANNEL '" + Channel + "'"
+func StopSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+	cmd := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		cmd += "ALTER SUBSCRIPTION " + Channel + " DISABLE"
+	} else {
+		cmd += "STOP SLAVE"
+		if myver.IsMariaDB() && Channel != "" {
+			cmd += " '" + Channel + "'"
+		}
+		if myver.IsMySQLOrPercona() && Channel != "" {
+			cmd += " FOR CHANNEL '" + Channel + "'"
+		}
 	}
 	_, err := db.Exec(cmd)
-	return err
+	return cmd, err
 }
 
-func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
+func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	cmd := "STOP SLAVE IO_THREAD"
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "'  IO_THREAD"
@@ -1577,9 +1689,9 @@ func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
 		cmd += " FOR CHANNEL '" + Channel + "'"
 	}
 	_, err := db.Exec(cmd)
-	return err
+	return cmd, err
 }
-func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
+func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	cmd := "STOP SLAVE SQL_THREAD"
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "' SQL_THREAD"
@@ -1588,118 +1700,188 @@ func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *MySQLVersion) error 
 		cmd += " FOR CHANNEL '" + Channel + "'"
 	}
 	_, err := db.Exec(cmd)
-	return err
+	return cmd, err
 }
 
-func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *MySQLVersion) error {
+func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *MySQLVersion) (string, error) {
 	var err error
-
-	err = StopSlave(db, Channel, myver)
+	logs := ""
+	log := ""
+	log, err = StopSlave(db, Channel, myver)
+	logs += log
 	if err != nil {
-		return err
+		return logs, err
 	}
 	stmt := "change master to MASTER_HEARTBEAT_PERIOD=" + interval
+	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
+
 	if err != nil {
-		return err
+		return logs, err
 	}
-	err = StartSlave(db, Channel, myver)
+	log, err = StartSlave(db, Channel, myver)
+	logs += "\n" + stmt
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return err
+	return logs, err
 }
 
-func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) error {
+func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
 	var err error
-
-	err = StopSlave(db, Channel, myver)
+	logs := ""
+	log := ""
+	logs, err = StopSlave(db, Channel, myver)
+	logs += log
 	if err != nil {
-		return err
+		return logs, err
 	}
 	stmt := "change master to master_use_gtid=" + mode
+	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
-		return err
+		return logs, err
 	}
-	err = StartSlave(db, Channel, myver)
+	log, err = StartSlave(db, Channel, myver)
+	logs += "\n" + stmt
 	if err != nil {
-		return err
+		return logs, err
 	}
-	return err
+	return logs, err
 }
 
-func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *MySQLVersion) error {
+func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
+	query := "SET GLOBAL gtid_slave_pos='" + gtid + "'"
+	_, err := db.Exec(query)
+	return query, err
+}
+
+func GetBinlogDumpThreads(db *sqlx.DB, myver *MySQLVersion) (int, string, error) {
+	var i int
+	query := "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'"
+	err := db.Get(&i, query)
+	return i, query, err
+}
+
+func SetMaxConnections(db *sqlx.DB, connections string, myver *MySQLVersion) (string, error) {
+
+	query := "SET GLOBAL max_connections=" + connections
+	_, err := db.Exec(query)
+	return query, err
+}
+
+func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	var err error
+	stmt := ""
 	//MySQL is strict per default with GTID tracking gap trx
 	if myver.IsMariaDB() {
-		stmt := "set global gtid_strict_mode=1"
+		stmt = "set global gtid_strict_mode=1"
 		_, err = db.Exec(stmt)
 		if err != nil {
-			return err
+			return stmt, err
 		}
 	}
-	return nil
+	return stmt, nil
 }
 
-func StopAllSlaves(db *sqlx.DB, myver *MySQLVersion) error {
+func StopAllSlaves(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	_, err := db.Exec("STOP ALL SLAVES")
-	return err
+	return "STOP ALL SLAVES", err
 }
 
-func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
+func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	if myver.IsMariaDB() {
 		stmt := "SET @@default_master_connection='" + Channel + "'"
 		_, err := db.Exec(stmt)
 		if err != nil {
-			return err
+			return stmt, err
 		}
 	}
-	_, err := db.Exec("SET GLOBAL sql_slave_skip_counter=1")
-	return err
+	query := "SET GLOBAL sql_slave_skip_counter=1"
+	_, err := db.Exec(query)
+	return query, err
 }
 
-func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) error {
-	cmd := "START SLAVE"
-	if myver.IsMariaDB() && Channel != "" {
-		cmd += " '" + Channel + "'"
-	}
-	if myver.IsMySQLOrPercona() && Channel != "" {
-		cmd += " FOR CHANNEL '" + Channel + "'"
+func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+	cmd := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		cmd += "ALTER SUBSCRIPTION " + Channel + " ENABLE"
+	} else {
+		cmd += "START SLAVE"
+		if myver.IsMariaDB() && Channel != "" {
+			cmd += " '" + Channel + "'"
+		}
+		if myver.IsMySQLOrPercona() && Channel != "" {
+			cmd += " FOR CHANNEL '" + Channel + "'"
+		}
 	}
 	_, err := db.Exec(cmd)
-	return err
+	return cmd, err
 }
 
-func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) error {
-	stmt := "RESET SLAVE"
-	if myver.IsMariaDB() && Channel != "" {
-		stmt += " '" + Channel + "'"
-	}
-	if all == true {
-		stmt += " ALL"
-		if myver.IsMySQLOrPercona() && Channel != "" {
-			stmt += " FOR CHANNEL '" + Channel + "'"
+func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (string, error) {
+	stmt := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		stmt += "DROP SUBSCRIPTION " + Channel
+	} else {
+		stmt += "RESET SLAVE"
+		if myver.IsMariaDB() && Channel != "" {
+			stmt += " '" + Channel + "'"
+		}
+		if all == true {
+			stmt += " ALL"
+			if myver.IsMySQLOrPercona() && Channel != "" {
+				stmt += " FOR CHANNEL '" + Channel + "'"
+			}
 		}
 	}
 	_, err := db.Exec(stmt)
-	return err
+	return stmt, err
 }
 
-func ResetMaster(db *sqlx.DB, myver *MySQLVersion) error {
-	_, err := db.Exec("RESET MASTER")
-	return err
+func ResetMaster(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+	stmt := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		stmt += "DROP PUBLICATION " + Channel
+	} else {
+		stmt += "RESET MASTER"
+	}
+	_, err := db.Exec(stmt)
+
+	return stmt, err
 }
 
-func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) error {
+func PostgresGetChannel(db *sqlx.DB, myver *MySQLVersion) (string, string, error) {
+	stmt := ""
+	if myver.IsPPostgreSQL() {
+
+		stmt += "select slot_name from pg_replication_slots"
+		channels := []string{}
+		err := db.Select(&channels, stmt)
+		return channels[0], stmt, err
+	}
+	return "", stmt, errors.New("Not PostgreSQL")
+
+}
+
+func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) (string, error) {
 
 	if myver.IsMariaDB() {
 		stmt := "SET @@default_master_connection='" + dmc + "'"
 		_, err := db.Exec(stmt)
-		return err
+		return stmt, err
 	}
 	// MySQL replication channels are not supported at the moment
-	return nil
+	return "", nil
 }
 
 /* Check for a list of slave prerequisites.
@@ -1718,32 +1900,36 @@ func CheckSlavePrerequisites(db *sqlx.DB, s string, myver *MySQLVersion) bool {
 		log.Printf("WARN : Slave %s is offline. Skipping", s)
 		return false
 	}
-	vars, _ := GetVariables(db, myver)
+	vars, _, _ := GetVariables(db, myver)
 	if vars["LOG_BIN"] == "OFF" {
-		log.Printf("WARN : Binary log off. Slave %s cannot be used as candidate master.", s)
 		return false
 	}
 	return true
 }
 
-func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) (bool, error) {
-	ms, err := GetMasterStatus(m, myver)
+func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) (bool, string, error) {
+	logs := ""
+
+	ms, log, err := GetMasterStatus(m, myver)
+	logs += log
 	if err != nil {
-		return false, errors.New("Cannot check binlog status on master")
+		return false, log, errors.New("Cannot check binlog status on master")
 	}
-	ss, err := GetMasterStatus(s, myver)
+
+	ss, log, err := GetMasterStatus(s, myver)
+	logs += "\n" + log
 	if err != nil {
-		return false, errors.New("ERROR: Can't check binlog status on slave")
+		return false, logs, errors.New("ERROR: Can't check binlog status on slave")
 	}
 	if ms.Binlog_Do_DB == ss.Binlog_Do_DB && ms.Binlog_Ignore_DB == ss.Binlog_Ignore_DB {
-		return true, nil
+		return true, logs, nil
 	}
-	return false, nil
+	return false, logs, nil
 }
 
 func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) bool {
-	mv, _ := GetVariables(m, myver)
-	sv, _ := GetVariables(s, myver)
+	mv, _, _ := GetVariables(m, myver)
+	sv, _, _ := GetVariables(s, myver)
 	if mv["REPLICATE_DO_TABLE"] == sv["REPLICATE_DO_TABLE"] && mv["REPLICATE_IGNORE_TABLE"] == sv["REPLICATE_IGNORE_TABLE"] && mv["REPLICATE_WILD_DO_TABLE"] == sv["REPLICATE_WILD_DO_TABLE"] && mv["REPLICATE_WILD_IGNORE_TABLE"] == sv["REPLICATE_WILD_IGNORE_TABLE"] && mv["REPLICATE_DO_DB"] == sv["REPLICATE_DO_DB"] && mv["REPLICATE_IGNORE_DB"] == sv["REPLICATE_IGNORE_DB"] {
 		return true
 	} else {
@@ -1753,24 +1939,23 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) bool {
 
 func GetEventScheduler(dbM *sqlx.DB, myver *MySQLVersion) bool {
 
-	sES, _ := GetVariableByName(dbM, "EVENT_SCHEDULER", myver)
+	sES, _, _ := GetVariableByName(dbM, "EVENT_SCHEDULER", myver)
 	if sES != "ON" {
 		return false
 	}
 	return true
 }
 
-func SetEventScheduler(db *sqlx.DB, state bool) error {
+func SetEventScheduler(db *sqlx.DB, state bool) (string, error) {
 	var err error
+	stmt := ""
 	if state {
-		stmt := "SET GLOBAL event_scheduler=1"
-		_, err = db.Exec(stmt)
+		stmt = "SET GLOBAL event_scheduler=1"
 	} else {
-		stmt := "SET GLOBAL event_scheduler=0"
-		_, err = db.Exec(stmt)
+		stmt = "SET GLOBAL event_scheduler=0"
 	}
-
-	return err
+	_, err = db.Exec(stmt)
+	return stmt, err
 }
 
 /* Check if a slave is in sync with his master */
@@ -1778,8 +1963,8 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB, myver *MySQLVersion) bool {
 	if debug {
 		log.Printf("CheckSlaveSync called")
 	}
-	sGtid, _ := GetVariableByName(dbS, "GTID_CURRENT_POS", myver)
-	mGtid, _ := GetVariableByName(dbM, "GTID_CURRENT_POS", myver)
+	sGtid, _, _ := GetVariableByName(dbS, "GTID_CURRENT_POS", myver)
+	mGtid, _, _ := GetVariableByName(dbM, "GTID_CURRENT_POS", myver)
 	if sGtid == mGtid {
 		return true
 	} else {
@@ -1791,7 +1976,7 @@ func CheckSlaveSemiSync(dbS *sqlx.DB, myver *MySQLVersion) bool {
 	if debug {
 		log.Printf("CheckSlaveSemiSync called")
 	}
-	sync, _ := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS", myver)
+	sync, _, _ := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS", myver)
 
 	if sync == "ON" {
 		return true
@@ -1800,70 +1985,86 @@ func CheckSlaveSemiSync(dbS *sqlx.DB, myver *MySQLVersion) bool {
 	}
 }
 
-func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) error {
-	_, err := db.Exec("SELECT MASTER_GTID_WAIT(?, ?)", gtid, timeout)
-	return err
+func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
+	query := "SELECT MASTER_GTID_WAIT(?, ?)"
+	_, err := db.Exec(query, gtid, timeout)
+	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
-func MasterPosWait(db *sqlx.DB, log string, pos string, timeout int) error {
-	_, err := db.Exec("SELECT MASTER_POS_WAIT(?, ?, ?)", log, pos, timeout)
-	return err
+func MasterPosWait(db *sqlx.DB, log string, pos string, timeout int) (string, error) {
+	query := "SELECT MASTER_POS_WAIT(?, ?, ?)"
+	_, err := db.Exec(query, log, pos, timeout)
+	return query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
 }
 
-func SetReadOnly(db *sqlx.DB, flag bool) error {
+func SetReadOnly(db *sqlx.DB, flag bool) (string, error) {
 	if flag == true {
-		_, err := db.Exec("SET GLOBAL read_only=1")
-		return err
+		query := "SET GLOBAL read_only=1"
+		_, err := db.Exec(query)
+		return query, err
 	} else {
-		_, err := db.Exec("SET GLOBAL read_only=0")
-		return err
+		query := "SET GLOBAL read_only=0"
+		_, err := db.Exec(query)
+		return query, err
 	}
 }
-func SetSuperReadOnly(db *sqlx.DB, flag bool) error {
+
+func SetSuperReadOnly(db *sqlx.DB, flag bool) (string, error) {
 	if flag == true {
 		_, err := db.Exec("SET GLOBAL super_read_only=1")
-		return err
+		return "SET GLOBAL super_read_only=1", err
 	} else {
 		_, err := db.Exec("SET GLOBAL super_read_only=0")
-		return err
+		return "SET GLOBAL super_read_only=0", err
 	}
 }
 
-func SetQueryCaptureMode(db *sqlx.DB, mode string) error {
+func SetQueryCaptureMode(db *sqlx.DB, mode string) (string, error) {
 	var err error
+	query := "SET GLOBAL log_output='" + mode + "'"
 
 	if mode == "TABLE" || mode == "FILE" {
-		_, err = db.Exec("SET GLOBAL log_output='" + mode + "'")
+		_, err = db.Exec(query)
 	} else {
 		err = errors.New("Unvalid mode")
 	}
-	return err
+	return query, err
 }
 
-func CheckLongRunningWrites(db *sqlx.DB, thresh int) int {
+func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 	var count int
-	err := db.QueryRowx("select SUM(ct) from ( select count(*) as ct from information_schema.processlist  where command = 'Query' and time >= ? and info not like 'select%' union all select count(*) as ct  FROM  INFORMATION_SCHEMA.INNODB_TRX trx WHERE trx.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND) A", thresh, thresh).Scan(&count)
-	if err != nil {
-		log.Println("ERROR: Could not check long running writes", err)
-	}
-	return count
+	query := "select SUM(ct) from ( select count(*) as ct from information_schema.processlist  where command = 'Query' and time >= ? and info not like 'select%' union all select count(*) as ct  FROM  INFORMATION_SCHEMA.INNODB_TRX trx WHERE trx.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND) A"
+	err := db.QueryRowx(query, thresh, thresh).Scan(&count)
+	return count, query + "(" + strconv.Itoa(thresh) + ")", err
 }
 
-func KillThreads(db *sqlx.DB) {
+func KillThreads(db *sqlx.DB) (string, error) {
 	var ids []int
-	db.Select(&ids, "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()")
-	for _, id := range ids {
-		db.Exec("KILL ?", id)
+	query := "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()"
+	logs := query
+	err := db.Select(&ids, query)
+	if err != nil {
+		return logs, err
 	}
+	for _, id := range ids {
+		_, err := db.Exec("KILL ?", id)
+		logs += "KILL ? (" + strconv.Itoa(id) + ")"
+		if err != nil {
+			return logs, err
+		}
+	}
+	return logs, err
+
 }
 
-func KillThread(db *sqlx.DB, id string) error {
+func KillThread(db *sqlx.DB, id string) (string, error) {
 	_, err := db.Exec("KILL ?", id)
-	return err
+	return "KILL ? (" + id + ")", err
 }
-func KillQuery(db *sqlx.DB, id string) error {
+
+func KillQuery(db *sqlx.DB, id string) (string, error) {
 	_, err := db.Exec("KILL QUERY ?", id)
-	return err
+	return "KILL QUERY ? (" + id + ")", err
 }
 
 /* Check if string is an IP address or a hostname, return a IP address */
@@ -1917,7 +2118,8 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 }
 
 func runPreparedExecConcurrent(db *sqlx.DB, n int, co int) error {
-	stmt, err := db.Prepare("UPDATE replication_manager_schema.bench SET val=val+1 WHERE id=1")
+	query := "UPDATE replication_manager_schema.bench SET val=val+1 WHERE id=1"
+	stmt, err := db.Prepare(query)
 	if err != nil {
 		return err
 	}

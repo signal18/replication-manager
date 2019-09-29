@@ -188,10 +188,9 @@ func (cluster *Cluster) SetMultiMasterWsrep(wsrep bool) {
 
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
-		err := cluster.GetMaster().SetReadOnly()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Could not set  master as read-only, %s", err)
-		}
+		logs, err := cluster.GetMaster().SetReadOnly()
+		cluster.LogSQL(logs, err, cluster.GetMaster().URL, "MasterFailover", LvlErr, "Could not set  master as read-only, %s", err)
+
 	}
 }
 

@@ -60,6 +60,7 @@ type Config struct {
 	LogRotateMaxAge                    int    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
 	LogSST                             bool   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"` // internal replication-manager sst
 	LogHeartbeat                       bool   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
+	LogSQLInMonitoring                 bool   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	User                               string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                              string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsTLSCA                         string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`

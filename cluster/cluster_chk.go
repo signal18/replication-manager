@@ -177,13 +177,15 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 		relaycheck, _ := cluster.GetMasterFromReplication(s)
 		if relaycheck != nil {
 			if relaycheck.IsRelay == false {
-				status, _ := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
+				status, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
+				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
 				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
 				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
-				status2, _ := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
+				status2, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
+				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
 				if cluster.Conf.LogLevel > 1 {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
@@ -554,11 +556,11 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		}
 	}
 	// check slave result
-	masterChecksums, _ := dbhelper.GetTableChecksumResult(cluster.master.Conn)
-
+	masterChecksums, logs, err := dbhelper.GetTableChecksumResult(cluster.master.Conn)
+	cluster.LogSQL(logs, err, cluster.master.URL, "CheckTableChecksum", LvlDbg, "GetTableChecksumResult")
 	for _, s := range cluster.slaves {
-		slaveChecksums, _ := dbhelper.GetTableChecksumResult(s.Conn)
-
+		slaveChecksums, logs, err := dbhelper.GetTableChecksumResult(s.Conn)
+		cluster.LogSQL(logs, err, s.URL, "CheckTableChecksum", LvlDbg, "GetTableChecksumResult")
 		checkok := true
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {

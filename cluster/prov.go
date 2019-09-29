@@ -508,7 +508,8 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "SetDefaultMasterConn on server %s ", server.URL)
 		}
-		err = dbhelper.SetDefaultMasterConn(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+		logs, err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlDbg, "BootstrapReplicationCleanup %s %s ", server.URL, err)
 		if err != nil {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
@@ -518,39 +519,25 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 		cluster.LogPrintf(LvlInfo, "Reset Master on server %s ", server.URL)
 
-		err = dbhelper.ResetMaster(server.Conn, server.DBVersion)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Reset Master on server %s %s", server.URL, err)
-		}
+		logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlErr, "Reset Master on server %s %s", server.URL, err)
 		if cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
 		if server.DBVersion.IsMariaDB() {
-			err = dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
+			logs, err = dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
 		} else {
-			err = server.StopSlave()
+			logs, err = server.StopSlave()
 		}
-
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Stop all slaves or just slave %s %s", server.URL, err)
-		}
+		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlErr, "Stop all slaves or just slave %s %s", server.URL, err)
 
 		if server.DBVersion.IsMariaDB() {
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
-			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos=''")
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "SET GLOBAL gtid_slave_pos='' %s %s", server.URL, err)
-			}
+			logs, err := dbhelper.SetGTIDSlavePos(server.Conn, "")
+			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
 		}
-		// redondante code with previous code missing reset MariaDB GTID or PURGE MySQL GTID
-
-		/*	err = dbhelper.ResetAllSlaves(server.Conn)
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return err
-			}*/
 
 	}
 	cluster.master = nil
@@ -622,7 +609,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			} else {
 				// A slave
 				var hasMyGTID bool
-				hasMyGTID, err = dbhelper.HasMySQLGTID(server.Conn, server.DBVersion)
+				hasMyGTID, logs, err := dbhelper.HasMySQLGTID(server.Conn, server.DBVersion)
+				cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlDbg, "Could not check GTID status: %s", err)
 				//mariadb
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					cluster.Servers[masterKey].Refresh()
@@ -630,32 +618,30 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					if err != nil {
 						return err
 					}
-					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:      cluster.Servers[masterKey].Host,
-						Port:      cluster.Servers[masterKey].Port,
-						User:      cluster.rplUser,
-						Password:  cluster.rplPass,
-						Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-						Mode:      "SLAVE_POS",
-						Channel:   cluster.Conf.MasterConn,
-						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:        cluster.Servers[masterKey].Host,
+						Port:        cluster.Servers[masterKey].Port,
+						User:        cluster.rplUser,
+						Password:    cluster.rplPass,
+						Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+						Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+						Mode:        "SLAVE_POS",
+						Channel:     cluster.Conf.MasterConn,
+						PostgressDB: server.PostgressDB,
 					}, server.DBVersion)
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 
-					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:      cluster.Servers[masterKey].Host,
-						Port:      cluster.Servers[masterKey].Port,
-						User:      cluster.rplUser,
-						Password:  cluster.rplPass,
-						Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-						Mode:      "MASTER_AUTO_POSITION",
-						Channel:   cluster.Conf.MasterConn,
-						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:        cluster.Servers[masterKey].Host,
+						Port:        cluster.Servers[masterKey].Port,
+						User:        cluster.rplUser,
+						Password:    cluster.rplPass,
+						Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+						Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+						Mode:        "MASTER_AUTO_POSITION",
+						Channel:     cluster.Conf.MasterConn,
+						PostgressDB: server.PostgressDB,
 					}, server.DBVersion)
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.Servers[masterKey].URL)
@@ -663,32 +649,30 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				} else {
 					//*ss, errss := cluster.Servers[masterKey].GetSlaveStatus(cluster.Servers[masterKey].ReplicationSourceName)
 
-					err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:      cluster.Servers[masterKey].Host,
-						Port:      cluster.Servers[masterKey].Port,
-						User:      cluster.rplUser,
-						Password:  cluster.rplPass,
-						Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-						Mode:      "POSITIONAL",
-						Logfile:   cluster.Servers[masterKey].BinaryLogFile,
-						Logpos:    cluster.Servers[masterKey].BinaryLogPos,
-						Channel:   cluster.Conf.MasterConn,
-						IsMariaDB: server.DBVersion.IsMariaDB(),
-						IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+						Host:        cluster.Servers[masterKey].Host,
+						Port:        cluster.Servers[masterKey].Port,
+						User:        cluster.rplUser,
+						Password:    cluster.rplPass,
+						Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+						Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+						Mode:        "POSITIONAL",
+						Logfile:     cluster.Servers[masterKey].BinaryLogFile,
+						Logpos:      cluster.Servers[masterKey].BinaryLogPos,
+						Channel:     cluster.Conf.MasterConn,
+						PostgressDB: server.PostgressDB,
 					}, server.DBVersion)
 
 					//  Missing  multi source cluster.Conf.MasterConn
 					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with old replication style and %s as master", cluster.Servers[masterKey].URL)
 
 				}
+				cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
+
 				} else if !server.IsDown() {
-					err = server.StartSlave()
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-					}
+					logs, err = server.StartSlave()
+					cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
 				}
 
 				server.SetReadOnly()

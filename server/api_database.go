@@ -1283,7 +1283,7 @@ func (repman *ReplicationManager) handlerMuxServerSchemas(w http.ResponseWriter,
 		if node != nil && node.IsDown() == false {
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
-			l, _ := node.GetSchemas()
+			l, _, _ := node.GetSchemas()
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)

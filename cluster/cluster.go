@@ -28,6 +28,8 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
+	logsqlerr "github.com/sirupsen/logrus"
+	logsqlgen "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -53,7 +55,8 @@ type Cluster struct {
 	Conf                 config.Config        `json:"config"`
 	CleanAll             bool                 `json:"cleanReplication"` //used in testing
 	Schedule             []CronEntry          `json:"schedule"`
-	ConfigTags           []Tag                `json:"configTags"`    //from module
+	ConfigDBTags         []Tag                `json:"configTags"`    //from module
+	ConfigPrxTags        []Tag                `json:"configPrxTags"` //from module
 	DBTags               []string             `json:"dbServersTags"` //from conf
 	ProxyTags            []string             `json:"proxyServersTags"`
 	Topology             string               `json:"topology"`
@@ -66,6 +69,8 @@ type Cluster struct {
 	Log                  s18log.HttpLog       `json:"log"`
 	tlog                 *s18log.TermLog      `json:"-"`
 	htlog                *s18log.HttpLog      `json:"-"`
+	SQLGeneralLog        s18log.HttpLog       `json:"sqlGeneralLog"`
+	SQLErrorLog          s18log.HttpLog       `json:"sqlErrorLog"`
 	MonitorType          map[string]string    `json:"monitorType"`
 	TopologyType         map[string]string    `json:"topologyType"`
 	hostList             []string             `json:"-"`
@@ -188,6 +193,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		"mariadb":    "database",
 		"mysql":      "database",
 		"percona":    "database",
+		"postgresql": "database",
 		"maxscale":   "proxy",
 		"proxysql":   "proxy",
 		"shardproxy": "proxy",
@@ -221,17 +227,53 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
 
+	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+		Filename:   cluster.Conf.WorkingDir + "/" + cluster.Name + "/sql_error.log",
+		MaxSize:    cluster.Conf.LogRotateMaxSize,
+		MaxBackups: cluster.Conf.LogRotateMaxBackup,
+		MaxAge:     cluster.Conf.LogRotateMaxAge,
+		Level:      logsqlerr.DebugLevel,
+		Formatter: &logsqlerr.TextFormatter{
+			DisableColors:   true,
+			TimestampFormat: "2006-01-02 15:04:05",
+			FullTimestamp:   true,
+		},
+	})
+	if err != nil {
+		logsqlerr.WithError(err).Error("Can't init error sql log file")
+	}
+	logsqlerr.AddHook(hookerr)
+
+	hookgen, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+		Filename:   cluster.Conf.WorkingDir + "/" + cluster.Name + "/sql_general.log",
+		MaxSize:    cluster.Conf.LogRotateMaxSize,
+		MaxBackups: cluster.Conf.LogRotateMaxBackup,
+		MaxAge:     cluster.Conf.LogRotateMaxAge,
+		Level:      logsqlerr.DebugLevel,
+		Formatter: &logsqlgen.TextFormatter{
+			DisableColors:   true,
+			TimestampFormat: "2006-01-02 15:04:05",
+			FullTimestamp:   true,
+		},
+	})
+	if err != nil {
+		logsqlgen.WithError(err).Error("Can't init general sql log file")
+	}
+	logsqlgen.AddHook(hookgen)
+
 	// createKeys do nothing yet
 	cluster.createKeys()
 	cluster.initScheduler()
 	cluster.newServerList()
-	err := cluster.newProxyList()
+	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
 	cluster.LoadDBModules()
-	cluster.ConfigTags = cluster.GetDBModuleTags()
+	cluster.LoadPrxModules()
+	cluster.ConfigDBTags = cluster.GetDBModuleTags()
+	cluster.ConfigPrxTags = cluster.GetProxyModuleTags()
 	// Reload SLA and crashes
 	cluster.GetPersitentState()
 
@@ -684,11 +726,9 @@ func (cluster *Cluster) schemaMonitor() {
 	cluster.sme.SetMonitorSchemaState()
 	cluster.master.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, err := dbhelper.GetTables(cluster.master.Conn, cluster.master.DBVersion)
+	tables, tablelist, logs, err := dbhelper.GetTables(cluster.master.Conn, cluster.master.DBVersion)
+	cluster.LogSQL(logs, err, cluster.master.URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
 	cluster.master.Tables = tablelist
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not fetch master tables %s", err)
-	}
 
 	var tableCluster []string
 	var duplicates []*ServerMonitor
@@ -771,10 +811,9 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogPrintf(LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
 		cluster.LogPrintf(LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().DSN, realmaster.DSN)
-		err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Failed in GTID rejoin lost master to winner master %s", err)
-		}
+		logs, err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
+		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
+
 	}
 }
 
@@ -784,13 +823,33 @@ func (cluster *Cluster) LoadDBModules() {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed opened module %s %s", file, err)
 	}
-	cluster.LogPrintf(LvlInfo, "Successfully loaded module %s", file)
+	cluster.LogPrintf(LvlInfo, "Loading database configurator config %s", file)
 	// defer the closing of our jsonFile so that we can parse it later on
 	defer jsonFile.Close()
 
 	byteValue, _ := ioutil.ReadAll(jsonFile)
 
 	err = json.Unmarshal([]byte(byteValue), &cluster.DBModule)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
+	}
+
+}
+
+func (cluster *Cluster) LoadPrxModules() {
+
+	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.proxy.json"
+	jsonFile, err := os.Open(file)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Failed opened module %s %s", file, err)
+	}
+	cluster.LogPrintf(LvlInfo, "Loading proxies configurator config %s", file)
+	// defer the closing of our jsonFile so that we can parse it later on
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	err = json.Unmarshal([]byte(byteValue), &cluster.ProxyModule)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
 	}

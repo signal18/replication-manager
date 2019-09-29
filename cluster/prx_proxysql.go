@@ -186,7 +186,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 		}
 		// load the grants
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
-			myprxusermap, err := dbhelper.GetProxySQLUsers(psql.Connection)
+			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
 			if err != nil {
 				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 			}

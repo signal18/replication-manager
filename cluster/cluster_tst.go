@@ -269,7 +269,7 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		err := s.StopSlaveSQLThread()
+		_, err := s.StopSlaveSQLThread()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Stopping slave on %s %s", s.URL, err)
 		}
@@ -287,7 +287,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 		cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
 	}
 	for _, s := range cluster.slaves {
-		err := s.StartSlave()
+		_, err := s.StartSlave()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Staring slave on %s %s", s.URL, err)
 		}
@@ -383,7 +383,7 @@ func (cluster *Cluster) EnableSemisync() error {
 func (cluster *Cluster) StopSlaves() error {
 	cluster.LogPrintf("BENCH", "Stopping replication")
 	for _, s := range cluster.slaves {
-		err := s.StopSlave()
+		_, err := s.StopSlave()
 		if err != nil {
 			return err
 		}
@@ -394,7 +394,7 @@ func (cluster *Cluster) StopSlaves() error {
 func (cluster *Cluster) StartSlaves() error {
 	cluster.LogPrintf("BENCH", "Sarting replication")
 	for _, s := range cluster.slaves {
-		err := s.StartSlave()
+		_, err := s.StartSlave()
 		if err != nil {
 			return err
 		}

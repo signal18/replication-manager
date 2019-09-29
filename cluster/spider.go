@@ -61,7 +61,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 						cluster.LogPrintf(LvlWarn, "Can not set heartbeat table to %s", url)
 						return
 					}
-					err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
+					_, err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
 					if err != nil {
 						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
 					}

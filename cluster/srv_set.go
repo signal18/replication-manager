@@ -28,42 +28,46 @@ func (server *ServerMonitor) SetPrefered(pref bool) {
 	server.Prefered = pref
 }
 
-func (server *ServerMonitor) SetReadOnly() error {
+func (server *ServerMonitor) SetReadOnly() (string, error) {
+	logs := ""
 	if !server.IsReadOnly() {
-		err := dbhelper.SetReadOnly(server.Conn, true)
+		logs, err := dbhelper.SetReadOnly(server.Conn, true)
 		if err != nil {
-			return err
+			return logs, err
 		}
 	}
 	if server.HasSuperReadOnly() && server.ClusterGroup.Conf.SuperReadOnly {
-		err := dbhelper.SetSuperReadOnly(server.Conn, true)
+		logs, err := dbhelper.SetSuperReadOnly(server.Conn, true)
 		if err != nil {
-			return err
+			return logs, err
 		}
 	}
-	return nil
+	return logs, nil
 }
 
-func (server *ServerMonitor) SetLongQueryTime(queryTime string) error {
-	err := dbhelper.SetLongQueryTime(server.Conn, queryTime)
+func (server *ServerMonitor) SetLongQueryTime(queryTime string) (string, error) {
+
+	log, err := dbhelper.SetLongQueryTime(server.Conn, queryTime)
 	if err != nil {
-		return err
+		return log, err
 	}
 	server.SwitchSlowQuery()
 	server.Refresh()
 	server.SwitchSlowQuery()
-	return nil
+	return log, nil
 }
 
 func (server *ServerMonitor) SetReadWrite() error {
 	if server.IsReadOnly() {
-		err := dbhelper.SetReadOnly(server.Conn, false)
+		logs, err := dbhelper.SetReadOnly(server.Conn, false)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
 	}
 	if server.HasSuperReadOnly() {
-		err := dbhelper.SetSuperReadOnly(server.Conn, false)
+		logs, err := dbhelper.SetSuperReadOnly(server.Conn, false)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -132,75 +136,72 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 }
 
-func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) error {
+func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
 
 	if server.IsMariaDB() {
 		return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      master.Host,
-			Port:      master.Port,
-			User:      master.ClusterGroup.rplUser,
-			Password:  master.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "SLAVE_POS",
-			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-			Channel:   server.ClusterGroup.Conf.MasterConn,
-			IsMariaDB: server.DBVersion.IsMariaDB(),
-			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+			Host:        master.Host,
+			Port:        master.Port,
+			User:        master.ClusterGroup.rplUser,
+			Password:    master.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "SLAVE_POS",
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	}
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      master.Host,
-		Port:      master.Port,
-		User:      master.ClusterGroup.rplUser,
-		Password:  master.ClusterGroup.rplPass,
-		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "MASTER_AUTO_POSITION",
-		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-		Channel:   server.ClusterGroup.Conf.MasterConn,
-		IsMariaDB: server.DBVersion.IsMariaDB(),
-		IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+		Host:        master.Host,
+		Port:        master.Port,
+		User:        master.ClusterGroup.rplUser,
+		Password:    master.ClusterGroup.rplPass,
+		Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		Mode:        "MASTER_AUTO_POSITION",
+		SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+		Channel:     server.ClusterGroup.Conf.MasterConn,
+		PostgressDB: server.PostgressDB,
 	}, server.DBVersion)
 }
 
-func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) error {
+func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
 	var err error
+	logs := ""
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		// We can do MySQL 5.7 style failover
 		server.ClusterGroup.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
-		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      server.ClusterGroup.master.Host,
-			Port:      server.ClusterGroup.master.Port,
-			User:      server.ClusterGroup.rplUser,
-			Password:  server.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "",
-			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-			Channel:   server.ClusterGroup.Conf.MasterConn,
-			IsMariaDB: server.DBVersion.IsMariaDB(),
-			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        server.ClusterGroup.master.Host,
+			Port:        server.ClusterGroup.master.Port,
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "",
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	} else {
-		err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      master.Host,
-			Port:      master.Port,
-			User:      master.ClusterGroup.rplUser,
-			Password:  master.ClusterGroup.rplPass,
-			Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "CURRENT_POS",
-			SSL:       server.ClusterGroup.Conf.ReplicationSSL,
-			Channel:   server.ClusterGroup.Conf.MasterConn,
-			IsMariaDB: server.DBVersion.IsMariaDB(),
-			IsMySQL:   server.DBVersion.IsMySQLOrPercona(),
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        master.Host,
+			Port:        master.Port,
+			User:        master.ClusterGroup.rplUser,
+			Password:    master.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "CURRENT_POS",
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	}
-	return err
+	return logs, err
 }
 
-func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonitor) error {
+func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonitor) (string, error) {
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      master.Host,
 		Port:      master.Port,
@@ -214,14 +215,15 @@ func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonit
 	}, server.DBVersion)
 }
 
-func (server *ServerMonitor) SetReplicationChannel(source string) error {
+func (server *ServerMonitor) SetReplicationChannel(source string) (string, error) {
+	logs := ""
 	if server.DBVersion.IsMariaDB() {
-		err := dbhelper.SetDefaultMasterConn(server.Conn, source, server.DBVersion)
+		logs, err := dbhelper.SetDefaultMasterConn(server.Conn, source, server.DBVersion)
 		if err != nil {
-			return err
+			return logs, err
 		}
 	}
-	return nil
+	return logs, nil
 }
 
 func (server *ServerMonitor) SetInnoDBMonitor() {

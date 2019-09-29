@@ -43,7 +43,7 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 	if cluster.master == nil {
 		return
 	}
-	schemas, err := cluster.master.GetSchemas()
+	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master schemas %s", err)
 	}
@@ -73,7 +73,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 	if cluster.master == nil {
 		return
 	}
-	schemas, err := cluster.master.GetSchemas()
+	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
 		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
 		return
@@ -105,7 +105,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
 
-	servers, _ := dbhelper.GetServers(proxy.ShardProxy.Conn)
+	servers, _, _ := dbhelper.GetServers(proxy.ShardProxy.Conn)
 	for _, s := range servers {
 		myport := strconv.FormatUint(uint64(s.Port), 10)
 		var bke = Backend{
@@ -591,7 +591,7 @@ func (cluster *Cluster) RunQueryWithLog(server *ServerMonitor, query string) err
 func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 
 	var err error
-	proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Name+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
+	proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
 	return err
 }
 
@@ -637,7 +637,7 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *Proxy) error {
 		}
 
 		var sv map[string]string
-		sv, err = dbhelper.GetVariables(c, proxy.ShardProxy.DBVersion)
+		sv, _, err = dbhelper.GetVariables(c, proxy.ShardProxy.DBVersion)
 
 		cluster.LogPrintf(LvlInfo, "Spider release is %s", sv["SPIDER_VERSION"])
 

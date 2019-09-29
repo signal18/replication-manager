@@ -92,11 +92,11 @@ func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
-
 		return jobid, err
 	}
-	server.StopSlave()
-	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+	logs, err := server.StopSlave()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
 		User:      server.ClusterGroup.rplUser,
@@ -106,8 +106,9 @@ func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 	}, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
 	}
 
@@ -124,8 +125,11 @@ func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
 
 		return jobid, err
 	}
-	server.StopSlave()
-	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+
+	logs, err := server.StopSlave()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+
+	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
 		User:      server.ClusterGroup.rplUser,
@@ -135,8 +139,8 @@ func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 	}, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
 	}
 
@@ -153,8 +157,10 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 
 		return jobid, err
 	}
-	server.StopSlave()
-	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+	logs, err := server.StopSlave()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+
+	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
 		User:      server.ClusterGroup.rplUser,
@@ -164,8 +170,9 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 	}, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+
 		return jobid, err
 	}
 
@@ -181,8 +188,10 @@ func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
 
 		return jobid, err
 	}
-	server.StopSlave()
-	err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+	logs, err := server.StopSlave()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+
+	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
 		User:      server.ClusterGroup.rplUser,
@@ -192,8 +201,8 @@ func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
 		Mode:      "SLAVE_POS",
 		SSL:       server.ClusterGroup.Conf.ReplicationSSL,
 	}, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
 	}
 
