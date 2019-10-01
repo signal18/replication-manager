@@ -9,14 +9,12 @@
 package cluster
 
 import (
-	"errors"
 	"fmt"
 	"hash/crc64"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/router/myproxy"
 	"github.com/signal18/replication-manager/utils/crypto"
@@ -48,6 +46,8 @@ type Proxy struct {
 	Version         string          `json:"version"`
 	InternalProxy   *myproxy.Server `json:"internalProxy"`
 	ShardProxy      *ServerMonitor  `json:"shardProxy"`
+	ClusterGroup    *Cluster        `json:"-"`
+	Datadir         string
 }
 
 type Backend struct {
@@ -135,6 +135,8 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.ClusterGroup = cluster
+			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -162,6 +164,8 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.ClusterGroup = cluster
+			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -183,7 +187,8 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Name = prx.Host
 		}
 		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
-
+		prx.ClusterGroup = cluster
+		prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
@@ -216,6 +221,8 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.ClusterGroup = cluster
+			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -239,6 +246,8 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.ClusterGroup = cluster
+			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
@@ -266,6 +275,8 @@ func (cluster *Cluster) newProxyList() error {
 			}
 
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+			prx.ClusterGroup = cluster
+			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -294,7 +305,8 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Host == "" {
 			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 		}
-
+		prx.ClusterGroup = cluster
+		prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 
 		ctproxy++
@@ -306,6 +318,7 @@ func (cluster *Cluster) newProxyList() error {
 func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 	proxy := new(Proxy)
 	proxy = p
+
 	return proxy, nil
 }
 
@@ -475,56 +488,6 @@ func (cluster *Cluster) initProxies() {
 	}
 
 	cluster.initConsul()
-}
-
-func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
-	if len(cluster.Proxies) == 0 {
-		return nil, errors.New("No proxies defined")
-	}
-	prx := cluster.Proxies[0]
-
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if prx.Host != "" {
-		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
-	} else {
-
-		return nil, errors.New("No proxies definition")
-	}
-	conn, err := sqlx.Open("mysql", dsn)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't get a proxy %s connection: %s", dsn, err)
-	}
-	return conn, err
-
-}
-
-func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.Conf.MonitorWriteHeartbeatCredential + "@"
-	}
-
-	if prx.Host != "" {
-		if prx.Tunnel {
-			dsn += "tcp(localhost:" + strconv.Itoa(prx.TunnelWritePort) + ")/" + params
-		} else {
-			dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
-		}
-	}
-	return sqlx.Open("mysql", dsn)
-
-}
-
-func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
-	for _, pr := range cluster.Proxies {
-		if pr.Id == name {
-			return pr
-		}
-	}
-	return nil
 }
 
 func (cluster *Cluster) SendProxyStats(proxy *Proxy) error {

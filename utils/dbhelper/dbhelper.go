@@ -308,6 +308,9 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 }
 
 func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, string, error) {
+	/*	select pid from pg_locks l
+		join pg_class t on l.relation = t.oid
+		and t.relkind = 'r'  */
 	pl := []MetaDataLock{}
 	var err error
 	query := "SELECT * FROM information_schema.metadata_lock_info"
@@ -2039,6 +2042,7 @@ func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 }
 
 func KillThreads(db *sqlx.DB) (string, error) {
+	//SELECT pg_terminate_backend(11929);
 	var ids []int
 	query := "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()"
 	logs := query
@@ -2058,11 +2062,13 @@ func KillThreads(db *sqlx.DB) (string, error) {
 }
 
 func KillThread(db *sqlx.DB, id string) (string, error) {
+	//SELECT pg_terminate_backend(11929);
 	_, err := db.Exec("KILL ?", id)
 	return "KILL ? (" + id + ")", err
 }
 
 func KillQuery(db *sqlx.DB, id string) (string, error) {
+	//SELECT pg_terminate_backend(11929);
 	_, err := db.Exec("KILL QUERY ?", id)
 	return "KILL QUERY ? (" + id + ")", err
 }

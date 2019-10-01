@@ -931,6 +931,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			node.GetMyConfig()
 			data, err := ioutil.ReadFile(string(node.Datadir + "/config.tar.gz"))
@@ -942,13 +943,21 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			}
 			w.Write(data)
 
+		} else if proxy != nil {
+			proxy.GetProxyConfig()
+			data, err := ioutil.ReadFile(string(proxy.Datadir + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				return
+			}
+			w.Write(data)
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("503 -Not a Valid Slave! Cluster IsActive=%t IsDown=%t IsMaintenance=%t HasReplicationIssue=%t ", mycluster.IsActive(), node.IsDown(), node.IsMaintenance, node.HasReplicationIssue())))
+			http.Error(w, "No server", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
 }
 

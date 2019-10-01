@@ -254,6 +254,25 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetProxyFromURL(url string) *Proxy {
+	if strings.Contains(url, ":") {
+		for _, proxy := range cluster.Proxies {
+			cluster.LogPrintf(LvlInfo, " serach prx %s %s for url %s", proxy.Host, proxy.Port, url)
+			if proxy.Host+":"+proxy.Port == url {
+				return proxy
+			}
+		}
+	} else {
+		for _, proxy := range cluster.Proxies {
+			if proxy.Host == url {
+				return proxy
+			}
+		}
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.Servers {
@@ -561,7 +580,7 @@ func (cluster *Cluster) GetConfigInnoDBBPSize() string {
 
 // GetConfigInnoDBBPSize configure 20% of the ConfigMemory in Megabyte
 func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
-	if cluster.HaveTag("smallredolog") {
+	if cluster.HaveDBTag("smallredolog") {
 		return "16"
 	}
 	value, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)

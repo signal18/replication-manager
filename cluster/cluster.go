@@ -116,8 +116,9 @@ type Cluster struct {
 	tunnel               *ssh.Client          `json:"-"`
 	sync.Mutex           `json:"-"`
 	DBModule             config.Compliance `json:"-"`
-	DBModuleTags         map[string]string `json:"-"`
-	ProxyModule          config.Compliance `json:"-"`
+	//DBModuleTags         map[string]string `json:"-"`
+	ProxyModule config.Compliance `json:"-"`
+	//	ProxyModuleTags map[string]string `json:"-"`
 }
 
 type ClusterSorter []*Cluster

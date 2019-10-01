@@ -237,7 +237,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		disk = disk + "[disk#" + pod + "]\n"
 		disk = disk + "type = loop\n"
 		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}_pod" + pod + ".dsk\n"
-		disk = disk + "size = {env.size}\n"
+		disk = disk + "size = {env.size}g\n"
 		disk = disk + "standby = true\n"
 		disk = disk + "\n"
 
@@ -293,11 +293,11 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			} else if collector.ProvFSMode == "pool" {
 				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod" + pod + "\n"
 			}
-			fs = fs + "size = {env.size}\n"
+			fs = fs + "size = {env.size}g\n"
 			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n"
 		} else { //no pool
 			fs = fs + "dev = {disk#" + podpool + ".file}\n"
-			fs = fs + "size = {env.size}\n"
+			fs = fs + "size = {env.size}g\n"
 		}
 		fs = fs + "mnt = {env.base_dir}/pod" + pod + "\n"
 		fs = fs + "standby = true\n"

@@ -76,6 +76,16 @@ func (cluster *Cluster) SetDBDiskIOPS(value string) {
 	cluster.Conf.ProvIops = value
 }
 
+func (cluster *Cluster) SetProxyCores(value string) {
+	cluster.Conf.ProvProxCores = value
+}
+func (cluster *Cluster) SetProxyMemorySize(value string) {
+	cluster.Conf.ProvProxMem = value
+}
+func (cluster *Cluster) SetProxyDiskSize(value string) {
+	cluster.Conf.ProvProxDisk = value
+}
+
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	//cluster.SetBenchMethod("table")
 	//cluster.PrepareBench()

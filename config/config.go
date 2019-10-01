@@ -283,7 +283,9 @@ type Config struct {
 	ProvDBLoadCSV                      string `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
 	ProvProxType                       string `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
 	ProvProxAgents                     string `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
-	ProvProxDisk                       string `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxySiskSize"`
+	ProvProxMem                        string `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
+	ProvProxCores                      string `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
+	ProvProxDisk                       string `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
 	ProvProxDiskFS                     string `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
 	ProvProxDiskPool                   string `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
 	ProvProxDiskDevice                 string `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`

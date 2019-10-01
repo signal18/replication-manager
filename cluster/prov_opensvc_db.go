@@ -339,7 +339,7 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 	return vm
 }
 
-func (server *ServerMonitor) GetDBEnv() map[string]string {
+func (server *ServerMonitor) GetEnv() map[string]string {
 	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                           server.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                    server.ClusterGroup.Conf.ProvCores,

@@ -11,7 +11,8 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
   $scope.refreshInterval = 2000;
   $scope.digestmode = "pfs";
 
-  $scope.missingTags = undefined;
+  $scope.missingDBTags = undefined;
+  $scope.missingProxyTags = undefined;
   var promise = undefined;
 
 
@@ -118,8 +119,9 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           }
           return passedTest;
         }
-        $scope.missingTags=isInTags(data.configTags,data.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
-      //  console.log($scope.missingTags);
+        $scope.missingDBTags=isInTags(data.configTags,data.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
+        $scope.missingProxyTags=isInTags(data.configPrxTags,data.proxyServersTags,function(currentTag,proxyTags){ return (proxyTags.indexOf(currentTag)== -1);});
+
 
         $scope.reserror = false;
         }, function () {
@@ -813,6 +815,14 @@ $scope.isEqualLongQueryTime = function (a, b) {
       if (confirm("Confirm drop tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/drop-db-tag/'+tag);
   };
 
+  $scope.claddproxytag = function (tag) {
+      if (confirm("Confirm add tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/add-proxy-tag/'+tag);
+  };
+  $scope.cldropproxytag = function (tag) {
+      if (confirm("Confirm drop tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/drop-proxy-tag/'+tag);
+  };
+
+
   $scope.clsetdbcore = function (base,add) {
     value= Number(base)+add;
     if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-cpu-cores/'+value.toString());
@@ -830,6 +840,21 @@ $scope.isEqualLongQueryTime = function (a, b) {
     if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-memory/'+value.toString());
   };
 
+
+
+  $scope.clsetproxycore = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-cpu-cores/'+value.toString());
+  };
+  $scope.clsetproxydisk = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-disk-size/'+value.toString());
+  };
+
+  $scope.clsetproxymem = function (base,add) {
+    value= Number(base)+add;
+    if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-memory/'+value.toString());
+  };
 
   $scope.switchsettings = function (setting) {
     httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);

@@ -10,12 +10,9 @@
 package cluster
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -471,6 +468,9 @@ func (server *ServerMonitor) GetVTables() map[string]dbhelper.Table {
 
 func (server *ServerMonitor) GetDictTables() []dbhelper.Table {
 	var tables []dbhelper.Table
+	if server.IsFailed() {
+		return tables
+	}
 	for _, t := range server.DictTables {
 		tables = append(tables, t)
 
@@ -553,7 +553,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 					}
 
 					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
-						content := misc.ExtractKey(f.Content, server.GetDBEnv())
+						content := misc.ExtractKey(f.Content, server.GetEnv())
 
 						if server.IsFilterInTags("docker") {
 							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
@@ -599,100 +599,13 @@ func (server *ServerMonitor) GetMyConfig() string {
 		}
 	}
 
-	// tar directory
-	/*
-		if server.ClusterGroup.HaveTag("docker") && strings.Contains(variable.Name, "db_cnf_dir_data") {
-			err := os.Chown(fpath, 999, 999)
-			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", fpath, err)
-			}
-		}*/
-	if server.ClusterGroup.HaveTag("docker") {
+	if server.ClusterGroup.HaveDBTag("docker") {
 		err := misc.ChownR(server.Datadir+"/init/data", 999, 999)
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
 	}
-	server.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
-	//server.TarAddDirectory(server.Datadir+"/data", tw)
+	server.ClusterGroup.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
+
 	return ""
-}
-
-func (server *ServerMonitor) TarGzWrite(_path string, tw *tar.Writer, fi os.FileInfo) {
-	fr, err := os.Open(_path)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-	defer fr.Close()
-	h := new(tar.Header)
-	var link string
-	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-		if link, err = os.Readlink(_path); err != nil {
-			return
-		}
-
-	}
-	h, _ = tar.FileInfoHeader(fi, link)
-	if err != nil {
-		return
-	}
-	h.Name = strings.TrimPrefix(_path, server.Datadir+"/init/")
-	//	h.Size = fi.Size()
-	//	h.Mode = int64(fi.Mode())
-	//	h.ModTime = fi.ModTime()
-
-	err = tw.WriteHeader(h)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-	if !fi.Mode().IsRegular() { //nothing more to do for non-regular
-		return
-	}
-	_, err = io.Copy(tw, fr)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-}
-
-func (server *ServerMonitor) IterDirectory(dirPath string, tw *tar.Writer) {
-	dir, err := os.Open(dirPath)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-	defer dir.Close()
-	fis, err := dir.Readdir(0)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-	for _, fi := range fis {
-		curPath := dirPath + "/" + fi.Name()
-		if fi.IsDir() {
-			server.TarGzWrite(curPath, tw, fi)
-			server.IterDirectory(curPath, tw)
-		} else {
-			fmt.Printf("adding... %s\n", curPath)
-			server.TarGzWrite(curPath, tw, fi)
-		}
-	}
-}
-
-func (server *ServerMonitor) TarGz(outFilePath string, inPath string) {
-	// file write
-	fw, err := os.Create(outFilePath)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
-	}
-	defer fw.Close()
-
-	// gzip write
-	gw := gzip.NewWriter(fw)
-	defer gw.Close()
-
-	// tar write
-	tw := tar.NewWriter(gw)
-	defer tw.Close()
-
-	server.IterDirectory(inPath, tw)
-
-	fmt.Println("tar.gz ok")
 }

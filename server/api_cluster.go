@@ -736,6 +736,13 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetDBMemorySize(vars["settingValue"])
 		case "prov-db-disk-iops":
 			mycluster.SetDBDiskIOPS(vars["settingValue"])
+		case "prov-proxy-disk-size":
+			mycluster.SetProxyDiskSize(vars["settingValue"])
+		case "prov-proxy-cpu-cores":
+			mycluster.SetProxyCores(vars["settingValue"])
+		case "prov-proxy-memory":
+			mycluster.SetProxyMemorySize(vars["settingValue"])
+
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
