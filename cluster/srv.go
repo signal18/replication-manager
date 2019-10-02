@@ -763,7 +763,7 @@ func (server *ServerMonitor) Refresh() error {
 	if !server.DBVersion.IsPPostgreSQL() {
 		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
 
-			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn)
+			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get plugins  %s %s", server.URL, err)
 			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")

@@ -1401,11 +1401,13 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	return vars, query, nil
 }
 
-func GetPlugins(db *sqlx.DB) (map[string]Plugin, string, error) {
+func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, error) {
 
 	vars := make(map[string]Plugin)
-
-	query := `SHOW plugins soname`
+	query := `SHOW plugins`
+	if myver.IsMariaDB() {
+		query = `SHOW plugins soname`
+	}
 
 	rows, err := db.Queryx(query)
 	if err != nil {
