@@ -234,12 +234,14 @@ func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
 func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) string {
 	i := 0
 	ipPods := ""
-	if !cluster.Conf.ProvNetCNI {
-		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+	//if !cluster.Conf.ProvNetCNI {
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
 	`
-	} else {
+	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Port + `
+`
+	/*} else {
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-	}
+	}*/
 	ips := strings.Split(collector.ProvProxNetGateway, ".")
 	masks := strings.Split(collector.ProvProxNetMask, ".")
 	for i, mask := range masks {
@@ -258,6 +260,7 @@ func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers strin
 nodes = ` + agent.Node_name + `
 size = ` + collector.ProvProxDisk + `b
 ` + ipPods + `
+` + portPods + `
 mysql_root_password = ` + cluster.dbPass + `
 mysql_root_user = ` + cluster.dbUser + `
 network = ` + network + `
