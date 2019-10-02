@@ -1553,10 +1553,15 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 
 func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)
+	// password was remover from system table in mysql 8.0
+
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
 	if myver.IsPPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
+	} else if myver.IsMySQL() && myver.Major >= 8 {
+		query = "SELECT user, host, '****' as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
 	}
+
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get DB user list")
@@ -1949,7 +1954,7 @@ func GetEventScheduler(dbM *sqlx.DB, myver *MySQLVersion) bool {
 	return true
 }
 
-func SetEventScheduler(db *sqlx.DB, state bool) (string, error) {
+func SetEventScheduler(db *sqlx.DB, state bool, myver *MySQLVersion) (string, error) {
 	var err error
 	stmt := ""
 	if state {
@@ -2041,18 +2046,22 @@ func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 	return count, query + "(" + strconv.Itoa(thresh) + ")", err
 }
 
-func KillThreads(db *sqlx.DB) (string, error) {
+func KillThreads(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	//SELECT pg_terminate_backend(11929);
 	var ids []int
 	query := "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()"
+	if myver.IsPPostgreSQL() {
+		query = "SELECT pid  FROM pg_stat_activity where backend_type='client backend' and pid<>pg_backend_pid()"
+	}
 	logs := query
 	err := db.Select(&ids, query)
 	if err != nil {
 		return logs, err
 	}
 	for _, id := range ids {
-		_, err := db.Exec("KILL ?", id)
-		logs += "KILL ? (" + strconv.Itoa(id) + ")"
+		log, err := KillThread(db, strconv.Itoa(id), myver)
+		logs += log
+		//Should we exit in case of error ?
 		if err != nil {
 			return logs, err
 		}
@@ -2061,16 +2070,24 @@ func KillThreads(db *sqlx.DB) (string, error) {
 
 }
 
-func KillThread(db *sqlx.DB, id string) (string, error) {
-	//SELECT pg_terminate_backend(11929);
+func KillThread(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
+	if myver.IsPPostgreSQL() {
+		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
+		return "SELECT pg_terminate_backend(" + id + ")", err
+	}
 	_, err := db.Exec("KILL ?", id)
 	return "KILL ? (" + id + ")", err
 }
 
-func KillQuery(db *sqlx.DB, id string) (string, error) {
-	//SELECT pg_terminate_backend(11929);
+func KillQuery(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
+
+	if myver.IsPPostgreSQL() {
+		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
+		return "SELECT pg_terminate_backend(" + id + ")", err
+	}
 	_, err := db.Exec("KILL QUERY ?", id)
 	return "KILL QUERY ? (" + id + ")", err
+
 }
 
 /* Check if string is an IP address or a hostname, return a IP address */

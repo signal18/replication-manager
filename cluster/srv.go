@@ -811,7 +811,7 @@ func (server *ServerMonitor) freeze() bool {
 		}
 	}
 	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
-	dbhelper.KillThreads(server.Conn)
+	dbhelper.KillThreads(server.Conn, server.DBVersion)
 	return true
 }
 
@@ -955,11 +955,11 @@ func (server *ServerMonitor) SkipReplicationEvent() {
 }
 
 func (server *ServerMonitor) KillThread(id string) (string, error) {
-	return dbhelper.KillThread(server.Conn, id)
+	return dbhelper.KillThread(server.Conn, id, server.DBVersion)
 }
 
 func (server *ServerMonitor) KillQuery(id string) (string, error) {
-	return dbhelper.KillQuery(server.Conn, id)
+	return dbhelper.KillQuery(server.Conn, id, server.DBVersion)
 }
 
 func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
