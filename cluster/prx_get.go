@@ -166,6 +166,7 @@ detach = false
 type = docker
 image = busybox
 netns = container#0001
+start_timeout = 30s
 rm = true
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data
 command = sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'
