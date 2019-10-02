@@ -228,12 +228,12 @@ func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 			confproxysql += ","
 		}
 		confmaxscale += `
-    [server` + strconv.Itoa(i) + `]
-    type=server
-    address="` + db.Host + `
-    port=` + db.Port + `
-    protocol=MySQLBackend
-    `
+[server` + strconv.Itoa(i) + `]
+type=server
+address="` + db.Host + `
+port=` + db.Port + `
+protocol=MySQLBackend
+`
 
 		confhaproxyread += `
     server server` + strconv.Itoa(i) + ` ` + db.Host + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
