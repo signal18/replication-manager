@@ -182,6 +182,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":              string(proxy.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":             string(proxy.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":   proxy.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":       proxy.ClusterGroup.dbUser,
 		"%%ENV:SERVER_IP%%":                          "0.0.0.0",
 		"%%ENV:SERVER_PORT%%":                        proxy.Port,
 		"%%ENV:SVC_NAMESPACE%%":                      proxy.ClusterGroup.Name,
