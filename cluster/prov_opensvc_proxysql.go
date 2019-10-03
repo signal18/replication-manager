@@ -60,7 +60,7 @@ run_args = --ulimit nofile=262144:262144
     -v /etc/localtime:/etc/localtime:ro
     -v {env.base_dir}/pod` + pod + `/conf/proxysql.cnf:/etc/proxysql.cnf:rw
 		-v {env.base_dir}/pod` + pod + `/data:/var/lib/proxysql:rw
-run_command = proxysql --initial -f -c /conf/proxysql.cnf
+run_command = proxysql --initial -f -c /etc/proxysql.cnf
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm
