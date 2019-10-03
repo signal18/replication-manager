@@ -1560,7 +1560,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
 	if myver.IsPPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
-	} else if myver.IsMySQL() && myver.Major >= 7 {
+	} else if (myver.IsMySQL() || myver.IsPercona()) && (myver.Major > 7 || (myver.Major == 5 && myver.Minor >= 7)) {
 		query = "SELECT user, host, '****' as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
 	}
 
