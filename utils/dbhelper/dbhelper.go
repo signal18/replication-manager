@@ -1494,7 +1494,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 	logs := ""
 	query := "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	if myver.IsPPostgreSQL() {
-		query = "SELECT datname AS SCHEMA_NAME FROM pg_catalog.pg_database  WHERE datname not in ('information_schema','pg_catalog')"
+		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
 	databases, err := db.Queryx(query)
 	if err != nil {
@@ -1509,7 +1509,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 		}
 		query := "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
 		if myver.IsPPostgreSQL() {
-			query = "SELECT a.schemaname as Table_schema ,  a.tablename as Table_name ,'postgres' as Engine,COALESCE(b.n_live_tup,0) as Table_rows ,0 as Data_length,0 as Index_length , 0 as Table_crc  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='" + schema + "'"
+			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
 		}
 		logs += "\n" + query
 
@@ -1561,7 +1561,11 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 	if myver.IsPPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
 	} else if (myver.IsMySQL() || myver.IsPercona()) && (myver.Major > 7 || (myver.Major == 5 && myver.Minor >= 7)) {
-		query = "SELECT user, host, '****' as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
+		if myver.Major > 7 {
+			query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)  FROM mysql.user"
+		} else {
+			query = "SELECT user, host, '****' as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
+		}
 	}
 
 	rows, err := db.Queryx(query)
