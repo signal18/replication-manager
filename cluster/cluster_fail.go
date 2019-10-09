@@ -344,7 +344,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "POSITIONAL",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
-				PostgressDB: cluster.oldMaster.PostgressDB,
+				PostgressDB: cluster.master.PostgressDB,
 			}, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
 
@@ -364,7 +364,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "MASTER_AUTO_POSITION",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
-				PostgressDB: cluster.oldMaster.PostgressDB,
+				PostgressDB: cluster.master.PostgressDB,
 			}, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master %s", logs)
 			logs, err = cluster.oldMaster.StartSlave()
@@ -384,7 +384,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: cluster.oldMaster.PostgressDB,
+					PostgressDB: cluster.master.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			} else {
 				logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -397,7 +397,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "CURRENT_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: cluster.oldMaster.PostgressDB,
+					PostgressDB: cluster.master.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			}
 			cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master %s", changeMasterErr)
@@ -417,7 +417,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: cluster.oldMaster.PostgressDB,
+					PostgressDB: relaymaster.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			} else {
 				logs, err = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -432,7 +432,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Logpos:      crash.FailoverMasterLogPos,
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: cluster.oldMaster.PostgressDB,
+					PostgressDB: relaymaster.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			}
 		}
@@ -535,7 +535,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "POSITIONAL",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: sl.PostgressDB,
+					PostgressDB: cluster.master.PostgressDB,
 				}, sl.DBVersion)
 			} else {
 				sl.SetMaintenance()
@@ -553,7 +553,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "MASTER_AUTO_POSITION",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
-				PostgressDB: sl.PostgressDB,
+				PostgressDB: cluster.master.PostgressDB,
 			}, sl.DBVersion)
 		} else if cluster.Conf.MxsBinlogOn == false {
 			//MariaDB all cases use GTID
@@ -568,7 +568,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "SLAVE_POS",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
-				PostgressDB: sl.PostgressDB,
+				PostgressDB: cluster.master.PostgressDB,
 			}, sl.DBVersion)
 		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
 
@@ -584,7 +584,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
-					PostgressDB: sl.PostgressDB,
+					PostgressDB: cluster.master.PostgressDB,
 				}, sl.DBVersion)
 			} else {
 				logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
@@ -1254,7 +1254,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Mode:        "",
 			SSL:         cluster.Conf.ReplicationSSL,
 			Channel:     cluster.Conf.MasterConn,
-			PostgressDB: child.PostgressDB,
+			PostgressDB: parent.PostgressDB,
 		}, child.DBVersion)
 	} else {
 		//MariaDB all cases use GTID
@@ -1269,7 +1269,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 			Mode:        "SLAVE_POS",
 			SSL:         cluster.Conf.ReplicationSSL,
 			Channel:     cluster.Conf.MasterConn,
-			PostgressDB: child.PostgressDB,
+			PostgressDB: parent.PostgressDB,
 		}, child.DBVersion)
 	}
 

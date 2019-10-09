@@ -522,7 +522,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		if opt.Channel == "" {
 			opt.Channel = "alltables"
 		}
-		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + opt.Host + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel
+		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + opt.Host + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
 	} else {
 
 		cm += "CHANGE MASTER "
@@ -739,12 +739,42 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStat
 
 		query = "SHOW SLAVE STATUS"
 		if myver.IsPPostgreSQL() {
-			query = `select
-									received_lsn ,subname "Connection_name",
-									pg_walfile_name(received_lsn) as "Master_Log_File",
-									(SELECT file_offset  FROM pg_walfile_name_offset(received_lsn)) as "Master_Log_Pos" ,
-									CASE WHEN latest_end_lsn = received_lsn   THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Second_Behind_Master"
-								from pg_catalog.pg_stat_subscription`
+			/*		query = `select
+						received_lsn ,subname "Connection_name",
+						pg_walfile_name(received_lsn) as "Master_Log_File",
+						(SELECT file_offset  FROM pg_walfile_name_offset(received_lsn)) as "Master_Log_Pos" ,
+						CASE WHEN latest_end_lsn = received_lsn   THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master"
+					from pg_catalog.pg_stat_subscription`
+			*/
+			query = `SELECT
+							ss.subname as "Connection_name",
+							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
+							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[4],'port=') as "Master_Port",
+							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[3],'user=') as "Master_User",
+							'master.' || pg_walfile_name(ss.received_lsn) as "Master_Log_File",
+							(SELECT file_offset  FROM pg_walfile_name_offset(ss.received_lsn)) as "Read_Master_Log_Pos" ,
+							'master.' || pg_walfile_name(ss.latest_end_lsn) as "Relay_Master_Log_File",
+							CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_IO_Running"  ,
+							CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_SQL_Running",
+								(SELECT file_offset  FROM pg_walfile_name_offset(ss.latest_end_lsn)) as "Exec_Master_Log_Pos",
+							CASE WHEN latest_end_lsn = received_lsn  THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master",
+							'' as  "Last_IO_Errno",
+							'' as "Last_SQL_Errno",
+							'' as "Last_SQL_Error" ,
+							0 "Master_Server_Id",
+							'Slave_Pos' as  "Using_Gtid" ,
+							'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
+							'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
+							1 as "Slave_Heartbeat_Period" ,
+							'' as "Slave_SQL_Running_State",
+							ros.external_id
+						FROM pg_replication_origin_status ros
+							LEFT JOIN (
+								pg_catalog.pg_stat_subscription ss
+									INNER JOIN  pg_catalog.pg_subscription s
+									ON ss.subname =s.subname
+							) ON ros.external_id='pg_' || ss.subid::text ,
+							(SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
 		}
 
 		err = udb.Get(&ss, query)
@@ -860,9 +890,10 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string
 	*/
 
 	query := "SHOW ALL SLAVES STATUS"
+	//		CASE WHEN sqt.nbrep=1 THEN	 ss.subname ELSE '' END as "Connection_name",
 	if myver.IsPPostgreSQL() {
 		query = `SELECT
-								CASE WHEN sqt.nbrep >1 THEN	 ss.subname ELSE '' END as "Connection_name",
+								ss.subname as "Connection_name",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[4],'port=') as "Master_Port",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[3],'user=') as "Master_User",
@@ -872,7 +903,7 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string
 								CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_IO_Running"  ,
 								CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_SQL_Running",
 									(SELECT file_offset  FROM pg_walfile_name_offset(ss.latest_end_lsn)) as "Exec_Master_Log_Pos",
-								CASE WHEN latest_end_lsn = received_lsn  THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Second_Behind_Master",
+								CASE WHEN latest_end_lsn = received_lsn  THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master",
 								'' as  "Last_IO_Errno",
 							  '' as "Last_SQL_Errno",
 								'' as "Last_SQL_Error" ,
@@ -1534,7 +1565,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 
 			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.Table_name + "`"
 			if myver.IsPPostgreSQL() {
-				query = "SELECT 'CREATE TABLE '`" + schema + "`.`" + v.Table_name + "`" + "' || ' (' || '\n' || '' || string_agg(column_list.column_expr, ', ' || '\n' || '') ||  '' || $2 || ') ENGINE=postgress;' FROM (   SELECT '    ' || column_name || ' ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = " + v.Table_name + " ORDER BY ordinal_position) column_list"
+				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.Table_name + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.Table_name + "' ORDER BY ordinal_position) column_list"
 			}
 			logs += "\n" + query
 			var tbl, ddl string

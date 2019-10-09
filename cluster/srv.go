@@ -675,6 +675,10 @@ func (server *ServerMonitor) Refresh() error {
 
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPPostgreSQL() {
 		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
+		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPPostgreSQL() && server.ReplicationSourceName == "" {
+			//setting first subscription if we don't have one
+			server.ReplicationSourceName = server.Replications[0].ConnectionName.String
+		}
 	} else {
 		server.Replications, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 	}
@@ -686,6 +690,7 @@ func (server *ServerMonitor) Refresh() error {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		server.IsSlave = false
 	} else {
+
 		server.IsSlave = true
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
