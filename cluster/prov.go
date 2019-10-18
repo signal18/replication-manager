@@ -72,6 +72,8 @@ func (cluster *Cluster) ProvisionServices() error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCProvisionCluster()
+	case ConstOrchestratorKubernetes:
+		err = cluster.K8SProvisionCluster()
 	default:
 		err = cluster.LocalhostProvisionCluster()
 	}
@@ -89,6 +91,8 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCProvisionDatabaseService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SProvisionDatabaseService(server)
 	default:
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
@@ -100,6 +104,8 @@ func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCProvisionProxyService(prx)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SProvisionProxyService(prx)
 	default:
 		cluster.LocalhostProvisionProxyService(prx)
 	}

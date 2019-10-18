@@ -32,12 +32,13 @@ require (
 	github.com/facebookgo/stats v0.0.0-20151006221625-1b76add642e4
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-sql-driver/mysql v1.4.1
-	github.com/gogo/protobuf v0.0.0-20180215110351-b75782e777cf
+	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5
 	github.com/gonum/internal v0.0.0-20180125090855-fda53f8d2571
 	github.com/gonum/lapack v0.0.0-20180125091020-f0b8b25edece
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
+	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.3.0
 	github.com/gorilla/mux v0.0.0-20180120075819-c0091a029979
@@ -48,7 +49,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.0.0-20171218145408-d5fe4b57a186
 	github.com/hashicorp/go-immutable-radix v0.0.0-20180129170900-7f3cd4390caa
 	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90
-	github.com/hashicorp/golang-lru v0.5.0
+	github.com/hashicorp/golang-lru v0.5.1
 	github.com/hashicorp/hcl v0.0.0-20171017181929-23c074d0eceb
 	github.com/hashicorp/serf v0.0.0-20180213013805-d4f33d5b6a0b
 	github.com/howeyc/fsnotify v0.0.0-20151003194602-f0c08ee9c607
@@ -91,21 +92,21 @@ require (
 	github.com/spf13/cast v1.2.0
 	github.com/spf13/cobra v0.0.0-20180211162230-be77323fc051
 	github.com/spf13/jwalterweatherman v0.0.0-20180109140146-7c0cea34c8ec
-	github.com/spf13/pflag v1.0.1
+	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v0.0.0-20171227194143-aafc9e6bc7b7
-	github.com/stretchr/testify v1.2.2
+	github.com/stretchr/testify v1.3.0
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	golang.org/x/crypto v0.0.0-20181025213731-e84da0312774
 	golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc
-	golang.org/x/sys v0.0.0-20190312061237-fead79001313
-	golang.org/x/text v0.3.1-0.20181227161524-e6919f6577db
+	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
+	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0-20170531160350-a96e63847dc3
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
-	gopkg.in/yaml.v2 v2.2.1
-	k8s.io/api v0.0.0-20190819141258-3544db3b9e44
-	k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
-	k8s.io/client-go v0.0.0-20190819141724-e14f31a72a77
+	gopkg.in/yaml.v2 v2.2.4
+	k8s.io/api v0.0.0-20191016225839-816a9b7df678
+	k8s.io/apimachinery v0.0.0-20191017185446-6e68a40eebf9
+	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 )

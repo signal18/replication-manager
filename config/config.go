@@ -255,7 +255,7 @@ type Config struct {
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                         bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 
-	KubeConfig string `mapstructure:"cube-config" toml:"cube-config" json:"cubeConfig"`
+	KubeConfig string `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
 	ProvOrchestrator           string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvHost                   string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
