@@ -3,16 +3,7 @@
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
-
-package misc
-
-import (
-	"strings"
-
-	"github.com/satori/go.uuid"
-)
-
-func GetUUID() string {
-	myUUID := uuid.NewV4()
-	return strings.Split(myUUID.String(), "-")[0]
-}
+// Redistribution/Reuse of this code is permitted under the GNU v3 license, as
+// an additional term, ALL code must carry the original Author(s) credit in comment form.
+// See LICENSE in this directory for the integral text.
+package cluster

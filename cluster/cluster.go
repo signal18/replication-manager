@@ -160,6 +160,13 @@ const (
 	ConstMonitorStandby string = "S"
 )
 
+const (
+	ConstOrchestratorOpenSVC    string = "opensvc"
+	ConstOrchestratorKubernetes string = "kube"
+	ConstOrchestratorSlapOS     string = "slapos"
+	ConstOrchestratorLocalhost  string = "local"
+)
+
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)

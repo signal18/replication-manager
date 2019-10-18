@@ -7,8 +7,10 @@ package opensvc
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/md5"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +23,8 @@ import (
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/pkcs12"
+	"golang.org/x/net/http2"
 )
 
 type Addr struct {
@@ -84,6 +88,9 @@ type Collector struct {
 	Port                        string
 	User                        string
 	Pass                        string
+	UseAPI                      bool
+	CertsDER                    []byte
+	CertsDERSecret              string
 	RplMgrUser                  string
 	RplMgrPassword              string
 	RplMgrCodeApp               string
@@ -123,6 +130,36 @@ type Collector struct {
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
+
+func (collector *Collector) LoadCert(certsFile string) error {
+	var err error
+	collector.CertsDER, err = ioutil.ReadFile(certsFile)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (collector *Collector) ParseCertificatesDER(certsDER []byte, password string) (certs []*x509.Certificate, key crypto.Signer, err error) {
+	certsDER = bytes.TrimSpace(certsDER)
+	var pkcs12data interface{}
+	certs = make([]*x509.Certificate, 1)
+	pkcs12data, certs[0], err = pkcs12.Decode(certsDER, password)
+	if err != nil {
+		certs, err = x509.ParseCertificates(certsDER)
+		if err != nil {
+			return nil, nil, errors.New("Can not parse certificate")
+		}
+	} else {
+		key = pkcs12data.(crypto.Signer)
+	}
+
+	if certs == nil {
+		return nil, key, errors.New("Error in ParseCertificatesDER ")
+	}
+	return certs, key, nil
+}
 
 func (collector *Collector) Bootstrap(path string) error {
 	userid, err := collector.CreateMRMUser(collector.RplMgrUser, collector.RplMgrPassword)
@@ -819,44 +856,124 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 
 func (collector *Collector) GetNodes() []Host {
 
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-	client := &http.Client{Transport: tr}
+	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
-	if collector.Verbose == 1 {
-		log.Println("INFO ", url)
+	client := &http.Client{}
+	if !collector.UseAPI {
+		//url = "https://" + collector.Host + ":" + collector.Port + "/daemon_status"
+		url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
+
+		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
+		if err != nil {
+			log.Println("ERROR ParseCertificatesDER ", err)
+		}
+		cert := tls.Certificate{
+			Certificate: [][]byte{certder[0].Raw},
+			PrivateKey:  keyder,
+			Leaf:        certder[0],
+		}
+		tlsConfig = &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: true,
+		}
 	}
+
+	if collector.UseAPI {
+		client.Transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	} else {
+		client.Transport = &http2.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return nil
 	}
-	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	if collector.UseAPI {
+		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	} else {
+		req.Header.Set("content-type", "application/json")
+		req.Header.Set("o-node", "*")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("ERROR client.Do", err, resp)
 		return nil
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Println("ERROR Read Result", err)
+		return nil
+	}
+	//	log.Println("INFO ", string(body))
+	if collector.UseAPI {
+		type Message struct {
+			Data []Host `json:"data"`
+		}
+		var r Message
+
+		err = json.Unmarshal(body, &r)
+		if err != nil {
+			log.Println("ERROR ", err)
+			return nil
+		}
+		for i, agent := range r.Data {
+			r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+			r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
+		}
+		return r.Data
+	}
+	type Property struct {
+		Title  string `json:"title"`
+		Value  string `json:"value"`
+		Source string `json:"source"`
+	}
+	type SHost struct {
+		Nodename   Property `json:"nodename"`
+		Fqdn       Property `json:"fqdn"`
+		Version    Property `json:"version"`
+		Osname     Property `json:"os_name"`
+		Osvendor   Property `json:"os_vendor"`
+		Osrelease  Property `json:"os_release"`
+		Oskernel   Property `json:"os_kernel"`
+		Osarch     Property `json:"os_arch"`
+		Membytes   Property `json:"mem_bytes"`
+		Cpufreq    Property `json:"cpu_freq"`
+		Cputhreads Property `json:"cpu_threads"`
+	}
+
+	type Message struct {
+		Data map[string]SHost `json:"nodes"`
+	}
+	var r Message
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
 		log.Println("ERROR ", err)
 		return nil
 	}
 
-	type Message struct {
-		Data []Host `json:"data"`
+	nhosts := make([]Host, len(r.Data), len(r.Data))
+	i := 0
+	for _, agent := range r.Data {
+		//		log.Println("ERROR ", agent)
+		nhosts[i].Id = i
+		nhosts[i].Cpu_cores, _ = strconv.Atoi(agent.Cputhreads.Value)
+		nhosts[i].Cpu_freq, _ = strconv.Atoi(agent.Cpufreq.Value)
+		nhosts[i].Mem_bytes, _ = strconv.Atoi(agent.Membytes.Value)
+		nhosts[i].Node_name = agent.Nodename.Value
+		nhosts[i].Os_kernel = agent.Oskernel.Value
+		nhosts[i].Os_name = agent.Osname.Value
+		//		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+		//		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
+		i++
 	}
-	var r Message
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		//	log.Println("ERROR ", err)
-		return nil
-	}
-	for i, agent := range r.Data {
-		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
-		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
-	}
-	return r.Data
+	return nhosts
 
 }
 

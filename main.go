@@ -513,9 +513,13 @@ func init() {
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
+			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "opensvc|kube|slapos|localhost")
+			monitorCmd.Flags().StringVar(&conf.KubeConfig, "cube-config", "", "path to ks8 config file")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")
 			monitorCmd.Flags().BoolVar(&conf.ProvRegister, "opensvc-register", false, "Register user codeapp to collector, load compliance")
+			monitorCmd.Flags().StringVar(&conf.ProvOpensvcP12Certificate, "opensvc-p12-certificate", "/etc/replication-manager/s18.p12", "Certicate used for socket vs collector API opensvc-host refer to a cluster VIP")
+			monitorCmd.Flags().BoolVar(&conf.ProvOpensvcUseCollectorAPI, "opensvc-use-collector-api", false, "Use the collector API instead of cluster VIP")
 
 			dbConfig := viper.New()
 			dbConfig.SetConfigType("yaml")

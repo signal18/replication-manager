@@ -69,9 +69,10 @@ func (cluster *Cluster) ProvisionServices() error {
 	path := cluster.Conf.WorkingDir + "/" + cluster.Name + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCProvisionCluster()
-	} else {
+	default:
 		err = cluster.LocalhostProvisionCluster()
 	}
 	cluster.sme.RemoveFailoverState()
@@ -85,9 +86,10 @@ func (cluster *Cluster) ProvisionServices() error {
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	cluster.sme.SetFailoverState()
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCProvisionDatabaseService(server)
-	} else {
+	default:
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
 	cluster.sme.RemoveFailoverState()
@@ -95,9 +97,10 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) InitProxyService(prx *Proxy) error {
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCProvisionProxyService(prx)
-	} else {
+	default:
 		cluster.LocalhostProvisionProxyService(prx)
 	}
 	return nil
@@ -105,9 +108,10 @@ func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 
 func (cluster *Cluster) Unprovision() {
 	cluster.sme.SetFailoverState()
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovision()
-	} else {
+	default:
 		cluster.LocalhostUnprovision()
 	}
 	cluster.slaves = nil
@@ -120,9 +124,10 @@ func (cluster *Cluster) Unprovision() {
 }
 
 func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionProxyService(prx)
-	} else {
+	default:
 		//		cluster.LocalhostUnprovisionProxyService(prx)
 	}
 	return nil
@@ -130,9 +135,10 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.ResetCrashes()
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionDatabaseService(server)
-	} else {
+	default:
 		cluster.LocalhostUnprovisionDatabaseService(server)
 	}
 	return nil
@@ -143,9 +149,10 @@ func (cluster *Cluster) RollingUpgrade() {
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCStopDatabaseService(server)
-	} else {
+	default:
 		return cluster.LocalhostStopDatabaseService(server)
 	}
 	return nil
@@ -158,9 +165,10 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
-	if cluster.Conf.Enterprise {
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCStartService(server)
-	} else {
+	default:
 		return cluster.LocalhostStartDatabaseService(server)
 	}
 	return nil
