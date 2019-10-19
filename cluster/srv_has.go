@@ -13,6 +13,22 @@ import (
 	"strconv"
 )
 
+func (server *ServerMonitor) HasMySQLGTID() bool {
+
+	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
+		return false
+	}
+	val := server.Variables["ENFORCE_GTID_CONSISTENCY"]
+	if val == "ON" {
+		return true
+	}
+	val = server.Variables["GTID_MODE"]
+	if val == "ON" {
+		return true
+	}
+	return false
+}
+
 func (server *ServerMonitor) HasInstallPlugin(name string) bool {
 	val, ok := server.Plugins[name]
 	if !ok {

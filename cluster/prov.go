@@ -565,6 +565,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
+	logs := ""
 
 	if cluster.Conf.MultiMasterWsrep {
 		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
@@ -622,9 +623,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				continue
 			} else {
 				// A slave
-				var hasMyGTID bool
-				hasMyGTID, logs, err := dbhelper.HasMySQLGTID(server.Conn, server.DBVersion)
-				cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlDbg, "Could not check GTID status: %s", err)
+				hasMyGTID := server.HasMySQLGTID()
 				//mariadb
 				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 					cluster.Servers[masterKey].Refresh()

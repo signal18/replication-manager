@@ -132,4 +132,5 @@ var clusterError = map[string]string{
 	"WARN0088": "High number of slow queries %s ",
 	"WARN0089": "ShardProxy Could not fetch master schemas %s",
 	"WARN0090": "Cluster arbitrator unreachable %s",
+	"WARN0091": "Server as errant transaction %s",
 }

@@ -326,7 +326,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master gtid_slave_pos , reason: %s", err)
 			one_shoot_slave_pos = true
 		}
-		hasMyGTID, logs, err := dbhelper.HasMySQLGTID(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
+		hasMyGTID := cluster.oldMaster.HasMySQLGTID()
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not check old master GTID status: %s", err)
 		var changeMasterErr error
 		// Do positional switch if we are not MariaDB and no using GTID
@@ -496,7 +496,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
 		}
-		hasMyGTID, logs, err := dbhelper.HasMySQLGTID(cluster.master.Conn, cluster.master.DBVersion)
+		hasMyGTID := cluster.master.HasMySQLGTID()
 
 		var changeMasterErr error
 
@@ -1237,8 +1237,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 	logs, err := child.StopSlave()
 	cluster.LogSQL(logs, err, child.URL, "MasterFailover", LvlErr, "Could not stop slave on server %s, %s", child.URL, err)
 
-	hasMyGTID, logs, err := dbhelper.HasMySQLGTID(parent.Conn, parent.DBVersion)
-	cluster.LogSQL(logs, err, parent.URL, "MasterFailover", LvlDbg, "As GTID %s %s", parent.URL, err)
+	hasMyGTID := parent.HasMySQLGTID()
 
 	var changeMasterErr error
 

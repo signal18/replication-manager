@@ -31,18 +31,20 @@ func (cluster *Cluster) CheckFailed() {
 	if cluster.master != nil {
 		if cluster.isFoundCandidateMaster() {
 			if cluster.isBetweenFailoverTimeValid() {
-				if cluster.isMaxMasterFailedCountReached() {
-					if cluster.isActiveArbitration() {
-						if cluster.isMaxClusterFailoverCountNotReached() {
-							if cluster.isAutomaticFailover() {
-								if cluster.isMasterFailed() {
-									if cluster.isNotFirstSlave() {
-										// False Positive
-										if cluster.isExternalOk() == false {
-											if cluster.isOneSlaveHeartbeatIncreasing() == false {
-												if cluster.isMaxscaleSupectRunning() == false {
-													cluster.MasterFailover(true)
-													cluster.failoverCond.Send <- true
+				if cluster.IsNotHavingMySQLErrantTransaction() {
+					if cluster.isMaxMasterFailedCountReached() {
+						if cluster.isActiveArbitration() {
+							if cluster.isMaxClusterFailoverCountNotReached() {
+								if cluster.isAutomaticFailover() {
+									if cluster.isMasterFailed() {
+										if cluster.isNotFirstSlave() {
+											// False Positive
+											if cluster.isExternalOk() == false {
+												if cluster.isOneSlaveHeartbeatIncreasing() == false {
+													if cluster.isMaxscaleSupectRunning() == false {
+														cluster.MasterFailover(true)
+														cluster.failoverCond.Send <- true
+													}
 												}
 											}
 										}
@@ -597,4 +599,21 @@ func (cluster *Cluster) CheckSameServerID() {
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
+	if !(cluster.master.HasMySQLGTID()) {
+		return true
+	}
+	for _, s := range cluster.slaves {
+		if s.IsFailed() || s.IsIgnored() {
+			continue
+		}
+		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables["GTID_EXECUTED"], s.Variables["GTID_EXECUTED"])
+		if hasErrantTrx {
+			cluster.SetState("WARN0091", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+			return false
+		}
+	}
+	return true
 }

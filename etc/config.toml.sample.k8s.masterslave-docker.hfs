@@ -7,10 +7,10 @@
 # TOPOLOGY
 # --------
 
-[osx_dck_nopool_loop]
+[osx-k8s-nopool-loop]
 title = "ClusterEnterpriseMasterSlave"
-db-servers-hosts = "172.18.0.2,172.18.0.3"
-db-servers-prefered-master = "172.18.0.2"
+db-servers-hosts = "db1,db2"
+db-servers-prefered-master = "db1"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 
@@ -27,11 +27,12 @@ prov-db-disk-device = "/srv"
 prov-db-net-iface = "tap1"
 prov-db-net-gateway = "172.18.0.1"
 prov-db-net-mask = "255.255.255.0"
-prov-db-docker-img = "mariadb:latest"
+prov-db-docker-img = "mariadb:10.3"
 prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
 
 
 [Default]
 prov-orchestrator = "kube"
+prov-net-cni  = true
 kube-config = "/Users/apple/.kube/config"
 http-bootstrap-button = true

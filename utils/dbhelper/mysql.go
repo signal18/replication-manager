@@ -2,22 +2,22 @@
 
 package dbhelper
 
-import "github.com/jmoiron/sqlx"
+import (
+	"github.com/jmoiron/sqlx"
+)
 
-func HasMySQLGTID(db *sqlx.DB, myver *MySQLVersion) (bool, string, error) {
-	myvar, logs, _ := GetDBVersion(db)
-	if myvar.IsMariaDB() {
-		return false, logs, nil
+func HaveErrantTransactions(db *sqlx.DB, gtidMaster string, gtidSlave string) (bool, string, error) {
+
+	count := 0
+	query := "select gtid_subset('" + gtidMaster + "','" + gtidSlave + "') as slave_is_subset"
+
+	err := db.QueryRowx(query).Scan(&count)
+	if err != nil {
+		return false, query, err
 	}
-	val, log, err := GetVariableByName(db, "ENFORCE_GTID_CONSISTENCY", myver)
-	logs += "\n" + log
-	if err != nil || val == "OFF" {
-		return false, logs, err
+
+	if count == 0 {
+		return true, query, nil
 	}
-	val, log, err = GetVariableByName(db, "GTID_MODE", myver)
-	logs += "\n" + log
-	if err != nil || val == "OFF" {
-		return false, logs, err
-	}
-	return true, logs, nil
+	return false, query, nil
 }
