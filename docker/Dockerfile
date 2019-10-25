@@ -1,4 +1,4 @@
-FROM golang:1.9-alpine3.7 as builder
+FROM golang:1.13-alpine as builder
 
 RUN apk --no-cache --update add make git
 
@@ -10,7 +10,7 @@ COPY . .
 RUN make osc cli
 
 
-FROM alpine:3.7
+FROM alpine:3
 
 RUN mkdir -p \
         /etc/replication-manager \
