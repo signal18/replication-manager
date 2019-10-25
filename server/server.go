@@ -421,10 +421,6 @@ func (repman *ReplicationManager) Run() error {
 			repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(repman.Conf.ProvUser)
 		}
 
-		repman.Agents = repman.OpenSVC.GetNodes()
-		if repman.Agents == nil {
-			log.Fatalf("Can't connect or agents not registered")
-		}
 	}
 
 	// Initialize go-carbon

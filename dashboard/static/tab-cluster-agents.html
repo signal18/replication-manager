@@ -14,12 +14,12 @@
          <th>Kernel</th>
       </tr>
       <tr ng-repeat="agent in agents" ng-class="">
-         <td>{{agent.nodename}}</td>
-         <td>{{agent.cpu_cores}}</td>
-         <td>{{agent.cpu_freq}}</td>
-         <td>{{agent.mem_bytes}}</td>
-         <td>{{agent.os_name}}</td>
-         <td>{{agent.os_kernel}}</td>
+         <td>{{agent.hostName}}</td>
+         <td>{{agent.cpuCores}}</td>
+         <td>{{agent.cpuFreq}}</td>
+         <td>{{agent.memBytes}}</td>
+         <td>{{agent.osName}}</td>
+         <td>{{agent.osKernel}}</td>
       </tr>
    </table>
 </md-card>

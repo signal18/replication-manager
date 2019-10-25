@@ -223,7 +223,7 @@ func (cluster *Cluster) OpenSVCStartService(server *ServerMonitor) error {
 	if err != nil {
 		return err
 	}
-	agent, err := cluster.FoundDatabaseAgent(server)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(server)
 	if err != nil {
 		return err
 	}

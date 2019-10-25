@@ -72,6 +72,28 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	return svc
 }
 
+func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
+	svc := cluster.OpenSVCConnect()
+	hosts := svc.GetNodes()
+	if hosts == nil {
+		cluster.LogPrintf(LvlErr, "Can't Get Opensvc Agent list")
+		return nil, errors.New("Can't Get Opensvc Agent list")
+	}
+	agents := []Agent{}
+	for _, n := range hosts {
+		var agent Agent
+		agent.Id = n.Node_id
+		agent.OsName = n.Os_name
+		agent.OsKernel = n.Os_kernel
+		agent.CpuCores = n.Cpu_cores
+		agent.CpuFreq = n.Cpu_freq
+		agent.MemBytes = n.Mem_bytes
+		agent.HostName = n.Node_name
+		agents = append(agents, agent)
+	}
+	return agents, nil
+}
+
 func (cluster *Cluster) OpenSVCUnprovision() {
 	//opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()

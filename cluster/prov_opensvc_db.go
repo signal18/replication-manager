@@ -18,10 +18,10 @@ import (
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 	svc := cluster.OpenSVCConnect()
-	agent, err := cluster.FoundDatabaseAgent(s)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
-		cluster.LogPrintf(LvlErr, "Can't FoundDatabaseAgent in service config %s", err)
+		cluster.LogPrintf(LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
 		return ""
 	}
 	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
@@ -37,7 +37,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	var taglist []string
 
-	agent, err := cluster.FoundDatabaseAgent(s)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
 		return
@@ -123,7 +123,7 @@ func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(db *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
-	node, _ := cluster.FoundDatabaseAgent(db)
+	node, _ := cluster.OpenSVCFoundDatabaseAgent(db)
 	for _, svc := range node.Svc {
 		if cluster.Name+"/svc/"+db.Name == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -142,7 +142,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	if err != nil {
 		return err
 	}
-	agent, err := cluster.FoundDatabaseAgent(server)
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(server)
 	if err != nil {
 		return err
 	}
@@ -150,14 +150,14 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
+func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host
 	svc := cluster.OpenSVCConnect()
 	agents := svc.GetNodes()
 
 	if agents == nil {
-		return agent, errors.New("Error getting agent list")
+		return agent, errors.New("Error getting OpenSVC node list")
 	}
 	for _, node := range agents {
 		if strings.Contains(svc.ProvAgents, node.Node_name) {
@@ -168,12 +168,12 @@ func (cluster *Cluster) FoundDatabaseAgent(server *ServerMonitor) (opensvc.Host,
 
 		if srv.Id == server.Id {
 			if len(clusteragents) == 0 {
-				return agent, errors.New("Indice not found in database agent list")
+				return agent, errors.New("Indice not found in database node list")
 			}
 			return clusteragents[i%len(clusteragents)], nil
 		}
 	}
-	return agent, errors.New("Indice not found in database agent list")
+	return agent, errors.New("Indice not found in database node list")
 }
 
 func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {

@@ -73,6 +73,7 @@ type Cluster struct {
 	SQLErrorLog          s18log.HttpLog       `json:"sqlErrorLog"`
 	MonitorType          map[string]string    `json:"monitorType"`
 	TopologyType         map[string]string    `json:"topologyType"`
+	Agents               []Agent              `json:"agents"`
 	hostList             []string             `json:"-"`
 	proxyList            []string             `json:"-"`
 	clusterList          map[string]*Cluster  `json:"-"`
@@ -132,6 +133,19 @@ type CronEntry struct {
 	Next     time.Time
 	Prev     time.Time
 	Id       string
+}
+
+type Agent struct {
+	Id           string `json:"id"`
+	HostName     string `json:"hostName"`
+	CpuCores     int64  `json:"cpuCores"`
+	CpuFreq      int64  `json:"cpuFreq"`
+	MemBytes     int64  `json:"memBytes"`
+	MemFreeBytes int64  `json:"memFreeBytes"`
+	OsKernel     string `json:"osKernel"`
+	OsName       string `json:"osName"`
+	Status       string `json:"status"`
+	Version      string `json:"version"`
 }
 
 type Alerts struct {
@@ -284,8 +298,23 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.ConfigPrxTags = cluster.GetProxyModuleTags()
 	// Reload SLA and crashes
 	cluster.GetPersitentState()
-
+	cluster.initOrchetratorNodes()
 	return nil
+}
+
+func (cluster *Cluster) initOrchetratorNodes() {
+
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
+		cluster.Agents, _ = cluster.OpenSVCGetNodes()
+	case ConstOrchestratorKubernetes:
+		cluster.Agents, _ = cluster.K8SGetNodes()
+	case ConstOrchestratorSlapOS:
+		cluster.Agents, _ = cluster.SlapOSGetNodes()
+	default:
+
+	}
+
 }
 
 func (cluster *Cluster) initScheduler() {
@@ -377,30 +406,8 @@ func (cluster *Cluster) Run() {
 			}
 
 			// split brain management
-			if cluster.Conf.Arbitration {
-				if cluster.IsSplitBrain {
-					err := cluster.SetArbitratorReport()
-					if err != nil {
-						cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
-					}
-					if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
-						time.Sleep(5 * time.Second)
-					}
-					i := 1
-					for i <= 3 {
-						i++
-						err = cluster.GetArbitratorElection()
-						if err != nil {
-							cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
-						} else {
-							break //break the loop on success retry 3 times
-						}
-					}
-				}
-				cluster.IsSplitBrainBck = cluster.IsSplitBrain
-			}
-
-			// switchover / failover only on Active
+			cluster.Heartbeat()
+			// switchover or failover controller runs only on active repman
 			cluster.CheckFailed()
 			if !cluster.sme.IsInFailover() {
 				// trigger action on resolving states

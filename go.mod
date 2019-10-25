@@ -68,12 +68,15 @@ require (
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
 	github.com/mattn/go-runewidth v0.0.0-20170510074858-97311d9f7767
 	github.com/mattn/go-sqlite3 v1.9.0
+	github.com/micro/go-log v0.1.0 // indirect
 	github.com/micro/go-micro v0.1.4
+	github.com/micro/misc v0.1.0 // indirect
 	github.com/mitchellh/go-homedir v0.0.0-20161203194507-b8bc1bf76747
 	github.com/mitchellh/hashstructure v0.0.0-20170609045927-2bca23e0e452
 	github.com/mitchellh/mapstructure v0.0.0-20180203102830-a4e142e9c047
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v0.0.0-20180129072728-88b7b944be8b
+	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/pelletier/go-toml v1.1.0
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -57,12 +58,12 @@ type RulesetVariable struct {
 }
 
 type Host struct {
-	Id        int    `json:"id"`
+	Id        int64  `json:"id"`
 	Node_id   string `json:"node_id"`
 	Node_name string `json:"nodename"`
-	Cpu_cores int    `json:"cpu_cores"`
-	Cpu_freq  int    `json:"cpu_freq"`
-	Mem_bytes int    `json:"mem_bytes"`
+	Cpu_cores int64  `json:"cpu_cores"`
+	Cpu_freq  int64  `json:"cpu_freq"`
+	Mem_bytes int64  `json:"mem_bytes"`
 	Os_kernel string `json:"os_kernel"`
 	Os_name   string `json:"os_name"`
 	Ips       []Addr
@@ -860,7 +861,6 @@ func (collector *Collector) GetNodes() []Host {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
 	client := &http.Client{}
 	if !collector.UseAPI {
-		//url = "https://" + collector.Host + ":" + collector.Port + "/daemon_status"
 		url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
 
 		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
@@ -928,6 +928,8 @@ func (collector *Collector) GetNodes() []Host {
 		}
 		return r.Data
 	}
+
+	//Procedd with cluster VIP
 	type Property struct {
 		Title  string `json:"title"`
 		Value  string `json:"value"`
@@ -957,15 +959,16 @@ func (collector *Collector) GetNodes() []Host {
 		log.Println("ERROR ", err)
 		return nil
 	}
+	crcTable := crc64.MakeTable(crc64.ECMA)
 
 	nhosts := make([]Host, len(r.Data), len(r.Data))
 	i := 0
 	for _, agent := range r.Data {
 		//		log.Println("ERROR ", agent)
-		nhosts[i].Id = i
-		nhosts[i].Cpu_cores, _ = strconv.Atoi(agent.Cputhreads.Value)
-		nhosts[i].Cpu_freq, _ = strconv.Atoi(agent.Cpufreq.Value)
-		nhosts[i].Mem_bytes, _ = strconv.Atoi(agent.Membytes.Value)
+		nhosts[i].Node_id = strconv.FormatUint(crc64.Checksum([]byte(agent.Nodename.Value), crcTable), 10)
+		nhosts[i].Cpu_cores, _ = strconv.ParseInt(agent.Cputhreads.Value, 10, 64)
+		nhosts[i].Cpu_freq, _ = strconv.ParseInt(agent.Cpufreq.Value, 10, 64)
+		nhosts[i].Mem_bytes, _ = strconv.ParseInt(agent.Membytes.Value, 10, 64)
 		nhosts[i].Node_name = agent.Nodename.Value
 		nhosts[i].Os_kernel = agent.Oskernel.Value
 		nhosts[i].Os_name = agent.Osname.Value

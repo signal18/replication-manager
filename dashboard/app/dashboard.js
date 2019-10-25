@@ -80,7 +80,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           if (data) {
             $scope.settings = data;
             if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
-            $scope.agents = data.agents;
+
           }
         }, function () {
           $scope.reserror = true;
@@ -119,6 +119,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           }
           return passedTest;
         }
+        $scope.agents = data.agents;
         $scope.missingDBTags=isInTags(data.configTags,data.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
         $scope.missingProxyTags=isInTags(data.configPrxTags,data.proxyServersTags,function(currentTag,proxyTags){ return (proxyTags.indexOf(currentTag)== -1);});
 

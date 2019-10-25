@@ -18,7 +18,7 @@ replication-credential = "root:mariadb"
 
 
 
-prov-db-agents = "macbook-pro-de-apple-2.local"
+prov-db-agents = "minikube"
 prov-db-service-type = "docker"
 prov-db-disk-fs = "hfs"
 prov-db-disk-pool = "none"
@@ -34,5 +34,6 @@ prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
 [Default]
 prov-orchestrator = "kube"
 prov-net-cni  = true
+prov-net-cni-cluster = "cluster.local"
 kube-config = "/Users/apple/.kube/config"
-http-bootstrap-button = true
+http-bootstrap-button   = true

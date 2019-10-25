@@ -254,10 +254,9 @@ type Config struct {
 	Test                               bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                  bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                         bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
-
-	KubeConfig string `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
+	KubeConfig                         string `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
+	SlapOSConfig                       string `mapstructure:"slapos-config" toml:"slapos-config" json:"slapos-config"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
-	ProvOrchestrator           string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvHost                   string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvOpensvcP12Certificate  string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret       string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
@@ -266,6 +265,7 @@ type Config struct {
 	ProvAdminUser              string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	ProvUser                   string `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                string `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
+	ProvOrchestrator           string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvDBServerPath           string `mapstructure:"prov-db-localhost-binary-path" toml:"prov-db-localhost-binary-path" json:"provDbLocalhostBinaryPath"`
 	ProvType                   string `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                 string `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`

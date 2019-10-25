@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,8 @@ func (cluster *Cluster) ProvisionServices() error {
 		err = cluster.OpenSVCProvisionCluster()
 	case ConstOrchestratorKubernetes:
 		err = cluster.K8SProvisionCluster()
+	case ConstOrchestratorSlapOS:
+		err = cluster.SlapOSProvisionCluster()
 	default:
 		err = cluster.LocalhostProvisionCluster()
 	}
@@ -93,6 +96,8 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 		cluster.OpenSVCProvisionDatabaseService(server)
 	case ConstOrchestratorKubernetes:
 		cluster.K8SProvisionDatabaseService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSProvisionDatabaseService(server)
 	default:
 		cluster.LocalhostProvisionDatabaseService(server)
 	}
@@ -106,6 +111,8 @@ func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 		cluster.OpenSVCProvisionProxyService(prx)
 	case ConstOrchestratorKubernetes:
 		cluster.K8SProvisionProxyService(prx)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSProvisionProxyService(prx)
 	default:
 		cluster.LocalhostProvisionProxyService(prx)
 	}
@@ -117,6 +124,10 @@ func (cluster *Cluster) Unprovision() {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovision()
+	case ConstOrchestratorKubernetes:
+		cluster.K8SUnprovision()
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSUnprovision()
 	default:
 		cluster.LocalhostUnprovision()
 	}
@@ -124,8 +135,6 @@ func (cluster *Cluster) Unprovision() {
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.sme.UnDiscovered()
-	//cluster.Servers = nil
-	//cluster.newServerList()
 	cluster.sme.RemoveFailoverState()
 }
 
@@ -133,6 +142,10 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionProxyService(prx)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SUnprovisionProxyService(prx)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSUnprovisionProxyService(prx)
 	default:
 		//		cluster.LocalhostUnprovisionProxyService(prx)
 	}
@@ -144,6 +157,10 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionDatabaseService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SUnprovisionDatabaseService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSUnprovisionDatabaseService(server)
 	default:
 		cluster.LocalhostUnprovisionDatabaseService(server)
 	}
@@ -158,6 +175,10 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCStopDatabaseService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SStopDatabaseService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSStopDatabaseService(server)
 	default:
 		return cluster.LocalhostStopDatabaseService(server)
 	}
@@ -174,6 +195,10 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCStartService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SStartDatabaseService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSStartDatabaseService(server)
 	default:
 		return cluster.LocalhostStartDatabaseService(server)
 	}
@@ -814,4 +839,56 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	//bootstrapChan <- true
 	return nil
+}
+
+func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
+	var agent Agent
+	agents := strings.Split(cluster.Conf.ProvAgents, ",")
+	if len(agents) == 0 {
+		return agent, errors.New("No databases agent list provided")
+	}
+	for i, srv := range cluster.Servers {
+
+		if srv.Id == server.Id {
+			agentName := agents[i%len(agents)]
+			agent, err := cluster.GetAgentInOrchetrator(agentName)
+			if err != nil {
+				return agent, err
+			} else {
+				return agent, nil
+			}
+		}
+	}
+	return agent, errors.New("Indice not found in database node list")
+}
+
+func (cluster *Cluster) GetProxyAgent(server *ServerMonitor) (Agent, error) {
+	var agent Agent
+	agents := strings.Split(cluster.Conf.ProvProxAgents, ",")
+	if len(agents) == 0 {
+		return agent, errors.New("No databases agent list provided")
+	}
+	for i, srv := range cluster.Servers {
+
+		if srv.Id == server.Id {
+			agentName := agents[i%len(agents)]
+			agent, err := cluster.GetAgentInOrchetrator(agentName)
+			if err != nil {
+				return agent, err
+			} else {
+				return agent, nil
+			}
+		}
+	}
+	return agent, errors.New("Indice not found in database node list")
+}
+
+func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
+	var node Agent
+	for _, node := range cluster.Agents {
+		if name == node.HostName {
+			return node, nil
+		}
+	}
+	return node, errors.New("Agent not found in orechestrator node list")
 }

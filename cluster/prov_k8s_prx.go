@@ -17,11 +17,12 @@ func (cluster *Cluster) K8SProvisionProxies() error {
 	return nil
 }
 
-func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) error {
+func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 	clientset, err := cluster.K8SConnectAPI()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot init Kubernetes client API %s ", err)
-		return err
+		cluster.errorChan <- err
+		return
 	}
 
 	deploymentsClient := clientset.AppsV1().Deployments(cluster.Name)
@@ -68,7 +69,13 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) error {
 
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot deploy Kubernetes service %s ", err)
+		cluster.errorChan <- err
 	}
 	cluster.LogPrintf(LvlInfo, "Created deployment %q.\n", result.GetObjectMeta().GetName())
-	return err
+	cluster.errorChan <- nil
+	return
+}
+
+func (cluster *Cluster) K8SUnprovisionProxyService(prx *Proxy) {
+
 }
