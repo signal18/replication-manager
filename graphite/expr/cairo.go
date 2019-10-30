@@ -1,4 +1,3 @@
-
 // +build cairo
 
 package expr
@@ -16,7 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"bitbucket.org/tebeka/strftime"
+	"github.com/tebeka/strftime"
+	//	"bitbucket.org/tebeka/strftime"
 	"github.com/evmar/gocairo/cairo"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
