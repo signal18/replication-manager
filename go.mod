@@ -3,7 +3,6 @@ module github.com/signal18/replication-manager
 go 1.12
 
 require (
-	bitbucket.org/tebeka/strftime v0.0.0-20140926081919-2194253a23c0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/JaderDias/movingmedian v0.0.0-20170611140316-de8c410559fa
 	github.com/NYTimes/gziphandler v0.0.0-20180125165240-289a3b81f5ae
