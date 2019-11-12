@@ -274,6 +274,13 @@ type Config struct {
 	ProvCores                  string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                   string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
 	ProvDisk                   string `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
+	ProvDiskSystemSize         string `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
+	ProvDiskTempSize           string `mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
+	ProvDiskDockerSize         string `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
+	ProvVolumeDocker           string `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
+	ProvVolumeData             string `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
+	ProvVolumeSystem           string `mapstructure:"prov-db-volume-system" toml:"prov-db-volume-system" json:"provDbVolumeSystem"`
+	ProvVolumeTemp             string `mapstructure:"prov-db-volume-temp" toml:"prov-db-volume-temp" json:"provDbVolumeTemp"`
 	ProvDiskFS                 string `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
 	ProvDiskPool               string `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`
 	ProvDiskDevice             string `mapstructure:"prov-db-disk-device" toml:"prov-db-disk-device" json:"provDbDiskDevice"`
@@ -289,6 +296,7 @@ type Config struct {
 	ProvDBLoadCSV              string `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
 	ProvProxType               string `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
 	ProvProxAgents             string `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
+	ProvProxAgentsFailover     string `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
 	ProvProxMem                string `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
 	ProvProxCores              string `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
 	ProvProxDisk               string `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
@@ -296,6 +304,7 @@ type Config struct {
 	ProvProxDiskPool           string `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
 	ProvProxDiskDevice         string `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
 	ProvProxDiskType           string `mapstructure:"prov-proxy-disk-type" toml:"prov-proxy-disk-type" json:"provProxyDiskType"`
+	ProvProxVolumeData         string `mapstructure:"prov-proxy-volume-data" toml:"prov-proxy-volume-data" json:"provProxyVolumeData"`
 	ProvProxNetIface           string `mapstructure:"prov-proxy-net-iface" toml:"prov-proxy-net-iface" json:"provProxyNetIface"`
 	ProvProxNetmask            string `mapstructure:"prov-proxy-net-mask" toml:"prov-proxy-net-mask" json:"provProxyNetMask"`
 	ProvProxGateway            string `mapstructure:"prov-proxy-net-gateway" toml:"prov-proxy-net-gateway" json:"provProxyNetGateway"`

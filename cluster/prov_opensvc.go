@@ -28,6 +28,8 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 		}
 	}
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
@@ -174,18 +176,6 @@ func (cluster *Cluster) GetOpenSVCSeviceStatus() (int, error) {
 	return srvStatus, nil
 }
 
-/* Found iface
-var ipdev string
-agent := agents[i%len(agents)]
-log.Printf("%d,%d,%d", i, len(agents), i%len(agents))
-for _, addr := range agent.Ips {
-	ipsagents := strings.Split(addr.Addr, ".")
-	ipsdb := strings.Split(host, ".")
-	if ipsagents[0] == ipsdb[0] && ipsagents[1] == ipsdb[1] && ipsagents[2] == ipsdb[2] {
-		ipdev = addr.Net_intf
-	}
-}*/
-
 func (server *ServerMonitor) GetSnapshot(collector opensvc.Collector) string {
 	if !server.IsPrefered() || !server.ClusterGroup.Conf.ProvDiskSnapshot {
 		return ""
@@ -244,11 +234,6 @@ netmask = {env.netmask}
 network = {env.network}
 gateway = {env.gateway}
 `
-
-	//network = <cni net name>
-
-	//Use in gcloud
-	//del_net_route = true
 
 	return net
 }

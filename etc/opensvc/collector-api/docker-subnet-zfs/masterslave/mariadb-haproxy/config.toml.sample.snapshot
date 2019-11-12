@@ -7,7 +7,7 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "192.168.100.70,192.168.100.71"
 db-servers-prefered-master = "192.168.100.70"
@@ -29,12 +29,13 @@ prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
 prov-db-disk-size = "1G"
 prov-db-memory = "256"
 prov-db-disk-iops = "300"
+prov-db-disk-snapshot = true
 
+haproxy=true
+haproxy-write-port=3303
+haproxy-read-port=3302
+haproxy-servers = "192.168.100.50"
 
-proxysql=true
-proxysql-write-port=3303
-proxysql-servers = "192.168.100.50"
-proxysql-user ="external"
 
 prov-proxy-disk-size = "1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"

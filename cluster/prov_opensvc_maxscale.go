@@ -13,6 +13,24 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *Proxy) map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#0001"
+		svccontainer["run_image"] = "{env.maxscale_img}"
+		svccontainer["rm"] = "true"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/conf:/etc/maxscale.d:rw`
+		} else {
+			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/etc/maxscale.d:rw`
+		}
+	}
+	return svccontainer
+}
+
 func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	conf := `

@@ -407,66 +407,71 @@ func (cluster *Cluster) Run() {
 
 			// split brain management
 			cluster.Heartbeat()
+
 			// switchover or failover controller runs only on active repman
+			// CheckFailed trigger failover code if passing all false positiv and constraints
 			cluster.CheckFailed()
-			if !cluster.sme.IsInFailover() {
-				// trigger action on resolving states
-				cstates := cluster.sme.GetResolvedStates()
-				for _, s := range cstates {
-					if s.ErrKey == "WARN0074" {
-						cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
-						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-						m := cluster.GetMaster()
-						if m != nil {
-							go cluster.SSTRunSender(m.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
-						} else {
-							cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
-						}
-					}
-					if s.ErrKey == "WARN0075" {
-						cluster.LogPrintf(LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
-						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-						m := cluster.GetMaster()
-						if m != nil {
-							go cluster.SSTRunSender(m.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
-						} else {
-							cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
-						}
-					}
-					if s.ErrKey == "WARN0076" {
-						cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
-						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-
-						go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
-
-					}
-					if s.ErrKey == "WARN0077" {
-						cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-						servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-						go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
-					}
-					//		cluster.statecloseChan <- s
-				}
-				states := cluster.sme.GetStates()
-				for i := range states {
-					cluster.LogPrintf("STATE", states[i])
-				}
-				// trigger action on resolving states
-				ostates := cluster.sme.GetOpenStates()
-				for _, s := range ostates {
-					cluster.CheckCapture(s)
-				}
-				cluster.sme.ClearState()
-				if cluster.sme.GetHeartbeats()%60 == 0 {
-					cluster.Save()
-				}
-			}
+			cluster.StateProcessing()
 			cluster.Topology = cluster.GetTopology()
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}
 }
 
+func (cluster *Cluster) StateProcessing() {
+	if !cluster.sme.IsInFailover() {
+		// trigger action on resolving states
+		cstates := cluster.sme.GetResolvedStates()
+		for _, s := range cstates {
+			if s.ErrKey == "WARN0074" {
+				cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
+				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+				m := cluster.GetMaster()
+				if m != nil {
+					go cluster.SSTRunSender(m.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
+				} else {
+					cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
+				}
+			}
+			if s.ErrKey == "WARN0075" {
+				cluster.LogPrintf(LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
+				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+				m := cluster.GetMaster()
+				if m != nil {
+					go cluster.SSTRunSender(m.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
+				} else {
+					cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
+				}
+			}
+			if s.ErrKey == "WARN0076" {
+				cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
+				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+
+				go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/xtrabackup.xbtream", servertoreseed)
+
+			}
+			if s.ErrKey == "WARN0077" {
+				cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
+				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+				go cluster.SSTRunSender(servertoreseed.Datadir+"/bck/mysqldump.sql.gz", servertoreseed)
+			}
+			//		cluster.statecloseChan <- s
+		}
+		states := cluster.sme.GetStates()
+		for i := range states {
+			cluster.LogPrintf("STATE", states[i])
+		}
+		// trigger action on resolving states
+		ostates := cluster.sme.GetOpenStates()
+		for _, s := range ostates {
+			cluster.CheckCapture(s)
+		}
+		cluster.sme.ClearState()
+		if cluster.sme.GetHeartbeats()%60 == 0 {
+			cluster.Save()
+		}
+	}
+}
 func (cluster *Cluster) Stop() {
 	cluster.scheduler.Stop()
 	cluster.exit = true

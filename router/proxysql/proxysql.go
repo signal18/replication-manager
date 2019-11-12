@@ -16,6 +16,27 @@ type ProxySQL struct {
 	Host       string
 	WriterHG   string
 	ReaderHG   string
+	Queries    []StatsQueryDigest
+}
+
+type MapDigestHG struct {
+	Hostgroup string
+	Digest    string
+}
+
+//stats_history.stats_mysql_query_digest
+type StatsQueryDigest struct {
+	Hostgroup   string `json:"hostGroup" db:"hostgroup"`
+	Digest      string `json:"digest" db:"digest"`
+	SchemaName  string `json:"schemaName" db:"schemaname"`
+	UserName    string `json:"userName" db:"username"`
+	QueryDigest string `json:"queryDigest" db:"digest_text"`
+	CountStar   uint64 `json:"countStar" db:"count_star"`
+	FirstSeen   uint64 `json:"firstSeen" db:"first_seen"`
+	LastSeen    uint64 `json:"lastSeen" db:"last_seen"`
+	SumTime     uint64 `json:"sumTime" db:"sum_time"`
+	MinTime     uint64 `json:"minTime" db:"sum_time"`
+	MaxTime     uint64 `json:"maxTime" db:"max_time"`
 }
 
 func (psql *ProxySQL) Connect() error {
@@ -35,6 +56,17 @@ func (psql *ProxySQL) Connect() error {
 		return fmt.Errorf("Could not connect to ProxySQL (%s)", err)
 	}
 	return nil
+}
+
+func GetStatsQueryDigest(db *sqlx.DB) ([]StatsQueryDigest, string, error) {
+	res := []StatsQueryDigest{}
+	var err error
+	stmt := "SELECT * FROM stats_history.stats_mysql_query_digest ORDER BY sum_time DESC"
+	err = db.Select(&res, stmt)
+	if err != nil {
+		return nil, stmt, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+	}
+	return res, stmt, nil
 }
 
 func (psql *ProxySQL) AddServer(host string, port string) error {

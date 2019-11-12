@@ -13,6 +13,25 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *Proxy) map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#0001"
+		svccontainer["run_image"] = "{env.haproxy_img}"
+		svccontainer["rm"] = "true"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc/haproxy:rw`
+		} else {
+			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["volume_mounts"] = `{env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/usr/local/etc/haproxy:rw`
+		}
+	}
+
+	return svccontainer
+}
+
 func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	conf := `

@@ -7,28 +7,39 @@
 # TOPOLOGY
 # --------
 
-
-[ux_pkg_nopool_loop]
-title = "ClusterProMasterSlave"
-db-servers-hosts = "192.168.100.51,192.168.100.52"
-db-servers-prefered-master = "192.168.100.51"
+[ux-dck-zpool-loop]
+title = "ClusterEnterpriseMasterSlave"
+db-servers-hosts = "192.168.100.70,192.168.100.71"
+db-servers-prefered-master = "192.168.100.70"
 db-servers-credential = "root:mariadb"
-rpluser = "root:mariadb"
 db-servers-connect-timeout = 1
-prov-db-agents = "node-1-1.vdc.opensvc.com node-1-2.vdc.opensvc.com"
-prov-db-service-type = "package"
-prov-db-disk-fs = "ext4"
-prov-db-disk-pool = "none"
+replication-credential = "root:mariadb"
+
+prov-db-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
+prov-db-service-type = "docker"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
 prov-db-disk-type = "loopback"
 prov-db-disk-device = "/srv"
 prov-db-net-iface = "br-prd"
 prov-db-net-gateway = "192.168.100.1"
 prov-db-net-mask = "255.255.255.0"
+prov-db-docker-img = "mariadb:latest"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "1G"
+prov-db-memory = "256"
+prov-db-disk-iops = "300"
 
+
+shardproxy = true
+shardproxy-servers = "192.168.100.50"
+shardproxy-credential = "root:mariadb"
+
+prov-proxy-disk-size = "1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"
-prov-proxy-service-type = "package"
-prov-proxy-disk-fs = "ext4"
-prov-proxy-disk-pool = "none"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-fs = "zfs"
+prov-proxy-disk-pool = "zpool"
 prov-proxy-disk-type = "loopback"
 prov-proxy-disk-device = "/srv"
 prov-proxy-net-iface = "br-prd"

@@ -13,6 +13,33 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#0001"
+		svccontainer["run_image"] = "{env.sphinx_img}"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`
+		} else {
+			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/usr/local/etc:rw	{env.base_dir}/pod01/data:/var/lib/sphinx:rw {env.base_dir}/pod01/data:/var/idx/sphinx:rw	{env.base_dir}/pod01/log:/var/log/sphinx:rw`
+		}
+		svccontainer["run_command"] = "indexall.sh"
+	}
+	return svccontainer
+}
+
+func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *Proxy) map[string]string {
+	svccontainer := make(map[string]string)
+	svccontainer["schedule"] = cluster.Conf.ProvSphinxCron
+	svccontainer["command"] = "{env.base_dir}/{namespace}-{svcname}/pod01/init/reindex.sh"
+	svccontainer["user"] = "root"
+	svccontainer["run_requires"] = "fs#01(up,stdby up)"
+	return svccontainer
+}
+
 func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	conf := `

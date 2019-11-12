@@ -7,13 +7,13 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "192.168.100.70,192.168.100.71"
 db-servers-prefered-master = "192.168.100.70"
-db-servers-credential = "root:mariadb"
+db-servers-credential = "root:0f3f139fc38d4c0a4e221d14b48dcb7d7af5d1282326d6"
 db-servers-connect-timeout = 1
-replication-credential = "root:mariadb"
+replication-credential = "root:0f3f139fc38d4c0a4e221d14b48dcb7d7af5d1282326d6"
 
 prov-db-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
 prov-db-service-type = "docker"
@@ -56,5 +56,6 @@ prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
+api-credential= "admin:0f3f139fc38d4c0a4e221d14b48dcb7d7af5d1282326d6"
 opensvc-host = "ci.signal18.io:9443"
 http-bootstrap-button = true

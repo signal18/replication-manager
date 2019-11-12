@@ -855,8 +855,140 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	return string(body), nil
 }
 
-func (collector *Collector) GetNodes() []Host {
+func (collector *Collector) GetHttpClient() *http.Client {
+	tlsConfig := &tls.Config{InsecureSkipVerify: true}
+	client := &http.Client{}
+	if !collector.UseAPI {
+		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
+		if err != nil {
+			log.Println("ERROR ParseCertificatesDER ", err)
+		}
+		cert := tls.Certificate{
+			Certificate: [][]byte{certder[0].Raw},
+			PrivateKey:  keyder,
+			Leaf:        certder[0],
+		}
+		tlsConfig = &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: true,
+		}
+		client.Transport = &http2.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	} else {
 
+		client.Transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	}
+	return client
+
+}
+
+func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
+
+	client := collector.GetHttpClient()
+	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "start", "options": {}}}`
+	b := bytes.NewBuffer([]byte(jsondata))
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) StopServiceV2(cluster string, srv string, node string) error {
+
+	client := collector.GetHttpClient()
+	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "stop", "options": {}}}`
+	b := bytes.NewBuffer([]byte(jsondata))
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) PurgeServiceV2(cluster string, srv string, node string) error {
+
+	client := collector.GetHttpClient()
+	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "purge", "options": {}}}`
+	b := bytes.NewBuffer([]byte(jsondata))
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+// CreateTemplateV2 post a template to the collector
+func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	log.Println("INFO ", urlpost)
+
+	jsondata := `{"action": "create", "options": {"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}}`
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) GetNodes() []Host {
+	/*
+		url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
+		if !collector.UseAPI {
+			url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
+		}
+
+		client := collector.GetHttpClient()
+	*/
 	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
 	client := &http.Client{}
@@ -865,7 +997,7 @@ func (collector *Collector) GetNodes() []Host {
 
 		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
 		if err != nil {
-			log.Println("ERROR ParseCertificatesDER ", err)
+			log.Println("ERROR ParseCertificatesDER ", err, collector.CertsDER)
 		}
 		cert := tls.Certificate{
 			Certificate: [][]byte{certder[0].Raw},

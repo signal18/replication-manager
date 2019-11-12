@@ -1,0 +1,99 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+# TOPOLOGY
+# --------
+# config.toml
+# Example replication-manager configuration file
+
+# TOPOLOGY
+# --------
+
+[2percona56pos]
+
+title = "ClusterEnterpriseMasterSlave"
+db-servers-hosts = "mysql1,mysql2,mysql3"
+db-servers-prefered-master = "mysql1"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+force-slave-no-gtid-mode = true
+failover-mode = "automatic"
+autorejoin-mysqldump = true
+autorejoin-flashback = true
+failover-falsepositive-heartbeat = false
+force-slave-semisync = true
+force-sync-binlog = true
+force-sync-innodb = true
+force-slave-failover-readonly-state = true
+failover-falsepositive-ping-counter = 3
+failover-limit = 999
+failover-time-limit = 1
+
+prov-net-cni = true
+prov-net-cni-cluster= "cloud18"
+
+prov-db-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
+prov-db-disk-device = "data"
+prov-db-disk-type = "pool"
+prov-db-service-type = "docker"
+prov-db-net-gateway = "192.168.100.1"
+prov-db-net-mask = "255.255.255.0"
+prov-db-docker-img = "percona:5.6"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "1G"
+prov-proxy-disk-size ="1G"
+
+maxscale=true
+maxscale-monitor = true
+maxscale-maxinfo-port = 3307
+maxscale-get-info-method = "maxadmin"
+maxscale-servers = "mx1"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = false
+
+prov-proxy-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-fs = "zfs"
+prov-proxy-disk-pool = "zpool"
+prov-proxy-disk-device = "data"
+prov-proxy-disk-type = "pool"
+
+
+
+[Default]
+
+# LOG
+# ---
+
+prov-net-cni = true
+prov-net-cni-cluster= "cloud18"
+
+
+
+http-server = true
+http-port = "10001"
+
+http-bootstrap-button=true
+
+# SYSBENCH
+# --------
+
+#sysbench-binary-path = "/usr/local/bin/sysbench"
+sysbench-threads = 4
+sysbench-time = 60
+
+# MARIADB >= 10.2
+# ---------------
+
+mariadb-binary-path = "/usr/local/mysql/bin"

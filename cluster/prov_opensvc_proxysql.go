@@ -13,6 +13,25 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#0001"
+		svccontainer["run_image"] = "{env.proxysql_img}"
+		svccontainer["rm"] = "true"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf/proxysql.cnf:/etc/proxysql.cnf:rw -v {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
+		} else {
+			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf/proxysql.cnf:/etc/proxysql.cnf:rw {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
+		}
+		svccontainer["run_command"] = "proxysql --initial -f -c /etc/proxysql.cnf"
+	}
+	return svccontainer
+}
+
 func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	conf := `

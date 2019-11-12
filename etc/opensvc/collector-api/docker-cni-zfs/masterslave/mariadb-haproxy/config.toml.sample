@@ -7,7 +7,7 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "db1,db2"
 db-servers-prefered-master = "db1"

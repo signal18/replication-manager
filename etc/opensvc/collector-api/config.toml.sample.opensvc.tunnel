@@ -1,0 +1,63 @@
+[Default]
+opensvc-host = "collector.signal18.io:443"
+log-file="/var/log/replication-manager/replication-manager.log"
+http-bind-address = "0.0.0.0"
+prov-db-disk-size = "1g"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
+prov-db-disk-device = "data"
+prov-db-disk-type = "pool"
+prov-net-cni-cluster = "cloud18"
+prov-docker-daemon-private=false
+prov-db-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-proxy-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-net-cni = true
+prov-db-service-type = "docker"
+
+monitor-tunnel-host = "c1n1.signal18.io:22"
+monitor-tunnel-credential = "tunnel:demo"
+[Tunnel]
+
+title = "ClusterEnterpriseMasterSlave"
+db-servers-hosts = "db1,db2,db3"
+db-servers-prefered-master = "db1"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+force-slave-readonly = true
+prov-net-cni = true
+prov-net-cni-cluster= "cloud18"
+prov-db-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-db-service-type = "docker"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
+prov-db-disk-type = "pool"
+prov-db-disk-device = "data"
+prov-db-net-iface = "br-prd"
+prov-db-net-gateway = "192.168.100.1"
+prov-db-net-mask = "255.255.255.0"
+prov-db-docker-img = "mariadb:latest"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "1G"
+prov-db-memory = "128"
+prov-db-disk-iops = "300"
+
+
+proxysql=true
+proxysql-write-port=3303
+proxysql-servers = "proxy1,proxy2"
+proxysql-user ="external"
+proxysql-bootstrap= true
+proxysql-copy-grants = false
+
+prov-proxy-disk-size = "1G"
+prov-proxy-agents = "c1n1.signal18.io,c1n2.signal18.io"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-fs = "zfs"
+prov-proxy-disk-pool = "zpool"
+prov-proxy-disk-type = "pool"
+prov-proxy-disk-device = "data"
+prov-proxy-net-iface = "br-prd"
+prov-proxy-net-gateway = "192.168.100.1"
+prov-proxy-net-mask = "255.255.255.0"

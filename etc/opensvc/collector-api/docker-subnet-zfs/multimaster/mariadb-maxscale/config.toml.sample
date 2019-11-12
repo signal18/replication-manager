@@ -7,19 +7,14 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "192.168.100.70,192.168.100.71"
 db-servers-prefered-master = "192.168.100.70"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
-db-servers-tls-ca-cert = "/usr/share/replication-manager/tls/ca-cert.pem"
-db-servers-tls-client-cert = "/usr/share/replication-manager/tls/client-cert.pem"
-db-servers-tls-client-key = "/usr/share/replication-manager/tls/client-key.pem"
-prov-tls-server-ca  = "/usr/share/replication-manager/tls/ca-cert.pem"
-prov-tls-server-cert = "/usr/share/replication-manager/tls/server-cert.pem"
-prov-tls-server-key  = "/usr/share/replication-manager/tls/server-key.pem"
+replication-multi-master = true
 
 prov-db-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
 prov-db-service-type = "docker"
@@ -28,22 +23,29 @@ prov-db-disk-pool = "zpool"
 prov-db-disk-type = "loopback"
 prov-db-disk-device = "/srv"
 prov-db-net-iface = "br-prd"
-prov-db-net-gateway = "192.168.100.1"
+prov0-db-net-gateway = "192.168.100.1"
 prov-db-net-mask = "255.255.255.0"
 prov-db-docker-img = "mariadb:latest"
-prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow,ssl,nodoublewrite"
-prov-db-disk-size = "1G"
+prov-db-tags = "semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "6G"
 prov-db-memory = "256"
 prov-db-disk-iops = "300"
-prov-db-disk-snapshot = true
-
-haproxy=true
-haproxy-write-port=3303
-haproxy-read-port=3302
-haproxy-servers = "192.168.100.50"
 
 
-prov-proxy-disk-size = "1G"
+maxscale=true
+maxscale-monitor = true
+maxscale-maxinfo-port = 3307
+maxscale-get-info-method = "maxadmin"
+maxscale-servers = "192.168.100.50"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = false
+
+prov-proxy-disk-size ="1G"
 prov-proxy-agents = "node-1-2.vdc.opensvc.com"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-fs = "zfs"

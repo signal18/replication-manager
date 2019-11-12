@@ -7,7 +7,7 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "192.168.100.70,192.168.100.71"
 db-servers-prefered-master = "192.168.100.70"
@@ -33,11 +33,11 @@ prov-db-disk-iops = "300"
 
 proxysql=true
 proxysql-write-port=3303
-proxysql-servers = "192.168.100.50,192.168.100.51"
+proxysql-servers = "192.168.100.50"
 proxysql-user ="external"
 
 prov-proxy-disk-size = "1G"
-prov-proxy-agents =  "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
+prov-proxy-agents = "node-1-2.vdc.opensvc.com"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-fs = "zfs"
 prov-proxy-disk-pool = "zpool"
@@ -48,11 +48,5 @@ prov-proxy-net-gateway = "192.168.100.1"
 prov-proxy-net-mask = "255.255.255.0"
 
 [default]
-arbitration-external = true
-arbitration-external-id=0
-arbitration-external-hosts = "reparb.signal18.io:80"
-arbitration-peer-hosts = "repmgr-2.signal18.io:80"
-arbitration-external-secret = "signal18.io"
-
 opensvc-host = "ci.signal18.io:9443"
 http-bootstrap-button = true

@@ -15,6 +15,26 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[string]string {
+
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#0001"
+		svccontainer["run_image"] = " {env.shardproxy_img}"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
+			svccontainer["run_args"] = `-e MYSQL_ROOT_PASSWORD={env.mysql_root_password} -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/data:/var/lib/mysql:rw -v {env.base_dir}/pod01/etc/mysql:/etc/mysql:rw -v {env.base_dir}/pod01/init:/docker-entrypoint-initdb.d:rw
+`
+		} else {
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}-data/data:/var/lib/mysql:rw {name}-system/data/.system:/var/lib/mysql/.system:rw {name}-temp/data/.system/tmp:/var/lib/mysql/.system/tmp:rw {name}-data/etc/mysql:/etc/mysql:rw {name}-data/init:/docker-entrypoint-initdb.d:rw`
+			svccontainer["environment"] = `MYSQL_ROOT_PASSWORD={env.mysql_root_password} MYSQL_INITDB_SKIP_TZINFO=yes`
+		}
+
+	}
+	return svccontainer
+}
+
 func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	ipPods := ""

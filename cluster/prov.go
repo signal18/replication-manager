@@ -194,7 +194,7 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStartService(server)
+		return cluster.OpenSVCStartDatabaseService(server)
 	case ConstOrchestratorKubernetes:
 		cluster.K8SStartDatabaseService(server)
 	case ConstOrchestratorSlapOS:

@@ -7,14 +7,13 @@
 # TOPOLOGY
 # --------
 
-[ux_dck_zpool_loop]
+[ux-dck-zpool-loop]
 title = "ClusterEnterpriseMasterSlave"
 db-servers-hosts = "192.168.100.70,192.168.100.71"
 db-servers-prefered-master = "192.168.100.70"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
-replication-multi-master = true
 
 prov-db-agents = "node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com"
 prov-db-service-type = "docker"
