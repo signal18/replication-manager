@@ -396,8 +396,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	noChannel := false
 	if errss != nil {
 		if strings.Contains(errss.Error(), "1617") {
-			server.ClusterGroup.LogPrintf(LvlInfo, " server: %s replication no channel err 1617 %s ", server.URL, errss)
-
+			// This is a special case when using muti source there is a error instead of empty resultset when no replication is defined on channel
+			//	server.ClusterGroup.LogPrintf(LvlInfo, " server: %s replication no channel err 1617 %s ", server.URL, errss)
 			noChannel = true
 		}
 	}
