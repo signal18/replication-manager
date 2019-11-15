@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -344,17 +345,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 				server.ClusterGroup.backendStateChangeProxies()
 				server.SendAlert()
-				if server.State == stateSlaveErr {
-					if server.ClusterGroup.Conf.ReplicationErrorScript != "" {
-						server.ClusterGroup.LogPrintf("INFO", "Calling replication error script")
-						var out []byte
-						out, err := exec.Command(server.ClusterGroup.Conf.ReplicationErrorScript, server.URL, server.PrevState, server.State).CombinedOutput()
-						if err != nil {
-							server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-						}
-						server.ClusterGroup.LogPrintf("INFO", "Replication error script complete:", string(out))
-					}
-				}
+				server.ProcessFailedSlave()
 			}
 		}
 		if server.PrevState != server.State {
@@ -454,6 +445,36 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.PrevState != stateSuspect {
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
+		}
+	}
+}
+
+func (server *ServerMonitor) ProcessFailedSlave() {
+
+	if server.State == stateSlaveErr {
+		if server.ClusterGroup.Conf.ReplicationErrorScript != "" {
+			server.ClusterGroup.LogPrintf("INFO", "Calling replication error script")
+			var out []byte
+			out, err := exec.Command(server.ClusterGroup.Conf.ReplicationErrorScript, server.URL, server.PrevState, server.State).CombinedOutput()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+			}
+			server.ClusterGroup.LogPrintf("INFO", "Replication error script complete:", string(out))
+		}
+		if server.HasReplicationSQLThreadRunning() && server.ClusterGroup.Conf.ReplicationRestartOnSQLErrorMatch != "" {
+			ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
+			if err != nil {
+				return
+			}
+			matched, err := regexp.Match(server.ClusterGroup.Conf.ReplicationRestartOnSQLErrorMatch, []byte(ss.LastSQLError.String))
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "Rexep failed replication-restart-on-sqlerror-match %s %s", server.ClusterGroup.Conf.ReplicationRestartOnSQLErrorMatch, err)
+			} else if matched {
+				server.ClusterGroup.LogPrintf("INFO", "Rexep restart slave  %s  matching: %s", server.ClusterGroup.Conf.ReplicationRestartOnSQLErrorMatch, ss.LastSQLError.String)
+				server.SkipReplicationEvent()
+				server.StartSlave()
+				server.ClusterGroup.LogPrintf("INFO", "Skip event and restart slave on %s", server.URL)
+			}
 		}
 	}
 }

@@ -134,6 +134,22 @@ func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 	return true
 }
 
+func (server *ServerMonitor) HasReplicationSQLThreadRunning() bool {
+	ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
+	if err != nil {
+		return false
+	}
+	return ss.SlaveSQLRunning.String == "yes"
+}
+
+func (server *ServerMonitor) HasReplicationIOThreadRunning() bool {
+	ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
+	if err != nil {
+		return false
+	}
+	return ss.SlaveIORunning.String == "yes"
+}
+
 func (sl serverList) HasAllSlavesRunning() bool {
 	if len(sl) == 0 {
 		return false

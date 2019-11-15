@@ -101,6 +101,7 @@ func (server *ServerMonitor) SendAlert() error {
 	if server.State == server.PrevState {
 		return nil
 	}
+
 	if server.ClusterGroup.Conf.MailTo != "" {
 		a := alert.Alert{
 			From:        server.ClusterGroup.Conf.MailFrom,
@@ -124,7 +125,9 @@ func (server *ServerMonitor) SendAlert() error {
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}
+
 		server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
 	}
+
 	return nil
 }
