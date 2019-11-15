@@ -18,10 +18,10 @@ import (
 func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[string]string {
 
 	svccontainer := make(map[string]string)
-	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#0001"
-		svccontainer["run_image"] = " {env.shardproxy_img}"
+		svccontainer["image"] = " {env.shardproxy_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
 			svccontainer["run_args"] = `-e MYSQL_ROOT_PASSWORD={env.mysql_root_password} -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/data:/var/lib/mysql:rw -v {env.base_dir}/pod01/etc/mysql:/etc/mysql:rw -v {env.base_dir}/pod01/init:/docker-entrypoint-initdb.d:rw

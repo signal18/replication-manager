@@ -38,21 +38,21 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name                        string                       `json:"name"`
-	ServiceName                 string                       `json:"serviceName"`
-	Conn                        *sqlx.DB                     `json:"-"`
-	User                        string                       `json:"user"`
-	Pass                        string                       `json:"-"`
-	URL                         string                       `json:"url"`
-	DSN                         string                       `json:"dsn"`
-	Host                        string                       `json:"host"`
-	Port                        string                       `json:"port"`
-	TunnelPort                  string                       `json:"tunnelPort"`
-	IP                          string                       `json:"ip"`
-	Strict                      string                       `json:"strict"`
-	ServerID                    uint64                       `json:"serverId"`
-	LogBin                      string                       `json:"logBin"`
+	Id          string   `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Name        string   `json:"name"`
+	ServiceName string   `json:"serviceName"`
+	Conn        *sqlx.DB `json:"-"`
+	User        string   `json:"user"`
+	Pass        string   `json:"-"`
+	URL         string   `json:"url"`
+	DSN         string   `json:"dsn"`
+	Host        string   `json:"host"`
+	Port        string   `json:"port"`
+	TunnelPort  string   `json:"tunnelPort"`
+	IP          string   `json:"ip"`
+	Strict      string   `json:"strict"`
+	ServerID    uint64   `json:"serverId"`
+
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
 	SlaveGtid                   *gtid.List                   `json:"slaveGtid"`
@@ -64,10 +64,6 @@ type ServerMonitor struct {
 	PrevState                   string                       `json:"prevState"`
 	FailCount                   int                          `json:"failCount"`
 	FailSuspectHeartbeat        int64                        `json:"failSuspectHeartbeat"`
-	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
-	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
-	RplMasterStatus             bool                         `json:"rplMasterStatus"`
-	EventScheduler              bool                         `json:"eventScheduler"`
 	ClusterGroup                *Cluster                     `json:"-"` //avoid recusive json
 	BinaryLogFile               string                       `json:"binaryLogFile"`
 	BinaryLogPos                string                       `json:"binaryLogPos"`
@@ -75,15 +71,21 @@ type ServerMonitor struct {
 	FailoverMasterLogPos        string                       `json:"failoverMasterLogPos"`
 	FailoverSemiSyncSlaveStatus bool                         `json:"failoverSemiSyncSlaveStatus"`
 	Process                     *os.Process                  `json:"process"`
+	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
+	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
+	RplMasterStatus             bool                         `json:"rplMasterStatus"`
+	HaveEventScheduler          bool                         `json:"eventScheduler"`
 	HaveSemiSync                bool                         `json:"haveSemiSync"`
 	HaveInnodbTrxCommit         bool                         `json:"haveInnodbTrxCommit"`
-	HaveSyncBinLog              bool                         `json:"haveSyncBinLog"`
-	HaveChecksum                bool                         `json:"haveChecksum"`
+	HaveChecksum                bool                         `json:"haveInnodbChecksum"`
+	HaveLogGeneral              bool                         `json:"haveLogGeneral"`
+	HaveBinlog                  bool                         `json:"haveBinlog"`
+	HaveBinlogSync              bool                         `json:"haveBinLogSync"`
 	HaveBinlogRow               bool                         `json:"haveBinlogRow"`
 	HaveBinlogAnnotate          bool                         `json:"haveBinlogAnnotate"`
 	HaveBinlogSlowqueries       bool                         `json:"haveBinlogSlowqueries"`
 	HaveBinlogCompress          bool                         `json:"haveBinlogCompress"`
-	HaveLogSlaveUpdates         bool                         `json:"haveLogSlaveUpdates"`
+	HaveBinlogSlaveUpdates      bool                         `json:"HaveBinlogSlaveUpdates"`
 	HaveGtidStrictMode          bool                         `json:"haveGtidStrictMode"`
 	HaveMySQLGTID               bool                         `json:"haveMysqlGtid"`
 	HaveMariaDBGTID             bool                         `json:"haveMariadbGtid"`
@@ -104,6 +106,7 @@ type ServerMonitor struct {
 	IsMaintenance               bool                         `json:"isMaintenance"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
+	InCaptureMode               bool                         `json:"inCaptureMode"`
 	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
 	LongQueryTime               string                       `json:"longQueryTime"`
 	LogOutput                   string                       `json:"logOutput"`
@@ -146,7 +149,6 @@ type ServerMonitor struct {
 	MonitorTime                 int64                        `json:"-"`
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
-	InCaptureMode               bool                         `json:"inCaptureMode"`
 	Datadir                     string                       `json:"-"`
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
@@ -202,8 +204,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.TestConfig = conf
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
-	server.HaveSyncBinLog = true
 	server.HaveChecksum = true
+	server.HaveBinlogSync = true
 	server.HaveBinlogRow = true
 	server.HaveBinlogAnnotate = true
 	server.HaveBinlogCompress = true
@@ -501,94 +503,32 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 		if !server.DBVersion.IsPPostgreSQL() {
-			if server.Variables["EVENT_SCHEDULER"] != "ON" {
-				server.EventScheduler = false
-			} else {
-				server.EventScheduler = true
-			}
+
+			server.HaveEventScheduler = server.HasEventScheduler()
 			server.Strict = server.Variables["GTID_STRICT_MODE"]
-			server.LogBin = server.Variables["LOG_BIN"]
+
 			server.ReadOnly = server.Variables["READ_ONLY"]
 			server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
 			server.LogOutput = server.Variables["LOG_OUTPUT"]
 			server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
-
-			if server.Variables["READ_ONLY"] != "ON" {
-				server.HaveReadOnly = false
-			} else {
-				server.HaveReadOnly = true
+			server.HaveReadOnly = server.HasReadOnly()
+			server.HaveBinlog = server.HasBinlog()
+			server.HaveBinlogRow = server.HasBinlogRow()
+			server.HaveBinlogAnnotate = server.HasBinlogRowAnnotate()
+			server.HaveBinlogSync = server.HasBinlogDurable()
+			server.HaveBinlogCompress = server.HasBinlogCompress()
+			server.HaveBinlogSlaveUpdates = server.HasBinlogSlaveUpdates()
+			server.HaveBinlogSlowqueries = server.HasBinlogSlowSlaveQueries()
+			server.HaveGtidStrictMode = server.HasGtidStrictMode()
+			server.HaveInnodbTrxCommit = server.HasInnoDBRedoLogDurable()
+			server.HaveChecksum = server.HasInnoDBChecksum()
+			server.HaveWsrep = server.HasWsrep()
+			server.HaveSlowQueryLog = server.HasLogSlowQuery()
+			server.HavePFS = server.HasLogPFS()
+			if server.HavePFS {
+				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
-			if server.Variables["LOG_BIN_COMPRESS"] != "ON" {
-				server.HaveBinlogCompress = false
-			} else {
-				server.HaveBinlogCompress = true
-			}
-			if server.Variables["GTID_STRICT_MODE"] != "ON" {
-				server.HaveGtidStrictMode = false
-			} else {
-				server.HaveGtidStrictMode = true
-			}
-			if server.Variables["LOG_SLAVE_UPDATES"] != "ON" {
-				server.HaveLogSlaveUpdates = false
-			} else {
-				server.HaveLogSlaveUpdates = true
-			}
-			if server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" {
-				server.HaveInnodbTrxCommit = false
-			} else {
-				server.HaveInnodbTrxCommit = true
-			}
-			if server.Variables["SYNC_BINLOG"] != "1" {
-				server.HaveSyncBinLog = false
-			} else {
-				server.HaveSyncBinLog = true
-			}
-			if server.Variables["INNODB_CHECKSUM"] == "NONE" {
-				server.HaveChecksum = false
-			} else {
-				server.HaveChecksum = true
-			}
-			if server.Variables["BINLOG_FORMAT"] != "ROW" {
-				server.HaveBinlogRow = false
-			} else {
-				server.HaveBinlogRow = true
-			}
-			if server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] != "ON" {
-				server.HaveBinlogAnnotate = false
-			} else {
-				server.HaveBinlogAnnotate = true
-			}
-			if server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] != "ON" {
-				server.HaveBinlogSlowqueries = false
-			} else {
-				server.HaveBinlogSlowqueries = true
-			}
-			if server.Variables["WSREP_ON"] != "ON" {
-				server.HaveWsrep = false
-			} else {
-				server.HaveWsrep = true
-			}
-			if server.Variables["SLOW_QUERY_LOG"] != "ON" {
-				server.HaveSlowQueryLog = false
-			} else {
-				server.HaveSlowQueryLog = true
-			}
-			if server.Variables["PERFORMANCE_SCHEMA"] != "ON" {
-				server.HavePFS = false
-			} else {
-				server.HavePFS = true
-				ConsumerVariables, logs, _ := dbhelper.GetPFSVariablesConsumer(server.Conn)
-				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
-				if ConsumerVariables["SLOW_QUERY_PFS"] != "ON" {
-					server.HavePFSSlowQueryLog = false
-				} else {
-					server.HavePFSSlowQueryLog = true
-				}
-			}
-			if server.Variables["ENFORCE_GTID_CONSISTENCY"] == "ON" && server.Variables["GTID_MODE"] == "ON" {
-				server.HaveMySQLGTID = true
-			}
-
+			server.HaveMySQLGTID = server.HasMySQLGTID()
 			server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
 
 			if server.DBVersion.IsMariaDB() {
@@ -663,7 +603,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
 		}
-		if server.Variables["LOG_OUTPUT"] == "TABLE" {
+		if server.HasLogsInSystemTables() {
 			server.GetSlowLogTable()
 		}
 
@@ -1081,4 +1021,26 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		time.Sleep(40 * time.Millisecond)
 	}
 	server.InCaptureMode = false
+}
+
+func (server *ServerMonitor) RotateSystemLogs(database string, table string) {
+	if server.HasLogsInSystemTables() {
+		if server.HasLogSlowQuery() {
+			server.RotateTableToTime("mysql", "slow_log")
+		}
+		if server.HasLogGeneral() {
+			server.RotateTableToTime("mysql", "general_log")
+		}
+	}
+}
+
+func (server *ServerMonitor) RotateTableToTime(database string, table string) {
+	currentTime := time.Now()
+	timeStampString := currentTime.Format("2006-01-02_15:04:05")
+	newtablename := table + "_" + timeStampString
+	temptable := table + "_temp"
+	query := "CREATE TABLE IF NOT EXISTS " + database + "." + temptable + " LIKE " + database + "." + table
+	server.ExecQueryNoBinLog(query)
+	query = "RENAME TABLE  " + database + "." + table + " TO " + database + "." + newtablename + " , " + database + "." + temptable + " TO " + database + "." + table
+	server.ExecQueryNoBinLog(query)
 }

@@ -311,7 +311,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 						}
 
 					}
-					if sl.LogBin == "OFF" {
+					if !sl.HasBinlog() {
 						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 					}
 				}
@@ -322,7 +322,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		// State also check in failover_check false positive
-		if cluster.master.IsFailed() && cluster.slaves.checkAllSlavesRunning() {
+		if cluster.master.IsFailed() && cluster.slaves.HasAllSlavesRunning() {
 			cluster.SetState("ERR00016", state.State{
 				ErrType:   "ERROR",
 				ErrDesc:   clusterError["ERR00016"],

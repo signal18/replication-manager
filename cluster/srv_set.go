@@ -36,7 +36,7 @@ func (server *ServerMonitor) SetReadOnly() (string, error) {
 			return logs, err
 		}
 	}
-	if server.HasSuperReadOnly() && server.ClusterGroup.Conf.SuperReadOnly {
+	if server.HasSuperReadOnlyCapability() && server.ClusterGroup.Conf.SuperReadOnly {
 		logs, err := dbhelper.SetSuperReadOnly(server.Conn, true)
 		if err != nil {
 			return logs, err
@@ -65,7 +65,7 @@ func (server *ServerMonitor) SetReadWrite() error {
 			return err
 		}
 	}
-	if server.HasSuperReadOnly() {
+	if server.HasSuperReadOnlyCapability() {
 		logs, err := dbhelper.SetSuperReadOnly(server.Conn, false)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
 		if err != nil {

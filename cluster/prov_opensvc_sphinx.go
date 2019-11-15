@@ -15,10 +15,10 @@ import (
 
 func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[string]string {
 	svccontainer := make(map[string]string)
-	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" {
+	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#0001"
-		svccontainer["run_image"] = "{env.sphinx_img}"
+		svccontainer["image"] = "{env.sphinx_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
 			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`

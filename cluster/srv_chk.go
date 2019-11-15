@@ -200,7 +200,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		server.ClusterGroup.sme.AddState("WARN0056", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if sl.IsIgnored() == false && sl.HaveLogSlaveUpdates == false {
+	if sl.IsIgnored() == false && sl.HaveBinlogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
@@ -224,16 +224,16 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	} else if server.HaveBinlogRow == false && server.ClusterGroup.Conf.AutorejoinFlashback == true {
 		server.ClusterGroup.sme.AddState("WARN0061", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0061"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSyncBinlog && server.HaveSyncBinLog == false {
+	if server.ClusterGroup.Conf.ForceSyncBinlog && server.HaveBinlogSync == false {
 		dbhelper.SetSyncBinlog(server.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce sync binlog on Master %s", server.URL)
-	} else if server.HaveSyncBinLog == false {
+	} else if server.HaveBinlogSync == false {
 		server.ClusterGroup.sme.AddState("WARN0062", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0062"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSyncInnoDB && server.HaveSyncBinLog == false {
+	if server.ClusterGroup.Conf.ForceSyncInnoDB && server.HaveBinlogSync == false {
 		dbhelper.SetSyncInnodb(server.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce innodb durability on Master %s", server.URL)
-	} else if server.HaveSyncBinLog == false {
+	} else if server.HaveBinlogSync == false {
 		server.ClusterGroup.sme.AddState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.ClusterGroup.Conf.ForceBinlogAnnotate && server.HaveBinlogAnnotate == false && server.IsMariaDB() {
@@ -254,7 +254,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	} else if server.HaveBinlogCompress == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		server.ClusterGroup.sme.AddState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.HaveLogSlaveUpdates == false {
+	if server.HaveBinlogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.HaveGtidStrictMode == false {

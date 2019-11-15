@@ -11,7 +11,83 @@ package cluster
 
 import (
 	"strconv"
+
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
+
+func (server *ServerMonitor) HasReadOnly() bool {
+	return server.Variables["READ_ONLY"] == "ON"
+}
+
+func (server *ServerMonitor) HasGtidStrictMode() bool {
+	return server.Variables["GTID_STRICT_MODE"] == "ON"
+}
+
+func (server *ServerMonitor) HasBinlog() bool {
+	return server.Variables["LOG_BIN"] == "ON"
+}
+
+func (server *ServerMonitor) HasBinlogCompress() bool {
+	return server.Variables["LOG_BIN_COMPRESS"] == "ON"
+}
+
+func (server *ServerMonitor) HasBinlogSlaveUpdates() bool {
+	return server.Variables["LOG_SLAVE_UPDATES"] == "ON"
+}
+
+func (server *ServerMonitor) HasBinlogRow() bool {
+	return server.Variables["BINLOG_FORMAT"] == "ROW"
+}
+
+func (server *ServerMonitor) HasBinlogRowAnnotate() bool {
+	return server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] == "ON"
+}
+
+func (server *ServerMonitor) HasBinlogSlowSlaveQueries() bool {
+	return server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] == "ON"
+}
+
+func (server *ServerMonitor) HasInnoDBRedoLogDurable() bool {
+	return server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] == "1"
+}
+
+func (server *ServerMonitor) HasBinlogDurable() bool {
+	return server.Variables["SYNC_BINLOG"] == "1"
+}
+
+func (server *ServerMonitor) HasInnoDBChecksum() bool {
+	return server.Variables["INNODB_CHECKSUM"] != "NONE"
+}
+
+func (server *ServerMonitor) HasWsrep() bool {
+	return server.Variables["WSREP_ON"] == "ON"
+}
+
+func (server *ServerMonitor) HasEventScheduler() bool {
+	return server.Variables["EVENT_SCHEDULER"] == "ON"
+}
+
+func (server *ServerMonitor) HasLogSlowQuery() bool {
+	return server.Variables["SLOW_QUERY_LOG"] == "ON"
+}
+
+func (server *ServerMonitor) HasLogPFS() bool {
+	return server.Variables["PERFORMANCE_SCHEMA"] == "ON"
+}
+
+func (server *ServerMonitor) HasLogsInSystemTables() bool {
+	return server.Variables["LOG_OUTPUT"] == "TABLE"
+}
+
+func (server *ServerMonitor) HasLogPFSSlowQuery() bool {
+	ConsumerVariables, logs, err := dbhelper.GetPFSVariablesConsumer(server.Conn)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
+	return ConsumerVariables["SLOW_QUERY_PFS"] == "ON"
+}
+
+func (server *ServerMonitor) HasLogGeneral() bool {
+	return server.Variables["GENERAL_LOG"] == "ON"
+}
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
 
@@ -58,7 +134,7 @@ func (server *ServerMonitor) HasSiblings(sib []*ServerMonitor) bool {
 	return true
 }
 
-func (sl serverList) checkAllSlavesRunning() bool {
+func (sl serverList) HasAllSlavesRunning() bool {
 	if len(sl) == 0 {
 		return false
 	}
@@ -121,6 +197,22 @@ func (server *ServerMonitor) HasCycling() bool {
 		}
 	}
 	return false
+}
+
+func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
+	if server.Variables["LONG_QUERY_TIME"] == "0" || server.Variables["LONG_QUERY_TIME"] == "0.000010" {
+		return false
+	}
+	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
+	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
+	if server.MonitorTime-server.PrevMonitorTime > 0 {
+		qpssecond := (slowquerynow - slowquerybefore) / (server.MonitorTime - server.PrevMonitorTime)
+		if qpssecond > 20 {
+			return true
+		}
+	}
+	return false
+
 }
 
 // IsDown() returns true is the server is Failed or Suspect or or auth error
@@ -223,22 +315,6 @@ func (server *ServerMonitor) IsMariaDB() bool {
 	return server.DBVersion.IsMariaDB()
 }
 
-func (server *ServerMonitor) HasSuperReadOnly() bool {
+func (server *ServerMonitor) HasSuperReadOnlyCapability() bool {
 	return server.DBVersion.IsMySQLOrPerconaGreater57()
-}
-
-func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
-	if server.Variables["LONG_QUERY_TIME"] == "0" || server.Variables["LONG_QUERY_TIME"] == "0.000010" {
-		return false
-	}
-	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
-	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
-	if server.MonitorTime-server.PrevMonitorTime > 0 {
-		qpssecond := (slowquerynow - slowquerybefore) / (server.MonitorTime - server.PrevMonitorTime)
-		if qpssecond > 20 {
-			return true
-		}
-	}
-	return false
-
 }
