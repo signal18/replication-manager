@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"hash/crc64"
@@ -22,8 +23,10 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
+	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
 	"golang.org/x/crypto/pkcs12"
 	"golang.org/x/net/http2"
 )
@@ -132,6 +135,14 @@ type Collector struct {
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
 
+var (
+	ErrFailedToDecryptKey       = errors.New("failed to decrypt private key")
+	ErrFailedToParsePrivateKey  = errors.New("failed to parse private key")
+	ErrFailedToParseCertificate = errors.New("failed to parse certificate PEM data")
+	ErrNoPrivateKey             = errors.New("no private key")
+	ErrNoCertificate            = errors.New("no certificate")
+)
+
 func (collector *Collector) LoadCert(certsFile string) error {
 	var err error
 	collector.CertsDER, err = ioutil.ReadFile(certsFile)
@@ -142,24 +153,86 @@ func (collector *Collector) LoadCert(certsFile string) error {
 	return nil
 }
 
-func (collector *Collector) ParseCertificatesDER(certsDER []byte, password string) (certs []*x509.Certificate, key crypto.Signer, err error) {
-	certsDER = bytes.TrimSpace(certsDER)
-	var pkcs12data interface{}
-	certs = make([]*x509.Certificate, 1)
-	pkcs12data, certs[0], err = pkcs12.Decode(certsDER, password)
+func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Certificate, error) {
+	key, cert, err := pkcs12.Decode(bytes, password)
 	if err != nil {
-		certs, err = x509.ParseCertificates(certsDER)
+		blocks, err := pkcs12.ToPEM(bytes, password)
 		if err != nil {
-			return nil, nil, errors.New("Can not parse certificate")
+			panic(err)
 		}
-	} else {
-		key = pkcs12data.(crypto.Signer)
-	}
+		var pemData []byte
+		for _, b := range blocks {
+			pemData = append(pemData, pem.EncodeToMemory(b)...)
+		}
 
-	if certs == nil {
-		return nil, key, errors.New("Error in ParseCertificatesDER ")
+		// then use PEM data for tls to construct tls certificate:
+		cert, err := tls.X509KeyPair(pemData, pemData)
+		if err != nil {
+			panic(err)
+		}
+		return cert, nil
+
 	}
-	return certs, key, nil
+	return tls.Certificate{
+		Certificate: [][]byte{cert.Raw},
+		PrivateKey:  key,
+		Leaf:        cert,
+	}, nil
+}
+
+func (collector *Collector) FromPemBytes(bytes []byte, password string) (tls.Certificate, error) {
+	var cert tls.Certificate
+	var block *pem.Block
+	for {
+		block, bytes = pem.Decode(bytes)
+		if block == nil {
+			break
+		}
+		if block.Type == "CERTIFICATE" {
+			cert.Certificate = append(cert.Certificate, block.Bytes)
+		}
+		if block.Type == "PRIVATE KEY" || strings.HasSuffix(block.Type, "PRIVATE KEY") {
+			key, err := collector.unencryptPrivateKey(block, password)
+			if err != nil {
+				return tls.Certificate{}, err
+			}
+			cert.PrivateKey = key
+		}
+	}
+	if len(cert.Certificate) == 0 {
+		return tls.Certificate{}, ErrNoCertificate
+	}
+	if cert.PrivateKey == nil {
+		return tls.Certificate{}, ErrNoPrivateKey
+	}
+	if c, e := x509.ParseCertificate(cert.Certificate[0]); e == nil {
+		cert.Leaf = c
+	}
+	return cert, nil
+}
+
+func (collector *Collector) unencryptPrivateKey(block *pem.Block, password string) (crypto.PrivateKey, error) {
+	if x509.IsEncryptedPEMBlock(block) {
+		bytes, err := x509.DecryptPEMBlock(block, []byte(password))
+		if err != nil {
+			return nil, ErrFailedToDecryptKey
+		}
+		return collector.parsePrivateKey(bytes)
+	}
+	return collector.parsePrivateKey(block.Bytes)
+}
+
+func (collector *Collector) parsePrivateKey(bytes []byte) (crypto.PrivateKey, error) {
+	var key crypto.PrivateKey
+	key, err := x509.ParsePKCS1PrivateKey(bytes)
+	if err == nil {
+		return key, nil
+	}
+	key, err = x509.ParsePKCS8PrivateKey(bytes)
+	if err == nil {
+		return key, nil
+	}
+	return nil, ErrFailedToParsePrivateKey
 }
 
 func (collector *Collector) Bootstrap(path string) error {
@@ -859,15 +932,11 @@ func (collector *Collector) GetHttpClient() *http.Client {
 	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	client := &http.Client{}
 	if !collector.UseAPI {
-		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
+		cert, err := collector.FromP12Bytes(collector.CertsDER, collector.CertsDERSecret)
 		if err != nil {
 			log.Println("ERROR ParseCertificatesDER ", err)
 		}
-		cert := tls.Certificate{
-			Certificate: [][]byte{certder[0].Raw},
-			PrivateKey:  keyder,
-			Leaf:        certder[0],
-		}
+
 		tlsConfig = &tls.Config{
 			Certificates:       []tls.Certificate{cert},
 			InsecureSkipVerify: true,
@@ -981,45 +1050,12 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 }
 
 func (collector *Collector) GetNodes() []Host {
-	/*
-		url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
-		if !collector.UseAPI {
-			url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
-		}
 
-		client := collector.GetHttpClient()
-	*/
-	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
-	client := &http.Client{}
 	if !collector.UseAPI {
 		url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
-
-		certder, keyder, err := collector.ParseCertificatesDER(collector.CertsDER, collector.CertsDERSecret)
-		if err != nil {
-			log.Println("ERROR ParseCertificatesDER ", err, collector.CertsDER)
-		}
-		cert := tls.Certificate{
-			Certificate: [][]byte{certder[0].Raw},
-			PrivateKey:  keyder,
-			Leaf:        certder[0],
-		}
-		tlsConfig = &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			InsecureSkipVerify: true,
-		}
 	}
-
-	if collector.UseAPI {
-		client.Transport = &http.Transport{
-			TLSClientConfig: tlsConfig,
-		}
-	} else {
-		client.Transport = &http2.Transport{
-			TLSClientConfig: tlsConfig,
-		}
-	}
-
+	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
@@ -1042,7 +1078,9 @@ func (collector *Collector) GetNodes() []Host {
 		log.Println("ERROR Read Result", err)
 		return nil
 	}
-	//	log.Println("INFO ", string(body))
+	if collector.Verbose > 0 {
+		log.Println("INFO ", string(body))
+	}
 	if collector.UseAPI {
 		type Message struct {
 			Data []Host `json:"data"`
