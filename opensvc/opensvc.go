@@ -147,7 +147,7 @@ func (collector *Collector) LoadCert(certsFile string) error {
 	var err error
 	collector.CertsDER, err = ioutil.ReadFile(certsFile)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	return nil

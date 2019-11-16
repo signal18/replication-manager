@@ -55,5 +55,5 @@ opensvc-use-collector-api = false
 
 http-bootstrap-button = true
 
-opensvc-p12-certificate =  "/etc/replication-manager/repman.ringfs.p12"
-#opensvc-p12-certificate =  "/etc/replication-manager/s18.p12"
+#opensvc-p12-certificate =  "/etc/replication-manager/repman.ringfs.p12"
+opensvc-p12-certificate =  "/etc/replication-manager/s18.p12"

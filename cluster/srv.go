@@ -527,7 +527,6 @@ func (server *ServerMonitor) Refresh() error {
 
 			server.HaveEventScheduler = server.HasEventScheduler()
 			server.Strict = server.Variables["GTID_STRICT_MODE"]
-
 			server.ReadOnly = server.Variables["READ_ONLY"]
 			server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
 			server.LogOutput = server.Variables["LOG_OUTPUT"]
@@ -1044,7 +1043,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	server.InCaptureMode = false
 }
 
-func (server *ServerMonitor) RotateSystemLogs(database string, table string) {
+func (server *ServerMonitor) RotateSystemLogs() {
 	if server.HasLogsInSystemTables() {
 		if server.HasLogSlowQuery() {
 			server.RotateTableToTime("mysql", "slow_log")

@@ -341,6 +341,13 @@ func (cluster *Cluster) initScheduler() {
 				cluster.BackupLogs()
 			})
 		}
+		if cluster.Conf.SchedulerDatabaseLogsTableRotate {
+			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
+			cluster.scheduler.Start()
+			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotate, func() {
+				cluster.RotateLogs()
+			})
+		}
 		if cluster.Conf.SchedulerDatabaseOptimize {
 			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
 			cluster.scheduler.Start()
@@ -669,6 +676,11 @@ func (cluster *Cluster) BackupLogs() {
 	for _, s := range cluster.Servers {
 		s.JobBackupErrorLog()
 		s.JobBackupSlowQueryLog()
+	}
+}
+func (cluster *Cluster) RotateLogs() {
+	for _, s := range cluster.Servers {
+		s.RotateSystemLogs()
 	}
 }
 
