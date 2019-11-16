@@ -344,7 +344,7 @@ func (cluster *Cluster) initScheduler() {
 		if cluster.Conf.SchedulerDatabaseLogsTableRotate {
 			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
 			cluster.scheduler.Start()
-			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotate, func() {
+			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
 				cluster.RotateLogs()
 			})
 		}
