@@ -1056,11 +1056,21 @@ func (server *ServerMonitor) RotateSystemLogs() {
 
 func (server *ServerMonitor) RotateTableToTime(database string, table string) {
 	currentTime := time.Now()
-	timeStampString := currentTime.Format("2006-01-02_15:04:05")
+	timeStampString := currentTime.Format("20060102150405")
 	newtablename := table + "_" + timeStampString
 	temptable := table + "_temp"
 	query := "CREATE TABLE IF NOT EXISTS " + database + "." + temptable + " LIKE " + database + "." + table
 	server.ExecQueryNoBinLog(query)
 	query = "RENAME TABLE  " + database + "." + table + " TO " + database + "." + newtablename + " , " + database + "." + temptable + " TO " + database + "." + table
 	server.ExecQueryNoBinLog(query)
+	query = "select table_name from information_schema.tables where table_schema='" + database + "' and table_name like '" + table + "_%' order by table_name desc limit " + strconv.Itoa(server.ClusterGroup.Conf.SchedulerMaintenanceDatabaseLogsTableKeep) + ",100"
+	cleantables := []string{}
+
+	err := server.Conn.Select(&cleantables, query)
+	if err != nil {
+		return
+	}
+	for _, row := range cleantables {
+		server.ExecQueryNoBinLog("DROP TABLE " + database + "." + row)
+	}
 }

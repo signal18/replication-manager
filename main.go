@@ -419,8 +419,8 @@ func init() {
 	}
 
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupLogical, "scheduler-db-servers-logical-backup", true, "Schedule logical backup")
-	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", true, "Schedule logical backup")
-	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", true, "Schedule database logs fetching")
+	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", false, "Schedule logical backup")
+	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", false, "Schedule database logs fetching")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseOptimize, "scheduler-db-servers-optimize", true, "Schedule database optimize")
 
 	monitorCmd.Flags().StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
@@ -526,7 +526,7 @@ func init() {
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
-			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "opensvc|kube|slapos|localhost")
+			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "opensvc|kube|slapos|local")
 			monitorCmd.Flags().StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")

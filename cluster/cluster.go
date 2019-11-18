@@ -303,7 +303,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
-
+	cluster.LogPrintf(LvlInfo, "Loading nodes form orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.Conf.ProvOrchestrator {
 	case ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
@@ -311,8 +311,10 @@ func (cluster *Cluster) initOrchetratorNodes() {
 		cluster.Agents, _ = cluster.K8SGetNodes()
 	case ConstOrchestratorSlapOS:
 		cluster.Agents, _ = cluster.SlapOSGetNodes()
+	case ConstOrchestratorLocalhost:
+		//do nothing no agents
 	default:
-
+		log.Fatalln("prov-orchestrator not supported %s", cluster.Conf.ProvOrchestrator)
 	}
 
 }
@@ -342,7 +344,7 @@ func (cluster *Cluster) initScheduler() {
 			})
 		}
 		if cluster.Conf.SchedulerDatabaseLogsTableRotate {
-			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
+			cluster.LogPrintf(LvlInfo, "Schedule database logs rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
 			cluster.scheduler.Start()
 			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
 				cluster.RotateLogs()

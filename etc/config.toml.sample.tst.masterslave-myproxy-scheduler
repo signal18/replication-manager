@@ -4,7 +4,7 @@
 ## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 ## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[Cluster_Haproxy_MasterSlave]
+[Cluster-Haproxy-MasterSlave]
 title = "ClusterTestMasterSlave"
 
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
@@ -12,6 +12,7 @@ db-servers-prefered-master = "127.0.0.1:3310"
 db-servers-credential = "root:test"
 db-servers-connect-timeout = 1
 
+prov-orchestrator = "local"
 replication-credential = "root:test"
 
 myproxy = true
@@ -19,7 +20,22 @@ myproxy-port = 4000
 myproxy-user = "admin"
 myproxy-password = "repman"
 
-prov-orchestrator = "localhost"
+prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
+monitoring-scheduler = true
+scheduler-db-servers-logical-backup  = true
+scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
+scheduler-db-servers-logs   =  true
+scheduler-db-servers-logs-cron = "0 0/10 * * * *"
+#scheduler-db-servers-logs-table-keep = 12
+scheduler-db-servers-logs-table-keep = 4
+scheduler-db-servers-logs-table-rotate  = true
+#scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
+scheduler-db-servers-logs-table-rotate-cron = "0 * * * * *"
+scheduler-db-servers-optimize  = true
+scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
+scheduler-db-servers-physical-backup = true
+scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"
+
 
 [Default]
 # monitoring-datadir = "/var/lib/replication-manager"

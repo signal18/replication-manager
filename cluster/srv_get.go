@@ -558,6 +558,9 @@ func (server *ServerMonitor) GetMyConfig() string {
 						if server.IsFilterInTags("docker") {
 							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
 						}
+						if server.ClusterGroup.Conf.ProvOrchestrator == ConstOrchestratorLocalhost {
+							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)
+						}
 						outFile, err := os.Create(fpath)
 						if err != nil {
 							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
