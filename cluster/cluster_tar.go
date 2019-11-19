@@ -67,7 +67,7 @@ func (cluster *Cluster) IterDirectory(dirPath string, tw *tar.Writer, trimprefix
 			cluster.TarGzWrite(curPath, tw, fi, trimprefix)
 			cluster.IterDirectory(curPath, tw, trimprefix)
 		} else {
-			fmt.Printf("adding... %s\n", curPath)
+			//	fmt.Printf("adding... %s\n", curPath)
 			cluster.TarGzWrite(curPath, tw, fi, trimprefix)
 		}
 	}

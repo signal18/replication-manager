@@ -98,13 +98,9 @@ func (proxy *Proxy) GetProxyConfig() string {
 							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
 						}
 					}
-					proxy.ClusterGroup.LogPrintf(LvlErr, "rule %s filter %s", rule.Name, rule.Filter)
+					proxy.ClusterGroup.LogPrintf(LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
 					if fpath[len(fpath)-1:] != "/" && (proxy.IsFilterInTags(rule.Filter) || rule.Filter == "") {
 						content := misc.ExtractKey(f.Content, proxy.GetEnv())
-
-						if proxy.IsFilterInTags("docker") {
-							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
-						}
 						outFile, err := os.Create(fpath)
 						if err != nil {
 							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)

@@ -480,7 +480,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProvNetmask, "prov-db-net-mask", "255.255.255.0", "Micro Service network mask")
 		monitorCmd.Flags().StringVar(&conf.ProvDBLoadCSV, "prov-db-load-csv", "", "List of shema.table csv file to load a bootstrap")
 		monitorCmd.Flags().StringVar(&conf.ProvDBLoadSQL, "prov-db-load-sql", "", "List of sql scripts file to load a bootstrap")
-		monitorCmd.Flags().StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux", "playbook configuration tags wsrep,multimaster,masterslave")
+		monitorCmd.Flags().StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 		monitorCmd.Flags().StringVar(&conf.ProvProxType, "prov-proxy-service-type", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
 		monitorCmd.Flags().StringVar(&conf.ProvProxAgents, "prov-proxy-agents", "", "Comma seperated list of agents for micro services provisionning")
 		monitorCmd.Flags().StringVar(&conf.ProvProxAgentsFailover, "prov-proxy-agents-failover", "", "Service Failover Agents")

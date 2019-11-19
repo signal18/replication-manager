@@ -69,6 +69,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropTag)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddProxyTag)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/drop-proxy-tag/{tagValue}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropProxyTag)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/reset-failover-control", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetFailoverControl)),
@@ -764,12 +772,38 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 	return
 }
 
+func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		mycluster.AddProxyTag(vars["tagValue"])
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	return
+}
+
 func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		mycluster.DropDBTag(vars["tagValue"])
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxDropProxyTag(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		mycluster.DropProxyTag(vars["tagValue"])
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return

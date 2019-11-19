@@ -338,25 +338,23 @@ func (cluster *Cluster) initScheduler() {
 		}
 		if cluster.Conf.SchedulerDatabaseLogs {
 			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
-			cluster.scheduler.Start()
 			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
 				cluster.BackupLogs()
 			})
 		}
 		if cluster.Conf.SchedulerDatabaseLogsTableRotate {
 			cluster.LogPrintf(LvlInfo, "Schedule database logs rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
-			cluster.scheduler.Start()
 			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
 				cluster.RotateLogs()
 			})
 		}
 		if cluster.Conf.SchedulerDatabaseOptimize {
 			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
-			cluster.scheduler.Start()
 			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
 				cluster.Optimize()
 			})
 		}
+		cluster.scheduler.Start()
 	}
 }
 

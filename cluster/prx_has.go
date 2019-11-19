@@ -13,7 +13,7 @@ import "strings"
 func (proxy *Proxy) IsFilterInTags(filter string) bool {
 	tags := proxy.ClusterGroup.GetProxyTags()
 	for _, tag := range tags {
-		if strings.Contains(filter, tag) {
+		if strings.Contains(filter, "."+tag) {
 			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
 			return true
 		}

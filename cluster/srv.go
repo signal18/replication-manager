@@ -1044,7 +1044,9 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 }
 
 func (server *ServerMonitor) RotateSystemLogs() {
-	if server.HasLogsInSystemTables() {
+	server.ClusterGroup.LogPrintf(LvlInfo, "Log rotate on %s", server.URL)
+
+	if server.HasLogsInSystemTables() && !server.IsDown() {
 		if server.HasLogSlowQuery() {
 			server.RotateTableToTime("mysql", "slow_log")
 		}

@@ -79,6 +79,7 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 }
 
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
+	prx.GetProxyConfig()
 	if prx.Type == proxySpider {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
