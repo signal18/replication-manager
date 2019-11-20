@@ -197,7 +197,7 @@ func (psql *ProxySQL) AddUser(User string, Password string) error {
 
 func (psql *ProxySQL) GetQueryRulesRuntime() ([]QueryRule, error) {
 	rules := []QueryRule{}
-	query := "select rule_id,active,username,schemaname,digest,match_digest,match_pattern, destination_hostgroup,apply from runtime_mysql_query_rules"
-	err := psql.Connection.Get(&rules, query)
+	query := "select rule_id,active,username,schemaname,digest,match_digest,match_pattern, destination_hostgroup,mirror_hostgroup,multiplex,apply from runtime_mysql_query_rules"
+	err := psql.Connection.Select(&rules, query)
 	return rules, err
 }

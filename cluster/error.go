@@ -134,4 +134,5 @@ var clusterError = map[string]string{
 	"WARN0089": "ShardProxy Could not fetch master schemas %s",
 	"WARN0090": "Cluster arbitrator unreachable %s",
 	"WARN0091": "Server as errant transaction %s",
+	"WARN0092": "ProxySQL could not load query rules from runtime (%s)",
 }

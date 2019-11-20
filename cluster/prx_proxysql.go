@@ -225,7 +225,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	}
 	proxy.QueryRules, err = psql.GetQueryRulesRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load query rules from runtime (%s)", err)
+		cluster.sme.AddState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 	}
 
 }
