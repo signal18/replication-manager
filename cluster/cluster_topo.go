@@ -173,7 +173,6 @@ func (cluster *Cluster) TopologyDiscover() error {
 				}
 			}
 		}
-		sv.CheckPrivileges()
 	}
 
 	// If no cluster.slaves are detected, generate an error

@@ -223,6 +223,11 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 		}
 	}
+	proxy.QueryRules, err = psql.GetQueryRulesRuntime()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load query rules from runtime (%s)", err)
+	}
+
 }
 
 func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {

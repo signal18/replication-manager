@@ -283,6 +283,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
+
 	v.RegisterAlias("replication-master-connection", "replication-source-name")
 	v.RegisterAlias("logfile", "log-file")
 	v.RegisterAlias("wait-kill", "switchover-wait-kill")

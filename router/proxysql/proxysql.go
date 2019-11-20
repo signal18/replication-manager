@@ -1,6 +1,7 @@
 package proxysql
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -37,6 +38,20 @@ type StatsQueryDigest struct {
 	SumTime     uint64 `json:"sumTime" db:"sum_time"`
 	MinTime     uint64 `json:"minTime" db:"sum_time"`
 	MaxTime     uint64 `json:"maxTime" db:"max_time"`
+}
+
+type QueryRule struct {
+	Id                   int            `json:"ruleId" db:"rule_id"`
+	Active               int            `json:"active" db:"active"`
+	UserName             sql.NullString `json:"userName" db:"username"`
+	SchemaName           sql.NullString `json:"schemaName" db:"schemaname"`
+	Digest               sql.NullString `json:"digest" db:"digest"`
+	Match_Digest         sql.NullString `json:"matchDigest" db:"match_digest"`
+	Match_Pattern        sql.NullString `json:"matchPattern" db:"match_pattern"`
+	DestinationHostgroup sql.NullInt64  `json:"destinationHostgroup" db:"destination_hostgroup"`
+	MirrorHostgroup      sql.NullInt64  `json:"mirrorHhostgroup" db:"mirror_hostgroup"`
+	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
+	Apply                int            `json:"apply" db:"apply"`
 }
 
 func (psql *ProxySQL) Connect() error {
@@ -178,4 +193,11 @@ func (psql *ProxySQL) AddUser(User string, Password string) error {
 	}
 	_, err = psql.Connection.Exec("LOAD MYSQL USERS TO RUNTIME")
 	return err
+}
+
+func (psql *ProxySQL) GetQueryRulesRuntime() ([]QueryRule, error) {
+	rules := []QueryRule{}
+	query := "select rule_id,active,username,schemaname,digest,match_digest,match_pattern, destination_hostgroup,apply from runtime_mysql_query_rules"
+	err := psql.Connection.Get(&rules, query)
+	return rules, err
 }

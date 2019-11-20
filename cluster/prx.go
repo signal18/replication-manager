@@ -17,6 +17,7 @@ import (
 
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/router/myproxy"
+	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -48,6 +49,7 @@ type Proxy struct {
 	ShardProxy      *ServerMonitor  `json:"shardProxy"`
 	ClusterGroup    *Cluster        `json:"-"`
 	Datadir         string
+	QueryRules      []proxysql.QueryRule
 }
 
 type Backend struct {

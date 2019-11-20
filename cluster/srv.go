@@ -575,6 +575,10 @@ func (server *ServerMonitor) Refresh() error {
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 			}
+			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
+				server.CheckPrivileges()
+			}
+
 		} // end not postgress
 
 		// get Users

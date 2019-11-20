@@ -85,6 +85,7 @@ var clusterError = map[string]string{
 	"ERR00075": "Can't fecth Processlist %s",
 	"ERR00076": "Connections reach 80 pourcent threshold: %s",
 	"ERR00077": "All databases state down",
+	"ERR00078": "Could not resolve IP from connection %s@%s: with hostname %s on server %s",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",

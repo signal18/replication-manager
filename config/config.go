@@ -192,6 +192,7 @@ type Config struct {
 	MxsDisableMonitor                  bool   `mapstructure:"maxscale-disable-monitor" toml:"maxscale-disable-monitor" json:"maxscaleDisableMonitor"`
 	MxsGetInfoMethod                   string `mapstructure:"maxscale-get-info-method" toml:"maxscale-get-info-method" json:"maxscaleGetInfoMethod"`
 	MxsServerMatchPort                 bool   `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port" json:"maxscaleServerMatchPort"`
+	MxsBinaryPath                      string `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                          bool   `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
 	MyproxyPort                        int    `mapstructure:"myproxy-port" toml:"myproxy-port" json:"myproxyPort"`
 	MyproxyUser                        string `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
@@ -214,6 +215,7 @@ type Config struct {
 	ProxysqlReaderHostgroup            string `mapstructure:"proxysql-reader-hostgroup" toml:"proxysql-reader-hostgroup" json:"proxysqlReaderHostgroup"`
 	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants" toml:"proxysql-copy-grants" json:"proxysqlCopyGrants"`
 	ProxysqlBootstrap                  bool   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
+	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	MysqlRouterOn                      bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterHosts                   string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterPort                    string `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
