@@ -303,20 +303,21 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
-	cluster.LogPrintf(LvlInfo, "Loading nodes form orchestrator %s", cluster.Conf.ProvOrchestrator)
-	switch cluster.Conf.ProvOrchestrator {
-	case ConstOrchestratorOpenSVC:
-		cluster.Agents, _ = cluster.OpenSVCGetNodes()
-	case ConstOrchestratorKubernetes:
-		cluster.Agents, _ = cluster.K8SGetNodes()
-	case ConstOrchestratorSlapOS:
-		cluster.Agents, _ = cluster.SlapOSGetNodes()
-	case ConstOrchestratorLocalhost:
-		//do nothing no agents
-	default:
-		log.Fatalln("prov-orchestrator not supported %s", cluster.Conf.ProvOrchestrator)
+	if WithProvisioning == "ON" {
+		cluster.LogPrintf(LvlInfo, "Loading nodes form orchestrator %s", cluster.Conf.ProvOrchestrator)
+		switch cluster.Conf.ProvOrchestrator {
+		case ConstOrchestratorOpenSVC:
+			cluster.Agents, _ = cluster.OpenSVCGetNodes()
+		case ConstOrchestratorKubernetes:
+			cluster.Agents, _ = cluster.K8SGetNodes()
+		case ConstOrchestratorSlapOS:
+			cluster.Agents, _ = cluster.SlapOSGetNodes()
+		case ConstOrchestratorLocalhost:
+			//do nothing no agents
+		default:
+			log.Fatalln("prov-orchestrator not supported %s", cluster.Conf.ProvOrchestrator)
+		}
 	}
-
 }
 
 func (cluster *Cluster) initScheduler() {
