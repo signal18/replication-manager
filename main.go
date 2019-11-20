@@ -123,6 +123,7 @@ func init() {
 	conf.FullVersion = FullVersion
 	conf.MemProfile = memprofile
 	conf.WithTarball = WithTarball
+	conf.ProvOrchestrator = "local"
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 
@@ -447,7 +448,9 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsURI, "backup-repo-aws-uri", "", "Repo address")
 		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsKey, "backup-repo-aws-key", "", "AWS key ")
 		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsSecret, "backup-repo-aws-key-secret", "", "AWS key secret")
+
 	}
+
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")
 		monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
