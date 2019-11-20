@@ -13,6 +13,13 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (proxy *Proxy) ProxySQLReadOnMaster() string {
+	if proxy.IsFilterInTags("proxy.route.readonmaster") {
+		return "1"
+	}
+	return "0"
+}
+
 func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {

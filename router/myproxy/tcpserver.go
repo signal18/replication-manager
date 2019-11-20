@@ -42,7 +42,7 @@ func (s *Server) Run() {
 	}
 	defer s.listener.Close()
 
-	log.Println("start server successful", s.addr)
+	log.Println("start proxy successful", s.addr)
 
 	// begin to receive request
 	s.running = true
