@@ -9,6 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"io/ioutil"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -552,4 +553,13 @@ func (cluster *Cluster) GetConfigInnoDBIOCapacityMax() string {
 	}
 	s10 := strconv.FormatInt(value, 10)
 	return s10
+}
+
+func (cluster *Cluster) GetQueryRules() []config.QueryRule {
+	r := make([]config.QueryRule, 0, len(cluster.QueryRules))
+	for _, value := range cluster.QueryRules {
+		r = append(r, value)
+	}
+	sort.Sort(QueryRuleSorter(r))
+	return r
 }

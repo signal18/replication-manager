@@ -9,6 +9,8 @@
 
 package config
 
+import "database/sql"
+
 type Config struct {
 	Version                            string `mapstructure:"-" toml:"-" json:"-"`
 	FullVersion                        string `mapstructure:"-" toml:"-" json:"-"`
@@ -35,6 +37,7 @@ type Config struct {
 	MonitorWriteHeartbeatCredential    string `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                bool   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
+	MonitorQueryRules                  bool   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript          string `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorProcessList                 bool   `mapstructure:"monitoring-processlist" toml:"monitoring-processlist" json:"monitoringProcesslist"`
 	MonitorQueries                     bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
@@ -48,6 +51,8 @@ type Config struct {
 	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:""monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	MonitorCapture                     bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
+	MonitorDiskUsage                   bool   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
+	MonitorDiskUsagePct                int    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger              string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
 	MonitorIgnoreError                 string `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	Interactive                        bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
@@ -216,6 +221,7 @@ type Config struct {
 	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants" toml:"proxysql-copy-grants" json:"proxysqlCopyGrants"`
 	ProxysqlBootstrap                  bool   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
 	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
+	ProxysqlBootstrapQueryRules        bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap" json:"proxysqlBootstrapQueryRules"`
 	MysqlRouterOn                      bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterHosts                   string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterPort                    string `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
@@ -365,6 +371,13 @@ type Config struct {
 	BackupKeepWeekly                          int    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
 	BackupKeepMonthly                         int    `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
 	BackupKeepYearly                          int    `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupRestic                              bool   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
+	BackupResticBinaryPath                    string `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
+	BackupResticAwsAccessKeyId                string `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
+	BackupResticAwsAccessSecret               string `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:  "backupResticAwsAccessSecret"`
+	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"BackupResticRepository"`
+	BackupResticPassword                      string `mapstructure:"backup-restic-password  toml:"backup-restic-password" json: "BackupResticPassword"`
+	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"BackupResticStoragePolicy"`
 	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDatabaseLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDatabaseLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
@@ -392,4 +405,18 @@ type Compliance struct {
 			Name  string `json:"var_name"`
 		} `json:"variables"`
 	} `json:"rulesets"`
+}
+
+type QueryRule struct {
+	Id                   int            `json:"ruleId" db:"rule_id"`
+	Active               int            `json:"active" db:"active"`
+	UserName             sql.NullString `json:"userName" db:"username"`
+	SchemaName           sql.NullString `json:"schemaName" db:"schemaname"`
+	Digest               sql.NullString `json:"digest" db:"digest"`
+	Match_Digest         sql.NullString `json:"matchDigest" db:"match_digest"`
+	Match_Pattern        sql.NullString `json:"matchPattern" db:"match_pattern"`
+	DestinationHostgroup sql.NullInt64  `json:"destinationHostgroup" db:"destination_hostgroup"`
+	MirrorHostgroup      sql.NullInt64  `json:"mirrorHhostgroup" db:"mirror_hostgroup"`
+	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
+	Proxies              string         `json:"proxies" db:"proxies"`
 }

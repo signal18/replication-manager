@@ -94,6 +94,7 @@ type ServerMonitor struct {
 	HavePFSSlowQueryLog         bool                         `json:"havePFSSlowQueryLog"`
 	HaveMetaDataLocksLog        bool                         `json:"haveMetaDataLocksLog"`
 	HaveQueryResponseTimeLog    bool                         `json:"haveQueryResponseTimeLog"`
+	HaveDiskMonitor             bool                         `json:"haveDiskMonitor"`
 	HaveSQLErrorLog             bool                         `json:"haveSQLErrorLog"`
 	HavePFS                     bool                         `json:"havePFS"`
 	HaveWsrep                   bool                         `json:"haveWsrep"`
@@ -142,6 +143,7 @@ type ServerMonitor struct {
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
 	DictTables                  map[string]dbhelper.Table    `json:"-"`
 	Tables                      []dbhelper.Table             `json:"-"`
+	Disks                       []dbhelper.Disk              `json:"-"`
 	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`
 	MetaDataLocks               []dbhelper.MetaDataLock      `json:"-"`
@@ -627,6 +629,12 @@ func (server *ServerMonitor) Refresh() error {
 			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
 		}
+		if server.HaveDiskMonitor {
+			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
+		}
+		if server.ClusterGroup.Conf.MonitorScheduler {
+			server.CheckDisks()
+		}
 		if server.HasLogsInSystemTables() {
 			server.GetSlowLogTable()
 		}
@@ -731,13 +739,12 @@ func (server *ServerMonitor) Refresh() error {
 	// monitor plulgins plugins
 	if !server.DBVersion.IsPPostgreSQL() {
 		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
-
 			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get plugins  %s %s", server.URL, err)
 			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
+			server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
 			server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
-
 		}
 		if server.HaveMetaDataLocksLog {
 			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)

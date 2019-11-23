@@ -916,6 +916,25 @@
                 }
             ],
             "fset_name": "mariadb.log.logtotable"
+        },
+        {
+            "fset_stats": false,
+            "id": 327,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "diskmonitor",
+                        "f_table": "v_tags",
+                        "id": 288
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.diskmonitor"
         }
     ],
     "rulesets": [
@@ -1948,6 +1967,14 @@
                     "var_updated": "2019-11-16 12:13:55",
                     "var_name": "db_cnf_log_with_table",
                     "id": 6099
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_diskmonitor.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add =\\\"disk.so\\\"\"}",
+                    "var_updated": "2019-11-22 11:37:51",
+                    "var_name": "db_cnf_disk_with_monitor",
+                    "id": 6104
                 }
             ],
             "ruleset_public": false,
@@ -1994,7 +2021,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withkeyfileencrypt",
                 "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.withresolvdns",
-                "mariadb.svc.mrm.db.cnf.generic.withlogtable"
+                "mariadb.svc.mrm.db.cnf.generic.withlogtable",
+                "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor"
             ],
             "publications": [
                 "replication-manager"
@@ -3096,6 +3124,30 @@
                 "replication-manager"
             ],
             "id": 1064,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.diskmonitor",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_diskmonitor.cnf\",\"target\":\"../with_diskmonitor.cnf\"}",
+                    "var_updated": "2019-11-22 11:49:13",
+                    "var_name": "db_llink_with_diskmonitor",
+                    "id": 6105
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1071,
             "responsibles": [
                 "replication-manager"
             ]

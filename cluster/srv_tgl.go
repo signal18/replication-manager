@@ -48,6 +48,16 @@ func (server *ServerMonitor) SwitchMetaDataLocks() {
 	}
 }
 
+func (server *ServerMonitor) SwitchDiskMonitor() {
+	if server.HaveMetaDataLocksLog {
+		server.UnInstallPlugin("DISKS")
+		server.HaveDiskMonitor = false
+	} else {
+		server.InstallPlugin("DISKS")
+		server.HaveDiskMonitor = true
+	}
+}
+
 func (server *ServerMonitor) SwitchQueryResponseTime() {
 	if server.HaveQueryResponseTimeLog {
 		server.UnInstallPlugin("QUERY_RESPONSE_TIME")

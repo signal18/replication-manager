@@ -26,6 +26,15 @@ func (server *ServerMonitor) CheckMaxConnections() {
 	}
 }
 
+// CheckDisks check mariadb disk plugin ti see if it get free space
+func (server *ServerMonitor) CheckDisks() {
+	for _, d := range server.Disks {
+		if d.Used/d.Total*100 > int32(server.ClusterGroup.Conf.MonitorDiskUsagePct) {
+			server.ClusterGroup.sme.AddState("ERR00079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00079"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+		}
+	}
+}
+
 // CheckReplication Check replication health and return status string
 func (server *ServerMonitor) CheckReplication() string {
 	if server.ClusterGroup.sme.IsInFailover() {

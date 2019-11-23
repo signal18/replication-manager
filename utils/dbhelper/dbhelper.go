@@ -97,6 +97,14 @@ func (a TableSizeSorter) Less(i, j int) bool {
 	return a[i].Data_length+a[i].Index_length > a[j].Data_length+a[j].Index_length
 }
 
+type Disk struct {
+	Disk      string
+	Path      string
+	Total     int32
+	Used      int32
+	Available int32
+}
+
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`
@@ -823,6 +831,15 @@ func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
 
 	err := udb.Select(&ss, query)
 	return ss, err
+}
+
+func GetDisks(db *sqlx.DB, myver *MySQLVersion) ([]Disk, string, error) {
+	db.MapperFunc(strings.Title)
+	udb := db.Unsafe()
+	ss := []Disk{}
+	query := `SELECT * FROM information_schema.DISKS`
+	err := udb.Select(&ss, query)
+	return ss, query, err
 }
 
 func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus, string, error) {

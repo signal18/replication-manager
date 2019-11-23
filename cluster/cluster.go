@@ -67,6 +67,7 @@ type Cluster struct {
 	DBTableSize          int64                `json:"dbTableSize"`
 	DBIndexSize          int64                `json:"dbIndexSize"`
 	Log                  s18log.HttpLog       `json:"log"`
+	Grants               map[string]string    `json:"-"`
 	tlog                 *s18log.TermLog      `json:"-"`
 	htlog                *s18log.HttpLog      `json:"-"`
 	SQLGeneralLog        s18log.HttpLog       `json:"sqlGeneralLog"`
@@ -118,7 +119,9 @@ type Cluster struct {
 	sync.Mutex           `json:"-"`
 	DBModule             config.Compliance `json:"-"`
 	//DBModuleTags         map[string]string `json:"-"`
-	ProxyModule config.Compliance `json:"-"`
+	ProxyModule config.Compliance        `json:"-"`
+	QueryRules  map[int]config.QueryRule `json:"-"`
+
 	//	ProxyModuleTags map[string]string `json:"-"`
 }
 
@@ -127,6 +130,12 @@ type ClusterSorter []*Cluster
 func (a ClusterSorter) Len() int           { return len(a) }
 func (a ClusterSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ClusterSorter) Less(i, j int) bool { return a[i].Name < a[j].Name }
+
+type QueryRuleSorter []config.QueryRule
+
+func (a QueryRuleSorter) Len() int           { return len(a) }
+func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
 type CronEntry struct {
 	Schedule string
@@ -181,6 +190,42 @@ const (
 	ConstOrchestratorLocalhost  string = "local"
 )
 
+const (
+	GrantDBStart              string = "db-start"
+	GrantDBStop               string = "db-stop"
+	GrantDBKill               string = "db-kill"
+	GrantDBOptimize           string = "db-optimize"
+	GrantDBAnalyse            string = "db-analyse"
+	GrantDBReplication        string = "db-replication"
+	GrantDBBackup             string = "db-backup"
+	GrantDBRestore            string = "db-restore"
+	GrantDBReadOnly           string = "db-readonly"
+	GrantDBProvision          string = "db-provision"
+	GrantDBUnprovision        string = "db-unprovison"
+	GrantDBLogs               string = "db-logs"
+	GrantDBCapture            string = "db-capture"
+	GrantDBMaintenance        string = "db-maintenance"
+	GrantDBConfigCreate       string = "db-config-create"
+	GrantDBConfigRessource    string = "db-config-ressource"
+	GrantDBConfigFlag         string = "db-config-flag"
+	GrantDBConfigGet          string = "db-config-get"
+	GrantClusterCreate        string = "cluster-create"
+	GrantClusterFailover      string = "cluster-failover"
+	GrantClusterSwitchover    string = "cluster-switchover"
+	GrantClusterProvision     string = "cluster-provision"
+	GrantClusterUnprovision   string = "cluster-unprovison"
+	GrantClusterRolling       string = "cluster-rolling"
+	GrantClusterSettings      string = "cluster-settings"
+	GrantProxyConfigCreate    string = "proxy-config-create"
+	GrantProxyConfigGet       string = "proxy-config-get"
+	GrantProxyConfigRessource string = "proxy-config-ressource"
+	GrantProxyConfigFlag      string = "proxy-config-flag"
+	GrantProxyProvision       string = "proxy-provision"
+	GrantProxyUnprovison      string = "proxy-unprovision"
+	GrantProxyStart           string = "proxy-start"
+	GrantProxyStop            string = "proxy-stop"
+)
+
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)
@@ -224,6 +269,45 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		"extproxy":   "proxy",
 		"sphinx":     "proxy",
 	}
+
+	//	prx_config_ressources,prx_config_flags
+
+	cluster.Grants = map[string]string{
+		GrantDBStart:              "db-start",
+		GrantDBStop:               "db-stop",
+		GrantDBKill:               "db-kill",
+		GrantDBOptimize:           "db-optimize",
+		GrantDBAnalyse:            "db-analyse",
+		GrantDBReplication:        "db-replication",
+		GrantDBBackup:             "db-backup",
+		GrantDBRestore:            "db-restore",
+		GrantDBReadOnly:           "db-readonly",
+		GrantDBProvision:          "db-provision",
+		GrantDBUnprovision:        "db-unprovison",
+		GrantDBLogs:               "db-logs",
+		GrantDBCapture:            "db-capture",
+		GrantDBMaintenance:        "db-maintenance",
+		GrantDBConfigCreate:       "db-config-create",
+		GrantDBConfigRessource:    "db-config-ressource",
+		GrantDBConfigFlag:         "db-config-flag",
+		GrantDBConfigGet:          "db-config-get",
+		GrantClusterCreate:        "cluster-create",
+		GrantClusterFailover:      "cluster-failover",
+		GrantClusterSwitchover:    "cluster-switchover",
+		GrantClusterProvision:     "cluster-provision",
+		GrantClusterUnprovision:   "cluster-unprovison",
+		GrantClusterRolling:       "cluster-rolling",
+		GrantClusterSettings:      "cluster-settings",
+		GrantProxyConfigCreate:    "proxy-config-create",
+		GrantProxyConfigGet:       "proxy-config-get",
+		GrantProxyConfigRessource: "proxy-config-ressource",
+		GrantProxyConfigFlag:      "proxy-config-flag",
+		GrantProxyProvision:       "proxy-provision",
+		GrantProxyUnprovison:      "proxy-unprovision",
+		GrantProxyStart:           "proxy-start",
+		GrantProxyStop:            "proxy-stop",
+	}
+
 	cluster.TopologyType = map[string]string{
 		topoMasterSlave:         "master-slave",
 		topoBinlogServer:        "binlog-server",
@@ -234,6 +318,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		topoMasterSlavePgLog:    "master-slave-pg-logical",
 		topoMasterSlavePgStream: "master-slave-pg-stream",
 	}
+
+	cluster.QueryRules = make(map[int]config.QueryRule)
 
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
@@ -405,12 +491,14 @@ func (cluster *Cluster) Run() {
 			} else {
 				cluster.refreshProxies()
 				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
-					go cluster.schemaMonitor()
+					go cluster.MonitorSchema()
 				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
-				go cluster.variableMonitor()
+				go cluster.MonitorQueryRules()
+				go cluster.MonitorVariables()
+
 			}
 
 			// split brain management
@@ -695,7 +783,7 @@ func (cluster *Cluster) Optimize() {
 	}
 }
 
-func (cluster *Cluster) variableMonitor() {
+func (cluster *Cluster) MonitorVariables() {
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
 		return
 	}
@@ -746,7 +834,7 @@ func (cluster *Cluster) variableMonitor() {
 	}
 }
 
-func (cluster *Cluster) schemaMonitor() {
+func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
@@ -824,6 +912,44 @@ func (cluster *Cluster) schemaMonitor() {
 	cluster.DBTableSize = tottablesize
 	cluster.master.DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
+}
+
+func (cluster *Cluster) MonitorQueryRules() {
+	if !cluster.Conf.MonitorQueryRules {
+		return
+	}
+	for _, prx := range cluster.Proxies {
+		if cluster.Conf.ProxysqlOn && prx.Type == proxySqlproxy {
+			qr := prx.QueryRules
+			for _, rule := range qr {
+				var myRule config.QueryRule
+				if clrule, ok := cluster.QueryRules[rule.Id]; ok {
+					myRule = clrule
+					duplicates := strings.Split(clrule.Proxies, ",")
+					found := false
+					for _, prxid := range duplicates {
+						if prx.Id == prxid {
+							found = true
+						}
+					}
+					if !found {
+						duplicates = append(duplicates, prx.Id)
+					}
+				} else {
+					myRule.Id = rule.Id
+					myRule.UserName = rule.UserName
+					myRule.Digest = rule.Digest
+					myRule.Match_Digest = rule.Match_Digest
+					myRule.Match_Pattern = rule.Match_Pattern
+					myRule.MirrorHostgroup = rule.MirrorHostgroup
+					myRule.DestinationHostgroup = rule.DestinationHostgroup
+					myRule.Multiplex = rule.Multiplex
+					myRule.Proxies = prx.Id
+				}
+				cluster.QueryRules[rule.Id] = myRule
+			}
+		}
+	}
 }
 
 // Arbitration Only works for GTID now need crash info fetch from arbitrator to do better
