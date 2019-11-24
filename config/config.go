@@ -381,10 +381,9 @@ type Config struct {
 	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDatabaseLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDatabaseLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
-	BackupRepo                                string `mapstructure:"backup-repo" toml:"backup-repo" json:"backupRepo"`
-	BackupRepoAwsKey                          string `mapstructure:"backup-repo-aws-key" toml:"backup-repo-aws-key" json:"backupRepoAwsKey"`
-	BackupRepoAwsSecret                       string `mapstructure:"backup-repo-aws-secret" toml:"backup-repo-aws-secret" json:"backupRepoAwsSecret"`
-	BackupRepoAwsURI                          string `mapstructure:"backup-repo-aws-uri" toml:"backup-repo-aws-uri" json:"backupRepoAwsUri"`
+	MysqldumpPath                             string `mapstructure:"mysqldump-path" toml:"mysqldump-path" json:"mysqldumpPath"`
+	MysqlbinlogPath                           string `mapstructure:"mysqlbinlog-path" toml:"mysqlbinlog-path" json:"mysqlbinlogPath"`
+	MysqlclientPath                           string `mapstructure:"mysqlclient-path" toml:"mysqlclient-path" json:"mysqlclientgPath"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 }
 

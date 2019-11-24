@@ -266,6 +266,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.APIUser, "api-credential", "admin:repman", "Rest API user:password")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	monitorCmd.Flags().BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
+	monitorCmd.Flags().StringVar(&conf.MysqldumpPath, "mysqldump-path", "", "Path to mysqldump binary")
+	monitorCmd.Flags().StringVar(&conf.MysqlbinlogPath, "mysqlbinlog-path", "", "Path to mysqlbinlog binary")
+	monitorCmd.Flags().StringVar(&conf.MysqlclientPath, "mysqlclient-path", "", "Path to mysql client binary")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -432,31 +435,21 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * *", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "scheduler-db-servers-logs-cron", "0 0/10 * * * *", "Logs backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseOptimizeCron, "scheduler-db-servers-optimize-cron", "0 0 3 1 * 5", "Optimize cron expression represents a set of times, using 6 space-separated fields.")
-	monitorCmd.Flags().BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
-	monitorCmd.Flags().StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")
-	monitorCmd.Flags().StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
-	monitorCmd.Flags().StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
-	monitorCmd.Flags().StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
-	monitorCmd.Flags().StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
-	monitorCmd.Flags().StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogsTableRotate, "scheduler-db-servers-logs-table-rotate", true, "Schedule rotate database system table logs")
 	monitorCmd.Flags().StringVar(&conf.SchedulerDatabaseLogsTableRotateCron, "scheduler-db-servers-logs-table-rotate-cron", "0 0 0/6 * * *", "Logs table rotate cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().IntVar(&conf.SchedulerMaintenanceDatabaseLogsTableKeep, "scheduler-db-servers-logs-table-keep", 12, "Keep this number of system table logs")
 
 	if WithBackup == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
-		monitorCmd.Flags().IntVar(&conf.BackupKeepHourly, "backup-keep-hourly", 1, "Keep this number of hourly backup")
-		monitorCmd.Flags().IntVar(&conf.BackupKeepDaily, "backup-keep-daily", 1, "Keep this number of daily backup")
-		monitorCmd.Flags().IntVar(&conf.BackupKeepWeekly, "backup-keep-weekly", 1, "Keep this number of weekly backup")
-		monitorCmd.Flags().IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 1, "Keep this number of monthly backup")
-		monitorCmd.Flags().IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 1, "Keep this number of yearly backup")
-
 		monitorCmd.Flags().StringVar(&conf.BackupLogicalType, "backup-logical-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
 		monitorCmd.Flags().StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
-		monitorCmd.Flags().StringVar(&conf.BackupRepo, "backup-repo", "directory", "type of directory: directory|aws|rest")
-		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsURI, "backup-repo-aws-uri", "", "Repo address")
-		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsKey, "backup-repo-aws-key", "", "AWS key ")
-		monitorCmd.Flags().StringVar(&conf.BackupRepoAwsSecret, "backup-repo-aws-key-secret", "", "AWS key secret")
+		monitorCmd.Flags().BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
+		monitorCmd.Flags().StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")
+		monitorCmd.Flags().StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
+		monitorCmd.Flags().StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
+		monitorCmd.Flags().StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
+		monitorCmd.Flags().StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
+		monitorCmd.Flags().StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
 
 	}
 

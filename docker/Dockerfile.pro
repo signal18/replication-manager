@@ -23,7 +23,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /u
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apk --no-cache --update add ca-certificates restic
+RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001

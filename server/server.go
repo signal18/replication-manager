@@ -319,6 +319,16 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("maxscale-pass", "maxscale-password")
 }
 
+func (repman *ReplicationManager) InitRestic() error {
+	os.Setenv("AWS_ACCESS_KEY_ID", repman.Conf.BackupResticAwsAccessKeyId)
+	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
+	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
+	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
+	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
+	os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
+	return nil
+}
+
 func (repman *ReplicationManager) Run() error {
 	var err error
 	repman.Version = repman.Conf.Version
@@ -435,6 +445,8 @@ func (repman *ReplicationManager) Run() error {
 		go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(repman.Conf.GraphiteCarbonServerPort), repman.Conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", repman.Conf.WorkingDir)
 		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
+
+	repman.InitRestic()
 
 	// If there's an existing encryption key, decrypt the passwords
 

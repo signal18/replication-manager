@@ -203,16 +203,22 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-
-	// Flashback here
-	if _, err := os.Stat(server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog")
+	mysqlbinlogPath := server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqlbinlog"
+	mysqlclientPath := server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysql"
+	if server.ClusterGroup.Conf.MysqlbinlogPath != "" {
+		mysqlbinlogPath = server.ClusterGroup.Conf.MysqlbinlogPath
+	}
+	if server.ClusterGroup.Conf.MysqlclientPath != "" {
+		mysqlclientPath = server.ClusterGroup.Conf.MysqlclientPath
+	}
+	if _, err := os.Stat(mysqlbinlogPath); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", mysqlbinlogPath)
 		return err
 	}
 
-	binlogCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog", "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysql", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog", binlogCmd.Args)
+	binlogCmd := exec.Command(mysqlbinlogPath, "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	clientCmd := exec.Command(mysqlclientPath, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", mysqlbinlogPath, binlogCmd.Args)
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {

@@ -410,7 +410,13 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//var outGzip, outFile bytes.Buffer
 		//	var errStdout error
 		usegtid := "--gtid"
-		dumpCmd := exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqldump", "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		mysqldumppath := ""
+		if server.ClusterGroup.Conf.MysqldumpPath == "" {
+			mysqldumppath = server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqldump"
+		} else {
+			mysqldumppath = server.ClusterGroup.Conf.MysqldumpPath
+		}
+		dumpCmd := exec.Command(mysqldumppath, "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 
 		//if err != nil {
 		//	log.Fatal(err)
@@ -450,7 +456,13 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
-
+	if server.ClusterGroup.Conf.BackupRestic {
+		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.Datadir)
+		if err := resticcmd.Start(); err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Failed restic comma,d : %s %s", resticcmd.Path, err)
+			return err
+		}
+	}
 	return nil
 }
 
