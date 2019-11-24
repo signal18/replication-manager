@@ -449,7 +449,12 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
 		monitorCmd.Flags().StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 		monitorCmd.Flags().StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
-		monitorCmd.Flags().StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
+		//monitorCmd.Flags().StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepHourly, "backup-keep-hourly", 1, "Keep this number of hourly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepDaily, "backup-keep-daily", 1, "Keep this number of daily backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepWeekly, "backup-keep-weekly", 1, "Keep this number of weekly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 1, "Keep this number of monthly backup")
+		monitorCmd.Flags().IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 1, "Keep this number of yearly backup")
 
 	}
 

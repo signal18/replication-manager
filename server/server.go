@@ -322,9 +322,8 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 func (repman *ReplicationManager) InitRestic() error {
 	os.Setenv("AWS_ACCESS_KEY_ID", repman.Conf.BackupResticAwsAccessKeyId)
 	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
-	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
 	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
-	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
+	os.Setenv("RESTIC_PASSWORD", repman.Conf.BackupResticPassword)
 	os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
 	return nil
 }
