@@ -79,16 +79,17 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		return 0, nil
 	}
 
-	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/bck/xtrabackup.xbtream", ConstJobCreateFile)
+	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/bck/"+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
-	jobid, err := server.JobInsertTaks("xtrabackup", port, server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobReseedXtraBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("reseedxtrabackup", "4444", server.ClusterGroup.Conf.MonitorAddress)
+func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
+
+	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -329,6 +330,8 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				if task.task == "optimized" {
 					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "xtrabackup" {
+					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "mariabackup" {
 					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedxtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})

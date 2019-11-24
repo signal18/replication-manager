@@ -104,7 +104,9 @@ require (
 	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
 	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
+	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
+	gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0-20170531160350-a96e63847dc3
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 	gopkg.in/yaml.v2 v2.2.4
