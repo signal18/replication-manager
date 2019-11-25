@@ -136,5 +136,7 @@ var clusterError = map[string]string{
 	"WARN0090": "Cluster arbitrator unreachable %s",
 	"WARN0091": "Server as errant transaction %s",
 	"WARN0092": "ProxySQL could not load query rules from runtime (%s)",
-	"WARN0093": "Restic repo issue: %s\n%s\n%s",
+	"WARN0093": "Restic fetch repo issue: %s\n%s\n%s",
+	"WARN0094": "Restic purge repo issue: %s\n%s\n%s",
+	"WARN0095": "Restic init repo issue: %s\n%s\n%s",
 }

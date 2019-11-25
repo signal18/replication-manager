@@ -370,3 +370,10 @@ func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
 	}
 
 }
+
+func (SM *StateMachine) PreserveState(key string) {
+	if SM.OldState.Search(key) {
+		value := (*SM.OldState)[key]
+		SM.AddState(key, value)
+	}
+}

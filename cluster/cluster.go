@@ -494,10 +494,17 @@ func (cluster *Cluster) Run() {
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					go cluster.InjectTraffic()
 				}
-				go cluster.MonitorQueryRules()
-				go cluster.MonitorVariablesDiff()
-				go cluster.ResticsFetchRepo()
-
+				if cluster.sme.GetHeartbeats()%30 == 0 {
+					cluster.MonitorQueryRules()
+					cluster.MonitorVariablesDiff()
+					cluster.ResticFetchRepo()
+					cluster.ResticPurgeRepo()
+				} else {
+					cluster.sme.PreserveState("WARN0093")
+					cluster.sme.PreserveState("WARN0084")
+					cluster.sme.PreserveState("WARN0095")
+					cluster.sme.PreserveState("WARN0094")
+				}
 			}
 
 			// split brain management
