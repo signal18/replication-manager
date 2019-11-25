@@ -488,6 +488,10 @@ func (cluster *Cluster) GetDBModuleTags() []Tag {
 	return tags
 }
 
+func (cluster *Cluster) GetBackups() []Backup {
+	return cluster.Backups
+}
+
 func (cluster *Cluster) GetProxyModuleTags() []Tag {
 	var tags []Tag
 	for _, value := range cluster.ProxyModule.Filtersets {

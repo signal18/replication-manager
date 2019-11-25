@@ -913,7 +913,7 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node.IsDown() == false && node.IsMaintenance == false {
-			node.JobBackupPhysical()
+			go node.JobBackupPhysical()
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)

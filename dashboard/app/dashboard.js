@@ -1,5 +1,5 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, VTables ,Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime ) {
+function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, VTables ,Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime,Backups,QueryRules ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedServer = undefined;
@@ -161,6 +161,28 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
     Proxies.query({clusterName: $scope.selectedClusterName}, function (data) {
       if (!$scope.menuOpened) {
         $scope.proxies = data;
+        $scope.reserror = false;
+      }
+
+    }, function () {
+      $scope.reserror = true;
+    });
+  }
+  if ($scope.selectedTab=='Backups') {
+    Backups.query({clusterName: $scope.selectedClusterName}, function (data) {
+      if (!$scope.menuOpened) {
+        $scope.backups = data;
+        $scope.reserror = false;
+      }
+
+    }, function () {
+      $scope.reserror = true;
+    });
+  }
+  if ($scope.selectedTab=='QueryRules') {
+    QueryRules.query({clusterName: $scope.selectedClusterName}, function (data) {
+      if (!$scope.menuOpened) {
+        $scope.queryrules = data;
         $scope.reserror = false;
       }
 

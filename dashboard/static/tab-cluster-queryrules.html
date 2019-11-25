@@ -1,0 +1,32 @@
+
+<md-content class="md-padding">
+<md-card>
+   <md-card-content>
+      <p class="sectionheader">Query Rules</p>
+   </md-card-content>
+   <table ng-if="queryrules" class="table">
+      <tr>
+         <th>Id</th>
+         <th>Digest</th>
+        <th>Match User</th>
+          <th>Match Schema</th>
+         <th>Match Digest</th>
+         <th>Match Pattern</th>
+          <th>Host Group</th>
+          <th>Proxies</th>
+
+      </tr>
+      <tr ng-repeat="rule in queryrules" ng-class="">
+         <td>{{rule.id}}</td>
+         <td>{{rule.userName.string}}</td>
+         <td>{{rule.schemaName.string}}</td>
+         <td>{{rule.digest.string}}</td>
+         <td>{{bck.matchDigest.string}</td>
+         <td>{{bck.matchPattern.string}}</td>
+         <td>{{bck.matchPattern.string}}</td>
+         <td>{{bck.destinationHostgroup.string}}</td>
+        <td>{{bck.proxies}}</td>
+      </tr>
+   </table>
+</md-card>
+</md-content>

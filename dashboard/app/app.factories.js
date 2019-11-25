@@ -26,6 +26,14 @@ app.factory('Proxies', function ($resource) {
     return $resource('api/clusters/:clusterName/topology/proxies', {clusterName: '@clusters'});
 });
 
+app.factory('Backups', function ($resource) {
+    return $resource('api/clusters/:clusterName/backups', {clusterName: '@clusters'});
+});
+
+app.factory('QueryRules', function ($resource) {
+    return $resource('api/clusters/:clusterName/queryrules', {clusterName: '@clusters'});
+});
+
 app.factory('Slaves', function ($resource) {
     return $resource('api/clusters/:clusterName/topology/slaves', {clusterName: '@clusters'});
 });

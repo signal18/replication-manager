@@ -35,6 +35,12 @@
                 <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer">
                     <div ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
+                <md-tab md-select-id="Agents" ng-click="onTabClicked('Backups')" md-on-select="onTabSelected" label="Backups" ng-if="selectedCluster.config.backupRestic && !selectedServer">
+                    <div ng-include src="'static/tab-cluster-backups.html'"></div>
+                </md-tab>
+                <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer">
+                    <div ng-include src="'static/tab-cluster-queryrules.html'"></div>
+                </md-tab>
 
                 <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist">
                     <div style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>

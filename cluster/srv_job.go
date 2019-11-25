@@ -84,6 +84,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		return 0, nil
 	}
 	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
+
 	return jobid, err
 }
 
@@ -335,6 +336,8 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedxtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "reseedmariabackup" {
+					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmysqldump" {
 					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackxtrabackup" {
@@ -459,12 +462,59 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	server.BackupRestic()
+	return nil
+}
+
+func (server *ServerMonitor) BackupRestic() error {
+
+	var stdout, stderr []byte
+	var errStdout, errStderr error
+
 	if server.ClusterGroup.Conf.BackupRestic {
 		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.Datadir)
+
+		stdoutIn, _ := resticcmd.StdoutPipe()
+		stderrIn, _ := resticcmd.StderrPipe()
+
+		//out, err := resticcmd.CombinedOutput()
+
+		newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+server.ClusterGroup.Conf.BackupResticAwsAccessKeyId)
+		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+server.ClusterGroup.Conf.BackupResticAwsAccessSecret)
+		newEnv = append(newEnv, "RESTIC_REPOSITORY="+server.ClusterGroup.Conf.BackupResticRepository)
+		newEnv = append(newEnv, "RESTIC_PASSWORD="+server.ClusterGroup.Conf.BackupResticPassword)
+
+		resticcmd.Env = newEnv
+
 		if err := resticcmd.Start(); err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Failed restic comma,d : %s %s", resticcmd.Path, err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
 			return err
 		}
+
+		// cmd.Wait() should be called only after we finish reading
+		// from stdoutIn and stderrIn.
+		// wg ensures that we finish
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			stdout, errStdout = server.copyAndCapture(os.Stdout, stdoutIn)
+			wg.Done()
+		}()
+
+		stderr, errStderr = server.copyAndCapture(os.Stderr, stderrIn)
+
+		wg.Wait()
+
+		err := resticcmd.Wait()
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "%s\n", err)
+		}
+		if errStdout != nil || errStderr != nil {
+			log.Fatal("failed to capture stdout or stderr\n")
+		}
+		outStr, errStr := string(stdout), string(stderr)
+		server.ClusterGroup.LogPrintf(LvlInfo, "result:%s\n%s\n%s", resticcmd.Path, outStr, errStr)
+
 	}
 	return nil
 }

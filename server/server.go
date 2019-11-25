@@ -324,7 +324,7 @@ func (repman *ReplicationManager) InitRestic() error {
 	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
 	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
 	os.Setenv("RESTIC_PASSWORD", repman.Conf.BackupResticPassword)
-	os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
+	//os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
 	return nil
 }
 
@@ -445,7 +445,7 @@ func (repman *ReplicationManager) Run() error {
 		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
-	repman.InitRestic()
+	//repman.InitRestic()
 
 	// If there's an existing encryption key, decrypt the passwords
 
