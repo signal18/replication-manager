@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -369,4 +370,52 @@ func (cl *Cluster) SetArbitratorReport() error {
 	cl.IsFailedArbitrator = false
 	return nil
 
+}
+
+func (cluster *Cluster) SetServicePlan(theplan string) error {
+	plans := cluster.GetServicePlans()
+	for _, plan := range plans {
+		if plan.Plan == theplan {
+			cluster.Conf.ProvServicePlan = theplan
+			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
+			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
+			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
+			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
+			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
+			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+			srvcount, _ := strconv.Atoi(string(theplan[1]))
+			var hosts []string
+			for i := 1; i <= srvcount; i++ {
+				hosts = append(hosts, "db"+strconv.Itoa(i))
+			}
+			cluster.SetDbServerHosts(strings.Join(hosts, ","))
+			return nil
+		}
+	}
+	return errors.New("Plan not found in repository")
+}
+
+func (cluster *Cluster) SetProvNetCniCluster(value string) error {
+	cluster.Conf.ProvNetCNICluster = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbAgents(value string) error {
+	cluster.Conf.ProvAgents = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyAgents(value string) error {
+	cluster.Conf.ProvProxAgents = value
+	return nil
+}
+
+func (cluster *Cluster) SetMonitoringAddress(value string) error {
+	cluster.Conf.MonitorAddress = value
+	return nil
+}
+
+func (cluster *Cluster) SetDbServerHosts(value string) error {
+	cluster.Conf.Hosts = value
+	return nil
 }

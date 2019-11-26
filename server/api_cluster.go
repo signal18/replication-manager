@@ -778,6 +778,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		case "backup-keep-weekly":
 		case "backup-keep-yearly":
 		case "db-servers-hosts":
+			mycluster.SetDbServerHosts(vars["settingValue"])
 		case "db-servers-credential":
 			mycluster.SetClusterCredential(vars["settingValue"])
 		case "replication-credential":
@@ -796,7 +797,16 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetProxyCores(vars["settingValue"])
 		case "prov-proxy-memory":
 			mycluster.SetProxyMemorySize(vars["settingValue"])
-
+		case "prov-service-plan":
+			mycluster.SetServicePlan(vars["settingValue"])
+		case "prov-net-cni-cluster":
+			mycluster.SetProvNetCniCluster(vars["settingValue"])
+		case "prov-db-agents":
+			mycluster.SetProvDbAgents(vars["settingValue"])
+		case "prov-proxy-agents":
+			mycluster.SetProvProxyAgents(vars["settingValue"])
+		case "monitoring-address":
+			mycluster.SetMonitoringAddress(vars["settingValue"])
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

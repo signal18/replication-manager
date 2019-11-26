@@ -349,6 +349,8 @@ type Config struct {
 	ProvNetCNI                                bool   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	ProvNetCNICluster                         string `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
 	ProvDockerDaemonPrivate                   bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
+	ProvServicePlan                           string `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
+	ProvServicePlanRegistry                   string `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	APIUser                                   string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
 	APIPort                                   string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
@@ -419,4 +421,15 @@ type QueryRule struct {
 	MirrorHostgroup      sql.NullInt64  `json:"mirrorHhostgroup" db:"mirror_hostgroup"`
 	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
 	Proxies              string         `json:"proxies" db:"proxies"`
+}
+
+type ServicePlan struct {
+	Plan         string `json:"plan"`
+	DbMemory     int    `json:"dbmemory"`
+	DbCores      int    `json:"dbcores"`
+	DbDataSize   int    `json:"dbdatasize"`
+	DbSystemSize int    `json:"dbSystemSize"`
+	DbIops       int    `json:"dbcores"`
+	PrxDataSize  int    `json:"prxdatasize"`
+	PrxCores     int    `json:"prxcores"`
 }

@@ -214,6 +214,7 @@ const (
 	GrantClusterUnprovision   string = "cluster-unprovison"
 	GrantClusterRolling       string = "cluster-rolling"
 	GrantClusterSettings      string = "cluster-settings"
+	GrantClusterGrant         string = "cluster-grant"
 	GrantProxyConfigCreate    string = "proxy-config-create"
 	GrantProxyConfigGet       string = "proxy-config-get"
 	GrantProxyConfigRessource string = "proxy-config-ressource"
@@ -222,6 +223,8 @@ const (
 	GrantProxyUnprovison      string = "proxy-unprovision"
 	GrantProxyStart           string = "proxy-start"
 	GrantProxyStop            string = "proxy-stop"
+	GrantProvSettings         string = "prov-settings"
+	GrantProvCluster          string = "prov-cluster"
 )
 
 // Init initial cluster definition
@@ -304,6 +307,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		GrantProxyUnprovison:      "proxy-unprovision",
 		GrantProxyStart:           "proxy-start",
 		GrantProxyStop:            "proxy-stop",
+		GrantProvSettings:         "prov-settings",
+		GrantProvCluster:          "prov-cluster",
+		GrantClusterGrant:         "cluster-grant",
 	}
 
 	cluster.TopologyType = map[string]string{

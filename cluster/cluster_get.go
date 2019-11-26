@@ -9,6 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"io/ioutil"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -565,5 +566,35 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 		r = append(r, value)
 	}
 	sort.Sort(QueryRuleSorter(r))
+	return r
+}
+
+func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
+	type Message struct {
+		Rows map[int]config.ServicePlan `json:"rows"`
+	}
+	var m Message
+	response, err := http.Get(cluster.Conf.ProvServicePlanRegistry)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
+		return nil
+	}
+	defer response.Body.Close()
+	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
+		return nil
+	}
+	err = json.Unmarshal(contents, &m)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "GetServicePlans  %s", err)
+		return nil
+	}
+
+	r := make([]config.ServicePlan, 0, len(m.Rows))
+	for _, value := range m.Rows {
+		r = append(r, value)
+	}
+	/*sort.Sort(QueryRuleSorter(r))*/
 	return r
 }
