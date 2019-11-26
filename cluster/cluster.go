@@ -503,9 +503,8 @@ func (cluster *Cluster) Run() {
 					cluster.sme.PreserveState("WARN0093")
 					cluster.sme.PreserveState("WARN0084")
 					cluster.sme.PreserveState("WARN0095")
-
 				}
-				if cluster.sme.GetHeartbeats()%3600 == 0 {
+				if cluster.sme.GetHeartbeats()%36000 == 0 {
 					cluster.ResticPurgeRepo()
 				} else {
 					cluster.sme.PreserveState("WARN0094")
