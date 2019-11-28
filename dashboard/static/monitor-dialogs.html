@@ -20,9 +20,9 @@
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">New Server</h2>
             <form>
-                Host: <input type="text" ng-model="dlgServerName"><BR>
-                Port: <input type="text" ng-model="dlgServerPort">
-                Type:  <md-select ng-model="selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
+                Host: <input type="text" ng-model="$parent.dlgServerName"><BR>
+                Port: <input type="text" ng-model="$parent.dlgServerPort">
+                Type:  <md-select ng-model="$parent.selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
 <md-option ng-value="monitor" ng-repeat="monitor in monitors">{{ monitor.name }}</md-option>
 </md-select>
             </form>
@@ -74,8 +74,8 @@
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">Replication Credential</h2>
             <form>
-                User: <input type="text" ng-model="dlgRplUser"><BR>
-                Password: <input type="password" ng-model="dlgRplPassword">
+                User: <input type="text" ng-model="$parent.dlgRplUser"><BR>
+                Password: <input type="password" ng-model="$parent.dlgRplPassword">
             </form>
             <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
                 Cancel

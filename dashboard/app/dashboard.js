@@ -934,6 +934,7 @@ $scope.isEqualLongQueryTime = function (a, b) {
   };
 
   $scope.closeClusterDialog = function () {
+
     $mdDialog.hide({contentElement: '#myClusterDialog'});
     $scope.menuOpened = false;
     $scope.servers = {};
@@ -946,15 +947,13 @@ $scope.isEqualLongQueryTime = function (a, b) {
   };
 
   $scope.newClusterDialog = function () {
-  //  $scope.menuOpened = true;
+    $scope.menuOpened = true;
     $mdDialog.show({
       contentElement: '#myNewClusterDialog',
-      //scope: $parent,
-  //    preserveScope: true,
-  //    controller: DashboardController,
-    parent: angular.element(document.body),
-  //  clickOutsideToClose: false,
-  //  escapeToClose: false,
+      preserveScope: true,
+     parent: angular.element(document.body),
+     clickOutsideToClose: false,
+     escapeToClose: false,
     });
   };
 
@@ -971,9 +970,8 @@ $scope.isEqualLongQueryTime = function (a, b) {
     $scope.proxies={};
     callServices();
     $scope.setClusterCredentialDialog();
-    $scope.setRplCredentialDialog();
     $mdSidenav('right').close();
-
+    $scope.menuOpened = false;
   };
   $scope.cancelNewClusterDialog = function () {
     $mdDialog.hide({contentElement: '#myNewClusterDialog',});
