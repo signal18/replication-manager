@@ -395,6 +395,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[GrantClusterShowRoutes] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/queryrules") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[GrantClusterCreateMonitor] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/addserver") {
 			return true
