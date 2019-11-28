@@ -14,22 +14,7 @@
         </md-dialog>
     </div>
 </div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myNewClusterDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">New Cluster</h2>
-            <form>
-                <input type="text" ng-model="dlgClusterName">
-            </form>
-            <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
-                Cancel
-            </md-button>
-            <md-button ng-click="closeNewClusterDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
+
 <div class="hidden">
     <div class="md-dialog-container" id="myNewServerDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
@@ -51,12 +36,29 @@
     </div>
 </div>
 <div class="hidden">
+    <div class="md-dialog-container"  id="myNewClusterDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">New Cluster</h2>
+            <form>
+              Name:  <input type="text" ng-model="$parent.dlgAddClusterName"/>
+
+            <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
+                Cancel
+            </md-button>
+            <md-button ng-click="closeNewClusterDialog()" class="md-primary">
+                Ok
+            </md-button>
+            </form>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
     <div class="md-dialog-container" id="myClusterCredentialDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">Database Server Credential</h2>
             <form>
-                User: <input type="text" ng-model="dlgClusterUser"><BR>
-                Password: <input type="password" ng-model="dlgClusterPassword">
+                User: <input type="text" ng-model="$parent.dlgClusterUser"><BR>
+                Password: <input type="password" ng-model="$parent.dlgClusterPassword">
             </form>
             <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
                 Cancel

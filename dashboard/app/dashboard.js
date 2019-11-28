@@ -946,21 +946,23 @@ $scope.isEqualLongQueryTime = function (a, b) {
   };
 
   $scope.newClusterDialog = function () {
+  //  $scope.menuOpened = true;
     $mdDialog.show({
       contentElement: '#myNewClusterDialog',
-      scope: $scope,
-      preserveScope: true,
-      parent: angular.element(document.body),
-      clickOutsideToClose: false,
-      escapeToClose: false,
+      //scope: $parent,
+  //    preserveScope: true,
+  //    controller: DashboardController,
+    parent: angular.element(document.body),
+  //  clickOutsideToClose: false,
+  //  escapeToClose: false,
     });
   };
+
   $scope.closeNewClusterDialog = function () {
+
     $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-
-    if (confirm("Confirm Creating Cluster " + $scope.dlgClusterName)) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgClusterName);
-
-    $scope.selectedClusterName = $scope.dlgClusterName;
+    if (confirm("Confirm Creating Cluster " + $scope.dlgAddClusterName )) httpGetWithoutResponse('/api/clusters/actions/add/' + $scope.dlgAddClusterName);
+    $scope.selectedClusterName = $scope.dlgAddClusterName;
     $scope.servers={};
     $scope.slaves={};
     $scope.master={};
