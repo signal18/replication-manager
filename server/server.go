@@ -283,7 +283,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
-
+	v.RegisterAlias("api-user", "api-credentials")
 	v.RegisterAlias("replication-master-connection", "replication-source-name")
 	v.RegisterAlias("logfile", "log-file")
 	v.RegisterAlias("wait-kill", "switchover-wait-kill")
@@ -504,13 +504,13 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		log.WithError(err).Info("No existing password encryption scheme")
 		k = nil
 	}
-	apiUser, apiPass = misc.SplitPair(repman.Conf.APIUser)
-	if k != nil {
-		p := crypto.Password{Key: k}
-		p.CipherText = apiPass
-		p.Decrypt()
-		apiPass = p.PlainText
-	}
+	/*	apiUser, apiPass = misc.SplitPair(repman.Conf.APIUser)
+		if k != nil {
+			p := crypto.Password{Key: k}
+			p.CipherText = apiPass
+			p.Decrypt()
+			apiPass = p.PlainText
+		}*/
 	repman.currentCluster = new(cluster.Cluster)
 
 	myClusterConf := repman.Confs[clusterName]

@@ -8,15 +8,15 @@
    </table>
      <div style="padding: 0px 20px 10px 4px;">
        <b><u>Available</u></b><br>
-       <span  ng-click="claddproxytag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingProxyTags"
+       <span ng-disabled="selectedCluster.apiUsers[user].grants['proxy-config-flag']==false" ng-click="claddproxytag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingProxyTags"
                                                   class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="claddproxytag(tag.name)"></i></span> </div>
 
 
 <BR>
    <div style="padding: 0px 20px 10px 4px;">
      <b><u>Using</u></b><br>
-     <span ng-click="cldropproxytag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.proxyServersTags"
-                                                  class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="cldropproxytag(tag)"></i></span></div>
+     <span  ng-disabled="selectedCluster.apiUsers[user].grants['proxy-config-flag']==false" ng-click="cldropproxytag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.proxyServersTags"
+                                                  class="label label-success">{{ tag }} <i  class="fa fa-minus-circle" ng-click="cldropproxytag(tag)"></i></span></div>
      <b><u>Ressources</u></b><br>
 <table><tr><td>
  <ng-gauge type="arch" value="selectedCluster.config.provProxyMemory" thick="5" size="120"   min="1" max="25600"  cap="round" append="MB" label="Memory" />

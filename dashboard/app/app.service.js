@@ -17,6 +17,10 @@ app.service('AppService', ['$http', '$localStorage', function ($http, $localStor
         return ($localStorage.currentUser && $localStorage.currentUser.token);
     };
 
+    var getUser = function () {
+        return $localStorage.currentUser.username;
+    };
+
     var logout = function() {
         $localStorage.currentUser = {}
     };
@@ -26,6 +30,7 @@ app.service('AppService', ['$http', '$localStorage', function ($http, $localStor
         getClusterUrl: getClusterUrl,
         setAuthenticated: setAuthenticated,
         hasAuthHeaders: hasAuthHeaders,
+        getUser: getUser,
         logout: logout
     };
 }]);

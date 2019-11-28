@@ -25,14 +25,69 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyProvision)),
 	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/stop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyStop)),
+	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/start", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyStart)),
+	))
 
 }
 
+func (repman *ReplicationManager) handlerMuxProxyStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		if node != nil {
+			mycluster.StartProxyService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxProxyStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		if node != nil {
+			mycluster.StopProxyService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
 func (repman *ReplicationManager) handlerMuxProxyProvision(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.InitProxyService(node)
@@ -51,6 +106,10 @@ func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWrit
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.UnprovisionProxyService(node)
@@ -68,12 +127,20 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
-	if err != nil {
-		w.WriteHeader(404)
-		w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
+		if err != nil {
+			w.WriteHeader(404)
+			w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+			return
+		}
+		w.Write(data)
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	w.Write(data)
-
 }

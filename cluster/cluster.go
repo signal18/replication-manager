@@ -120,6 +120,7 @@ type Cluster struct {
 	ProxyModule          config.Compliance        `json:"-"`
 	QueryRules           map[int]config.QueryRule `json:"-"`
 	Backups              []Backup                 `json:"-"`
+	APIUsers             map[string]APIUser       `json:"apiUsers"`
 	sync.Mutex           `json:"-"`
 }
 
@@ -188,45 +189,6 @@ const (
 	ConstOrchestratorLocalhost  string = "local"
 )
 
-const (
-	GrantDBStart              string = "db-start"
-	GrantDBStop               string = "db-stop"
-	GrantDBKill               string = "db-kill"
-	GrantDBOptimize           string = "db-optimize"
-	GrantDBAnalyse            string = "db-analyse"
-	GrantDBReplication        string = "db-replication"
-	GrantDBBackup             string = "db-backup"
-	GrantDBRestore            string = "db-restore"
-	GrantDBReadOnly           string = "db-readonly"
-	GrantDBProvision          string = "db-provision"
-	GrantDBUnprovision        string = "db-unprovison"
-	GrantDBLogs               string = "db-logs"
-	GrantDBCapture            string = "db-capture"
-	GrantDBMaintenance        string = "db-maintenance"
-	GrantDBConfigCreate       string = "db-config-create"
-	GrantDBConfigRessource    string = "db-config-ressource"
-	GrantDBConfigFlag         string = "db-config-flag"
-	GrantDBConfigGet          string = "db-config-get"
-	GrantClusterCreate        string = "cluster-create"
-	GrantClusterFailover      string = "cluster-failover"
-	GrantClusterSwitchover    string = "cluster-switchover"
-	GrantClusterProvision     string = "cluster-provision"
-	GrantClusterUnprovision   string = "cluster-unprovison"
-	GrantClusterRolling       string = "cluster-rolling"
-	GrantClusterSettings      string = "cluster-settings"
-	GrantClusterGrant         string = "cluster-grant"
-	GrantProxyConfigCreate    string = "proxy-config-create"
-	GrantProxyConfigGet       string = "proxy-config-get"
-	GrantProxyConfigRessource string = "proxy-config-ressource"
-	GrantProxyConfigFlag      string = "proxy-config-flag"
-	GrantProxyProvision       string = "proxy-provision"
-	GrantProxyUnprovison      string = "proxy-unprovision"
-	GrantProxyStart           string = "proxy-start"
-	GrantProxyStop            string = "proxy-stop"
-	GrantProvSettings         string = "prov-settings"
-	GrantProvCluster          string = "prov-cluster"
-)
-
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.switchoverChan = make(chan bool)
@@ -274,42 +236,62 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	//	prx_config_ressources,prx_config_flags
 
 	cluster.Grants = map[string]string{
-		GrantDBStart:              "db-start",
-		GrantDBStop:               "db-stop",
-		GrantDBKill:               "db-kill",
-		GrantDBOptimize:           "db-optimize",
-		GrantDBAnalyse:            "db-analyse",
-		GrantDBReplication:        "db-replication",
-		GrantDBBackup:             "db-backup",
-		GrantDBRestore:            "db-restore",
-		GrantDBReadOnly:           "db-readonly",
-		GrantDBProvision:          "db-provision",
-		GrantDBUnprovision:        "db-unprovison",
-		GrantDBLogs:               "db-logs",
-		GrantDBCapture:            "db-capture",
-		GrantDBMaintenance:        "db-maintenance",
-		GrantDBConfigCreate:       "db-config-create",
-		GrantDBConfigRessource:    "db-config-ressource",
-		GrantDBConfigFlag:         "db-config-flag",
-		GrantDBConfigGet:          "db-config-get",
-		GrantClusterCreate:        "cluster-create",
-		GrantClusterFailover:      "cluster-failover",
-		GrantClusterSwitchover:    "cluster-switchover",
-		GrantClusterProvision:     "cluster-provision",
-		GrantClusterUnprovision:   "cluster-unprovison",
-		GrantClusterRolling:       "cluster-rolling",
-		GrantClusterSettings:      "cluster-settings",
-		GrantProxyConfigCreate:    "proxy-config-create",
-		GrantProxyConfigGet:       "proxy-config-get",
-		GrantProxyConfigRessource: "proxy-config-ressource",
-		GrantProxyConfigFlag:      "proxy-config-flag",
-		GrantProxyProvision:       "proxy-provision",
-		GrantProxyUnprovison:      "proxy-unprovision",
-		GrantProxyStart:           "proxy-start",
-		GrantProxyStop:            "proxy-stop",
-		GrantProvSettings:         "prov-settings",
-		GrantProvCluster:          "prov-cluster",
-		GrantClusterGrant:         "cluster-grant",
+		GrantDBStart:                GrantDBStart,
+		GrantDBStop:                 GrantDBStop,
+		GrantDBKill:                 GrantDBKill,
+		GrantDBOptimize:             GrantDBOptimize,
+		GrantDBAnalyse:              GrantDBAnalyse,
+		GrantDBReplication:          GrantDBReplication,
+		GrantDBBackup:               GrantDBBackup,
+		GrantDBRestore:              GrantDBRestore,
+		GrantDBReadOnly:             GrantDBReadOnly,
+		GrantDBLogs:                 GrantDBLogs,
+		GrantDBCapture:              GrantDBCapture,
+		GrantDBMaintenance:          GrantDBMaintenance,
+		GrantDBConfigCreate:         GrantDBConfigCreate,
+		GrantDBConfigRessource:      GrantDBConfigRessource,
+		GrantDBConfigFlag:           GrantDBConfigFlag,
+		GrantDBConfigGet:            GrantDBConfigGet,
+		GrantDBShowVariables:        GrantDBShowVariables,
+		GrantDBShowStatus:           GrantDBShowStatus,
+		GrantDBShowSchema:           GrantDBShowSchema,
+		GrantDBShowProcess:          GrantDBShowProcess,
+		GrantDBShowLogs:             GrantDBShowLogs,
+		GrantDBDebug:                GrantDBDebug,
+		GrantClusterCreate:          GrantClusterCreate,
+		GrantClusterDrop:            GrantClusterDrop,
+		GrantClusterCreateMonitor:   GrantClusterCreateMonitor,
+		GrantClusterDropMonitor:     GrantClusterDropMonitor,
+		GrantClusterFailover:        GrantClusterFailover,
+		GrantClusterSwitchover:      GrantClusterSwitchover,
+		GrantClusterRolling:         GrantClusterRolling,
+		GrantClusterSettings:        GrantClusterSettings,
+		GrantClusterGrant:           GrantClusterGrant,
+		GrantClusterReplication:     GrantClusterReplication,
+		GrantClusterChecksum:        GrantClusterChecksum,
+		GrantClusterSharding:        GrantClusterSharding,
+		GrantClusterBench:           GrantClusterBench,
+		GrantClusterTest:            GrantClusterTest,
+		GrantClusterTraffic:         GrantClusterTraffic,
+		GrantClusterDebug:           GrantClusterDebug,
+		GrantClusterShowBackups:     GrantClusterShowBackups,
+		GrantClusterShowAgents:      GrantClusterShowAgents,
+		GrantClusterShowGraphs:      GrantClusterShowGraphs,
+		GrantClusterShowRoutes:      GrantClusterShowRoutes,
+		GrantProxyConfigCreate:      GrantProxyConfigCreate,
+		GrantProxyConfigGet:         GrantProxyConfigGet,
+		GrantProxyConfigRessource:   GrantProxyConfigRessource,
+		GrantProxyConfigFlag:        GrantProxyConfigFlag,
+		GrantProxyStart:             GrantProxyStart,
+		GrantProxyStop:              GrantProxyStop,
+		GrantProvSettings:           GrantProvSettings,
+		GrantProvCluster:            GrantProvCluster,
+		GrantProvClusterProvision:   GrantProvClusterProvision,
+		GrantProvClusterUnprovision: GrantProvClusterUnprovision,
+		GrantProvDBUnprovision:      GrantProvDBUnprovision,
+		GrantProvDBProvision:        GrantProvDBProvision,
+		GrantProvProxyProvision:     GrantProvProxyProvision,
+		GrantProvProxyUnprovision:   GrantProvProxyUnprovision,
 	}
 
 	cluster.TopologyType = map[string]string{
@@ -372,7 +354,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		logsqlgen.WithError(err).Error("Can't init general sql log file")
 	}
 	logsqlgen.AddHook(hookgen)
-
+	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()
 	cluster.initScheduler()

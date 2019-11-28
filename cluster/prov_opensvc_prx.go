@@ -27,6 +27,60 @@ func (cluster *Cluster) OpenSVCProvisionProxies() error {
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCStopProxyService(server *Proxy) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
+		if err != nil {
+			return err
+		}
+		agent, err := cluster.FoundProxyAgent(server)
+		if err != nil {
+			return err
+		}
+		svc.StopService(agent.Node_id, service.Svc_id)
+	} else {
+		agent, err := cluster.GetProxyAgent(server)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
+			return err
+		}
+		err = svc.StopServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCStartProxyService(server *Proxy) error {
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
+		if err != nil {
+			return err
+		}
+		agent, err := cluster.FoundProxyAgent(server)
+		if err != nil {
+			return err
+		}
+		svc.StartService(agent.Node_id, service.Svc_id)
+	} else {
+		agent, err := cluster.GetProxyAgent(server)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
+			return err
+		}
+		err = svc.StartServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.FoundProxyAgent(prx)

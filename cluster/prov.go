@@ -185,6 +185,36 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
+func (cluster *Cluster) StopProxyService(server *Proxy) error {
+
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
+		return cluster.OpenSVCStopProxyService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SStopProxyService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSStopProxyService(server)
+	default:
+		return cluster.LocalhostStopProxyService(server)
+	}
+	return nil
+}
+
+func (cluster *Cluster) StartProxyService(server *Proxy) error {
+
+	switch cluster.Conf.ProvOrchestrator {
+	case ConstOrchestratorOpenSVC:
+		return cluster.OpenSVCStartProxyService(server)
+	case ConstOrchestratorKubernetes:
+		cluster.K8SStartProxyService(server)
+	case ConstOrchestratorSlapOS:
+		cluster.SlapOSStartProxyService(server)
+	default:
+		return cluster.LocalhostStartProxyService(server)
+	}
+	return nil
+}
+
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 	_, err := server.Conn.Exec("SHUTDOWN")
 	return err
@@ -862,7 +892,7 @@ func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	return agent, errors.New("Indice not found in database node list")
 }
 
-func (cluster *Cluster) GetProxyAgent(server *ServerMonitor) (Agent, error) {
+func (cluster *Cluster) GetProxyAgent(server *Proxy) (Agent, error) {
 	var agent Agent
 	agents := strings.Split(cluster.Conf.ProvProxAgents, ",")
 	if len(agents) == 0 {

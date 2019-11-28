@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -78,4 +79,11 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 
 func (cluster *Cluster) K8SUnprovisionProxyService(prx *Proxy) {
 
+}
+
+func (cluster *Cluster) K8SStartProxyService(server *Proxy) error {
+	return errors.New("Can't start proxy")
+}
+func (cluster *Cluster) K8SStopProxyService(server *Proxy) error {
+	return errors.New("Can't stop proxy")
 }

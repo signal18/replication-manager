@@ -11,7 +11,7 @@
                     <tr>
                         <td>
 
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.interactive"
+                            <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.interactive"
                                        ng-click="switchsettings('failover-mode')" aria-label="Mode Change">
                                 <span ng-if="selectedCluster.config.interactive"
                                       class="label label-primary">On-call (manual)</span><span
@@ -32,7 +32,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.test"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.test"
                                        ng-click="switchsettings('test')" aria-label="Test Mode Change">
                                 <span ng-if="selectedCluster.config.test" class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.test" class="label label-warning">Off</span>
@@ -45,7 +45,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.verbose"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.verbose"
                                        ng-click="switchsettings('verbose')" aria-label="Verbosity Change">
                                 <span ng-if="selectedCluster.config.verbose" class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.verbose" class="label label-warning">Off</span>
@@ -63,7 +63,7 @@
             </tr>
             <tr>
                 <td>
-                    <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provNetCni"
+                    <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provNetCni"
                                ng-click="switchsettings('prov-net-cni')" aria-label="CNI">
                         <span ng-if="selectedCluster.config.provNetCni" class="label label-primary">On</span><span
                             ng-if="!selectedCluster.config.provNetCni" class="label label-warning">Off</span>
@@ -75,7 +75,7 @@
             </tr>
             <tr>
                 <td>
-                    <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provDockerDaemonPrivate"
+                    <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provDockerDaemonPrivate"
                                ng-click="switchsettings('prov-docker-daemon-private')" aria-label="CNI">
                         <span ng-if="selectedCluster.config.provDockerDaemonPrivate" class="label label-primary">On</span><span
                             ng-if="!selectedCluster.config.provDockerDaemonPrivate" class="label label-warning">Off</span>
@@ -95,7 +95,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.checkReplicationState"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.checkReplicationState"
                                        ng-click="switchsettings('check-replication-state')"
                                        aria-label="Failover in Sync">
                                 <span ng-if="selectedCluster.config.checkReplicationState"
@@ -110,7 +110,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.failoverAtSync"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.failoverAtSync"
                                        ng-click="switchsettings('failover-at-sync')" aria-label="Failover in Sync">
                                 <span ng-if="selectedCluster.config.failoverAtSync" ng-click="switchsettings('failover-at-sync')"
                                       class="label label-primary">On</span>
@@ -125,14 +125,14 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false"
+                            <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinSlavePositionalHeartbeat"
                                        ng-click="switchsettings('autorejoin-slave-positional-heartbeat')"
                                        aria-label="Auto rejoin using pseudo GTID">
                                 <span ng-if="selectedCluster.config.autorejoinSlavePositionalHeartbeat"
                                       class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.autorejoinSlavePositionalHeartbeat" class="label label-warning">Off</span>
-                      
+
                         </md-switch>
                         </td>
                     </tr>
@@ -141,7 +141,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.switchoverAtSync"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.switchoverAtSync"
                                        ng-click="switchsettings('switchover-at-sync')()"
                                        aria-label="Switchover in Sync">
                                 <span ng-if="selectedCluster.config.switchoverAtSync"
@@ -157,7 +157,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-slider ng-value="selectedCluster.config.failoverMaxSlaveDelay" md-discrete ng-if="selectedCluster.config.checkReplicationState" flex
+                            <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.failoverMaxSlaveDelay" md-discrete ng-if="selectedCluster.config.checkReplicationState" flex
                                        ng-model="selectedCluster.config.failoverMaxSlaveDelay" step="1" min="10" max="100" aria-label="delay">
                             </md-slider>
 
@@ -178,7 +178,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autorejoin"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autorejoin"
                                        ng-click="switchsettings('autorejoin')" aria-label="Auto Rejoin">
                                 <span ng-if="selectedCluster.config.autorejoin" class="label label-primary">On</span><span
                                     ng-if="!selectedCluster.config.autorejoin" class="label label-warning">Off</span>
@@ -192,7 +192,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinBackupBinlog"
                                        ng-click="switchsettings('autorejoin-backup-binlog')" aria-label="Auto Rejoin">
                                 <span ng-if="selectedCluster.config.autorejoinBackupBinlog"
@@ -208,7 +208,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinFlashbackOnSync"
                                        ng-click="switchsettings('autorejoin-flashback-on-sync')"
                                        aria-label="Failback with binlog flashback only if semisync ">
@@ -224,7 +224,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
                                        ng-model="selectedCluster.config.autorejoinFlashback"
                                        ng-click="switchsettings('autorejoin-flashback')"
                                        aria-label="Failback with binlog flashback">
@@ -241,7 +241,7 @@
                     </tr>
                     <tr>
                         <td>
-                            <md-switch ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autorejoinMysqldump"
+                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autorejoinMysqldump"
                                        ng-click="switchsettings('autorejoin-mysqldump')"
                                        aria-label="Auto rejoin with logical dump">
                                 <span ng-if="selectedCluster.config.autorejoinMysqldump" class="label label-primary">On</span><span

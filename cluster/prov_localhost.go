@@ -243,3 +243,10 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 
 	return nil
 }
+
+func (cluster *Cluster) LocalhostStartProxyService(server *Proxy) error {
+	return errors.New("Can't start proxy")
+}
+func (cluster *Cluster) LocalhostStopProxyService(server *Proxy) error {
+	return errors.New("Can't stop proxy")
+}

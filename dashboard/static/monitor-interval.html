@@ -4,7 +4,7 @@
         <span style="padding: 0px 0px 10px 0px"  ng-click="toggleLeft()" class="title"><img src="/static/img/logo.png"  alt="Replication Manager"/></span>
       </td>
       <td width="10%"" align="right">
-        <md-button class="btn btn-default"  ng-click="toogleRefresh()">
+            <md-button class="btn btn-default"  ng-click="toogleRefresh()">
           <md-icon style="color:#468cc5"   ng-class="{'fa fa-stop': !menuOpened,'fa fa-play': menuOpened}"></md-icon>
         </md-button>
       </td>
@@ -37,7 +37,7 @@
               </div>
           </div>
           <div  ng-if="selectedClusterName" class="col-xs-3">
-              <h6>Auto reload every
+              <h6> Welcome: {{user}} , auto reload every: 
               <small>{{refreshInterval/1000}} seconds</small>.</h6></div>
           </div>
       </td>

@@ -351,7 +351,9 @@ type Config struct {
 	ProvDockerDaemonPrivate                   bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
-	APIUser                                   string `mapstructure:"api-credential" toml:"api-credential" json:"apiCredential"`
+	APIUsers                                  string `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
+	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
+	APIUsersACLDiscard                        string `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
 	APIPort                                   string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIHttpsBind                              bool   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`

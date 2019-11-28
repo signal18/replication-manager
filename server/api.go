@@ -17,7 +17,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,8 +27,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
-	"github.com/signal18/replication-manager/utils/crypto"
-	"github.com/signal18/replication-manager/utils/misc"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -159,6 +156,23 @@ func (repman *ReplicationManager) apiserver() {
 /////////////ENDPOINT HANDLERS////////////
 /////////////////////////////////////////
 
+func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) bool {
+
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err == nil {
+		claims := token.Claims.(jwt.MapClaims)
+		userinfo := claims["CustomUserInfo"]
+		mycutinfo := userinfo.(map[string]interface{})
+		meuser := mycutinfo["Name"].(string)
+		mepwd := mycutinfo["Password"].(string)
+		return cluster.IsValidACL(meuser, mepwd, r.URL.Path)
+	}
+	return false
+}
+
 func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var user userCredentials
@@ -170,20 +184,11 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
-	k, err := crypto.ReadKey(repman.Conf.MonitoringKeyPath)
-	if err != nil {
-		k = nil
-	}
+
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
-		if k != nil {
-			p := crypto.Password{Key: k}
-			p.CipherText = apiPass
-			p.Decrypt()
-			apiPass = p.PlainText
-		}
-		if user.Username == apiUser && user.Password == apiPass {
+
+		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
 
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
@@ -193,9 +198,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
-				Name string
-				Role string
-			}{user.Username, "Member"}
+				Name     string
+				Role     string
+				Password string
+			}{user.Username, "Member", user.Password}
 			signer.Claims = claims
 			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
 			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
@@ -225,6 +231,55 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 }
 
 //AUTH TOKEN VALIDATION
+
+func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	mycopy := repman
+	var cl []string
+
+	for _, cluster := range repman.Clusters {
+
+		if repman.IsValidClusterACL(r, cluster) {
+			cl = append(cl, cluster.Name)
+		}
+	}
+	mycopy.ClusterList = cl
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err := e.Encode(mycopy)
+
+	//err := e.Encode(repman)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+}
+
+func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var clusters []*cluster.Cluster
+
+	for _, cluster := range repman.Clusters {
+		if repman.IsValidClusterACL(r, cluster) {
+			clusters = append(clusters, cluster)
+		}
+	}
+
+	sort.Sort(cluster.ClusterSorter(clusters))
+
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err := e.Encode(clusters)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+}
 
 func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -278,84 +333,6 @@ func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r 
 			res := server.GetPrometheusMetrics()
 			w.Write([]byte(res))
 		}
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-		return vk, nil
-	})
-	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-
-		mycopy := repman
-		var cl []string
-
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
-		meuser := mycutinfo["Name"].(string)
-
-		for _, cluster := range repman.Clusters {
-			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
-
-			if strings.Contains(meuser, apiUser) {
-				cl = append(cl, cluster.Name)
-			}
-		}
-		mycopy.ClusterList = cl
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err := e.Encode(mycopy)
-
-		//err := e.Encode(repman)
-		if err != nil {
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	} else {
-		http.Error(w, "token parse error", 500)
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-		return vk, nil
-	})
-	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-
-		var clusters []*cluster.Cluster
-
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
-		meuser := mycutinfo["Name"].(string)
-
-		for _, cluster := range repman.Clusters {
-			apiUser, apiPass = misc.SplitPair(cluster.Conf.APIUser)
-
-			if strings.Contains(meuser, apiUser) {
-				clusters = append(clusters, cluster)
-			}
-		}
-
-		sort.Sort(cluster.ClusterSorter(clusters))
-
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err = e.Encode(clusters)
-		if err != nil {
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	} else {
-		http.Error(w, "token parse error", 500)
 	}
 }
 

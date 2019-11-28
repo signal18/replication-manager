@@ -15,7 +15,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
   $scope.missingProxyTags = undefined;
   var promise = undefined;
 
-
+  $scope.user = AppService.getUser();
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
