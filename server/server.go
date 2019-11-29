@@ -183,22 +183,23 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.ClusterConfigPath = viper.GetString("default.include")
 		}
 	}
-	files, err := ioutil.ReadDir(conf.ClusterConfigPath)
+	files, err := ioutil.ReadDir(conf.WorkingDir)
 	if err != nil {
 		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
 	}
-	for _, f := range files {
-		if !f.IsDir() {
-			viper.SetConfigName(f.Name())
-			viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
-			err := viper.MergeInConfig()
-			if err != nil {
-				log.Println(err)
+	if conf.ConfRewrite {
+		for _, f := range files {
+			if f.IsDir() {
+				viper.SetConfigName(f.Name())
+				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name() + "/config.toml")
+				err := viper.MergeInConfig()
+				if err != nil {
+					log.Println(err)
+				}
+				//	log.Println(f.Name())
 			}
-			//	log.Println(f.Name())
 		}
 	}
-
 	// Procedd include files
 
 	m := viper.AllKeys()

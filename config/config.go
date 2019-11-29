@@ -47,8 +47,8 @@ type Config struct {
 	MonitorLongQueryTime               int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`
 	MonitorLongQueryScript             string `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorLongQueryWithTable          bool   `mapstructure:"monitoring-long-query-with-table" toml:"monitoring-long-query-with-table" json:"monitoringLongQueryWithTable"`
-	MonitorLongQueryLogLength          int    `mapstructure:"monitoring-long-query-log-length" toml:""monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
-	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:""monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
+	MonitorLongQueryLogLength          int    `mapstructure:"monitoring-long-query-log-length" toml:"monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
+	MonitorErrorLogLength              int    `mapstructure:"monitoring-erreur-log-length" toml:"monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
 	MonitorScheduler                   bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	MonitorCapture                     bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorDiskUsage                   bool   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`

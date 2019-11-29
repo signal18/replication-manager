@@ -589,15 +589,15 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
-	if strings.Contains(cluster.Conf.ClusterConfigPath, "cluster.d") && cluster.Conf.ConfRewrite {
+	if cluster.Conf.ConfRewrite {
 		var myconf = make(map[string]config.Config)
 
 		myconf[cluster.Name] = cluster.Conf
 
-		file, err := os.OpenFile(cluster.Conf.ClusterConfigPath+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.ClusterConfigPath+"/"+cluster.Name+".toml")
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml")
 			}
 			return err
 		}
