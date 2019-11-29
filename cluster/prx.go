@@ -26,30 +26,30 @@ import (
 
 // Proxy defines a proxy
 type Proxy struct {
-	Id              string          `json:"id"`
-	Name            string          `json:"name"`
-	ServiceName     string          `json:"serviceName"`
-	Type            string          `json:"type"`
-	Host            string          `json:"host"`
-	Port            string          `json:"port"`
-	TunnelPort      int             `json:"tunnelPort"`
-	TunnelWritePort int             `json:"tunnelWritePort"`
-	Tunnel          bool            `json:"tunnel"`
-	User            string          `json:"user"`
-	Pass            string          `json:"pass"`
-	WritePort       int             `json:"writePort"`
-	ReadPort        int             `json:"readPort"`
-	ReadWritePort   int             `json:"readWritePort"`
-	ReaderHostgroup int             `json:"readerHostGroup"`
-	WriterHostgroup int             `json:"writerHostGroup"`
-	BackendsWrite   []Backend       `json:"backendsWrite"`
-	BackendsRead    []Backend       `json:"backendsRead"`
-	Version         string          `json:"version"`
-	InternalProxy   *myproxy.Server `json:"internalProxy"`
-	ShardProxy      *ServerMonitor  `json:"shardProxy"`
-	ClusterGroup    *Cluster        `json:"-"`
-	Datadir         string
-	QueryRules      []proxysql.QueryRule
+	Id              string               `json:"id"`
+	Name            string               `json:"name"`
+	ServiceName     string               `json:"serviceName"`
+	Type            string               `json:"type"`
+	Host            string               `json:"host"`
+	Port            string               `json:"port"`
+	TunnelPort      int                  `json:"tunnelPort"`
+	TunnelWritePort int                  `json:"tunnelWritePort"`
+	Tunnel          bool                 `json:"tunnel"`
+	User            string               `json:"user"`
+	Pass            string               `json:"pass"`
+	WritePort       int                  `json:"writePort"`
+	ReadPort        int                  `json:"readPort"`
+	ReadWritePort   int                  `json:"readWritePort"`
+	ReaderHostgroup int                  `json:"readerHostGroup"`
+	WriterHostgroup int                  `json:"writerHostGroup"`
+	BackendsWrite   []Backend            `json:"backendsWrite"`
+	BackendsRead    []Backend            `json:"backendsRead"`
+	Version         string               `json:"version"`
+	InternalProxy   *myproxy.Server      `json:"internalProxy"`
+	ShardProxy      *ServerMonitor       `json:"shardProxy"`
+	ClusterGroup    *Cluster             `json:"-"`
+	Datadir         string               `json:"datadir"`
+	QueryRules      []proxysql.QueryRule `json:"queryRules"`
 }
 
 type Backend struct {

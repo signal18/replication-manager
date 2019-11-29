@@ -694,6 +694,12 @@ $scope.isEqualLongQueryTime = function (a, b) {
   $scope.prxunprovision = function (id) {
     if (confirm("Confirm unprovision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
   };
+  $scope.prxstop = function (id) {
+    if (confirm("Confirm stop proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
+  };
+  $scope.prxstart= function (id) {
+    if (confirm("Confirm start proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
+  };
   $scope.dbreseedxtrabackup = function (server) {
     if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
   };
@@ -1046,6 +1052,15 @@ $scope.isEqualLongQueryTime = function (a, b) {
     $mdDialog.hide({contentElement: '#myServerDebugDialog',});
   };
 
+  $scope.openDebugProxiesDialog = function () {
+    $mdDialog.show({
+      contentElement: '#myProxiesDebugDialog',
+      parent: angular.element(document.body),
+    });
+  };
+  $scope.closeDebugProxiesDialog = function () {
+    $mdDialog.hide({contentElement: '#myProxiesDebugDialog',});
+  };
 
   $scope.selectUserIndex = function (index) {
     var r = confirm("Confirm select Index  " + index);

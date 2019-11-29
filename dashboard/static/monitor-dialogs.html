@@ -117,6 +117,21 @@
     </div>
 </div>
 <div class="hidden">
+    <div class="md-dialog-container" id="myProxiesDebugDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px;">
+            <h2 class="md-title">JSON</h2>
+            <form>
+              <textarea name="message" rows="30" cols="150">
+                {{proxies}}
+              </textarea>
+            </form>
+            <md-button ng-click="closeDebugServerDialog()" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+<div class="hidden">
     <div class="md-dialog-container" id="myProcessListDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">JSON</h2>

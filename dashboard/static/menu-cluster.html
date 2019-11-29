@@ -129,6 +129,12 @@
     Servers
     </md-button>
   </md-menu-item>
+  <md-menu-item ng-click="openDebugProxiesDialog()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-debug']==false">
+      <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+    Proxies
+    </md-button>
+  </md-menu-item>
 </md-menu-content>
 </md-menu>
 </md-menu-item>
