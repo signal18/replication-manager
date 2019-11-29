@@ -148,20 +148,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		viper.AddConfigPath(".")
 		if conf.WithTarball == "ON" {
 			viper.AddConfigPath("/usr/local/replication-manager/etc")
-			conf.ClusterConfigPath = "/usr/local/replication-manager/data/cluster.d"
 
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
 				//log.Fatal("No config file /usr/local/replication-manager/etc/config.toml")
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		} else {
-			conf.ClusterConfigPath = "/var/lib/replication-manager/cluster.d"
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
 				//log.Fatal("No config file /etc/replication-manager/config.toml")
 				log.Warning("No config file /etc/replication-manager/config.toml ")
 			}
 		}
 	}
+	conf.ClusterConfigPath = conf.WorkingDir + "/cluster.d"
+
 	viper.SetEnvPrefix("MRM")
 	err := viper.ReadInConfig()
 	if err == nil {
@@ -191,8 +191,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if !f.IsDir() {
 			viper.SetConfigName(f.Name())
 			viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
-			viper.MergeInConfig()
-			//fmt.Println(f.Name())
+			err := viper.MergeInConfig()
+			if err != nil {
+				log.Println(err)
+			}
+			//	log.Println(f.Name())
 		}
 	}
 
@@ -213,7 +216,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					if !ok {
 						clusterDiscovery[mycluster] = mycluster
 						discoveries = append(discoveries, mycluster)
-						//						log.Println(strings.Split(k, ".")[0])
+						log.Println(strings.Split(k, ".")[0])
 					}
 				}
 

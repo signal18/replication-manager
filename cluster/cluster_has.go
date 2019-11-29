@@ -10,19 +10,6 @@ import (
 	"strings"
 )
 
-func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string) bool {
-	if user, ok := cluster.APIUsers[strUser]; ok {
-		if user.Password == strPassword {
-
-			return cluster.IsURLPassACL(strUser, URL)
-		}
-		return false
-	}
-	//	for key, value := range cluster.Grants {
-
-	return false
-}
-
 func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
 	for _, ihost := range ihosts {

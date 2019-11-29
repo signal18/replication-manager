@@ -88,7 +88,7 @@ type Config struct {
 	MultiMaster                        bool   `mapstructure:"replication-multi-master" toml:"replication-multi-master" json:"replicationMultiMaster"`
 	MultiTierSlave                     bool   `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
 	MasterSlavePgStream                bool   `mapstructure:"replication-master-slave-pg-stream" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgStream"`
-	MasterSlavePgLogical               bool   `mapstructure:"replication-master-slave-pg-logical" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgLogical"`
+	MasterSlavePgLogical               bool   `mapstructure:"replication-master-slave-pg-logical" toml:"replication-master-slave-pg-logical" json:"replicationMasterSlavePgLogical"`
 	ReplicationNoRelay                 bool   `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
 	ReplicationRestartOnSQLErrorMatch  string `mapstructure:"replication-restart-on-sqlerror-match" toml:"replication-restart-on-sqlerror-match" json:"eeplicationRestartOnSqlLErrorMatch"`
 	SwitchWaitKill                     int64  `mapstructure:"switchover-wait-kill" toml:"switchover-wait-kill" json:"switchoverWaitKill"`
