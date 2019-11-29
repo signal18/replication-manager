@@ -174,15 +174,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		log.Warningf("Could not parse config file: %s", err)
 	}
 
-	// Proceed include files
-	if viper.GetString("default.include") != "" {
-		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
-
-			log.Warning("No include config directory " + conf.Include)
-		} else {
-			conf.ClusterConfigPath = viper.GetString("default.include")
-		}
-	}
 	files, err := ioutil.ReadDir(conf.WorkingDir)
 	if err != nil {
 		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
@@ -200,7 +191,30 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 	}
-	// Procedd include files
+
+	// Proceed include files
+	if viper.GetString("default.include") != "" {
+		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
+			log.Warning("No include config directory " + conf.Include)
+		} else {
+			conf.ClusterConfigPath = viper.GetString("default.include")
+		}
+	}
+	files, err = ioutil.ReadDir(conf.ClusterConfigPath)
+	if err != nil {
+		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
+	}
+	for _, f := range files {
+		if !f.IsDir() {
+			viper.SetConfigName(f.Name())
+			viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
+			err := viper.MergeInConfig()
+			if err != nil {
+				log.Println(err)
+			}
+			//	log.Println(f.Name())
+		}
+	}
 
 	m := viper.AllKeys()
 	currentClusterName = cfgGroup
