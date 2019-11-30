@@ -136,19 +136,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	// call after init if configuration file is provide
 	viper.SetConfigType("toml")
 	if conf.ConfigFile != "" {
-		viper.SetConfigFile(conf.ConfigFile)
 		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
 			//	log.Fatal("No config file " + conf.ConfigFile)
 			log.Error("No config file " + conf.ConfigFile)
-
 		}
+		viper.SetConfigFile(conf.ConfigFile)
+
 	} else {
 		viper.SetConfigName("config")
 		viper.AddConfigPath("/etc/replication-manager/")
 		viper.AddConfigPath(".")
 		if conf.WithTarball == "ON" {
 			viper.AddConfigPath("/usr/local/replication-manager/etc")
-
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
 				//log.Fatal("No config file /usr/local/replication-manager/etc/config.toml")
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
@@ -174,46 +173,60 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		log.Warningf("Could not parse config file: %s", err)
 	}
 
-	files, err := ioutil.ReadDir(conf.WorkingDir)
-	if err != nil {
-		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
-	}
-	if conf.ConfRewrite {
+	//t := viper.AllKeys()
+	//log.Fatal(t)
+
+	// Proceed include files
+
+	if viper.GetString("default.include") != "" {
+		log.Info("Reading default section include directory: " + viper.GetString("default.include"))
+
+		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
+			log.Warning("Include config directory does not exist " + conf.Include)
+		} else {
+			conf.ClusterConfigPath = viper.GetString("default.include")
+		}
+
+		files, err := ioutil.ReadDir(conf.ClusterConfigPath)
+		if err != nil {
+			log.Infof("No config include directory %s ", conf.ClusterConfigPath)
+		}
 		for _, f := range files {
-			if f.IsDir() {
+			if !f.IsDir() {
 				viper.SetConfigName(f.Name())
-				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name() + "/config.toml")
+				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 				err := viper.MergeInConfig()
 				if err != nil {
 					log.Println(err)
 				}
-				//	log.Println(f.Name())
 			}
 		}
+	} else {
+		log.Warning("No include directory in default section")
 	}
-
-	// Proceed include files
-	if viper.GetString("default.include") != "" {
-		if _, err := os.Stat(viper.GetString("default.include")); os.IsNotExist(err) {
-			log.Warning("No include config directory " + conf.Include)
-		} else {
-			conf.ClusterConfigPath = viper.GetString("default.include")
+	// Proceed dynamic config
+	if viper.GetBool("default.monitoring-save-config") {
+		files, err := ioutil.ReadDir(conf.WorkingDir)
+		if err != nil {
+			log.Infof("No working directory %s ", conf.WorkingDir)
 		}
-	}
-	files, err = ioutil.ReadDir(conf.ClusterConfigPath)
-	if err != nil {
-		log.Infof("No config include directory %s ", conf.ClusterConfigPath)
-	}
-	for _, f := range files {
-		if !f.IsDir() {
-			viper.SetConfigName(f.Name())
-			viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
-			err := viper.MergeInConfig()
-			if err != nil {
-				log.Println(err)
+		for _, f := range files {
+			if f.IsDir() {
+				viper.SetConfigName(f.Name())
+				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/config.toml"); os.IsNotExist(err) {
+					log.Warning("No  config file " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
+				} else {
+					log.Infof("Adding working directory config file %s ", conf.WorkingDir+"/"+f.Name()+"/config.toml")
+					viper.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
+					err := viper.MergeInConfig()
+					if err != nil {
+						log.Println(err)
+					}
+				}
 			}
-			//	log.Println(f.Name())
 		}
+	} else {
+		log.Warning("No montoring-save-config variable in default section")
 	}
 
 	m := viper.AllKeys()
@@ -226,12 +239,14 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			if strings.Contains(k, ".") {
 				mycluster := strings.Split(k, ".")[0]
 				if mycluster != "default" {
-
+					if strings.HasPrefix(mycluster, "saved-") {
+						mycluster = strings.TrimPrefix(mycluster, "saved-")
+					}
 					_, ok := clusterDiscovery[mycluster]
 					if !ok {
 						clusterDiscovery[mycluster] = mycluster
 						discoveries = append(discoveries, mycluster)
-						log.Println(strings.Split(k, ".")[0])
+						log.Info("Cluster discover from config: %s", strings.Split(k, ".")[0])
 					}
 				}
 
@@ -274,6 +289,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				}
 				cf2.Unmarshal(&def)
 				cf2.Unmarshal(&clusterconf)
+
+				if clusterconf.ConfRewrite {
+					cf3 := viper.Sub("saved-" + gl)
+					if cf3 == nil {
+						log.WithField("group", gl).Info("Could not parse saved configuration group")
+					} else {
+						cf3.Unmarshal(&def)
+						cf3.Unmarshal(&clusterconf)
+					}
+				}
 				/*cf2 = viper.Sub("Default")
 				if cf2 != nil {
 					repman.initAlias(cf2)
@@ -301,6 +326,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
+	v.RegisterAlias("monitoring-config-rewrite", "monitoring-save-config")
 	v.RegisterAlias("api-user", "api-credentials")
 	v.RegisterAlias("replication-master-connection", "replication-source-name")
 	v.RegisterAlias("logfile", "log-file")

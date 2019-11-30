@@ -592,7 +592,7 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		var myconf = make(map[string]config.Config)
 
-		myconf[cluster.Name] = cluster.Conf
+		myconf["saved-"+cluster.Name] = cluster.Conf
 
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {

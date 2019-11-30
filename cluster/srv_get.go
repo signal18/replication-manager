@@ -422,7 +422,9 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
-
+	if !server.HasLogsInSystemTables() {
+		return
+	}
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)

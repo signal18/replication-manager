@@ -23,7 +23,7 @@ type Config struct {
 	WorkingDir                         string `mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                           string `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
 	ConfDir                            string `mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
-	ConfRewrite                        bool   `mapstructure:"monitoring-config-rewrite" toml:"monitoring-config-rewrite" json:"monitoringConfigRewrite"`
+	ConfRewrite                        bool   `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig"`
 	MonitoringSSLCert                  string `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
 	MonitoringSSLKey                   string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
 	MonitoringKeyPath                  string `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
@@ -221,7 +221,7 @@ type Config struct {
 	ProxysqlCopyGrants                 bool   `mapstructure:"proxysql-copy-grants" toml:"proxysql-copy-grants" json:"proxysqlCopyGrants"`
 	ProxysqlBootstrap                  bool   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
 	ProxysqlBinaryPath                 string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
-	ProxysqlBootstrapQueryRules        bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap" json:"proxysqlBootstrapQueryRules"`
+	ProxysqlBootstrapQueryRules        bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
 	MysqlRouterOn                      bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterHosts                   string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterPort                    string `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
