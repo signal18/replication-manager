@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/bluele/logrus_slack"
 	"github.com/spf13/viper"
 
@@ -59,6 +58,7 @@ type ReplicationManager struct {
 	Tests          []string                    `json:"tests"`
 	Conf           config.Config               `json:"config"`
 	Logs           s18log.HttpLog              `json:"logs"`
+	ServicePlans   []config.ServicePlan        `json:"servicePlans"`
 	tlog           s18log.TermLog
 	termlength     int
 	exitMsg        string
@@ -246,7 +246,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					if !ok {
 						clusterDiscovery[mycluster] = mycluster
 						discoveries = append(discoveries, mycluster)
-						log.Info("Cluster discover from config: %s", strings.Split(k, ".")[0])
+						log.Infof("Cluster discover from config: %s", strings.Split(k, ".")[0])
 					}
 				}
 
@@ -283,18 +283,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					def.Unmarshal(&clusterconf)
 				}
 				cf2 := viper.Sub(gl)
-				repman.initAlias(cf2)
-				if cf2 == nil {
-					log.WithField("group", gl).Fatal("Could not parse configuration group")
-				}
-				cf2.Unmarshal(&def)
-				cf2.Unmarshal(&clusterconf)
 
+				if cf2 == nil {
+					log.WithField("group", gl).Infof("Could not parse configuration group")
+				} else {
+					repman.initAlias(cf2)
+					cf2.Unmarshal(&def)
+					cf2.Unmarshal(&clusterconf)
+				}
 				if clusterconf.ConfRewrite {
 					cf3 := viper.Sub("saved-" + gl)
 					if cf3 == nil {
 						log.WithField("group", gl).Info("Could not parse saved configuration group")
 					} else {
+						repman.initAlias(cf3)
 						cf3.Unmarshal(&def)
 						cf3.Unmarshal(&clusterconf)
 					}
@@ -447,7 +449,7 @@ func (repman *ReplicationManager) Run() error {
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(80)
-
+	repman.InitServicePlans()
 	go repman.apiserver()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
@@ -538,7 +540,11 @@ func (repman *ReplicationManager) Run() error {
 }
 
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
-	return repman.Clusters[clname]
+	var c *cluster.Cluster
+	repman.Lock()
+	c = repman.Clusters[clname]
+	repman.Unlock()
+	return c
 }
 
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
@@ -582,11 +588,12 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 	var myconf = make(map[string]config.Config)
 
 	myconf[clusterName] = repman.Conf
+	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
 	repman.ClusterList = repman.ClusterList
 	repman.Confs[clusterName] = repman.Conf
-
-	file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	repman.Unlock()
+	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		if os.IsPermission(err) {
 			log.Errorf("Read file permission denied: %s", repman.Conf.ClusterConfigPath+"/"+clusterName+".toml")
@@ -597,9 +604,11 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 	err = toml.NewEncoder(file).Encode(myconf)
 	if err != nil {
 		return err
-	}
+	}*/
 	cluster, _ := repman.StartCluster(clusterName)
 	cluster.SetClusterList(repman.Clusters)
+	cluster.Save()
+
 	return nil
 
 }
@@ -731,4 +740,38 @@ func (repman *ReplicationManager) Stop() {
 		pprof.WriteHeapProfile(f)
 		f.Close()
 	}
+}
+
+func (repman *ReplicationManager) InitServicePlans() error {
+	type Message struct {
+		Rows []config.ServicePlan `json:"rows"`
+	}
+	var m Message
+	if repman.Conf.ProvServicePlanRegistry == "" {
+		return nil
+	}
+	response, err := http.Get(repman.Conf.ProvServicePlanRegistry)
+	if err != nil {
+		log.Errorf("GetServicePlans: %s", err)
+		return err
+	}
+	defer response.Body.Close()
+	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Errorf("GetServicePlans: %s", err)
+		return err
+	}
+	err = json.Unmarshal(contents, &m)
+	if err != nil {
+		log.Errorf("GetServicePlans  %s", err)
+		return err
+	}
+	repman.ServicePlans = m.Rows
+	/*r := make([]config.ServicePlan, 0, len(m.Rows))
+	for _, value := range m.Rows {
+		r = append(r, value)
+	}*/
+	//	repman.ServicePlans = r
+	/*sort.Sort(QueryRuleSorter(r))*/
+	return nil
 }

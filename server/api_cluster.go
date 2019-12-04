@@ -826,7 +826,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			return
 		}
 		setting := vars["settingName"]
-		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
+		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
 		switch setting {
 		case "failover-max-slave-delay":
 			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)

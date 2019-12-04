@@ -286,18 +286,6 @@ func (cluster *Cluster) DropProxyTag(dtag string) {
 	cluster.SetClusterVariablesFromConfig()
 }
 
-func (cluster *Cluster) AddDBTag(tag string) {
-	cluster.DBTags = append(cluster.DBTags, tag)
-	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
-	cluster.SetClusterVariablesFromConfig()
-}
-
-func (cluster *Cluster) AddProxyTag(tag string) {
-	cluster.ProxyTags = append(cluster.ProxyTags, tag)
-	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
-	cluster.SetClusterVariablesFromConfig()
-}
-
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential
 	cluster.SetClusterVariablesFromConfig()
@@ -376,6 +364,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 	plans := cluster.GetServicePlans()
 	for _, plan := range plans {
 		if plan.Plan == theplan {
+			cluster.LogPrintf(LvlInfo, "Attaching service plan %s", theplan)
 			cluster.Conf.ProvServicePlan = theplan
 			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
 			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
@@ -383,15 +372,25 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
-			srvcount, _ := strconv.Atoi(string(theplan[1]))
+			cluster.LogPrintf(LvlInfo, "Adding %s database monitor ", strings.TrimPrefix(theplan, "x"))
+
+			srvcount, err := strconv.Atoi(string(strings.TrimPrefix(theplan, "x")[0]))
+			if err != nil {
+				cluster.LogPrintf(LvlInfo, "Can't add database monitor error %s ", err)
+			}
 			var hosts []string
 			for i := 1; i <= srvcount; i++ {
 				hosts = append(hosts, "db"+strconv.Itoa(i))
 			}
 			cluster.SetDbServerHosts(strings.Join(hosts, ","))
+			cluster.sme.SetFailoverState()
+			cluster.newServerList()
+			cluster.TopologyDiscover()
+			cluster.sme.RemoveFailoverState()
 			return nil
 		}
 	}
+	cluster.LogPrintf(LvlErr, "Service plan not found %s", theplan)
 	return errors.New("Plan not found in repository")
 }
 

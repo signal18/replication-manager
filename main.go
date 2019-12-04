@@ -543,7 +543,7 @@ func init() {
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
-			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "opensvc|kube|slapos|local")
+			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "onpromise", "onpromise|opensvc|kube|slapos|local")
 			monitorCmd.Flags().StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")

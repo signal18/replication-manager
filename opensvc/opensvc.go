@@ -147,7 +147,7 @@ func (collector *Collector) LoadCert(certsFile string) error {
 	var err error
 	collector.CertsDER, err = ioutil.ReadFile(certsFile)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	return nil
@@ -158,7 +158,8 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 	if err != nil {
 		blocks, err := pkcs12.ToPEM(bytes, password)
 		if err != nil {
-			log.Fatalln(err)
+			var c tls.Certificate
+			return c, err
 		}
 		var pemData []byte
 		for _, b := range blocks {
@@ -168,7 +169,8 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 		// then use PEM data for tls to construct tls certificate:
 		cert, err := tls.X509KeyPair(pemData, pemData)
 		if err != nil {
-			log.Fatalln(err)
+			log.Error(err)
+			return cert, err
 		}
 		return cert, nil
 

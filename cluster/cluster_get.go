@@ -571,7 +571,7 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 	type Message struct {
-		Rows map[int]config.ServicePlan `json:"rows"`
+		Rows []config.ServicePlan `json:"rows"`
 	}
 	var m Message
 	response, err := http.Get(cluster.Conf.ProvServicePlanRegistry)
@@ -590,11 +590,11 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 		cluster.LogPrintf(LvlErr, "GetServicePlans  %s", err)
 		return nil
 	}
-
-	r := make([]config.ServicePlan, 0, len(m.Rows))
-	for _, value := range m.Rows {
-		r = append(r, value)
-	}
-	/*sort.Sort(QueryRuleSorter(r))*/
-	return r
+	/*
+		r := make([]config.ServicePlan, 0, len(m.Rows))
+		for _, value := range m.Rows {
+			r = append(r, value)
+		}
+		/*sort.Sort(QueryRuleSorter(r))*/
+	return m.Rows
 }

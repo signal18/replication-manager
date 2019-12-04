@@ -44,7 +44,6 @@ func (cluster *Cluster) newServerList() error {
 	err = cluster.isValidConfig()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
-		return err
 	}
 	cluster.Lock()
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))

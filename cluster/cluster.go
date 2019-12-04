@@ -187,6 +187,7 @@ const (
 	ConstOrchestratorKubernetes string = "kube"
 	ConstOrchestratorSlapOS     string = "slapos"
 	ConstOrchestratorLocalhost  string = "local"
+	ConstOrchestratorOnPremise  string = "onpromise"
 )
 
 // Init initial cluster definition
@@ -219,91 +220,11 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
-	cluster.MonitorType = map[string]string{
-		"mariadb":    "database",
-		"mysql":      "database",
-		"percona":    "database",
-		"postgresql": "database",
-		"maxscale":   "proxy",
-		"proxysql":   "proxy",
-		"shardproxy": "proxy",
-		"haproxy":    "proxy",
-		"myproxy":    "proxy",
-		"extproxy":   "proxy",
-		"sphinx":     "proxy",
-	}
-
+	cluster.MonitorType = conf.GetMonitorType()
+	cluster.TopologyType = conf.GetTopologyType()
 	//	prx_config_ressources,prx_config_flags
 
-	cluster.Grants = map[string]string{
-		GrantDBStart:                GrantDBStart,
-		GrantDBStop:                 GrantDBStop,
-		GrantDBKill:                 GrantDBKill,
-		GrantDBOptimize:             GrantDBOptimize,
-		GrantDBAnalyse:              GrantDBAnalyse,
-		GrantDBReplication:          GrantDBReplication,
-		GrantDBBackup:               GrantDBBackup,
-		GrantDBRestore:              GrantDBRestore,
-		GrantDBReadOnly:             GrantDBReadOnly,
-		GrantDBLogs:                 GrantDBLogs,
-		GrantDBCapture:              GrantDBCapture,
-		GrantDBMaintenance:          GrantDBMaintenance,
-		GrantDBConfigCreate:         GrantDBConfigCreate,
-		GrantDBConfigRessource:      GrantDBConfigRessource,
-		GrantDBConfigFlag:           GrantDBConfigFlag,
-		GrantDBConfigGet:            GrantDBConfigGet,
-		GrantDBShowVariables:        GrantDBShowVariables,
-		GrantDBShowStatus:           GrantDBShowStatus,
-		GrantDBShowSchema:           GrantDBShowSchema,
-		GrantDBShowProcess:          GrantDBShowProcess,
-		GrantDBShowLogs:             GrantDBShowLogs,
-		GrantDBDebug:                GrantDBDebug,
-		GrantClusterCreate:          GrantClusterCreate,
-		GrantClusterDrop:            GrantClusterDrop,
-		GrantClusterCreateMonitor:   GrantClusterCreateMonitor,
-		GrantClusterDropMonitor:     GrantClusterDropMonitor,
-		GrantClusterFailover:        GrantClusterFailover,
-		GrantClusterSwitchover:      GrantClusterSwitchover,
-		GrantClusterRolling:         GrantClusterRolling,
-		GrantClusterSettings:        GrantClusterSettings,
-		GrantClusterGrant:           GrantClusterGrant,
-		GrantClusterReplication:     GrantClusterReplication,
-		GrantClusterChecksum:        GrantClusterChecksum,
-		GrantClusterSharding:        GrantClusterSharding,
-		GrantClusterBench:           GrantClusterBench,
-		GrantClusterTest:            GrantClusterTest,
-		GrantClusterTraffic:         GrantClusterTraffic,
-		GrantClusterDebug:           GrantClusterDebug,
-		GrantClusterShowBackups:     GrantClusterShowBackups,
-		GrantClusterShowAgents:      GrantClusterShowAgents,
-		GrantClusterShowGraphs:      GrantClusterShowGraphs,
-		GrantClusterShowRoutes:      GrantClusterShowRoutes,
-		GrantProxyConfigCreate:      GrantProxyConfigCreate,
-		GrantProxyConfigGet:         GrantProxyConfigGet,
-		GrantProxyConfigRessource:   GrantProxyConfigRessource,
-		GrantProxyConfigFlag:        GrantProxyConfigFlag,
-		GrantProxyStart:             GrantProxyStart,
-		GrantProxyStop:              GrantProxyStop,
-		GrantProvSettings:           GrantProvSettings,
-		GrantProvCluster:            GrantProvCluster,
-		GrantProvClusterProvision:   GrantProvClusterProvision,
-		GrantProvClusterUnprovision: GrantProvClusterUnprovision,
-		GrantProvDBUnprovision:      GrantProvDBUnprovision,
-		GrantProvDBProvision:        GrantProvDBProvision,
-		GrantProvProxyProvision:     GrantProvProxyProvision,
-		GrantProvProxyUnprovision:   GrantProvProxyUnprovision,
-	}
-
-	cluster.TopologyType = map[string]string{
-		topoMasterSlave:         "master-slave",
-		topoBinlogServer:        "binlog-server",
-		topoMultiTierSlave:      "multi-tier-slave",
-		topoMultiMaster:         "multi-master",
-		topoMultiMasterRing:     "multi-master-ring",
-		topoMultiMasterWsrep:    "multi-master-wsrep",
-		topoMasterSlavePgLog:    "master-slave-pg-logical",
-		topoMasterSlavePgStream: "master-slave-pg-stream",
-	}
+	cluster.Grants = conf.GetGrantType()
 
 	cluster.QueryRules = make(map[int]config.QueryRule)
 

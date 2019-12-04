@@ -9,6 +9,7 @@ package cluster
 import (
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -18,65 +19,6 @@ type APIUser struct {
 	Password string          `json:"-"`
 	Grants   map[string]bool `json:"grants"`
 }
-
-const (
-	GrantDBStart                string = "db-start"
-	GrantDBStop                 string = "db-stop"
-	GrantDBKill                 string = "db-kill"
-	GrantDBOptimize             string = "db-optimize"
-	GrantDBAnalyse              string = "db-analyse"
-	GrantDBReplication          string = "db-replication"
-	GrantDBBackup               string = "db-backup"
-	GrantDBRestore              string = "db-restore"
-	GrantDBReadOnly             string = "db-readonly"
-	GrantDBLogs                 string = "db-logs"
-	GrantDBShowVariables        string = "db-show-variables"
-	GrantDBShowStatus           string = "db-show-status"
-	GrantDBShowSchema           string = "db-show-schema"
-	GrantDBShowProcess          string = "db-show-process"
-	GrantDBShowLogs             string = "db-show-logs"
-	GrantDBCapture              string = "db-capture"
-	GrantDBMaintenance          string = "db-maintenance"
-	GrantDBConfigCreate         string = "db-config-create"
-	GrantDBConfigRessource      string = "db-config-ressource"
-	GrantDBConfigFlag           string = "db-config-flag"
-	GrantDBConfigGet            string = "db-config-get"
-	GrantDBDebug                string = "db-debug"
-	GrantClusterCreate          string = "cluster-create"
-	GrantClusterDrop            string = "cluster-drop"
-	GrantClusterCreateMonitor   string = "cluster-create-monitor"
-	GrantClusterDropMonitor     string = "cluster-drop-monitor"
-	GrantClusterFailover        string = "cluster-failover"
-	GrantClusterSwitchover      string = "cluster-switchover"
-	GrantClusterRolling         string = "cluster-rolling"
-	GrantClusterSettings        string = "cluster-settings"
-	GrantClusterGrant           string = "cluster-grant"
-	GrantClusterChecksum        string = "cluster-checksum"
-	GrantClusterSharding        string = "cluster-sharding"
-	GrantClusterReplication     string = "cluster-replication"
-	GrantClusterBench           string = "cluster-bench"
-	GrantClusterTest            string = "cluster-test"
-	GrantClusterTraffic         string = "cluster-traffic"
-	GrantClusterShowBackups     string = "cluster-show-backups"
-	GrantClusterShowRoutes      string = "cluster-show-routes"
-	GrantClusterShowGraphs      string = "cluster-show-graphs"
-	GrantClusterShowAgents      string = "cluster-show-agents"
-	GrantClusterDebug           string = "cluster-debug"
-	GrantProxyConfigCreate      string = "proxy-config-create"
-	GrantProxyConfigGet         string = "proxy-config-get"
-	GrantProxyConfigRessource   string = "proxy-config-ressource"
-	GrantProxyConfigFlag        string = "proxy-config-flag"
-	GrantProxyStart             string = "proxy-start"
-	GrantProxyStop              string = "proxy-stop"
-	GrantProvClusterProvision   string = "prov-cluster-provision"
-	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
-	GrantProvProxyProvision     string = "prov-proxy-provision"
-	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
-	GrantProvDBProvision        string = "prov-db-provision"
-	GrantProvDBUnprovision      string = "prov-db-unprovision"
-	GrantProvSettings           string = "prov-settings"
-	GrantProvCluster            string = "prov-cluster"
-)
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string) bool {
 	if user, ok := cluster.APIUsers[strUser]; ok {
@@ -149,37 +91,37 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		missing "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc"
 	*/
 
-	if cluster.APIUsers[strUser].Grants[GrantProvDBProvision] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvDBProvision] {
 		if strings.Contains(URL, "/actions/provision") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProvDBUnprovision] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvDBUnprovision] {
 		if strings.Contains(URL, "/actions/unprovision") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBStart] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBStart] {
 		if strings.Contains(URL, "/actions/start") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBStop] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBStop] {
 		if strings.Contains(URL, "/actions/stop") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBKill] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBKill] {
 		if strings.Contains(URL, "/actions/kill") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBOptimize] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBOptimize] {
 		if strings.Contains(URL, "/actions/analyze-pfs") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBAnalyse] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBAnalyse] {
 		if strings.Contains(URL, "/actions/analyze-pfs") {
 			return true
 		}
@@ -190,7 +132,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBReplication] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBReplication] {
 		if strings.Contains(URL, "/all-slaves-status") {
 			return true
 		}
@@ -210,7 +152,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBBackup] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBBackup] {
 		if strings.Contains(URL, "/action/backup-logical") {
 			return true
 		}
@@ -224,17 +166,17 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBRestore] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBRestore] {
 		if strings.Contains(URL, "/actions/reseed/") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBReadOnly] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBReadOnly] {
 		if strings.Contains(URL, "actions/toogle-read-only") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBLogs] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
 		if strings.Contains(URL, "/processlist") {
 			return true
 		}
@@ -296,12 +238,12 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBCapture] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBCapture] {
 		if strings.Contains(URL, "/actions/toogle-slow-query-capture") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBMaintenance] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBMaintenance] {
 		if strings.Contains(URL, "/actions/optimize") {
 			return true
 		}
@@ -309,27 +251,27 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBConfigCreate] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigCreate] {
 		if strings.Contains(URL, "/kill") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBConfigGet] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigGet] {
 		if strings.Contains(URL, "/kill") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBConfigFlag] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
 		if strings.Contains(URL, "/kill") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBShowVariables] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBShowVariables] {
 		if strings.Contains(URL, "/variables") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBShowSchema] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBShowSchema] {
 		if strings.Contains(URL, "/tables") {
 			return true
 		}
@@ -343,7 +285,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBShowStatus] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBShowStatus] {
 		if strings.Contains(URL, "/status") {
 			return true
 		}
@@ -357,22 +299,22 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 
 func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 
-	if cluster.APIUsers[strUser].Grants[GrantProvProxyProvision] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvProxyProvision] {
 		if strings.Contains(URL, "/actions/provision") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProvProxyUnprovision] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvProxyUnprovision] {
 		if strings.Contains(URL, "/actions/unprovision") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProxyStart] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProxyStart] {
 		if strings.Contains(URL, "/actions/start") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProxyStop] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProxyStop] {
 		if strings.Contains(URL, "/actions/stop") {
 			return true
 		}
@@ -398,32 +340,32 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/proxies") {
 		return cluster.IsURLPassProxiesACL(strUser, URL)
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterSharding] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterSharding] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/schema") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterShowBackups] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowBackups] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterShowRoutes] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowRoutes] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/queryrules") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterCreateMonitor] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreateMonitor] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/addserver") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterSwitchover] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/switchover") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterTraffic] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/stop-traffic") {
 			return true
 
@@ -432,22 +374,22 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterBench] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterBench] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/sysbench") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterTest] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterTest] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/sysbench") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterFailover] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/failover") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterReplication] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterReplication] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/replication/bootstrap") {
 			return true
 		}
@@ -456,7 +398,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterRolling] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterRolling] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/optimize") {
 			return true
 		}
@@ -464,7 +406,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantDBConfigFlag] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-db-tag") {
 			return true
 		}
@@ -472,7 +414,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProxyConfigFlag] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProxyConfigFlag] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-proxy-tag") {
 			return true
 		}
@@ -480,7 +422,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterSettings] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterSettings] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload") {
 			return true
 		}
@@ -494,13 +436,13 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterChecksum] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterChecksum] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/checksum-all-tables") {
 			return true
 		}
 	}
 
-	if cluster.APIUsers[strUser].Grants[GrantProvCluster] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvCluster] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/provision") {
 			return true
 		}
@@ -508,21 +450,21 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantProvClusterUnprovision] {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvClusterUnprovision] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/unprovision") {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[GrantClusterCreate] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreate] {
 		if strings.Contains(URL, "/api/clusters/actions/add") {
 			return true
 		}
 	}
-	/*	case cluster.APIUsers[strUser].Grants[GrantClusterGrant] == true:
+	/*	case cluster.APIUsers[strUser].Grants[config.GrantClusterGrant] == true:
 			return false
-		case cluster.APIUsers[strUser].Grants[GrantClusterDropMonitor] == true:
+		case cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] == true:
 			return false
-		case cluster.APIUsers[strUser].Grants[GrantClusterCreate] == true:
+		case cluster.APIUsers[strUser].Grants[config.GrantClusterCreate] == true:
 			return false
 	*/
 
