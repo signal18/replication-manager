@@ -11,9 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -249,4 +252,47 @@ func (cluster *Cluster) LocalhostStartProxyService(server *Proxy) error {
 }
 func (cluster *Cluster) LocalhostStopProxyService(server *Proxy) error {
 	return errors.New("Can't stop proxy")
+}
+
+func (cluster *Cluster) LocalhostGetNodes() ([]Agent, error) {
+	var info runtime.MemStats
+	runtime.ReadMemStats(&info)
+
+	name, err := os.Hostname()
+	if err != nil {
+		name = "127.0.0.1"
+	}
+	agents := []Agent{}
+	/*	m.Alloc = rtm.Alloc
+		m.TotalAlloc = rtm.TotalAlloc
+		m.Sys = rtm.Sys
+		m.Mallocs = rtm.Mallocs
+		m.Frees = rtm.Frees
+	*/
+
+	var agent Agent
+	agent.Id = "1"
+	agent.OsName = cluster.Conf.GoOS
+	agent.OsKernel = cluster.Conf.GoArch
+	agent.CpuCores = int64(runtime.NumCPU())
+	agent.CpuFreq = 0
+	agent.MemBytes = int64(info.Sys)
+	agent.HostName = name
+	agents = append(agents, agent)
+
+	return agents, nil
+}
+
+func (cluster *Cluster) LocalhostGetFreePort() (string, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return "", err
+	}
+	listener, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return "", err
+	}
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	defer listener.Close()
+	return port, nil
 }

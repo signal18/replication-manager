@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -597,4 +598,27 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 		}
 		/*sort.Sort(QueryRuleSorter(r))*/
 	return m.Rows
+}
+
+func (cluster *Cluster) GetClientCertificates() map[string]string {
+	certs := make(map[string]string)
+	clientCert, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-cert.pem")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
+		return certs
+	}
+	clientkey, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-key.pem")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
+		return certs
+	}
+	caCert, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-cert.pem")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
+		return certs
+	}
+	certs["clientCert"] = clientCert
+	certs["clientKey"] = clientkey
+	certs["caCert"] = caCert
+	return certs
 }

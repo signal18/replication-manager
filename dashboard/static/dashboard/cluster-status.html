@@ -2,55 +2,75 @@
     <div flex>
         <md-card ng-if="selectedCluster">
             <table ng-if="settings" class="table">
+              <col style="width: 10%;">
+              <col style="width: 30%;">
+              <col style="width: 70%;">
                 <tr>
-                    <th colspan="2">Monitor Status</th>
-                </tr>
-                <tr>
-                    <td>Manager Status</td>
-                    <td><span ng-if="selectedCluster.activePassiveStatus=='A'"
-                              class="label label-success">ACTIVE</span><span
+                   <th>
+                       <div align="right" ng-include src="'static/menu-cluster.html'"></div>
+                   </th>
+                   <th style="text-align:left;">Cluster</th>
+                   <th style="text-align:right;" align="right"><span align="right" ng-if="selectedCluster.activePassiveStatus=='A'"
+                              class="label label-success">ACTIVE</span><span align="right"
                             ng-if="selectedCluster.activePassiveStatus=='S'"
                             class="label label-warning">STANDBY</span>
-                    </td>
+                    </th>
                 </tr>
                 <tr>
-                    <td>Cluster Name</td>
+                    <td colspan=2>Name</td>
                     <td><span class="label label-default" ng-if="!selectedClusterName">Default</span><span
                           class="label label-default"  ng-if="selectedClusterName">{{selectedClusterName}}</span> </td>
                 </tr>
                 <tr>
-                    <td>Failover Count</td>
-                    <td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td>
+                    <td colspan=2>
+                        Orchestrator
+                    </td>
+                    <td><span class="label label-info">{{selectedCluster.config.provOrchestrator}}</span>
+                    </td>
                 </tr>
-                <td>Last Failover Time</td>
-                <td>{{selectedCluster.failoverLastTime}}</td>
-                </tr>
+
+
 
             </table>
         </md-card>
     </div>
     <div flex>
         <md-card ng-if="selectedCluster  && servers">
-            <table ng-if="settings" md-table class="table md-primary md-data-table">
+            <table ng-if="settings" md-table class="tabletable-condensed fixed table">
+
+              <col style="width: 5%;">
+              <col style="width: 35%;">
+             <col style="width: 60%%;">
                 <tr md-row>
-                    <th colspan="2">Cluster Availability</th>
+
+                  <th style="text-align:left;">
+                    <md-button style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-switchover']==false" class="md-raised" ng-if="master.state !='Failed'" ng-click="switch(false)"
+                                 aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i></md-button>
+                    <md-button style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-failover']==false"  class="md-raised md-warn" ng-if="master.state =='Failed'" ng-click="switch(true)"
+                                 aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i></md-button>
+                  </th>
+                    <th>Availability</th>
+                    <th style="text-align:right;"> <span class="label label-success">{{selectedCluster.topology}}</span></th>
+
                 </tr>
-                <tr md-row>
-                    <td>Monitor Tickers</td>
-                    <td>{{selectedCluster.monitorSpin}}</td>
+                <tr>
+                    <td colspan=2 width="20%">Failover</td>
+                    <td  >
+                        <table width="100%"><tr><td>Cheks</td><td>Count</td><td>Last Time</td></tr>
+                        <td>{{selectedCluster.monitorSpin}}</td><td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td><td>{{selectedCluster.failoverLastTime}}</td>
+                        </tr></table>
+                    </td>
                 </tr>
-                <tr md-row>
-                    <td>Master Available</td>
-                    <td>{{selectedCluster.uptime}}</td>
-                </tr>
-                <tr md-row>
-                    <td>Acceptable Data Loss</td>
-                    <td>{{selectedCluster.uptimeFailable}}</td>
-                </tr>
-                <tr md-row>
-                    <td>No Data Loss</td>
-                    <td>{{selectedCluster.uptimeSemisync}}</td>
-                </tr>
+
+                <tr>
+                <td colspan=2>SLA</td>
+                <td >
+                    <table><tr><td>Master Up</td><td>Slaves Catch</td><td>Slaves Sync</td></tr>
+                    <td>{{selectedCluster.uptime}} %</td><td>{{selectedCluster.uptimeFailable}} %</td><td>{{selectedCluster.uptimeSemisync}} %</td>
+                    </tr></table>
+                </td>
+              </tr>
+
             </table>
         </md-card>
     </div>
@@ -59,18 +79,12 @@
             <table class="table">
 
                 <tr>
-                    <th colspan="2">Cluster Info
+                    <th colspan="2">Cluster Workload
                     </th>
                 </tr>
+
                 <tr>
-                    <td>
-                        Topology
-                    </td>
-                    <td><span class="label label-info">{{selectedCluster.topology}}</span>
-                    </td>
-                </tr>
-                <tr>
-                    <td>QPS</td>
+                    <td>Questions</td>
                     <td>{{master.qps}}</td>
                 </tr>
                 <tr>

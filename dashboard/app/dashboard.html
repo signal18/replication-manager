@@ -35,7 +35,10 @@
                 <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
                     <div ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
-                <md-tab md-select-id="Agents" ng-click="onTabClicked('Backups')" md-on-select="onTabSelected" label="Backups" ng-if="selectedCluster.config.backupRestic && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
+                <md-tab md-select-id="Certificates" ng-click="onTabClicked('Certificates')" md-on-select="onTabSelected" label="Certificates" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-certificates']==true">
+                    <div ng-include src="'static/tab-cluster-certificates.html'"></div>
+                </md-tab>
+                <md-tab md-select-id="Backups" ng-click="onTabClicked('Backups')" md-on-select="onTabSelected" label="Backups" ng-if="selectedCluster.config.backupRestic && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
                     <div ng-include src="'static/tab-cluster-backups.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">

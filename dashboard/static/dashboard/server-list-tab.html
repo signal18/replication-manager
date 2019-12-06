@@ -13,8 +13,9 @@
 <table  border=0 ng-if="servers" class="table table-condensed fixed">
   <col style="width: 5%;">
   <col style="width: 30%;">
- <col style="width: 60%;">
+ <col style="width: 55%;">
  <col style="width: 5%;">
+  <col style="width: 5%;">
 
       <tr  ng-click="openServer(server.id)">
 
@@ -24,12 +25,15 @@
               <img ng-if="server.dbVersion.flavor=='Percona'" src="static/img/percona.png"  class="vicon"/>
               <img ng-if="server.dbVersion.flavor=='PostgreSQL'" src="static/img/postgreesql.png"  style="padding: 0px;width: 24px;vertical-align: top;" />
       </th>
-      <th colspan=2> {{server.host}}:{{server.port}}  </th>
+      <th colspan=2>{{server.host}}:{{server.port}}  </th>
+        <th align="right">
+          <div><md-button  style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" class="md-raised" aria-label="Tabular" ng-click="toogleTabular()"><md-icon md-menu-origin class="fa fa-table"></md-icon></md-button></div>
+          </th>
       <th align="right">
         <div align="right" ng-include src="'static/menu-server.html'"></div>
       </th>
       </tr><tr>
-      <td colspan=4 style="padding: 0px;">
+      <td colspan=5 style="padding: 0px;">
         <Table class="table fixed" style="border: 1px">
         <tr>
           <th class="tabicon">Status</th>

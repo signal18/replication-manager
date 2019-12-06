@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -560,7 +561,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 						if server.IsFilterInTags("docker") {
 							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
 						}
-						if server.ClusterGroup.Conf.ProvOrchestrator == ConstOrchestratorLocalhost {
+						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)
 						}
 						outFile, err := os.Create(fpath)
@@ -574,7 +575,6 @@ func (server *ServerMonitor) GetMyConfig() string {
 							}
 							outFile.Close()
 							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
-
 						}
 
 					}
@@ -610,6 +610,10 @@ func (server *ServerMonitor) GetMyConfig() string {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
 	}
+	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/ca-cert.pem", server.Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
+	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-cert.pem", server.Datadir+"/init/etc/mysql/ssl/server-cert.pem")
+	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-key.pem", server.Datadir+"/init/etc/mysql/ssl/server-key.pem")
+
 	server.ClusterGroup.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 
 	return ""

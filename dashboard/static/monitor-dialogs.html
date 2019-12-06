@@ -42,15 +42,20 @@
             <form>
               Name:  <input type="text" ng-model="$parent.dlgAddClusterName"/>
               <md-input-container class="md-block">
+              Orchestrator:  <md-select name="selectedOrchestrator" ng-if="settings.config.provServicePlanRegistry!=''" ng-model="$parent.selectedOrchestrator"   ng-change="$parent.setorchestrator(selectedOrchestartor.name)"  >
+ <md-option ng-disabled="item.available==false" ng-value="item" ng-repeat="item in orchestrators track by item.id" >{{ item.name }}</md-option>
+</md-select>
+</md-input-container>
+              <md-input-container class="md-block">
               Plan:  <md-select name="selectedPlan" ng-if="settings.config.provServicePlanRegistry!=''" ng-model="$parent.selectedPlan"   ng-change="$parent.setplan(selectedPlan.plan)"  >
  <md-option ng-value="item" ng-repeat="item in plans track by item.id" >{{ item.plan }}</md-option>
 </md-select>
 </md-input-container>
-    Plan: {{selectedPlan.plan}}
+    Plan: {{selectedPlan.plan}} Mem: {{selectedPlan.dbmemory}},  cpu: {{selectedPlan.dbcores}} ,  iops: {{selectedPlan.dbiops}}
 <md-button ng-click="cancelNewClusterDialog()" class="md-primary">
     Cancel
 </md-button>
-            <md-button ng-click="closeNewClusterDialog(selectedPlan.plan)" class="md-primary">
+            <md-button ng-click="closeNewClusterDialog(selectedPlan.plan,selectedOrchestrator.name)" class="md-primary">
                 Ok
             </md-button>
             </form>

@@ -1,8 +1,44 @@
 app.controller('DashboardController',
-function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialog, Servers,Clusters, Monitor, Alerts, Master, Proxies, Slaves, Cluster, AppService, Processlist, Tables, VTables ,Status, Variables, StatusInnoDB , ServiceOpenSVC,PFSStatements,PFSStatementsSlowLog,SlowQueries,ExplainPlanPFS,ExplainPlanSlowLog,MetaDataLocks,QueryResponseTime,Backups,QueryRules ) {
+function (
+  $scope,
+  $routeParams,
+  $timeout,
+  $http,
+  $location,
+  $mdSidenav,
+  $mdDialog,
+  Servers,
+  Clusters,
+  Monitor,
+  Alerts,
+  Master,
+  Proxies,
+  Slaves,
+  Cluster,
+  AppService,
+  Processlist,
+  Tables,
+  VTables ,
+  Status,
+  Variables,
+  StatusInnoDB ,
+  ServiceOpenSVC,
+  PFSStatements,
+  PFSStatementsSlowLog,
+  SlowQueries,
+  ExplainPlanPFS,
+  ExplainPlanSlowLog,
+  MetaDataLocks,
+  QueryResponseTime,
+  Backups,
+  Certificates,
+  QueryRules
+
+ ) {
   //Selected cluster is choose from the drop-down-list
   $scope.selectedClusterName = undefined;
   $scope.selectedPlan= undefined;
+  $scope.selectedOrchestrator= undefined;
   $scope.plans= undefined;
   $scope.selectedServer = undefined;
   $scope.selectedQuery = undefined;
@@ -88,7 +124,9 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           if (data) {
             $scope.settings = data;
             $scope.plans =	$scope.settings.servicePlans;
+            $scope.orchestrators =	$scope.settings.serviceOrchestrators;
             $scope.selectedPlan = $scope.plans[13];
+            $scope.selectedOrchestrator= $scope.orchestrators[3];
             $scope.$scope.selectedPlanName=  $scope.selectedPlan.plan;
 
             if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
@@ -192,13 +230,22 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
             $scope.reserror = true;
           });
         }
+        if ($scope.selectedTab=='Certificates') {
+          Certificates.query({clusterName: $scope.selectedClusterName}, function (data) {
+            if (!$scope.menuOpened) {
+              $scope.certificates = data;
+              $scope.reserror = false;
+            }
+          }, function () {
+            $scope.reserror = true;
+          });
+        }
         if ($scope.selectedTab=='QueryRules') {
           QueryRules.query({clusterName: $scope.selectedClusterName}, function (data) {
             if (!$scope.menuOpened) {
               $scope.queryrules = data;
               $scope.reserror = false;
             }
-
           }, function () {
             $scope.reserror = true;
           });
@@ -658,20 +705,33 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
         });
       };
 
-      var createCluster = function (cluster,plan) {
+      var createCluster = function (cluster,plan,orchestrator) {
 
           $http.get('/api/clusters/actions/add/' +cluster)
           .then(
           function () {
-            console.log('cluster created..');
-            createPlan(cluster,plan);
+            console.log('cluster created..' + orchestrator);
+            createClusterSetOrchetrator(cluster,plan,orchestrator);
           },
           function () {
             console.log("Error cluster create.");
           });
         };
 
-    var createPlan = function (cluster,plan) {
+        var createClusterSetOrchetrator = function (cluster,plan,orchestrator) {
+            $http.get('/api/clusters/'+ cluster + '/settings/actions/set/prov-orchestrator/'+orchestrator)
+            .then(
+            function () {
+              console.log('Set orchetrator done..');
+              createClusterSetPlan(cluster,plan);
+            },
+            function () {
+              console.log("Error in set orchetrator.");
+            });
+          };
+
+    var createClusterSetPlan = function (cluster,plan) {
+        console.log('Setting plan..' + plan);
         httpGetWithoutResponse('/api/clusters/'+ cluster + '/settings/actions/set/prov-service-plan/'+plan);
     };
 
@@ -995,11 +1055,11 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
 
 
 
-      $scope.closeNewClusterDialog = function (data) {
+      $scope.closeNewClusterDialog = function (plan,orchestrator) {
 
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
-        if (confirm("Confirm Creating Cluster " + $scope.dlgAddClusterName + " "  +  data)) {
-          createCluster( $scope.dlgAddClusterName,data);
+        if (confirm("Confirm Creating Cluster " + $scope.dlgAddClusterName + " "  +  plan+" for " + orchestrator )) {
+          createCluster( $scope.dlgAddClusterName,plan,orchestrator);
 
           $scope.selectedClusterName = $scope.dlgAddClusterName;
           $scope.servers={};
@@ -1009,7 +1069,7 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
           $scope.logs={};
           $scope.proxies={};
         //  $scope.callServices();
-          $scope.setClusterCredentialDialog();
+        //  $scope.setClusterCredentialDialog();
         }
         $mdSidenav('right').close();
         $scope.menuOpened = false;
@@ -1164,7 +1224,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
         });
 
       };
-
       $scope.toggleLeft = buildToggler('left');
       $scope.toggleRight = buildToggler('right');
 
@@ -1174,7 +1233,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
 
         };
       }
-
       $scope.toogleTabular = function()  {
         $scope.serverListTabular = !$scope.serverListTabular;
       };
@@ -1190,9 +1248,6 @@ function ($scope, $routeParams, $timeout, $http, $location, $mdSidenav, $mdDialo
         $scope.menuOpened = false;
         $scope.openedAt = "";
       });
-
-
-
       $scope.getTablePct  = function (table,index) {
         return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
       };

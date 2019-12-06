@@ -2,7 +2,10 @@
 <md-card ng-if="servers">
 <table ng-if="servers" class="table table-condensed fixed">
     <tr>
-        <th class="rowicon"><!-- Actions Menu --></th>
+        <th class="rowicon">
+         <md-button  style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" class="md-raised" aria-label="Tabular" ng-click="toogleTabular()">
+         <md-icon md-menu-origin class="fa fa-table"></md-icon></md-button>
+       </th>
         <th class="rowicon"><!-- Version --></th>
         <th class="servers">Database Servers</th>
         <th class="status">Status</th>

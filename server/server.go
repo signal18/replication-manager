@@ -42,30 +42,31 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	OpenSVC        opensvc.Collector           `json:"-"`
-	Version        string                      `json:"version"`
-	Fullversion    string                      `json:"fullVersion"`
-	Os             string                      `json:"os"`
-	Arch           string                      `json:"arch"`
-	MemProfile     string                      `json:"memprofile"`
-	Clusters       map[string]*cluster.Cluster `json:"-"`
-	Agents         []opensvc.Host              `json:"agents"`
-	UUID           string                      `json:"uuid"`
-	Hostname       string                      `json:"hostname"`
-	Status         string                      `json:"status"`
-	SplitBrain     bool                        `json:"spitBrain"`
-	ClusterList    []string                    `json:"clusters"`
-	Tests          []string                    `json:"tests"`
-	Conf           config.Config               `json:"config"`
-	Logs           s18log.HttpLog              `json:"logs"`
-	ServicePlans   []config.ServicePlan        `json:"servicePlans"`
-	tlog           s18log.TermLog
-	termlength     int
-	exitMsg        string
-	exit           bool
-	currentCluster *cluster.Cluster
-	isStarted      bool
-	Confs          map[string]config.Config
+	OpenSVC              opensvc.Collector           `json:"-"`
+	Version              string                      `json:"version"`
+	Fullversion          string                      `json:"fullVersion"`
+	Os                   string                      `json:"os"`
+	Arch                 string                      `json:"arch"`
+	MemProfile           string                      `json:"memprofile"`
+	Clusters             map[string]*cluster.Cluster `json:"-"`
+	Agents               []opensvc.Host              `json:"agents"`
+	UUID                 string                      `json:"uuid"`
+	Hostname             string                      `json:"hostname"`
+	Status               string                      `json:"status"`
+	SplitBrain           bool                        `json:"spitBrain"`
+	ClusterList          []string                    `json:"clusters"`
+	Tests                []string                    `json:"tests"`
+	Conf                 config.Config               `json:"config"`
+	Logs                 s18log.HttpLog              `json:"logs"`
+	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
+	tlog                 s18log.TermLog
+	termlength           int
+	exitMsg              string
+	exit                 bool
+	currentCluster       *cluster.Cluster
+	isStarted            bool
+	Confs                map[string]config.Config
 	sync.Mutex
 }
 
@@ -211,7 +212,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			log.Infof("No working directory %s ", conf.WorkingDir)
 		}
 		for _, f := range files {
-			if f.IsDir() {
+			if f.IsDir() && f.Name() != "graphite" {
 				viper.SetConfigName(f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/config.toml"); os.IsNotExist(err) {
 					log.Warning("No  config file " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
@@ -450,6 +451,11 @@ func (repman *ReplicationManager) Run() error {
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(80)
 	repman.InitServicePlans()
+	if repman.Conf.Enterprise {
+		repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
+	} else {
+		repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsOsc()
+	}
 	go repman.apiserver()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {

@@ -30,6 +30,16 @@ app.factory('Backups', function ($resource) {
     return $resource('api/clusters/:clusterName/backups', {clusterName: '@clusters'});
 });
 
+app.factory('Certificates', function ($resource) {
+    return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'},
+        {
+            'query': {
+                method: 'GET',
+                isArray: false
+            }
+        });
+});
+
 app.factory('QueryRules', function ($resource) {
     return $resource('api/clusters/:clusterName/queryrules', {clusterName: '@clusters'});
 });
@@ -129,7 +139,6 @@ app.factory('Monitor', function ($resource) {
         }
     );
 });
-
 
 app.factory('Test', function ($resource) {
     return $resource(

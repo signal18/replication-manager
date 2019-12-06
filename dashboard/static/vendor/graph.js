@@ -2,8 +2,8 @@ var graphite_url = "http://"+window.location.hostname+":10002";  // enter your g
 
 var dashboards =
 [
-  { "name": "Mrm",  // give your dashboard a name (required!)
-    "refresh": 5000,  // each dashboard has its own refresh interval (in ms)
+  { "name": "repman",  // give your dashboard a name (required!)
+    "refresh": 10000,  // each dashboard has its own refresh interval (in ms)
     // add an (optional) dashboard description. description can be written in markdown / html.
     "description": ""
                 ,

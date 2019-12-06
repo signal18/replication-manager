@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -226,7 +227,8 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterVariablesFromConfig() {
-
+	cluster.DBTags = cluster.GetDatabaseTags()
+	cluster.ProxyTags = cluster.GetProxyTags()
 	err := cluster.loadDBCertificate()
 	if err != nil {
 		cluster.haveDBTLSCert = false
@@ -248,8 +250,7 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		p.Decrypt()
 		cluster.rplPass = p.PlainText
 	}
-	cluster.DBTags = cluster.GetDatabaseTags()
-	cluster.ProxyTags = cluster.GetProxyTags()
+
 }
 
 func (cluster *Cluster) SetClusterCredential(credential string) {
@@ -372,15 +373,22 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
-			cluster.LogPrintf(LvlInfo, "Adding %s database monitor ", strings.TrimPrefix(theplan, "x"))
+			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
 
 			srvcount, err := strconv.Atoi(string(strings.TrimPrefix(theplan, "x")[0]))
 			if err != nil {
 				cluster.LogPrintf(LvlInfo, "Can't add database monitor error %s ", err)
 			}
-			var hosts []string
+			hosts := []string{}
 			for i := 1; i <= srvcount; i++ {
-				hosts = append(hosts, "db"+strconv.Itoa(i))
+				cluster.LogPrintf(LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
+				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+					port, err := cluster.LocalhostGetFreePort()
+					cluster.LogPrintf(LvlInfo, "adding 127.0.0.1", port, err)
+					hosts = append(hosts, "127.0.0.1:"+port)
+				} else {
+					hosts = append(hosts, "db"+strconv.Itoa(i))
+				}
 			}
 			cluster.SetDbServerHosts(strings.Join(hosts, ","))
 			cluster.sme.SetFailoverState()
@@ -416,5 +424,10 @@ func (cluster *Cluster) SetMonitoringAddress(value string) error {
 
 func (cluster *Cluster) SetDbServerHosts(value string) error {
 	cluster.Conf.Hosts = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvOrchestrator(value string) error {
+	cluster.Conf.ProvOrchestrator = value
 	return nil
 }

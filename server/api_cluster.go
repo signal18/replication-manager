@@ -54,6 +54,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/queryrules", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterQueryRules)),
@@ -665,6 +670,25 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 	}
 }
 
+func (repman *ReplicationManager) handlerMuxClusterCertificates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetClientCertificates())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -867,6 +891,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetProvDbAgents(vars["settingValue"])
 		case "prov-proxy-agents":
 			mycluster.SetProvProxyAgents(vars["settingValue"])
+		case "prov-orchestrator":
+			mycluster.SetProvOrchestrator(vars["settingValue"])
 		case "monitoring-address":
 			mycluster.SetMonitoringAddress(vars["settingValue"])
 		}
