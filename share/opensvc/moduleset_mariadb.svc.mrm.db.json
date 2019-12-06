@@ -2022,7 +2022,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.withresolvdns",
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
-                "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor"
+                "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
+                "mariadb.svc.mrm.db.cnf.generic.withssl"
             ],
             "publications": [
                 "replication-manager"
@@ -3148,6 +3149,30 @@
                 "replication-manager"
             ],
             "id": 1071,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.security.ssl",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withssl",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/ssl.cnf\",\"target\":\"../ssl.cnf\"}",
+                    "var_updated": "2019-12-06 16:31:32",
+                    "var_name": "db_link_ssl",
+                    "id": 6106
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1072,
             "responsibles": [
                 "replication-manager"
             ]

@@ -374,7 +374,11 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
 			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
-
+			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+				cluster.DropDBTag("docker")
+				cluster.DropDBTag("threadpool")
+				cluster.AddDBTag("pkg")
+			}
 			srvcount, err := strconv.Atoi(string(strings.TrimPrefix(theplan, "x")[0]))
 			if err != nil {
 				cluster.LogPrintf(LvlInfo, "Can't add database monitor error %s ", err)

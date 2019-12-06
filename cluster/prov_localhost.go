@@ -207,9 +207,11 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		}
 		fmt.Printf("Command finished with error: %v", err)
 	}()
-	exitloop := 0
 
+	exitloop := 0
+	time.Sleep(time.Millisecond * 4000)
 	for exitloop < 30 {
+		haveerror := false
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
 		cluster.LogPrintf(LvlInfo, "Waiting database startup .. %s", out)
@@ -218,18 +220,45 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		if err2 == nil {
 			defer conn.Close()
 			err, _ := conn.Exec("set sql_log_bin=0")
-			conn.Exec("delete from mysql.user where password=''")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
+			}
+			err, _ = conn.Exec("delete from mysql.user where password=''")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "delete from mysql.user where password=''", err)
+			}
 			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
-			conn.Exec(grants)
+			err, _ = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
 			cluster.LogPrintf(LvlInfo, "%s", grants)
 			grants = "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
-			conn.Exec(grants)
+			err, _ = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
 			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
-			conn.Exec(grants)
-			conn.Exec("flush privileges")
-			if err == nil {
+			err, _ = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			err, _ = conn.Exec("flush privileges")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "flush privileges", err)
+			}
+
+			if !haveerror {
 				exitloop = 100
 			}
+		} else {
+			cluster.LogPrintf(LvlErr, "Database connection to init user  %s ", err2)
 		}
 		exitloop++
 
