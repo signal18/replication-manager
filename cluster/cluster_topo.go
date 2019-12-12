@@ -47,17 +47,18 @@ func (cluster *Cluster) newServerList() error {
 	}
 	cluster.Lock()
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
+	// split("")  return len = 1
+	if cluster.Conf.Hosts != "" {
+		for k, url := range cluster.hostList {
+			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
+			}
 
-	for k, url := range cluster.hostList {
-		cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
+			if cluster.Conf.Verbose {
+				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
+			}
 		}
-
-		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
-		}
-
 	}
 	cluster.Unlock()
 	return nil
@@ -106,6 +107,9 @@ func (cluster *Cluster) pingServerList() {
 func (cluster *Cluster) TopologyDiscover() error {
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
+	if cluster.Conf.Hosts == "" {
+		return errors.New("Can not discover empty clustre")
+	}
 	for _, server := range cluster.Servers {
 		if server.IsIgnored() {
 			wg.Add(1)

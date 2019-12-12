@@ -371,6 +371,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotateKey] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotatekeys") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/stop-traffic") {
 			return true

@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
@@ -417,9 +418,35 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		return sqlx.Connect("postgres", server.DSN)
 
-	} else {
-		return sqlx.Connect("mysql", server.DSN)
 	}
+	conn, err := sqlx.Connect("mysql", server.DSN)
+	if err != nil && server.ClusterGroup.HaveDBTLSCert {
+		// Possible can't connect because of SSL key rotation try old key until server rebooted or key reloaded
+		server.TLSConfigUsed = ConstTLSOldConfig
+		server.SetDSN()
+		conn, err := sqlx.Connect("mysql", server.DSN)
+		if err == nil {
+			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+		} else {
+			server.TLSConfigUsed = ConstTLSNoConfig
+			server.SetDSN()
+			conn, err := sqlx.Connect("mysql", server.DSN)
+			if err == nil {
+				// if not –require_secure_transport can still connect with no certificate MDEV-13362
+				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+			}
+			server.TLSConfigUsed = ConstTLSCurrentConfig
+			server.SetDSN()
+			return conn, err
+		}
+		//reset DNS in case the server is restarted
+		server.TLSConfigUsed = ConstTLSCurrentConfig
+		server.SetDSN()
+		return conn, err
+	}
+
+	return conn, err
+
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
@@ -614,6 +641,8 @@ func (server *ServerMonitor) GetMyConfig() string {
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/ca-cert.pem", server.Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-cert.pem", server.Datadir+"/init/etc/mysql/ssl/server-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-key.pem", server.Datadir+"/init/etc/mysql/ssl/server-key.pem")
+	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/client-cert.pem", server.Datadir+"/init/etc/mysql/ssl/client-cert.pem")
+	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/client-key.pem", server.Datadir+"/init/etc/mysql/ssl/client-key.pem")
 
 	server.ClusterGroup.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 

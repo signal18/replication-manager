@@ -87,6 +87,8 @@ var clusterError = map[string]string{
 	"ERR00077": "All databases state down",
 	"ERR00078": "Could not resolve IP from connection %s@%s: with hostname %s on server %s",
 	"ERR00079": "Disk %s usage high on %s",
+	"ERR00080": "Connection use old TLS keys on %s",
+	"ERR00081": "Connection use no TLS keys on %s",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",

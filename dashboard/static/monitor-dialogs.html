@@ -42,7 +42,7 @@
             <form>
               Name:  <input type="text" ng-model="$parent.dlgAddClusterName"/>
               <md-input-container class="md-block">
-              Orchestrator:  <md-select name="selectedOrchestrator" ng-if="settings.config.provServicePlanRegistry!=''" ng-model="$parent.selectedOrchestrator"   ng-change="$parent.setorchestrator(selectedOrchestartor.name)"  >
+              Orchestrator:  <md-select name="selectedOrchestrator" ng-model="$parent.selectedOrchestrator"   ng-change="$parent.setorchestrator(selectedOrchestartor.name)"  >
  <md-option ng-disabled="item.available==false" ng-value="item" ng-repeat="item in orchestrators track by item.id" >{{ item.name }}</md-option>
 </md-select>
 </md-input-container>

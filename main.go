@@ -470,7 +470,17 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20", "Disk in g for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
 	monitorCmd.Flags().StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1", "Memory usage in giga bytes")
+	monitorCmd.Flags().StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
+	monitorCmd.Flags().StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 
+	if WithOpenSVC == "ON" {
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpromise,local", "seprated list of orchestrator ")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "onpromise|opensvc|kube|slapos|local")
+
+	} else {
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "onpromise", "onpromise|opensvc|kube|slapos|local")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpromise,local", "seprated list of orchestrator ")
+	}
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")
 		monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
@@ -538,13 +548,10 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 		monitorCmd.Flags().StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of OpenSVC agent cluster")
 		monitorCmd.Flags().BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
-		monitorCmd.Flags().StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
-		monitorCmd.Flags().StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
-			monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "onpromise", "onpromise|opensvc|kube|slapos|local")
 			monitorCmd.Flags().StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			monitorCmd.Flags().StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
 			monitorCmd.Flags().StringVar(&conf.ProvAdminUser, "opensvc-admin-user", "root@signal18.io:opensvc", "OpenSVC collector admin user")

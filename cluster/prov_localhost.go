@@ -152,7 +152,21 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	}
 
 	cluster.LogPrintf(LvlInfo, "init fresh datadir done: %s", out.Bytes())
-	err = cluster.LocalhostStartDatabaseService(server)
+	if server.Id == "" {
+		_, err := os.Stat(server.Id)
+		if err != nil {
+			cluster.LogPrintf("TEST", "Found no os process continue with start ")
+		}
+
+	}
+
+	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+			return err
+		}*/
+
+	err = cluster.LocalhostStartDatabaseServiceFistTime(server)
 	if err != nil {
 		return err
 	}
@@ -172,8 +186,130 @@ func (cluster *Cluster) LocalhostStopDatabaseService(server *ServerMonitor) erro
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) error {
+func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMonitor) error {
 
+	if server.Id == "" {
+		_, err := os.Stat(server.Id)
+		if err != nil {
+			cluster.LogPrintf("TEST", "Found no os process continue with start ")
+		}
+
+	}
+	path := server.Datadir + "/var"
+	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+			return err
+		}*/
+	usr, err := user.Current()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "%s", err)
+		return err
+	}
+	//	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
+	time.Sleep(time.Millisecond * 2000)
+	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
+	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+
+	var out bytes.Buffer
+	mariadbdCmd.Stdout = &out
+
+	go func() {
+		err = mariadbdCmd.Run()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s ", err)
+		}
+		fmt.Printf("Command finished with error: %v", err)
+	}()
+	exitloop := 0
+	time.Sleep(time.Millisecond * 4000)
+	for exitloop < 30 {
+		haveerror := false
+		time.Sleep(time.Millisecond * 2000)
+		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
+		cluster.LogPrintf(LvlInfo, "Waiting database first start   .. %s", out)
+		dsn := "root:@unix(" + server.Datadir + "/" + server.Id + ".sock)/?timeout=15s"
+		conn, err2 := sqlx.Open("mysql", dsn)
+		if err2 == nil {
+			defer conn.Close()
+			_, err := conn.Exec("set sql_log_bin=0")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
+			}
+			_, err = conn.Exec("delete from mysql.user where password=''")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "delete from mysql.user where password=''", err)
+			}
+			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			cluster.LogPrintf(LvlInfo, "%s", grants)
+			grants = "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'localhost' identified by '" + server.ClusterGroup.rplPass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			cluster.LogPrintf(LvlInfo, "%s", grants)
+			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'%' identified by '" + server.ClusterGroup.rplPass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'127.0.0.1' identified by '" + server.ClusterGroup.rplPass + "'"
+			_, err = conn.Exec(grants)
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
+			}
+			_, err = conn.Exec("flush privileges")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "flush privileges", err)
+			}
+
+			if !haveerror {
+				exitloop = 100
+			}
+		} else {
+			cluster.LogPrintf(LvlErr, "Database connection to init user  %s ", err2)
+		}
+		exitloop++
+
+	}
+	if exitloop == 101 {
+		cluster.LogPrintf(LvlInfo, "Database started.")
+
+	} else {
+		cluster.LogPrintf(LvlInfo, "Database timeout.")
+		return errors.New("Failed to start")
+	}
+
+	//	mariadbdCmd.Process.Release()
+
+	return nil
+}
+
+func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) error {
+	server.GetMyConfig()
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)
 		if err != nil {
@@ -211,52 +347,15 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	exitloop := 0
 	time.Sleep(time.Millisecond * 4000)
 	for exitloop < 30 {
-		haveerror := false
+
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
 		cluster.LogPrintf(LvlInfo, "Waiting database startup .. %s", out)
-		dsn := "root:@unix(" + server.Datadir + "/" + server.Id + ".sock)/?timeout=15s"
-		conn, err2 := sqlx.Open("mysql", dsn)
+		conn, err2 := sqlx.Open("mysql", server.DSN)
 		if err2 == nil {
 			defer conn.Close()
-			err, _ := conn.Exec("set sql_log_bin=0")
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
-			}
-			err, _ = conn.Exec("delete from mysql.user where password=''")
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", "delete from mysql.user where password=''", err)
-			}
-			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
-			err, _ = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
-			}
-			cluster.LogPrintf(LvlInfo, "%s", grants)
-			grants = "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
-			err, _ = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
-			}
-			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
-			err, _ = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
-			}
-			err, _ = conn.Exec("flush privileges")
-			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", "flush privileges", err)
-			}
+			exitloop = 100
 
-			if !haveerror {
-				exitloop = 100
-			}
 		} else {
 			cluster.LogPrintf(LvlErr, "Database connection to init user  %s ", err2)
 		}

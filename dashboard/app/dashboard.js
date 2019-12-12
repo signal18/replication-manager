@@ -125,7 +125,7 @@ function (
             $scope.settings = data;
             $scope.plans =	$scope.settings.servicePlans;
             $scope.orchestrators =	$scope.settings.serviceOrchestrators;
-            $scope.selectedPlan = $scope.plans[13];
+            $scope.selectedPlan = $scope.plans[12];
             $scope.selectedOrchestrator= $scope.orchestrators[3];
             $scope.$scope.selectedPlanName=  $scope.selectedPlan.plan;
 
@@ -752,11 +752,11 @@ function (
       };
 
       $scope.rolling = function (fail) {
-        if (fail) {
           if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
-        } else {
-          if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
-        }
+      };
+
+      $scope.rotationkeys = function () {
+        if (confirm("Confirm rotation certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/rotatekeys');
       };
 
       $scope.clbootstrap = function (topo) {

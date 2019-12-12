@@ -9,13 +9,98 @@ package cluster
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/misc"
 )
+
+func (cluster *Cluster) loadDBCertificates(path string) error {
+	rootCertPool := x509.NewCertPool()
+	var cacertfile, clicertfile, clikeyfile string
+
+	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
+		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.HaveDBTag("ssl") {
+			cacertfile = path + "/ca-cert.pem"
+			clicertfile = path + "/client-cert.pem"
+			clikeyfile = path + "/client-key.pem"
+		} else {
+			return errors.New("No given Key certificate")
+		}
+
+	} else {
+		cacertfile = cluster.Conf.HostsTLSCA
+		clicertfile = cluster.Conf.HostsTLSCLI
+		clikeyfile = cluster.Conf.HostsTLSKEY
+	}
+	pem, err := ioutil.ReadFile(cacertfile)
+	if err != nil {
+		return errors.New("Can not load database TLS Authority CA")
+	}
+	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
+		return errors.New("Failed to append PEM.")
+	}
+	clientCert := make([]tls.Certificate, 0, 1)
+	certs, err := tls.LoadX509KeyPair(clicertfile, clikeyfile)
+	if err != nil {
+		return errors.New("Can not load database TLS X509 key pair")
+	}
+
+	clientCert = append(clientCert, certs)
+	cluster.tlsconf = &tls.Config{
+		RootCAs:            rootCertPool,
+		Certificates:       clientCert,
+		InsecureSkipVerify: true,
+	}
+	return nil
+}
+
+func (cluster *Cluster) loadDBOldCertificates(path string) error {
+	rootCertPool := x509.NewCertPool()
+	var cacertfile, clicertfile, clikeyfile string
+
+	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
+		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.HaveDBTag("ssl") {
+			cacertfile = path + "/ca-cert.pem"
+			clicertfile = path + "/client-cert.pem"
+			clikeyfile = path + "/client-key.pem"
+		} else {
+			return errors.New("No given Key certificate")
+		}
+
+	} else {
+		cacertfile = cluster.Conf.HostsTLSCA
+		clicertfile = cluster.Conf.HostsTLSCLI
+		clikeyfile = cluster.Conf.HostsTLSKEY
+	}
+	pem, err := ioutil.ReadFile(cacertfile)
+	if err != nil {
+		return errors.New("Can not load database TLS Authority CA")
+	}
+	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
+		return errors.New("Failed to append PEM.")
+	}
+	clientCert := make([]tls.Certificate, 0, 1)
+	certs, err := tls.LoadX509KeyPair(clicertfile, clikeyfile)
+	if err != nil {
+		return errors.New("Can not load database TLS X509 key pair")
+	}
+
+	clientCert = append(clientCert, certs)
+	cluster.tlsoldconf = &tls.Config{
+		RootCAs:            rootCertPool,
+		Certificates:       clientCert,
+		InsecureSkipVerify: true,
+	}
+	return nil
+}
 
 func (cluster *Cluster) createKeys() error {
 
@@ -169,5 +254,31 @@ func (cluster *Cluster) certToFile(filename string, derBytes []byte) {
 			cluster.LogPrintf(LvlErr, "Error closing cert.pem: %s", err)
 		}
 		return
+	}
+}
+
+func (cluster *Cluster) KeyRotation() {
+	//os.RemoveAll(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs")
+	cluster.LogPrintf(LvlInfo, "Cluster rotate certificats")
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs"); os.IsNotExist(err) {
+		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs", os.ModePerm)
+	}
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-cert.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/ca-cert.pem")
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-key.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/ca-key.pem")
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-cert.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/server-cert.pem")
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-key.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/server-key.pem")
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-cert.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/client-cert.pem")
+	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-key.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/client-key.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-cert.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/server-cert.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/server-key.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-cert.pem")
+	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-key.pem")
+	cluster.createKeys()
+	cluster.tlsoldconf = cluster.tlsconf
+	cluster.HaveDBTLSOldCert = true
+	for _, srv := range cluster.Servers {
+		srv.SetDSN()
 	}
 }

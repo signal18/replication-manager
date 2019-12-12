@@ -1,0 +1,58 @@
+  <md-card ng-if="selectedCluster">
+     <table style="" ng-if="settings" md-table class="table md-primary md-data-table">
+         <tr md-row>
+             <th>Database Configurator</th>
+
+         </tr>
+
+     </table>
+       <div style="padding: 0px 20px 10px 4px;">
+         <b><u>Available</u></b><br>
+         <span  ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                    class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span> </div>
+
+
+ <BR>
+     <div style="padding: 0px 20px 10px 4px;">
+       <b><u>Using</u></b><br>
+       <span ng-click="cldropdbtag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.dbServersTags"
+                                                    class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="cldropdbtag(tag)"></i></span></div>
+       <b><u>Ressources</u></b><br>
+ <table><tr><td>
+   <ng-gauge type="arch" value="selectedCluster.config.provDbMemory" thick="5" size="120"   min="1" max="25600"  cap="round" append="MB" label="Memory" />
+ </td><td>
+   <span  ng-click="clsetdbmem(selectedCluster.config.provDbMemory,256)" style="display:inline-block;margin: 2px;"
+                                               class="label label-success">256MB <i class="fa fa-plus-circle" ng-click="clsetdbmem(selectedCluster.config.provDbMemory,256)"></i></span>
+ <BR>
+  <span  ng-click="clsetdbmem(selectedCluster.config.provDbMemory,-256)" style="display:inline-block;margin: 2px;"
+                                             class="label label-danger">256MB <i class="fa fa-minus-circle" ng-click="clsetdbmem(selectedCluster.config.provDbMemory,-256)"></i></span>
+   </td><td>
+   <ng-gauge type="arch" value="selectedCluster.config.provDbDiskSize" thick="5" size="120"   min="1" max="10000"  cap="round" append="gB" label="Disk Size" />
+   </td><td>
+     <span  ng-click="clsetdbdisk(selectedCluster.config.provDbDiskSize,10)" style="display:inline-block;margin: 2px;"
+                                                 class="label label-success">10gB <i class="fa fa-plus-circle" ></i></span>
+   <BR>
+    <span  ng-click="clsetdbdisk(selectedCluster.config.provDbDiskSize,-10)" style="display:inline-block;margin: 2px;"
+                                               class="label label-danger">10gB <i class="fa fa-minus-circle" ></i></span>
+     </td><td>
+   <ng-gauge type="arch" value="selectedCluster.config.provDbDiskIops" thick="5" size="120"   min="1" max="100000"  cap="round" label="Disk IO/s" />
+ </td><td>
+   <span  ng-click="clsetdbio(selectedCluster.config.provDbDiskIops,100)" style="display:inline-block;margin: 2px;"
+                                               class="label label-success">100 <i class="fa fa-plus-circle" ng-click="clsetdbio(selectedCluster.config.provDbDiskIops,+100)"></i></span>
+ <BR>
+  <span  ng-click="clsetdbio(selectedCluster.config.provDbDiskIops,-100)" style="display:inline-block;margin: 2px;"
+                                             class="label label-danger">100 <i class="fa fa-minus-circle" ng-click="clsetdbio(selectedCluster.config.provDbDiskIops,-100)"></i></span>
+   </td><td>
+   <ng-gauge type="arch" value="selectedCluster.config.provDbCpuCores" thick="5" size="120"   min="1" max="256"  cap="round" label="Cores" />
+   </td></td><td>
+     <span  ng-click="clsetdbcore(selectedCluster.config.provDbCpuCores,1)" style="display:inline-block;margin: 2px;"
+                                                 class="label label-success">1 <i class="fa fa-plus-circle" ng-click="clsetdbcore(selectedCluster.config.provDbCpuCores,+1)"></i></span>
+   <BR>
+    <span  ng-click="clsetdbcore(selectedCluster.config.provDbCpuCores,-1)" style="display:inline-block;margin: 2px;"
+                                               class="label label-danger">1 <i class="fa fa-minus-circle" ng-click="clsetdbcore(selectedCluster.config.provDbCpuCores,-1)"></i></span>
+
+
+
+     </tr></table>
+ </md-card>
+ 

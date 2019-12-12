@@ -29,6 +29,9 @@
                 <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Settings')" md-select-id="Settings" md-on-select="onTabSelected" label="Settings">
                     <div ng-include src="'static/tab-cluster-settings.html'"></div>
                 </md-tab>
+                <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Configs')" md-select-id="Settings" md-on-select="onTabSelected" label="Configs">
+                    <div ng-include src="'static/tab-cluster-configs.html'"></div>
+                </md-tab>
                 <md-tab md-select-id="Graphs" ng-click="onTabClicked('Graphs')"  md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && settings.config.graphiteMetrics && selectedCluster.apiUsers[user].grants['cluster-show-graphs']==true">
                     <div ng-include src="'static/tab-cluster-graphs.html'"></div>
                 </md-tab>

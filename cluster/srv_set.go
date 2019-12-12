@@ -79,23 +79,11 @@ func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
 }
 
-func (server *ServerMonitor) SetCredential(url string, user string, pass string) {
-	var err error
-	server.User = user
-	server.Pass = pass
-	server.URL = url
-	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
-	if err != nil {
-		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
-	}
-	if server.PostgressDB == "" {
-		server.PostgressDB = "test"
-	}
+func (server *ServerMonitor) SetDSN() {
 	pgdsn := func() string {
 		dsn := ""
 		//push the password at the end because empty password may consider next parameter is paswword
-		if server.ClusterGroup.haveDBTLSCert {
+		if server.ClusterGroup.HaveDBTLSCert {
 			dsn += "sslmode=enable"
 		} else {
 			dsn += "sslmode=disable"
@@ -111,7 +99,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 		if server.ClusterGroup.Conf.TunnelHost != "" {
 			dsn += "tcp(127.0.0.1:" + server.TunnelPort + ")/" + params
 		} else if server.Host != "" {
-			//don't use IP as it can change under orchestration
+			//don't use IP as it can change under orchestrator
 			//	if server.IP != "" {
 			//		dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
 			//	} else {
@@ -120,8 +108,8 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 		} else {
 			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
 		}
-		if server.ClusterGroup.haveDBTLSCert {
-			dsn += "&tls=tlsconfig"
+		if server.ClusterGroup.HaveDBTLSCert {
+			dsn += server.TLSConfigUsed
 		}
 		return dsn
 	}
@@ -129,10 +117,29 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 		server.DSN = pgdsn()
 	} else {
 		server.DSN = mydsn()
-		if server.ClusterGroup.haveDBTLSCert {
-			mysql.RegisterTLSConfig("tlsconfig", server.ClusterGroup.tlsconf)
+		if server.ClusterGroup.HaveDBTLSCert {
+			mysql.RegisterTLSConfig(ConstTLSCurrentConfig, server.ClusterGroup.tlsconf)
+			if server.ClusterGroup.HaveDBTLSOldCert {
+				mysql.RegisterTLSConfig(ConstTLSOldConfig, server.ClusterGroup.tlsoldconf)
+			}
 		}
 	}
+}
+
+func (server *ServerMonitor) SetCredential(url string, user string, pass string) {
+	var err error
+	server.User = user
+	server.Pass = pass
+	server.URL = url
+	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
+	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	if err != nil {
+		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
+	}
+	if server.PostgressDB == "" {
+		server.PostgressDB = "test"
+	}
+	server.SetDSN()
 
 }
 

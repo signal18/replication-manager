@@ -105,6 +105,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxFailover)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/rotatekeys", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRotateKeys)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -259,7 +263,9 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		}
 
 		for i := range srvs {
-			srvs[i].Pass = "XXXXXXXX"
+			if srvs[i] != nil {
+				srvs[i].Pass = "XXXXXXXX"
+			}
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
@@ -359,6 +365,24 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 		http.Error(w, "No cluster", 500)
 		return
 	}
+}
+
+func (repman *ReplicationManager) handlerMuxRotateKeys(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.KeyRotation()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
 }
 
 func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
@@ -1428,13 +1452,14 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetMaster().GetDictTables())
-		if err != nil {
-			http.Error(w, "Encoding error in settings", 500)
-			return
+		if mycluster.GetMaster() != nil {
+			err := e.Encode(mycluster.GetMaster().GetDictTables())
+			if err != nil {
+				http.Error(w, "Encoding error in settings", 500)
+				return
+			}
 		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}

@@ -39,21 +39,20 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id          string   `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name        string   `json:"name"`
-	ServiceName string   `json:"serviceName"`
-	Conn        *sqlx.DB `json:"-"`
-	User        string   `json:"user"`
-	Pass        string   `json:"-"`
-	URL         string   `json:"url"`
-	DSN         string   `json:"dsn"`
-	Host        string   `json:"host"`
-	Port        string   `json:"port"`
-	TunnelPort  string   `json:"tunnelPort"`
-	IP          string   `json:"ip"`
-	Strict      string   `json:"strict"`
-	ServerID    uint64   `json:"serverId"`
-
+	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Name                        string                       `json:"name"`
+	ServiceName                 string                       `json:"serviceName"`
+	Conn                        *sqlx.DB                     `json:"-"`
+	User                        string                       `json:"user"`
+	Pass                        string                       `json:"-"`
+	URL                         string                       `json:"url"`
+	DSN                         string                       `json:"dsn"`
+	Host                        string                       `json:"host"`
+	Port                        string                       `json:"port"`
+	TunnelPort                  string                       `json:"tunnelPort"`
+	IP                          string                       `json:"ip"`
+	Strict                      string                       `json:"strict"`
+	ServerID                    uint64                       `json:"serverId"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
 	SlaveGtid                   *gtid.List                   `json:"slaveGtid"`
@@ -155,6 +154,7 @@ type ServerMonitor struct {
 	Datadir                     string                       `json:"-"`
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
+	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 }
 
 type serverList []*ServerMonitor
@@ -180,11 +180,18 @@ const (
 	stateWsrepLate   string = "WsrepLate"
 )
 
+const (
+	ConstTLSNoConfig      string = ""
+	ConstTLSOldConfig     string = "&tls=tlsconfigold"
+	ConstTLSCurrentConfig string = "&tls=tlsconfig"
+)
+
 /* Initializes a server object */
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 	var err error
 
 	server := new(ServerMonitor)
+	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
 	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")

@@ -9,7 +9,10 @@
 
 package config
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
 
 type Config struct {
 	Version                             string `mapstructure:"-" toml:"-" json:"-"`
@@ -276,6 +279,7 @@ type Config struct {
 	ProvUser                                  string `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvOrchestrator                          string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
+	ProvOrchestratorEnable                    string `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvDBServerPath                          string `mapstructure:"prov-db-localhost-binary-path" toml:"prov-db-localhost-binary-path" json:"provDbLocalhostBinaryPath"`
 	ProvType                                  string `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
@@ -480,6 +484,7 @@ const (
 	GrantClusterChecksum         string = "cluster-checksum"
 	GrantClusterSharding         string = "cluster-sharding"
 	GrantClusterReplication      string = "cluster-replication"
+	GrantClusterRotateKey        string = "cluster-rotate-keys"
 	GrantClusterBench            string = "cluster-bench"
 	GrantClusterTest             string = "cluster-test"
 	GrantClusterTraffic          string = "cluster-traffic"
@@ -519,67 +524,31 @@ func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
 		ConfigVariableType{
 			Id:        1,
 			Name:      ConstOrchestratorOpenSVC,
-			Available: true,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorOpenSVC),
 			Label:     "",
 		},
 		ConfigVariableType{
 			Id:        2,
 			Name:      ConstOrchestratorKubernetes,
-			Available: true,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorKubernetes),
 			Label:     "",
 		},
 		ConfigVariableType{
 			Id:        3,
 			Name:      ConstOrchestratorSlapOS,
-			Available: false,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorSlapOS),
 			Label:     "",
 		},
 		ConfigVariableType{
 			Id:        4,
 			Name:      ConstOrchestratorLocalhost,
-			Available: true,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorLocalhost),
 			Label:     "",
 		},
 		ConfigVariableType{
 			Id:        5,
 			Name:      ConstOrchestratorOnPremise,
-			Available: true,
-			Label:     "",
-		},
-	}
-}
-
-func (conf *Config) GetOrchestratorsOsc() []ConfigVariableType {
-
-	return []ConfigVariableType{
-		ConfigVariableType{
-			Id:        1,
-			Name:      ConstOrchestratorOpenSVC,
-			Available: false,
-			Label:     "",
-		},
-		ConfigVariableType{
-			Id:        2,
-			Name:      ConstOrchestratorKubernetes,
-			Available: false,
-			Label:     "",
-		},
-		ConfigVariableType{
-			Id:        3,
-			Name:      ConstOrchestratorSlapOS,
-			Available: false,
-			Label:     "",
-		},
-		ConfigVariableType{
-			Id:        4,
-			Name:      ConstOrchestratorLocalhost,
-			Available: true,
-			Label:     "",
-		},
-		ConfigVariableType{
-			Id:        5,
-			Name:      ConstOrchestratorOnPremise,
-			Available: true,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorOnPremise),
 			Label:     "",
 		},
 	}
@@ -687,6 +656,7 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantClusterReplication:      GrantClusterReplication,
 		GrantClusterChecksum:         GrantClusterChecksum,
 		GrantClusterSharding:         GrantClusterSharding,
+		GrantClusterRotateKey:        GrantClusterRotateKey,
 		GrantClusterBench:            GrantClusterBench,
 		GrantClusterTest:             GrantClusterTest,
 		GrantClusterTraffic:          GrantClusterTraffic,

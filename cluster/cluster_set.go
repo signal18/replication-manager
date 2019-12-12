@@ -229,13 +229,22 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 func (cluster *Cluster) SetClusterVariablesFromConfig() {
 	cluster.DBTags = cluster.GetDatabaseTags()
 	cluster.ProxyTags = cluster.GetProxyTags()
-	err := cluster.loadDBCertificate()
+	var err error
+	err = cluster.loadDBCertificates(cluster.Conf.WorkingDir + "/" + cluster.Name)
 	if err != nil {
-		cluster.haveDBTLSCert = false
+		cluster.HaveDBTLSCert = false
 		cluster.LogPrintf(LvlInfo, "No database TLS certificates")
 	} else {
-		cluster.haveDBTLSCert = true
+		cluster.HaveDBTLSCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS certificates correctly loaded")
+	}
+	err = cluster.loadDBOldCertificates(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs")
+	if err != nil {
+		cluster.HaveDBTLSOldCert = false
+		cluster.LogPrintf(LvlInfo, "No database previous TLS certificates")
+	} else {
+		cluster.HaveDBTLSOldCert = true
+		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
 	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
@@ -373,11 +382,20 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+			if cluster.Conf.User == "" {
+				cluster.LogPrintf(LvlInfo, "Settting database root credential to admin:repman ")
+				cluster.Conf.User = "admin:repman"
+			}
+			if cluster.Conf.RplUser == "" {
+				cluster.LogPrintf(LvlInfo, "Settting database replication credential to repl:repman ")
+				cluster.Conf.RplUser = "repl:repman"
+			}
 			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
 			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 				cluster.DropDBTag("docker")
 				cluster.DropDBTag("threadpool")
 				cluster.AddDBTag("pkg")
+				cluster.Conf.ProvNetCNI = false
 			}
 			srvcount, err := strconv.Atoi(string(strings.TrimPrefix(theplan, "x")[0]))
 			if err != nil {
@@ -388,13 +406,19 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				cluster.LogPrintf(LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
 				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 					port, err := cluster.LocalhostGetFreePort()
-					cluster.LogPrintf(LvlInfo, "adding 127.0.0.1", port, err)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Adding DB monitor on 127.0.0.1 %s", err)
+					} else {
+						cluster.LogPrintf(LvlInfo, "Adding DB monitor 127.0.0.1:%s", port)
+					}
 					hosts = append(hosts, "127.0.0.1:"+port)
-				} else {
+				} else if cluster.Conf.ProvOrchestrator != config.ConstOrchestratorOnPremise {
 					hosts = append(hosts, "db"+strconv.Itoa(i))
 				}
 			}
+			//	cluster.LogPrintf(LvlErr, strings.Join(hosts, ","))
 			cluster.SetDbServerHosts(strings.Join(hosts, ","))
+			cluster.SetClusterVariablesFromConfig()
 			cluster.sme.SetFailoverState()
 			cluster.newServerList()
 			cluster.TopologyDiscover()
@@ -432,6 +456,15 @@ func (cluster *Cluster) SetDbServerHosts(value string) error {
 }
 
 func (cluster *Cluster) SetProvOrchestrator(value string) error {
-	cluster.Conf.ProvOrchestrator = value
+	orchetrators := cluster.Conf.GetOrchestratorsProv()
+	for _, orch := range orchetrators {
+		if orch.Name == value {
+			cluster.LogPrintf(LvlInfo, "Cluster orchestrator set to %s", orch.Name)
+			cluster.Conf.ProvOrchestrator = value
+			return nil
+		}
+	}
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
+	cluster.LogPrintf(LvlErr, "Cluster orchestrator set to default %s", config.ConstOrchestratorOnPremise)
 	return nil
 }

@@ -188,6 +188,9 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
+	if cluster.Conf.Hosts == "" {
+		return nil
+	}
 	for _, server := range cluster.Servers {
 		if cluster.Conf.LogLevel > 2 {
 			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.Conf.PrefMaster)
@@ -321,6 +324,9 @@ func (cluster *Cluster) GetFirstWorkingSlave() *ServerMonitor {
 func (cluster *Cluster) GetDBServerIdList() []string {
 	cluster.Lock()
 	ret := make([]string, len(cluster.Servers))
+	if cluster.Conf.Hosts == "" {
+		return ret
+	}
 	for i, server := range cluster.Servers {
 		ret[i] = server.Id
 	}

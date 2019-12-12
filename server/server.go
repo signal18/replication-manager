@@ -451,11 +451,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(80)
 	repman.InitServicePlans()
-	if repman.Conf.Enterprise {
-		repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
-	} else {
-		repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsOsc()
-	}
+	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
+
 	go repman.apiserver()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {

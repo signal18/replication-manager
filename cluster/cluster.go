@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,8 +114,10 @@ type Cluster struct {
 	testStartCluster     bool                     `json:"-"`
 	lastmaster           *ServerMonitor           `json:"-"`
 	benchmarkType        string                   `json:"-"`
-	haveDBTLSCert        bool                     `json:"-"`
+	HaveDBTLSCert        bool                     `json:"haveDBTLSCert"`
+	HaveDBTLSOldCert     bool                     `json:"haveDBTLSOldCert"`
 	tlsconf              *tls.Config              `json:"-"`
+	tlsoldconf           *tls.Config              `json:"-"`
 	scheduler            *cron.Cron               `json:"-"`
 	tunnel               *ssh.Client              `json:"-"`
 	DBModule             config.Compliance        `json:"-"`
@@ -620,47 +621,6 @@ func (cluster *Cluster) FailoverForce() error {
 
 func (cluster *Cluster) SwitchOver() {
 	cluster.switchoverChan <- true
-}
-
-// Deprecated tentative to auto generate self signed certificates
-func (cluster *Cluster) loadDBCertificate() error {
-	rootCertPool := x509.NewCertPool()
-	var cacertfile, clicertfile, clikeyfile string
-
-	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
-		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.HaveDBTag("ssl") {
-			cacertfile = cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-cert.pem"
-			clicertfile = cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-cert.pem"
-			clikeyfile = cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-key.pem"
-		} else {
-			return errors.New("No given Key certificate")
-		}
-
-	} else {
-		cacertfile = cluster.Conf.HostsTLSCA
-		clicertfile = cluster.Conf.HostsTLSCLI
-		clikeyfile = cluster.Conf.HostsTLSKEY
-	}
-	pem, err := ioutil.ReadFile(cacertfile)
-	if err != nil {
-		return errors.New("Can not load database TLS Authority CA")
-	}
-	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
-		return errors.New("Failed to append PEM.")
-	}
-	clientCert := make([]tls.Certificate, 0, 1)
-	certs, err := tls.LoadX509KeyPair(clicertfile, clikeyfile)
-	if err != nil {
-		return errors.New("Can not load database TLS X509 key pair")
-	}
-
-	clientCert = append(clientCert, certs)
-	cluster.tlsconf = &tls.Config{
-		RootCAs:            rootCertPool,
-		Certificates:       clientCert,
-		InsecureSkipVerify: true,
-	}
-	return nil
 }
 
 func (cluster *Cluster) Close() {
