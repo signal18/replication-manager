@@ -544,9 +544,9 @@ func (repman *ReplicationManager) Run() error {
 
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
 	var c *cluster.Cluster
-	repman.Lock()
+	//	repman.Lock()
 	c = repman.Clusters[clname]
-	repman.Unlock()
+	//	repman.Unlock()
 	return c
 }
 
@@ -591,11 +591,11 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 	var myconf = make(map[string]config.Config)
 
 	myconf[clusterName] = repman.Conf
-	repman.Lock()
+	//	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
 	repman.ClusterList = repman.ClusterList
 	repman.Confs[clusterName] = repman.Conf
-	repman.Unlock()
+	//	repman.Unlock()
 	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		if os.IsPermission(err) {

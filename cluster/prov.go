@@ -236,6 +236,21 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
+func (cluster *Cluster) GetOchestaratorPlacement(server *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
+	switch cluster.Conf.ProvOrchestrator {
+	case config.ConstOrchestratorOpenSVC:
+		return cluster.OpenSVCStartDatabaseService(server)
+	case config.ConstOrchestratorKubernetes:
+		cluster.K8SStartDatabaseService(server)
+	case config.ConstOrchestratorSlapOS:
+		cluster.SlapOSStartDatabaseService(server)
+	default:
+		return cluster.LocalhostStartDatabaseService(server)
+	}
+	return nil
+}
+
 func (cluster *Cluster) StartAllNodes() error {
 
 	return nil
