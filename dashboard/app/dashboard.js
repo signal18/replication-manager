@@ -53,7 +53,7 @@ function (
   $scope.missingProxyTags = undefined;
   var promise = undefined;
 
-  $scope.user = "" ;
+  $scope.user = undefined ;
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },

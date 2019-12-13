@@ -251,21 +251,21 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigCreate] {
-		if strings.Contains(URL, "/kill") {
-			return true
+	/*	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigCreate] {
+			if strings.Contains(URL, "/kill") {
+				return true
+			}
 		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigGet] {
-		if strings.Contains(URL, "/kill") {
-			return true
+		if cluster.APIUsers[strUser].Grants[config.GrantDBConfigGet] {
+			if strings.Contains(URL, "/kill") {
+				return true
+			}
 		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
-		if strings.Contains(URL, "/kill") {
-			return true
-		}
-	}
+		if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
+			if strings.Contains(URL, "/kill") {
+				return true
+			}
+		}*/
 	if cluster.APIUsers[strUser].Grants[config.GrantDBShowVariables] {
 		if strings.Contains(URL, "/variables") {
 			return true
@@ -319,6 +319,7 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	cluster.LogPrintf(LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
 
 	return false
 }
