@@ -53,7 +53,7 @@ function (
   $scope.missingProxyTags = undefined;
   var promise = undefined;
 
-  $scope.user = AppService.getUser();
+  $scope.user = "" ;
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -78,6 +78,8 @@ function (
     $scope.isLoggedIn = AppService.hasAuthHeaders();
     if (!$scope.isLoggedIn) {
       $location.path('login');
+    } else {
+      $scope.user = AppService.getUser();
     }
 
     $scope.logout = function () {
