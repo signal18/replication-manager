@@ -7,6 +7,7 @@ package opensvc
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/md5"
 	"crypto/tls"
@@ -24,6 +25,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
@@ -1051,7 +1053,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	return nil
 }
 
-func (collector *Collector) GetNodes() []Host {
+func (collector *Collector) GetNodes() ([]Host, error) {
 
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
 	if !collector.UseAPI {
@@ -1061,24 +1063,28 @@ func (collector *Collector) GetNodes() []Host {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return nil
+		return nil, err
 	}
 	if collector.UseAPI {
 		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+		log.Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
 	} else {
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("o-node", "*")
 	}
-	resp, err := client.Do(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		log.Println("ERROR client.Do", err, resp)
-		return nil
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR Read Result", err)
-		return nil
+		return nil, err
 	}
 	if collector.Verbose > 0 {
 		log.Println("INFO ", string(body))
@@ -1092,13 +1098,13 @@ func (collector *Collector) GetNodes() []Host {
 		err = json.Unmarshal(body, &r)
 		if err != nil {
 			log.Println("ERROR ", err)
-			return nil
+			return nil, err
 		}
 		for i, agent := range r.Data {
 			r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
 			r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
 		}
-		return r.Data
+		return r.Data, nil
 	}
 
 	//Procedd with cluster VIP
@@ -1129,7 +1135,7 @@ func (collector *Collector) GetNodes() []Host {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		log.Println("ERROR ", err)
-		return nil
+		return nil, err
 	}
 	crcTable := crc64.MakeTable(crc64.ECMA)
 
@@ -1148,7 +1154,7 @@ func (collector *Collector) GetNodes() []Host {
 		//		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
 		i++
 	}
-	return nhosts
+	return nhosts, nil
 
 }
 

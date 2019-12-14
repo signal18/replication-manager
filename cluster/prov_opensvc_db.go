@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
@@ -242,8 +243,10 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host
 	svc := cluster.OpenSVCConnect()
-	agents := svc.GetNodes()
-
+	agents, err := svc.GetNodes()
+	if err != nil {
+		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+	}
 	if agents == nil {
 		return agent, errors.New("Error getting OpenSVC node list")
 	}

@@ -76,7 +76,10 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 
 func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	svc := cluster.OpenSVCConnect()
-	hosts := svc.GetNodes()
+	hosts, err := svc.GetNodes()
+	if err != nil {
+		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+	}
 	if hosts == nil {
 		cluster.LogPrintf(LvlErr, "Can't Get Opensvc Agent list")
 		return nil, errors.New("Can't Get Opensvc Agent list")

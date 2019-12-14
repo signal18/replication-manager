@@ -89,6 +89,7 @@ var clusterError = map[string]string{
 	"ERR00079": "Disk %s usage high on %s",
 	"ERR00080": "Connection use old TLS keys on %s",
 	"ERR00081": "Connection use no TLS keys on %s",
+	"ERR00082": "Error fetch agents from orchestrator %s",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
