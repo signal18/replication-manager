@@ -45,7 +45,9 @@ func (cluster *Cluster) newServerList() error {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
 	}
+	//cluster.LogPrintf(LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
+	//cluster.LogPrintf(LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 	if cluster.Conf.Hosts != "" {
@@ -336,7 +338,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
 
-	if cluster.IsProvision() {
+	if cluster.HasAllDbUp() {
 		if len(cluster.Crashes) > 0 {
 			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil

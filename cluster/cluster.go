@@ -48,7 +48,7 @@ type Cluster struct {
 	IsLostMajority       bool                     `json:"isLostMajority"`
 	IsDown               bool                     `json:"isDown"`
 	IsClusterDown        bool                     `json:"isClusterDown"`
-	IsProvisioned        bool                     `json:"isProvisioned"`
+	IsAllDbUp            bool                     `json:"isAllDbUp"`
 	IsFailable           bool                     `json:"isFailable"`
 	IsPostgres           bool                     `json:"isPostgres"`
 	Conf                 config.Config            `json:"config"`
@@ -125,7 +125,7 @@ type Cluster struct {
 	QueryRules           map[int]config.QueryRule `json:"-"`
 	Backups              []Backup                 `json:"-"`
 	APIUsers             map[string]APIUser       `json:"apiUsers"`
-	sync.Mutex           `json:"-"`
+	sync.Mutex
 }
 
 type ClusterSorter []*Cluster
@@ -495,17 +495,17 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
-		Servers       string    `json:"servers"`
-		Crashes       crashList `json:"crashes"`
-		SLA           state.Sla `json:"sla"`
-		IsProvisioned bool      `json:"provisioned"`
+		Servers   string    `json:"servers"`
+		Crashes   crashList `json:"crashes"`
+		SLA       state.Sla `json:"sla"`
+		IsAllDbUp bool      `json:"provisioned"`
 	}
 
 	var clsave Save
 	clsave.Crashes = cluster.Crashes
 	clsave.Servers = cluster.Conf.Hosts
 	clsave.SLA = cluster.sme.GetSla()
-	clsave.IsProvisioned = cluster.IsProvisioned
+	clsave.IsAllDbUp = cluster.IsAllDbUp
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)

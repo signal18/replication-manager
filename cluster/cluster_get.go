@@ -325,6 +325,7 @@ func (cluster *Cluster) GetDBServerIdList() []string {
 	cluster.Lock()
 	ret := make([]string, len(cluster.Servers))
 	if cluster.Conf.Hosts == "" {
+		cluster.Unlock()
 		return ret
 	}
 	for i, server := range cluster.Servers {

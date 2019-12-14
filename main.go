@@ -264,7 +264,8 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 
 	monitorCmd.Flags().StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
-	monitorCmd.Flags().StringVar(&conf.APIUsers, "api-credentials", "admin:repman,dba:repman,foo:bar", "Rest API user list user:password,..")
+	monitorCmd.Flags().StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
+	monitorCmd.Flags().StringVar(&conf.APIUsersExternal, "api-credentials-external", "dba:repman,foo:bar", "Rest API user list user:password,..")
 	monitorCmd.Flags().StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster proxy db prov,dba:cluster proxy db,foo:", "User acl allow")
 	monitorCmd.Flags().StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")

@@ -418,7 +418,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			}
 			//	cluster.LogPrintf(LvlErr, strings.Join(hosts, ","))
 			cluster.SetDbServerHosts(strings.Join(hosts, ","))
-			cluster.SetClusterVariablesFromConfig()
+
 			cluster.sme.SetFailoverState()
 			cluster.newServerList()
 			cluster.TopologyDiscover()
@@ -452,6 +452,7 @@ func (cluster *Cluster) SetMonitoringAddress(value string) error {
 
 func (cluster *Cluster) SetDbServerHosts(value string) error {
 	cluster.Conf.Hosts = value
+	cluster.hostList = strings.Split(value, ",")
 	return nil
 }
 

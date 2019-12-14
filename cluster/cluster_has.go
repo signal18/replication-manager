@@ -30,7 +30,7 @@ func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	return false
 }
 
-func (cluster *Cluster) IsProvision() bool {
+func (cluster *Cluster) HasAllDbUp() bool {
 	for _, s := range cluster.Servers {
 		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 			return false

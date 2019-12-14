@@ -1062,12 +1062,11 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
 		return nil, err
 	}
 	if collector.UseAPI {
 		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
-		log.Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
+		//		log.Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
 	} else {
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("o-node", "*")
@@ -1077,13 +1076,11 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
-		log.Println("ERROR client.Do", err, resp)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR Read Result", err)
 		return nil, err
 	}
 	if collector.Verbose > 0 {
@@ -1134,7 +1131,6 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
 		return nil, err
 	}
 	crcTable := crc64.MakeTable(crc64.ECMA)

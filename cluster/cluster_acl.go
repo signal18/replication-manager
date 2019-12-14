@@ -40,7 +40,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		cluster.LogPrintf(LvlInfo, "No existing password encryption scheme in LoadAPIUsers")
 		k = nil
 	}
-	credentials := strings.Split(cluster.Conf.APIUsers, ",")
+	credentials := strings.Split(cluster.Conf.APIUsers+","+cluster.Conf.APIUsersExternal, ",")
 	meUsers := make(map[string]APIUser)
 	for _, credential := range credentials {
 		var newapiuser APIUser

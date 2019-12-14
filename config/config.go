@@ -357,6 +357,7 @@ type Config struct {
 	ProvServicePlan                           string `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	APIUsers                                  string `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
+	APIUsersExternal                          string `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
 	APIUsersACLDiscard                        string `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
 	APIPort                                   string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`

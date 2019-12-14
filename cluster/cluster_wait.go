@@ -273,7 +273,7 @@ func (cluster *Cluster) waitDatabaseCanConn() error {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
 			exitloop++
-			if cluster.AllDatabaseCanConn() && cluster.IsProvision() {
+			if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() {
 				exitloop = 100
 			}
 

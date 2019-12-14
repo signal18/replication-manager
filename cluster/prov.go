@@ -79,7 +79,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	default:
 		err = cluster.LocalhostProvisionCluster()
 	}
-	cluster.IsProvisioned = true
+	cluster.IsAllDbUp = true
 	cluster.sme.RemoveFailoverState()
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func (cluster *Cluster) Unprovision() {
 	cluster.slaves = nil
 	cluster.master = nil
 	cluster.vmaster = nil
-	cluster.IsProvisioned = false
+	cluster.IsAllDbUp = false
 	cluster.sme.UnDiscovered()
 	cluster.sme.RemoveFailoverState()
 }
