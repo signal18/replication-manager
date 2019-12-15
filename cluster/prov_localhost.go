@@ -30,55 +30,10 @@ func readPidFromFile(pidfile string) (string, error) {
 	return string(bytes.TrimSpace(d)), nil
 }
 
-func (cluster *Cluster) LocalhostProvisionCluster() error {
-	err := cluster.LocalhostProvisionDatabases()
-	if err != nil {
-		return err
-	}
-
-	err = cluster.LocalhostProvisionProxies()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (cluster *Cluster) LocalhostProvisionProxies() error {
-
-	for _, prx := range cluster.Proxies {
-		err := cluster.LocalhostProvisionProxyService(prx)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (cluster *Cluster) LocalhostProvisionDatabases() error {
-	for _, server := range cluster.Servers {
-		cluster.LogPrintf(LvlInfo, "Starting Server %s", server.URL)
-
-		if server.State == stateFailed || server.State == stateSuspect {
-			cluster.LocalhostProvisionDatabaseService(server)
-		}
-	}
-	return nil
-
-}
-
-func (cluster *Cluster) LocalhostUnprovision() error {
-
-	for _, server := range cluster.Servers {
-		cluster.StopDatabaseService(server)
-	}
-	return nil
-}
-
 func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.LocalhostStopDatabaseService(server)
+	cluster.errorChan <- nil
 	return nil
-
 }
 
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
@@ -90,17 +45,26 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 		if err == nil {
 			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
 			//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
+			cluster.errorChan <- err
 			return nil
 		}
 		srv.ClusterGroup = cluster
 		err = cluster.LocalhostProvisionDatabaseService(srv)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
+			cluster.errorChan <- err
 			return err
 		}
 		srv.Close()
 		cluster.ShardProxyBootstrap(prx)
 	}
+	cluster.errorChan <- nil
+	return nil
+}
+
+func (cluster *Cluster) LocalhostUnprovisionProxyService(prx *Proxy) error {
+
+	cluster.errorChan <- nil
 	return nil
 }
 
@@ -115,6 +79,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	err := cmd.Run()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.errorChan <- err
 		return err
 	}
 	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
@@ -148,6 +113,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	if err != nil {
 		cluster.LogPrintf(LvlInfo, "init fresh datadir err: %s", out.Bytes())
 		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.errorChan <- err
 		return err
 	}
 
@@ -168,9 +134,11 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	err = cluster.LocalhostStartDatabaseServiceFistTime(server)
 	if err != nil {
+		cluster.errorChan <- err
 		return err
-	}
 
+	}
+	cluster.errorChan <- nil
 	return nil
 }
 

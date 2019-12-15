@@ -99,49 +99,6 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	return agents, nil
 }
 
-func (cluster *Cluster) OpenSVCUnprovision() {
-	//opensvc := cluster.OpenSVCConnect()
-	//agents := opensvc.GetNodes()
-
-	for _, db := range cluster.Servers {
-		go cluster.OpenSVCUnprovisionDatabaseService(db)
-
-	}
-	for _, db := range cluster.Servers {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovisionning error %s on  %s", err, db.Name)
-			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovisionning done for database %s", db.Name)
-			}
-		}
-	}
-
-	for _, prx := range cluster.Proxies {
-		go cluster.OpenSVCUnprovisionProxyService(prx)
-
-	}
-	for _, prx := range cluster.Proxies {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovisionning proxy error %s on  %s", err, prx.Name)
-			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovisionning done for proxy %s", prx.Name)
-			}
-		}
-	}
-
-}
-
-func (cluster *Cluster) OpenSVCProvisionCluster() error {
-
-	err := cluster.OpenSVCProvisionOneSrvPerDB()
-	err = cluster.OpenSVCProvisionProxies()
-	return err
-}
-
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
 	ct := 0
 	if idaction == 0 {

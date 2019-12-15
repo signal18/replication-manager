@@ -9,15 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (cluster *Cluster) K8SProvisionProxies() error {
-
-	for _, prx := range cluster.Proxies {
-		cluster.K8SProvisionProxyService(prx)
-	}
-
-	return nil
-}
-
 func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 	clientset, err := cluster.K8SConnectAPI()
 	if err != nil {
@@ -78,7 +69,7 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 }
 
 func (cluster *Cluster) K8SUnprovisionProxyService(prx *Proxy) {
-
+	cluster.errorChan <- nil
 }
 
 func (cluster *Cluster) K8SStartProxyService(server *Proxy) error {

@@ -6,27 +6,17 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
+
 package cluster
 
 import (
+	"fmt"
 	"os"
-	"strings"
 )
 
-func (proxy *Proxy) IsFilterInTags(filter string) bool {
-	tags := proxy.ClusterGroup.GetProxyTags()
-	for _, tag := range tags {
-		if strings.Contains(filter, "."+tag) {
-			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
-			return true
-		}
+func (server *ServerMonitor) DelProvisionCookie() {
+	err := os.Remove(server.Datadir + "/@cookie_prov")
+	if err != nil {
+		fmt.Println("Error:", err)
 	}
-	return false
-}
-
-func (proxy *Proxy) HasProvisionCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
-		return false
-	}
-	return true
 }

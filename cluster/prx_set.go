@@ -7,3 +7,16 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 package cluster
+
+import (
+	"fmt"
+	"os"
+)
+
+func (proxy *Proxy) SetProvisionCookie() {
+	newFile, err := os.Create(proxy.Datadir + "/@cookie_prov")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	newFile.Close()
+}

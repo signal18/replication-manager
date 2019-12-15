@@ -8,7 +8,33 @@ package cluster
 
 import (
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
+
+func (cluster *Cluster) IsProvisioned() bool {
+	if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
+		return true
+	}
+	if cluster.Conf.Hosts == "" {
+		return false
+	}
+	for _, db := range cluster.Servers {
+		if !db.HasProvisionCookie() {
+			if db.IsRunning() {
+				db.SetProvisionCookie()
+			} else {
+				return false
+			}
+		}
+	}
+	for _, px := range cluster.Proxies {
+		if !px.HasProvisionCookie() {
+			return false
+		}
+	}
+	return true
+}
 
 func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")

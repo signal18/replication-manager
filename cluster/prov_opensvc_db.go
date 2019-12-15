@@ -218,27 +218,6 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OpenSVCProvisionOneSrvPerDB() error {
-
-	for _, s := range cluster.Servers {
-
-		go cluster.OpenSVCProvisionDatabaseService(s)
-
-	}
-	for _, s := range cluster.Servers {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+s.Name)
-			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+s.Name)
-			}
-		}
-	}
-
-	return nil
-}
-
 func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host

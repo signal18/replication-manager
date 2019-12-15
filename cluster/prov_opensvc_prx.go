@@ -19,15 +19,6 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) OpenSVCProvisionProxies() error {
-
-	for _, prx := range cluster.Proxies {
-		cluster.OpenSVCProvisionProxyService(prx)
-	}
-
-	return nil
-}
-
 func (cluster *Cluster) OpenSVCStopProxyService(server *Proxy) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -86,6 +77,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.FoundProxyAgent(prx)
 	if err != nil {
+		cluster.errorChan <- err
 		return err
 	}
 	// Unprovision if already in OpenSVC
@@ -100,6 +92,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+prx.Name, "MariaDB")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Can't create OpenSVC proxy service")
+				cluster.errorChan <- err
 				return err
 			}
 		}
@@ -108,6 +101,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't delete service tags")
+			cluster.errorChan <- err
 			return err
 		}
 		taglist := strings.Split(svc.ProvProxTags, ",")
@@ -129,20 +123,24 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 		} else {
 			if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 				res, err := cluster.GetMaxscaleTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 
@@ -165,25 +163,30 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if err == nil {
 				cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
 				//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
+				cluster.errorChan <- nil
 				return nil
 			}
 			srv.ClusterGroup = cluster
 			if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 				res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 			} else {
 				res, err := cluster.GetShardproxyTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 
@@ -202,20 +205,24 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 		} else {
 			if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 				res, err := cluster.GetHaproxyTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 
@@ -235,19 +242,23 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 		} else {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 			if strings.Contains(cluster.Conf.ProvSphinxAgents, agent.Node_name) {
 				res, err := cluster.GetSphinxTemplate(svc, strings.Join(srvlist, " "), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 
@@ -270,6 +281,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
 			if err != nil {
+				cluster.errorChan <- err
 				return err
 			}
 		} else {
@@ -277,10 +289,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			if strings.Contains(svc.ProvAgents, agent.Node_name) {
 				res, err := cluster.GetProxysqlTemplate(svc, strings.Join(srvlist, ","), agent, prx)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
 				if err != nil {
+					cluster.errorChan <- err
 					return err
 				}
 
@@ -295,7 +309,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-
+	cluster.errorChan <- nil
 	return nil
 }
 

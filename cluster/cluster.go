@@ -49,6 +49,7 @@ type Cluster struct {
 	IsDown               bool                     `json:"isDown"`
 	IsClusterDown        bool                     `json:"isClusterDown"`
 	IsAllDbUp            bool                     `json:"isAllDbUp"`
+	IsProvision          bool                     `json:"isProvision"`
 	IsFailable           bool                     `json:"isFailable"`
 	IsPostgres           bool                     `json:"isPostgres"`
 	Conf                 config.Config            `json:"config"`
@@ -428,6 +429,7 @@ func (cluster *Cluster) Run() {
 			cluster.CheckFailed()
 			cluster.StateProcessing()
 			cluster.Topology = cluster.GetTopology()
+			cluster.IsProvision = cluster.IsProvisioned()
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}

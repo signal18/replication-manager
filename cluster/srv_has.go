@@ -10,10 +10,18 @@
 package cluster
 
 import (
+	"os"
 	"strconv"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
+
+func (server *ServerMonitor) HasProvisionCookie() bool {
+	if _, err := os.Stat(server.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
 
 func (server *ServerMonitor) HasReadOnly() bool {
 	return server.Variables["READ_ONLY"] == "ON"
@@ -237,6 +245,11 @@ func (server *ServerMonitor) IsDown() bool {
 		return true
 	}
 	return false
+
+}
+
+func (server *ServerMonitor) IsRunning() bool {
+	return !server.IsDown()
 }
 
 // IFailed() returns true is the server is Failed or auth error

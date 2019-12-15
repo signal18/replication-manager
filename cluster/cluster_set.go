@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io/ioutil"
 	"net/http"
@@ -358,7 +359,9 @@ func (cl *Cluster) SetArbitratorReport() error {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		cl.IsFailedArbitrator = true
 		return err

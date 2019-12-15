@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/go-sql-driver/mysql"
@@ -235,4 +236,12 @@ func (server *ServerMonitor) SetReplicationChannel(source string) (string, error
 
 func (server *ServerMonitor) SetInnoDBMonitor() {
 	dbhelper.SetInnoDBLockMonitor(server.Conn)
+}
+
+func (server *ServerMonitor) SetProvisionCookie() {
+	newFile, err := os.Create(server.Datadir + "/@cookie_prov")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Can't save provision cookie %s", err)
+	}
+	newFile.Close()
 }
