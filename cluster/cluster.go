@@ -515,6 +515,11 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
+	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
+	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
+	if err != nil {
+		return err
+	}
 	if cluster.Conf.ConfRewrite {
 		var myconf = make(map[string]config.Config)
 

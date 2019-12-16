@@ -49,14 +49,13 @@
       </md-button>
     </md-menu-item>
 
-    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
-                  ng-click="provision()">
+    <md-menu-item  ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="provision()">
     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-provision']==false">
       <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
     Provision Cluster
     </md-button>
   </md-menu-item>
-  <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+  <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"
                 ng-click="unprovision()">
     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-unprovision']==false">
       <md-icon md-menu-align-target class="fas fa-trash"></md-icon>

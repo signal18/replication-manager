@@ -394,7 +394,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				cluster.Conf.RplUser = "repl:repman"
 			}
 			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
-			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost || cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
 				cluster.DropDBTag("docker")
 				cluster.DropDBTag("threadpool")
 				cluster.AddDBTag("pkg")

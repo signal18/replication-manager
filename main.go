@@ -168,7 +168,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MonitoringKeyPath, "monitprting-key-path", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	monitorCmd.Flags().BoolVar(&conf.MonitorQueries, "monitoring-queries", true, "Monitor long queries")
 	monitorCmd.Flags().IntVar(&conf.MonitorLongQueryTime, "monitoring-long-query-time", 10000, "Long query time in ms")
-	monitorCmd.Flags().BoolVar(&conf.MonitorQueries, "monitoring-query-rules", true, "Monitor query routing from proxies")
+	monitorCmd.Flags().BoolVar(&conf.MonitorQueryRules, "monitoring-query-rules", true, "Monitor query routing from proxies")
 	monitorCmd.Flags().StringVar(&conf.MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")
 	monitorCmd.Flags().BoolVar(&conf.MonitorLongQueryWithTable, "monitoring-long-query-with-table", false, "Use log_type table to fetch slow queries")
 	monitorCmd.Flags().BoolVar(&conf.MonitorLongQueryWithProcess, "monitoring-long-query-with-process", true, "Use processlist to fetch slow queries")

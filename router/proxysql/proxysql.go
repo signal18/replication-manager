@@ -49,7 +49,7 @@ type QueryRule struct {
 	Match_Digest         sql.NullString `json:"matchDigest" db:"match_digest"`
 	Match_Pattern        sql.NullString `json:"matchPattern" db:"match_pattern"`
 	DestinationHostgroup sql.NullInt64  `json:"destinationHostgroup" db:"destination_hostgroup"`
-	MirrorHostgroup      sql.NullInt64  `json:"mirrorHhostgroup" db:"mirror_hostgroup"`
+	MirrorHostgroup      sql.NullInt64  `json:"mirrorHostgroup" db:"mirror_hostgroup"`
 	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
 	Apply                int            `json:"apply" db:"apply"`
 }

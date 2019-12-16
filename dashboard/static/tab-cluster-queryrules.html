@@ -17,15 +17,14 @@
 
       </tr>
       <tr ng-repeat="rule in queryrules" ng-class="">
-         <td>{{rule.id}}</td>
-         <td>{{rule.userName.string}}</td>
-         <td>{{rule.schemaName.string}}</td>
-         <td>{{rule.digest.string}}</td>
-         <td>{{bck.matchDigest.string}</td>
-         <td>{{bck.matchPattern.string}}</td>
-         <td>{{bck.matchPattern.string}}</td>
-         <td>{{bck.destinationHostgroup.string}}</td>
-        <td>{{bck.proxies}}</td>
+         <td>{{rule.ruleId}}</td>
+         <td>{{rule.digest.String}}</td>
+         <td>{{rule.userName.String}}</td>
+         <td>{{rule.schemaName.String}}</td>
+         <td>{{rule.matchDigest.String}}</td>
+         <td>{{rule.matchPattern.String}}</td>
+         <td>{{rule.destinationHostgroup.Int64}}</td>
+        <td>{{rule.proxies}}</td>
       </tr>
    </table>
 </md-card>
