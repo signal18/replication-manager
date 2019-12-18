@@ -256,7 +256,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.Crashes = append(cluster.Crashes, crash)
 	t := time.Now()
-	crash.Save(cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash." + t.Format("20060102150405") + ".json")
+	crash.Save(cluster.WorkingDir + "/crash." + t.Format("20060102150405") + ".json")
 	cluster.Save()
 	// Call post-failover script before unlocking the old master.
 	if cluster.Conf.PostScript != "" {
@@ -1100,7 +1100,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.Crashes = append(cluster.Crashes, crash)
 		cluster.Save()
 		t := time.Now()
-		crash.Save(cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash." + t.Format("20060102150405") + ".json")
+		crash.Save(cluster.WorkingDir + "/crash." + t.Format("20060102150405") + ".json")
 	}
 
 	// Phase 3: Prepare new master

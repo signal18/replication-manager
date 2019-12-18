@@ -587,9 +587,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	return repman.currentCluster, nil
 }
 
-func (repman *ReplicationManager) AddCluster(clusterName string) error {
+func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
 	var myconf = make(map[string]config.Config)
-
 	myconf[clusterName] = repman.Conf
 	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
@@ -609,6 +608,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string) error {
 		return err
 	}*/
 	cluster, _ := repman.StartCluster(clusterName)
+	cluster.SetClusterHead(clusterHead)
 	cluster.SetClusterList(repman.Clusters)
 	cluster.Save()
 

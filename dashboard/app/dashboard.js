@@ -707,8 +707,20 @@ function (
         });
       };
 
-      var createCluster = function (cluster,plan,orchestrator) {
+      var createCluster = function (cluster,plan,orchestrator,headcluster) {
+          alert(headcluster);
+          if (headcluster) {
 
+          $http.get('/api/clusters/' + headcluster  + '/actions/add/' +cluster)
+          .then(
+          function () {
+            console.log('cluster created..' + orchestrator);
+            createClusterSetOrchetrator(cluster,plan,orchestrator);
+          },
+          function () {
+            console.log("Error cluster create.");
+          });
+        } else {
           $http.get('/api/clusters/actions/add/' +cluster)
           .then(
           function () {
@@ -718,6 +730,7 @@ function (
           function () {
             console.log("Error cluster create.");
           });
+        }
         };
 
         var createClusterSetOrchetrator = function (cluster,plan,orchestrator) {
@@ -1061,7 +1074,7 @@ function (
 
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         if (confirm("Confirm Creating Cluster " + $scope.dlgAddClusterName + " "  +  plan+" for " + orchestrator )) {
-          createCluster( $scope.dlgAddClusterName,plan,orchestrator);
+          createCluster( $scope.dlgAddClusterName,plan,orchestrator,$scope.selectedClusterName);
 
           $scope.selectedClusterName = $scope.dlgAddClusterName;
           $scope.servers={};

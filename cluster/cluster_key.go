@@ -258,9 +258,9 @@ func (cluster *Cluster) certToFile(filename string, derBytes []byte) {
 }
 
 func (cluster *Cluster) KeyRotation() {
-	//os.RemoveAll(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs")
+	//os.RemoveAll(cluster.WorkingDir + "/old_certs")
 	cluster.LogPrintf(LvlInfo, "Cluster rotate certificats")
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs"); os.IsNotExist(err) {
+	if _, err := os.Stat(cluster.WorkingDir + "/old_certs"); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs", os.ModePerm)
 	}
 	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-cert.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/ca-cert.pem")
@@ -269,16 +269,42 @@ func (cluster *Cluster) KeyRotation() {
 	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-key.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/server-key.pem")
 	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-cert.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/client-cert.pem")
 	misc.CopyFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-key.pem", cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs/client-key.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-cert.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/server-cert.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/server-key.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-cert.pem")
-	os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-key.pem")
+	os.Remove(cluster.WorkingDir + "/ca-cert.pem")
+	os.Remove(cluster.WorkingDir + "/ca-key.pem")
+	os.Remove(cluster.WorkingDir + "/server-cert.pem")
+	os.Remove(cluster.WorkingDir + "/server-key.pem")
+	os.Remove(cluster.WorkingDir + "/client-cert.pem")
+	os.Remove(cluster.WorkingDir + "/client-key.pem")
 	cluster.createKeys()
 	cluster.tlsoldconf = cluster.tlsconf
 	cluster.HaveDBTLSOldCert = true
 	for _, srv := range cluster.Servers {
 		srv.SetDSN()
 	}
+}
+
+func (cluster *Cluster) GeneratePassword() (string, error) {
+	const (
+		digits = "0123456789"
+		lowers = "abcdefghijklmnopqrstuvwxyz"
+		uppers = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		//symbols = "!\"#$%&'()*+,-./0123456789:;<=>?@[\\]^_`{|}~"
+		symbols = "!#$%&()*+-;<=>?[]^_{|}~"
+	)
+	var length = 8
+	var charset = [](byte)(lowers)
+	charset = append(charset, []byte(digits)...)
+	charset = append(charset, []byte(lowers)...)
+	charset = append(charset, []byte(uppers)...)
+	charset = append(charset, []byte(symbols)...)
+	max := big.NewInt(int64(len(charset)))
+	password := make([]byte, length)
+	for i := 0; i < length; i++ {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		password[i] = charset[n.Int64()]
+	}
+	return string(password), nil
 }

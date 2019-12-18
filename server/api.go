@@ -321,7 +321,7 @@ func (repman *ReplicationManager) jsonResponse(apiresponse interface{}, w http.R
 func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.AddCluster(vars["clusterName"])
+	repman.AddCluster(vars["clusterName"], "")
 
 }
 

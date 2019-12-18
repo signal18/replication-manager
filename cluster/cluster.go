@@ -34,6 +34,8 @@ import (
 
 type Cluster struct {
 	Name                 string                   `json:"name"`
+	Tenant               string                   `json:"tenant"`
+	WorkingDir           string                   `json:"workingDir"`
 	Servers              serverList               `json:"-"`
 	ServerIdList         []string                 `json:"dbServers"`
 	Crashes              crashList                `json:"dbServersCrashes"`
@@ -81,6 +83,7 @@ type Cluster struct {
 	hostList             []string                 `json:"-"`
 	proxyList            []string                 `json:"-"`
 	clusterList          map[string]*Cluster      `json:"-"`
+	clusterHead          string                   `json:"clusterHead"`
 	slaves               serverList               `json:"-"`
 	master               *ServerMonitor           `json:"-"`
 	oldMaster            *ServerMonitor           `json:"-"`
@@ -206,6 +209,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.htlog = log
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
+	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
+
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
@@ -238,12 +243,12 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	} else {
 		cluster.LogPrintf(LvlInfo, "Failover in automatic mode")
 	}
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name); os.IsNotExist(err) {
+	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
-		Filename:   cluster.Conf.WorkingDir + "/" + cluster.Name + "/sql_error.log",
+		Filename:   cluster.WorkingDir + "/sql_error.log",
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
@@ -260,7 +265,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	logsqlerr.AddHook(hookerr)
 
 	hookgen, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
-		Filename:   cluster.Conf.WorkingDir + "/" + cluster.Name + "/sql_general.log",
+		Filename:   cluster.WorkingDir + "/sql_general.log",
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
@@ -794,7 +799,7 @@ func (cluster *Cluster) MonitorSchema() {
 		tables[t.Table_schema+"."+t.Table_name] = t
 		if haschanged {
 			for _, pr := range cluster.Proxies {
-				if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+				if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
 					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
 						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
 						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
@@ -814,7 +819,7 @@ func (cluster *Cluster) MonitorQueryRules() {
 		return
 	}
 	for _, prx := range cluster.Proxies {
-		if cluster.Conf.ProxysqlOn && prx.Type == proxySqlproxy {
+		if cluster.Conf.ProxysqlOn && prx.Type == config.ConstProxySqlproxy {
 			qr := prx.QueryRules
 			for _, rule := range qr {
 				var myRule config.QueryRule

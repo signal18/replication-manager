@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 )
 
 func readPidFromFile(pidfile string) (string, error) {
@@ -38,7 +39,7 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 
 func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 	prx.GetProxyConfig()
-	if prx.Type == proxySpider {
+	if prx.Type == config.ConstProxySpider {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
 		err := srv.Refresh()

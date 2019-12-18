@@ -2,94 +2,52 @@
   <div  ng-repeat="proxy in proxies">
 
 
-         <md-menu >
-              <md-button aria-label="Open proxy interactions menu" class="md-raised" ng-click="$mdMenu.open($event)">
-                 <md-icon md-menu-origin class="fa fa-bars "></md-icon>
-              </md-button>
-              <md-menu-content>
-                 <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
-                    <md-menu >
-                       <md-button ng-click="$mdMenu.open($event)" ">
-                          <span md-menu-align-target>
-                             Provision
-                             <md-icon  class="fas fa-arrow-right"></md-icon>
-                          </span>
-                       </md-button>
-                       <md-menu-content>
-                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxprovision(proxy.id)">
-                             <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-proxy-provision']==false">
-                                <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
-                                Provision Proxy
-                             </md-button>
-                          </md-menu-item>
-                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxunprovision(proxy.id)">
-                             <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-proxy-unprovision']==false">
-                                <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                                Unprovision Proxy
-                             </md-button>
-                          </md-menu-item>
-                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxstart(proxy.id)">
-                             <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-start']==false">
-                                <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                                start Proxy
-                             </md-button>
-                          </md-menu-item>
-                          <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true" ng-click="prxstop(proxy.id)">
-                             <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-stop']==false">
-                                <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                                Stop Proxy
-                             </md-button>
-                          </md-menu-item>
-                       </md-menu-content>
-                    </md-menu>
-                 </md-menu-item>
-              </md-menu-content>
-           </md-menu>
+
 
       <div layout="column" layout-gt-xs="row">
       <div flex-gt-xs="25" class="col-lg-25">
         <md-card>
          <table style="table-layout: fixed;width: 100%;" border=0 ng-if="proxies" class="table">
            <colgroup>
-    <col style="width: 35%;">
-    <col style="width: 65%;">
+     <col style="width: 10%;">
+    <col style="width: 30%;">
+    <col style="width: 60%;">
 </colgroup>
             <tr valign="middle">
-               <th colspan=2>{{proxy.type}}</th>
-
+               <th> <div  style="width: 20px;" align="right" ng-include src="'static/menu-proxy.html'"></div></th><th>{{proxy.type}}</th><th></th>
             </tr>
             <tr>
-               <td style="min-width:40px;" >Id</td>
+               <td  colspan=2 style="min-width:40px;" >Id</td>
                <td>{{proxy.id}}</td>
             </tr>
             <tr>
-               <td>Server</td>
+               <td colspan=2>Server</td>
                <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{proxy.host}}</td>
             </tr>
-            <td>Port</td>
+            <td colspan=2>Port</td>
             <td>{{proxy.port}}</td>
             <tr>
-               <td>Version</td>
+               <td colspan=2>Version</td>
                <td>{{proxy.version}}</td>
             </tr>
             <tr>
-               <td >Write Port</td>
+               <td colspan=2>Write Port</td>
                <td >{{proxy.writePort}}</td>
             </tr>
             <tr>
-               <td ng-if="proxy.type=='proxysql'">Writer HG</td>
+               <td colspan=2 ng-if="proxy.type=='proxysql'">Writer HG</td>
                <td ng-if="proxy.type=='proxysql'">{{proxy.writerHostgroup}}</td>
             </tr>
             <tr>
-               <td>Read Port</td>
+               <td colspan=2>Read Port</td>
                <td>{{proxy.readPort}}</td>
             </tr>
             <tr>
-               <td ng-if="proxy.type=='proxysql'">Reader HG</td>
+               <td colspan=2 ng-if="proxy.type=='proxysql'">Reader HG</td>
                <td ng-if="proxy.type=='proxysql'">{{proxy.readerHostgroup}}</td>
             </tr>
             <tr>
-               <td>Read Write Port</td>
+               <td colspan=2>Read Write Port</td>
                <td>{{proxy.readWritePort}}</td>
             </tr>
          </table>
@@ -176,5 +134,5 @@
 
    <BR>
  </diV>
- 
+
 </md-content>

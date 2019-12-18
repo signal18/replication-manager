@@ -231,7 +231,7 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 	cluster.DBTags = cluster.GetDatabaseTags()
 	cluster.ProxyTags = cluster.GetProxyTags()
 	var err error
-	err = cluster.loadDBCertificates(cluster.Conf.WorkingDir + "/" + cluster.Name)
+	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {
 		cluster.HaveDBTLSCert = false
 		cluster.LogPrintf(LvlInfo, "No database TLS certificates")
@@ -239,7 +239,7 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		cluster.HaveDBTLSCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS certificates correctly loaded")
 	}
-	err = cluster.loadDBOldCertificates(cluster.Conf.WorkingDir + "/" + cluster.Name + "/old_certs")
+	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
 	if err != nil {
 		cluster.HaveDBTLSOldCert = false
 		cluster.LogPrintf(LvlInfo, "No database previous TLS certificates")
@@ -263,7 +263,7 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 
 }
 
-func (cluster *Cluster) SetClusterCredential(credential string) {
+func (cluster *Cluster) SetDbServersCredential(credential string) {
 	cluster.Conf.User = credential
 	cluster.SetClusterVariablesFromConfig()
 	for _, srv := range cluster.Servers {
@@ -271,6 +271,21 @@ func (cluster *Cluster) SetClusterCredential(credential string) {
 	}
 	cluster.SetUnDiscovered()
 }
+
+func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
+	switch proxytype {
+	case config.ConstProxySpider:
+		cluster.Conf.MdbsProxyUser = credential
+	case config.ConstProxySqlproxy:
+		cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword = misc.SplitPair(credential)
+	case config.ConstProxyMaxscale:
+		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
+	}
+	for _, prx := range cluster.Proxies {
+		prx.User, prx.Pass = misc.SplitPair(credential)
+	}
+}
+
 func (cluster *Cluster) DropDBTag(dtag string) {
 	var newtags []string
 	for _, tag := range cluster.DBTags {
@@ -373,6 +388,10 @@ func (cl *Cluster) SetArbitratorReport() error {
 
 }
 
+func (cluster *Cluster) SetClusterHead(ClusterName string) {
+	cluster.clusterHead = ClusterName
+}
+
 func (cluster *Cluster) SetServicePlan(theplan string) error {
 	plans := cluster.GetServicePlans()
 	for _, plan := range plans {
@@ -426,6 +445,43 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.newServerList()
 			cluster.TopologyDiscover()
 			cluster.sme.RemoveFailoverState()
+			cluster.Conf.ProxysqlOn = true
+			cluster.Conf.ProxysqlHosts = ""
+			cluster.Conf.MdbsProxyOn = true
+			cluster.Conf.MdbsProxyHosts = ""
+			// cluster head is used to copy exiting proxy from an other cluster
+			if cluster.clusterHead == "" {
+				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+					portproxysql, err := cluster.LocalhostGetFreePort()
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
+					} else {
+						cluster.LogPrintf(LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
+					}
+					portshardproxy, err := cluster.LocalhostGetFreePort()
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Adding shard proxy monitor on 127.0.0.1 %s", err)
+					} else {
+						cluster.LogPrintf(LvlInfo, "Adding shard proxy monitor 127.0.0.1:%s", portshardproxy)
+					}
+					cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
+					cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
+				} else {
+					cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
+					cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
+				}
+			} else {
+				cluster.LogPrintf(LvlInfo, "Copy proxy list from cluster head %s", cluster.clusterHead)
+
+				oriClusters, err := cluster.GetClusterFromName(cluster.clusterHead)
+				if err == nil {
+					for _, oriProxy := range oriClusters.Proxies {
+						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.Type, oriProxy.Host, oriProxy.Port)
+						cluster.AddSeededProxy(oriProxy.Type, oriProxy.Host, oriProxy.Port, oriProxy.User, oriProxy.Pass)
+					}
+				}
+			}
+
 			return nil
 		}
 	}

@@ -65,7 +65,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 	cluster.sme.SetFailoverState()
 	// delete the cluster state here
-	path := cluster.Conf.WorkingDir + "/" + cluster.Name + ".json"
+	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
 	for _, server := range cluster.Servers {

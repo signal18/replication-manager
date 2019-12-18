@@ -112,7 +112,7 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		}
 	}
 	if cluster.Conf.Enterprise {
-		/*cf, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "-haproxy.cfg") // just pass the file name
+		/*cf, err := ioutil.ReadFile(cluster.WorkingDir + "-haproxy.cfg") // just pass the file name
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Haproxy can't log generated config for provisioning %s", err)
 		}

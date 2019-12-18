@@ -58,6 +58,7 @@ type Config struct {
 	MonitorDiskUsagePct                 int    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger               string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
 	MonitorIgnoreError                  string `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
+	MonitorTenant                       string `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	Interactive                         bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                             bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                             string `mapstructure:"log-file" toml:"log-file" json:"logFile"`
@@ -437,6 +438,17 @@ type QueryRule struct {
 	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
 	Proxies              string         `json:"proxies" db:"proxies"`
 }
+
+const (
+	ConstProxyMaxscale    string = "maxscale"
+	ConstProxyHaproxy     string = "haproxy"
+	ConstProxySqlproxy    string = "proxysql"
+	ConstProxySpider      string = "shardproxy"
+	ConstProxyExternal    string = "extproxy"
+	ConstProxyMysqlrouter string = "mysqlrouter"
+	ConstProxySphinx      string = "sphinx"
+	ConstProxyMyProxy     string = "myproxy"
+)
 
 type ServicePlan struct {
 	Id           int    `json:"id"`

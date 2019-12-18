@@ -6,7 +6,11 @@
 
 package cluster
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
 	if cluster.Conf.Hosts != "" {
@@ -33,35 +37,50 @@ func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.SetClusterVariablesFromConfig()
 }
 
-func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string) error {
+func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user string, password string) error {
 	switch prx {
-	case proxyHaproxy:
+	case config.ConstProxyHaproxy:
 		cluster.Conf.HaproxyOn = true
+
 		if cluster.Conf.HaproxyHosts != "" {
 			cluster.Conf.HaproxyHosts = cluster.Conf.HaproxyHosts + "," + srv
 		} else {
 			cluster.Conf.HaproxyHosts = srv
 		}
-	case proxyMaxscale:
+	case config.ConstProxyMaxscale:
 		cluster.Conf.MxsOn = true
+		cluster.Conf.MxsPort = port
+		if user != "" || password != "" {
+			cluster.Conf.MxsUser = user
+			cluster.Conf.MxsPass = password
+		}
 		if cluster.Conf.MxsHost != "" {
 			cluster.Conf.MxsHost = cluster.Conf.MxsHost + "," + srv
 		} else {
 			cluster.Conf.MxsHost = srv
 		}
-	case proxySqlproxy:
+	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlOn = true
+		cluster.Conf.ProxysqlAdminPort = port
+		if user != "" || password != "" {
+			cluster.Conf.ProxysqlUser = user
+			cluster.Conf.ProxysqlPassword = password
+		}
+
 		if cluster.Conf.ProxysqlHosts != "" {
 			cluster.Conf.ProxysqlHosts = cluster.Conf.ProxysqlHosts + "," + srv
 		} else {
 			cluster.Conf.ProxysqlHosts = srv
 		}
-	case proxySpider:
+	case config.ConstProxySpider:
+		if user != "" || password != "" {
+			cluster.Conf.MdbsProxyUser = user + ":" + password
+		}
 		cluster.Conf.MdbsProxyOn = true
-		if cluster.Conf.ProxysqlHosts != "" {
-			cluster.Conf.MdbsProxyHosts = cluster.Conf.MdbsProxyHosts + "," + srv
+		if cluster.Conf.MdbsProxyHosts != "" {
+			cluster.Conf.MdbsProxyHosts = cluster.Conf.MdbsProxyHosts + "," + srv + ":" + port
 		} else {
-			cluster.Conf.MdbsProxyHosts = srv
+			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
 	cluster.sme.SetFailoverState()
@@ -69,5 +88,12 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string) erro
 	cluster.newProxyList()
 	cluster.Unlock()
 	cluster.sme.RemoveFailoverState()
+	return nil
+}
+
+func (cluster *Cluster) AddUser(user string) error {
+	pass, _ := cluster.GeneratePassword()
+	cluster.Conf.APIUsersExternal = cluster.Conf.APIUsersExternal + "," + user + ":" + pass
+	cluster.LoadAPIUsers()
 	return nil
 }

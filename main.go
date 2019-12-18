@@ -177,6 +177,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
 	monitorCmd.Flags().BoolVar(&conf.MonitorProcessList, "monitoring-processlist", true, "Enable capture 50 longuest process via processlist")
 	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
+	monitorCmd.Flags().StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
 	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	monitorCmd.Flags().BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
@@ -381,7 +382,7 @@ func init() {
 	if WithProxysql == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "6033", "ProxySQL read/write proxy port")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")

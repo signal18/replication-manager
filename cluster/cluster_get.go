@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -28,7 +29,7 @@ func (cluster *Cluster) GetPersitentState() error {
 	}
 
 	var clsave Save
-	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/clusterstate.json")
+	file, err := ioutil.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {
 		cluster.LogPrintf(LvlInfo, "No file found: %v\n", err)
 		return err
@@ -384,7 +385,7 @@ func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
 	// dirty: need to point LB to all DB  proxies, just pick the first one so far
 	var prx Proxy
 	for _, p := range cluster.Proxies {
-		if p != this && p.Type != proxySphinx {
+		if p != this && p.Type != config.ConstProxySphinx {
 			return *p
 		}
 	}
@@ -433,6 +434,16 @@ func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster 
 		}
 	}
 	return clusters
+}
+
+func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
+
+	for _, c := range cluster.clusterList {
+		if cluster.Name == name {
+			return c, nil
+		}
+	}
+	return nil, errors.New("No cluster found")
 }
 
 func (cluster *Cluster) GetTableDLL(schema string, table string, srv *ServerMonitor) (string, error) {
@@ -609,17 +620,17 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 func (cluster *Cluster) GetClientCertificates() map[string]string {
 	certs := make(map[string]string)
-	clientCert, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-cert.pem")
+	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
 		return certs
 	}
-	clientkey, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/client-key.pem")
+	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
 		return certs
 	}
-	caCert, err := misc.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-cert.pem")
+	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
 		return certs

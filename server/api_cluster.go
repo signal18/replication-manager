@@ -18,6 +18,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/regtest"
 )
 
@@ -95,6 +96,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/reset-failover-control", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetFailoverControl)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
@@ -397,6 +403,25 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 		mycluster.MasterFailover(true)
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.RollingRestart()
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -890,7 +915,13 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		case "db-servers-hosts":
 			mycluster.SetDbServerHosts(vars["settingValue"])
 		case "db-servers-credential":
-			mycluster.SetClusterCredential(vars["settingValue"])
+			mycluster.SetDbServersCredential(vars["settingValue"])
+		case "proxysql-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySqlproxy)
+		case "maxscale-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxyMaxscale)
+		case "shardproxy-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySpider)
 		case "replication-credential":
 			mycluster.SetReplicationCredential(vars["settingValue"])
 		case "prov-db-disk-size":
@@ -1158,7 +1189,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {
 			if mycluster.MonitorType[vars["type"]] == "proxy" {
-				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"])
+				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				switch vars["type"] {
 				case "mariadb":

@@ -12,12 +12,53 @@
   Reset Failover Counter
     </md-button>
   </md-menu-item>
-  <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
-    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create-monitor']==false">
-      <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
-  New Monitor
+  <md-menu-item ng-click="toggletraffic()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-traffic']==false">
+      <md-icon md-menu-align-target class="fas fa-pencil-alt"></md-icon>
+    Toogle Traffic
     </md-button>
   </md-menu-item>
+  <md-menu-item>
+  <md-menu>
+     <md-button ng-click="$mdMenu.open($event)">
+        <span md-menu-align-target>
+        PROVISION
+        </span>
+        <md-icon class="fas fa-arrow-right"></md-icon>
+     </md-button>
+  <md-menu-content>
+      <md-menu-item ng-if="master.State !='Failed'" ng-click="newServerDialog()">
+        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create-monitor']==false">
+          <md-icon md-menu-align-target class="fas fa-search-plus"></md-icon>
+      New Monitor
+        </md-button>
+      </md-menu-item>
+      <md-menu-item  ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="provision()">
+      <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-provision']==false">
+        <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+      Provision Cluster
+      </md-button>
+    </md-menu-item>
+    <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"
+                  ng-click="unprovision()">
+      <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-unprovision']==false">
+        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+      Unprovision Cluster
+      </md-button>
+    </md-menu-item>
+    </md-menu-content>
+    </md-menu>
+    </md-menu-item>
+  <md-menu-item>
+
+  <md-menu>
+     <md-button ng-click="$mdMenu.open($event)">
+        <span md-menu-align-target>
+        Credentials
+        </span>
+        <md-icon class="fas fa-arrow-right"></md-icon>
+     </md-button>
+  <md-menu-content>
   <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterCredentialDialog()">
     <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
       <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
@@ -30,6 +71,37 @@
   Set Replication Credentials
     </md-button>
   </md-menu-item>
+  <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterProxySQLCredentialDialog()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+  Set ProxySQL Credentials
+    </md-button>
+  </md-menu-item>
+  <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterMaxscaleCredentialDialog()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+  Set Maxscale Credentials
+    </md-button>
+  </md-menu-item>
+  <md-menu-item ng-if="master.State !='Failed'" ng-click="setClusterShardProxyCredentialDialog()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+  Set Sharding Proxy Credentials
+    </md-button>
+  </md-menu-item>
+  </md-menu-content>
+</md-menu>
+</md-menu-item>
+<md-menu-item>
+
+<md-menu>
+   <md-button ng-click="$mdMenu.open($event)">
+      <span md-menu-align-target>
+      Maintenance
+      </span>
+      <md-icon class="fas fa-arrow-right"></md-icon>
+   </md-button>
+<md-menu-content>
   <md-menu-item ng-if="master.state !='Failed'" ng-click="optimizeAll()">
     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['cluster-rolling']==false">
       <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
@@ -49,19 +121,7 @@
       </md-button>
     </md-menu-item>
 
-    <md-menu-item  ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="provision()">
-    <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-provision']==false">
-      <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
-    Provision Cluster
-    </md-button>
-  </md-menu-item>
-  <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"
-                ng-click="unprovision()">
-    <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-cluster-unprovision']==false">
-      <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-    Unprovision Cluster
-    </md-button>
-  </md-menu-item>
+
 
   <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical()">
     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
@@ -69,12 +129,9 @@
     Physical Backup
     </md-button>
   </md-menu-item>
-  <md-menu-item ng-click="toggletraffic()">
-    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-traffic']==false">
-      <md-icon md-menu-align-target class="fas fa-pencil-alt"></md-icon>
-    Toogle Traffic
-    </md-button>
-  </md-menu-item>
+</md-menu-content>
+</md-menu>
+</md-menu-item>
   <md-menu-item>
      <md-menu>
         <md-button ng-click="$mdMenu.open($event)">

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -119,7 +120,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
-	if prx.Type == proxyMaxscale {
+	if prx.Type == config.ConstProxyMaxscale {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -155,7 +156,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == proxySpider {
+	if prx.Type == config.ConstProxySpider {
 
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
@@ -201,7 +202,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == proxyHaproxy {
+	if prx.Type == config.ConstProxyHaproxy {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -237,7 +238,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == proxySphinx {
+	if prx.Type == config.ConstProxySphinx {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		} else {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
@@ -273,7 +274,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == proxySqlproxy {
+	if prx.Type == config.ConstProxySqlproxy {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -337,16 +338,16 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 	svcsection["container#0001"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#0002"] = cluster.OpenSVCGetInitContainerSection()
 	switch prx.Type {
-	case proxySpider:
+	case config.ConstProxySpider:
 		svcsection["container#0003"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
-	case proxySphinx:
+	case config.ConstProxySphinx:
 		svcsection["container#0003"] = cluster.OpenSVCGetSphinxContainerSection(prx)
 		svcsection["task#01"] = cluster.OpenSVCGetSphinxTaskSection(prx)
-	case proxyHaproxy:
+	case config.ConstProxyHaproxy:
 		svcsection["container#0003"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
-	case proxySqlproxy:
+	case config.ConstProxySqlproxy:
 		svcsection["container#0003"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
-	case proxyMaxscale:
+	case config.ConstProxyMaxscale:
 		svcsection["container#0003"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
 	default:
 	}

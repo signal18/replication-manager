@@ -18,6 +18,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -261,7 +262,7 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, tabl
 	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table
 
 	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -368,7 +369,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 	duplicates = append(duplicates, destmaster)
 
 	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
 			err := destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -481,7 +482,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 	}
 
 	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == proxySpider {
+		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_reshard", duplicates, false)
 			if err != nil {
 				return err
