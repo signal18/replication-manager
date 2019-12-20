@@ -547,7 +547,11 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 			svcfs["size"] = "{env.size}g"
 			svcfs["mkfs_opt"] = "-o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy"
 		} else { //no pool
-			svcfs["dev"] = "{disk#" + podpool + ".file}"
+			if cluster.Conf.ProvDiskType == "loopback" {
+				svcfs["dev"] = "{disk#" + podpool + ".name}/pod01"
+			} else {
+				svcfs["dev"] = "{disk#" + podpool + ".file}"
+			}
 			svcfs["size"] = "{env.size}g"
 		}
 		svcfs["mnt"] = "{env.base_dir}/pod01"
