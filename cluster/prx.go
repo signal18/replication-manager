@@ -205,7 +205,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Name = proxyHost
 			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+				if cluster.Conf.ClusterHead == "" {
+					prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+				} else {
+					prx.Host = prx.Host + "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvNetCNICluster
+				}
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
@@ -228,7 +232,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Name = proxyHost
 			if cluster.Conf.ProvNetCNI {
-				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+				if cluster.Conf.ClusterHead == "" {
+					prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+				} else {
+					prx.Host = prx.Host + "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvNetCNICluster
+				}
 				prx.Port = "3306"
 			}
 			prx.WritePort, _ = strconv.Atoi(prx.Port)

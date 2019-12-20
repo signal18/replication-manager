@@ -389,7 +389,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 }
 
 func (cluster *Cluster) SetClusterHead(ClusterName string) {
-	cluster.clusterHead = ClusterName
+	cluster.Conf.ClusterHead = ClusterName
 }
 
 func (cluster *Cluster) SetServicePlan(theplan string) error {
@@ -450,7 +450,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.Conf.MdbsProxyOn = true
 			cluster.Conf.MdbsProxyHosts = ""
 			// cluster head is used to copy exiting proxy from an other cluster
-			if cluster.clusterHead == "" {
+			if cluster.Conf.ClusterHead == "" {
 				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 					portproxysql, err := cluster.LocalhostGetFreePort()
 					if err != nil {
@@ -471,9 +471,9 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
 				}
 			} else {
-				cluster.LogPrintf(LvlInfo, "Copy proxy list from cluster head %s", cluster.clusterHead)
+				cluster.LogPrintf(LvlInfo, "Copy proxy list from cluster head %s", cluster.Conf.ClusterHead)
 
-				oriClusters, err := cluster.GetClusterFromName(cluster.clusterHead)
+				oriClusters, err := cluster.GetClusterFromName(cluster.Conf.ClusterHead)
 				if err == nil {
 					for _, oriProxy := range oriClusters.Proxies {
 						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.Type, oriProxy.Host, oriProxy.Port)

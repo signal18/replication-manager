@@ -83,7 +83,6 @@ type Cluster struct {
 	hostList             []string                 `json:"-"`
 	proxyList            []string                 `json:"-"`
 	clusterList          map[string]*Cluster      `json:"-"`
-	clusterHead          string                   `json:"clusterHead"`
 	slaves               serverList               `json:"-"`
 	master               *ServerMonitor           `json:"-"`
 	oldMaster            *ServerMonitor           `json:"-"`

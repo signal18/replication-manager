@@ -83,6 +83,7 @@ type Config struct {
 	MariaDBBinaryPath                   string `mapstructure:"db-servers-binary-path" toml:"db-servers-binary-path" json:"dbServersBinaryPath"`
 	DBServersLocality                   string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
 	PRXReadOnMaster                     bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
+	ClusterHead                         string `mapstructure:"cluster-head" toml:"cluster-headr" json:"clusterHead"`
 	MasterConnectRetry                  int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                             string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	ReplicationErrorScript              string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
