@@ -23,6 +23,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !db.HasProvisionCookie() {
 			if db.IsRunning() {
 				db.SetProvisionCookie()
+				cluster.LogPrintf(LvlInfo, "Can DB Connect creating cookie state:%s", db.State)
 			} else {
 				return false
 			}
@@ -30,7 +31,12 @@ func (cluster *Cluster) IsProvisioned() bool {
 	}
 	for _, px := range cluster.Proxies {
 		if !px.HasProvisionCookie() {
-			return false
+			if px.IsRunning() {
+				px.SetProvisionCookie()
+				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.State)
+			} else {
+				return false
+			}
 		}
 	}
 	return true

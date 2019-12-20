@@ -156,7 +156,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-				sv.State = stateUnconn
+				//	sv.State = stateUnconn
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
 				}

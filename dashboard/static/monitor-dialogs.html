@@ -173,3 +173,28 @@
         </md-dialog>
     </div>
 </div>
+
+
+
+<div class="hidden" >
+  <div class="md-dialog-container" id="myNewUserDialog">
+      <md-dialog style="padding: 20px 20px 20px 20px;">
+         <form>
+           User:  <input type="text" ng-model="$parent.dlgAddUserName"/>
+
+   <li ng-repeat="acl in newUserAcls">
+    <input name type="checkbox" value='false' ng-model="acl.enable" /> {{acl.grant}}
+   </li>
+
+
+       </form>
+       <md-button ng-click="cancelNewUserDialog()" class="md-primary">
+           Cancel
+       </md-button>
+       <md-button ng-click="closeNewUserDialog()" class="md-primary">
+             Ok
+       </md-button>
+  </md-dialog>
+
+</div>
+</div>

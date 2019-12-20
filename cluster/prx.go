@@ -51,6 +51,9 @@ type Proxy struct {
 	ClusterGroup    *Cluster             `json:"-"`
 	Datadir         string               `json:"datadir"`
 	QueryRules      []proxysql.QueryRule `json:"queryRules"`
+	State           string               `json:"state"`
+	PrevState       string               `json:"prevState"`
+	FailCount       int                  `json:"failCount"`
 }
 
 type Backend struct {
@@ -128,7 +131,7 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+			prx.SetDataDir()
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -154,7 +157,7 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+			prx.SetDataDir()
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -176,7 +179,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		prx.ClusterGroup = cluster
-		prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+		prx.SetDataDir()
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
@@ -206,7 +209,7 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+			prx.SetDataDir()
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -231,7 +234,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort, _ = strconv.Atoi(prx.Port)
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+			prx.SetDataDir()
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -259,7 +262,7 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-			prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+			prx.SetDataDir()
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -287,7 +290,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
 		}
 		prx.ClusterGroup = cluster
-		prx.Datadir = prx.ClusterGroup.Conf.WorkingDir + "/" + prx.ClusterGroup.Name + "/" + prx.Host + "_" + prx.Port
+		prx.SetDataDir()
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
@@ -299,7 +302,7 @@ func (cluster *Cluster) newProxyList() error {
 func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 	proxy := new(Proxy)
 	proxy = p
-
+	proxy.State = stateSuspect
 	return proxy, nil
 }
 
@@ -405,22 +408,40 @@ func (cluster *Cluster) backendStateChangeProxies() {
 func (cluster *Cluster) refreshProxies() {
 
 	for _, pr := range cluster.Proxies {
+		var err error
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			cluster.refreshMaxscale(pr)
+			err = cluster.refreshMaxscale(pr)
 		}
 		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
 			//	if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
-			cluster.refreshMdbsproxy(nil, pr)
+			err = cluster.refreshMdbsproxy(nil, pr)
 			//	}
 		}
 		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
-			cluster.refreshProxysql(pr)
+			err = cluster.refreshProxysql(pr)
 		}
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.refreshHaproxy(pr)
+			err = cluster.refreshHaproxy(pr)
 		}
 		if cluster.Conf.SphinxOn && pr.Type == config.ConstProxySphinx {
-			cluster.refreshSphinx(pr)
+			err = cluster.refreshSphinx(pr)
+		}
+		if err == nil {
+			pr.FailCount = 0
+			pr.State = stateProxyRunning
+		} else {
+			pr.FailCount++
+			if pr.FailCount >= pr.ClusterGroup.Conf.MaxFail {
+				if pr.FailCount == pr.ClusterGroup.Conf.MaxFail {
+					pr.ClusterGroup.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s", pr.Type, pr.Host, pr.Port)
+				}
+				pr.State = stateFailed
+			} else {
+				pr.State = stateSuspect
+			}
+		}
+		if pr.PrevState != pr.State {
+			pr.PrevState = pr.State
 		}
 		if cluster.Conf.GraphiteMetrics {
 			cluster.SendProxyStats(pr)

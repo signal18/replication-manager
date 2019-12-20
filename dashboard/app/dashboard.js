@@ -46,6 +46,7 @@ function (
   $scope.serverListTabular = false;
   $scope.selectedTab = undefined;
   $scope.selectedUserIndex = undefined;
+  $scope.newUserAcls = undefined;
   $scope.refreshInterval = 2000;
   $scope.digestmode = "pfs";
 
@@ -113,7 +114,7 @@ function (
         Clusters.query({}, function (data) {
           if (data) {
             $scope.clusters = data;
-            if ($scope.clusters.length === 1) {
+            if ($scope.clusters.length === 1 && $scope.settings.config.monitoringSaveConfig==false ) {
               $scope.selectedClusterName = $scope.clusters[0].name;
             } else {
               $scope.refreshInterval = 2000;
@@ -129,8 +130,8 @@ function (
             $scope.orchestrators =	$scope.settings.serviceOrchestrators;
             $scope.selectedPlan = $scope.plans[12];
             $scope.selectedOrchestrator= $scope.orchestrators[3];
-            $scope.$scope.selectedPlanName=  $scope.selectedPlan.plan;
-
+            $scope.selectedPlanName=  $scope.selectedPlan.plan;
+            $scope.newUserAcls = JSON.parse(JSON.stringify($scope.settings.serviceAcl));
             if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
 
           }
@@ -1063,15 +1064,11 @@ function (
           contentElement: '#myNewClusterDialog',
          preserveScope: true,
           parent: angular.element(document.body),
-    //      clickOutsideToClose: false,
-      //    escapeToClose: false,
+          //      clickOutsideToClose: false,
+          //    escapeToClose: false,
         });
       };
-
-
-
       $scope.closeNewClusterDialog = function (plan,orchestrator) {
-
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         if (confirm("Confirm Creating Cluster " + $scope.dlgAddClusterName + " "  +  plan+" for " + orchestrator )) {
           createCluster( $scope.dlgAddClusterName,plan,orchestrator,$scope.selectedClusterName);
@@ -1092,7 +1089,37 @@ function (
       $scope.cancelNewClusterDialog = function () {
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         $mdSidenav('right').close();
+        $scope.menuOpened = false;
       };
+
+
+      $scope.newUserDialog = function () {
+       $scope.menuOpened = true;
+        $mdDialog.show({
+          contentElement: '#myNewUserDialog',
+         preserveScope: true,
+          parent: angular.element(document.body),
+        });
+      };
+      $scope.closeNewUserDialog = function () {
+        $mdDialog.hide({contentElement: '#myNewUserDialog',});
+        if (confirm("Confirm Creating Cluster " + $scope.dlgAddUserName + " "  +  $scope.newUserAcls )) {
+           $scope.newUserAcls.forEach(function (item, index) {
+             if (item.enable) {
+              alert(item.grant );
+              }
+            });
+        };
+
+        $mdSidenav('right').close();
+        $scope.menuOpened = false;
+      };
+      $scope.cancelNewUserDialog = function () {
+        $mdDialog.hide({contentElement: '#myNewUserDialog',});
+        $mdSidenav('right').close();
+        $scope.menuOpened = false;
+      };
+
 
       $scope.newServerDialog = function () {
         $mdDialog.show({

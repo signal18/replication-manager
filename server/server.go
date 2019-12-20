@@ -60,6 +60,7 @@ type ReplicationManager struct {
 	Logs                 s18log.HttpLog              `json:"logs"`
 	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl           []config.Grant              `json:"serviceAcl"`
 	tlog                 s18log.TermLog
 	termlength           int
 	exitMsg              string
@@ -452,6 +453,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.Logs = s18log.NewHttpLog(80)
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
+	repman.InitGrants()
 
 	go repman.apiserver()
 
@@ -776,5 +778,18 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	}*/
 	//	repman.ServicePlans = r
 	/*sort.Sort(QueryRuleSorter(r))*/
+	return nil
+}
+
+func (repman *ReplicationManager) InitGrants() error {
+
+	acls := []config.Grant{}
+
+	for _, value := range repman.Conf.GetGrantType() {
+		var acl config.Grant
+		acl.Grant = value
+		acls = append(acls, acl)
+	}
+	repman.ServiceAcl = acls
 	return nil
 }

@@ -30,3 +30,14 @@ func (proxy *Proxy) HasProvisionCookie() bool {
 	}
 	return true
 }
+
+func (proxy *Proxy) IsRunning() bool {
+	return !proxy.IsDown()
+}
+
+func (proxy *Proxy) IsDown() bool {
+	if proxy.State == stateFailed || proxy.State == stateSuspect || proxy.State == stateErrorAuth {
+		return true
+	}
+	return false
+}

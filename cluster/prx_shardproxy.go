@@ -99,7 +99,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
 	err := proxy.ShardProxy.Refresh()
 	if err != nil {
-		return nil
+		return err
 	}
 	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
 

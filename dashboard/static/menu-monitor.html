@@ -3,34 +3,34 @@
     <ul class="nav navbar-nav">
         <md-nav-list>
           <md-list-item >
-            <md-button  ng-click="back()"  data-toggle="modal">
+            <md-button ng-if="selectedCluster"  ng-click="back()"  data-toggle="modal">
 
                     <md-icon md-menu-align-target  class="fa fa-3x fa-arrow-circle-left"></md-icon>
-                    <br>Back<br/><br/>
-            </md-list-item>
+                    <br>Back<br/>
             </md-button>
+            </md-list-item>
+
+            <md-list-item ng-if="isLoggedIn" >
+                        <md-button  ng-click="logout()"  data-target="#three" data-toggle="collapse">
+                        <md-icon class="fa fa-3x fa-sign-out"></md-icon>
+                      <br>Logout<br/>
+                </md-button>
+            </md-list-item>
             <md-list-item >
                 <md-button  ng-click="newClusterDialog()"  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create']==false" data-toggle="modal" >
                           <md-icon md-menu-align-target   class="fa fa-3x fa-plus-circle"></md-icon>
-                        <br>New<br/><div ng-if="selectedClusterName">Sharding<br></div>Cluster<br/><br/>
+                        <br>Add<br/><div ng-if="selectedClusterName">Shard </div>Cluster<br/>
                 </md-button>
             </md-list-item>
-      <!--
-      <md-button ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create']==false">
 
-        <md-list-item ng-if="selectedClusterName">
-                <li class="text-center">
-                    <a href="#" data-toggle="collapse" data-target="#three"><i class="fa fa-3x fa-list-alt"></i><br>Settings<br/><br/></a>
-                </li>
-                  </md-list-item>
-                -->
-                <md-list-item ng-if="isLoggedIn" >
-                  <md-button  ng-click="logout()"  data-target="#three" data-toggle="collapse">
-                  <md-icon class="fa fa-3x fa-sign-out"></md-icon>
-                <br>Logout<br/>
-            </li>
-          </md-button>
-      </md-list-item>
+
+      <md-list-item ng-if="isLoggedIn" >
+      <md-button  ng-click="newUserDialog()"  data-target="#three" data-toggle="collapse">
+        <md-icon class="fa fa-3x fa-user"></md-icon>
+      <br>Add<br/>User<br/>
+      </md-button>
+     </md-list-item>
+
         </md-nav-list>
     </ul>
 </md-sidenav>

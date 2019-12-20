@@ -24,6 +24,15 @@
                <td colspan=2>Server</td>
                <td  style="white-space: -o-pre-wrap;word-wrap:break-word;white-space: pre-wrap;dwhite-space: -moz-pre-wrap;white-space: -pre-wrap;">{{proxy.host}}</td>
             </tr>
+            <tr>
+               <td colspan=2>Status</td>
+               <td ng-switch="proxy.state">
+                 <span ng-switch-when="ProxyRunning" class="label label-primary">Running</span>
+                     <span ng-switch-when="Failed" class="label label-danger">Failed</span>
+                     <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                     <span ng-switch-default class="label label-default">{{server.state}}</span>
+            </td>
+            </tr>
             <td colspan=2>Port</td>
             <td>{{proxy.port}}</td>
             <tr>

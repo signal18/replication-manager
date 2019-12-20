@@ -462,6 +462,11 @@ type ServicePlan struct {
 	PrxCores     int    `json:"prxcores"`
 }
 
+type Grant struct {
+	Grant  string `json:"grant"`
+	Enable bool   `json:"enable"`
+}
+
 const (
 	GrantDBStart                 string = "db-start"
 	GrantDBStop                  string = "db-stop"

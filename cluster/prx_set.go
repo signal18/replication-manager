@@ -13,6 +13,17 @@ import (
 	"os"
 )
 
+func (proxy *Proxy) SetDataDir() {
+	proxy.Datadir = proxy.ClusterGroup.Conf.WorkingDir + "/" + proxy.ClusterGroup.Name + "/" + proxy.Host + "_" + proxy.Port
+	if _, err := os.Stat(proxy.Datadir); os.IsNotExist(err) {
+		os.MkdirAll(proxy.Datadir, os.ModePerm)
+		os.MkdirAll(proxy.Datadir+"/log", os.ModePerm)
+		os.MkdirAll(proxy.Datadir+"/var", os.ModePerm)
+		os.MkdirAll(proxy.Datadir+"/init", os.ModePerm)
+		os.MkdirAll(proxy.Datadir+"/bck", os.ModePerm)
+	}
+}
+
 func (proxy *Proxy) SetProvisionCookie() {
 	newFile, err := os.Create(proxy.Datadir + "/@cookie_prov")
 	if err != nil {

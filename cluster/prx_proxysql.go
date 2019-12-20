@@ -87,16 +87,16 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
+func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	if cluster.Conf.ProxysqlOn == false {
-		return
+		return nil
 	}
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
-		return
+		return err
 	}
 	defer psql.Connection.Close()
 	proxy.Version = psql.GetVersion()
@@ -227,7 +227,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) {
 	if err != nil {
 		cluster.sme.AddState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 	}
-
+	return nil
 }
 
 func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {

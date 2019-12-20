@@ -9,8 +9,8 @@
             <strong>Warning!</strong> The data is not refreshed since {{openedAt}}.
           </div>
         </div>
-        <md-content layout="column">
-          <md-tabs ng-if="selectedClusterName=='Default' || !selectedCluster"   md-dynamic-height="" md-border-bottom="" >
+        <md-content   layout="column">
+          <md-tabs style="min-height: 600px;" ng-if="selectedClusterName=='Default' || !selectedCluster"   md-dynamic-height="" md-border-bottom="" >
               <md-tab   label="Clusters">
                   <div ng-include src="'static/tab-clusters-list.html'"></div>
               </md-tab>

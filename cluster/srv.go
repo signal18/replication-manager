@@ -160,24 +160,26 @@ type ServerMonitor struct {
 type serverList []*ServerMonitor
 
 const (
-	stateFailed      string = "Failed"
-	stateMaster      string = "Master"
-	stateSlave       string = "Slave"
-	stateSlaveErr    string = "SlaveErr"
-	stateSlaveLate   string = "SlaveLate"
-	stateMaintenance string = "Maintenance"
-	stateUnconn      string = "StandAlone"
-	stateErrorAuth   string = "ErrorAuth"
-	stateSuspect     string = "Suspect"
-	stateShard       string = "Shard"
-	stateProv        string = "Provision"
-	stateMasterAlone string = "MasterAlone"
-	stateRelay       string = "Relay"
-	stateRelayErr    string = "RelayErr"
-	stateRelayLate   string = "RelayLate"
-	stateWsrep       string = "Wsrep"
-	stateWsrepDonor  string = "WsrepDonor"
-	stateWsrepLate   string = "WsrepLate"
+	stateFailed       string = "Failed"
+	stateMaster       string = "Master"
+	stateSlave        string = "Slave"
+	stateSlaveErr     string = "SlaveErr"
+	stateSlaveLate    string = "SlaveLate"
+	stateMaintenance  string = "Maintenance"
+	stateUnconn       string = "StandAlone"
+	stateErrorAuth    string = "ErrorAuth"
+	stateSuspect      string = "Suspect"
+	stateShard        string = "Shard"
+	stateProv         string = "Provision"
+	stateMasterAlone  string = "MasterAlone"
+	stateRelay        string = "Relay"
+	stateRelayErr     string = "RelayErr"
+	stateRelayLate    string = "RelayLate"
+	stateWsrep        string = "Wsrep"
+	stateWsrepDonor   string = "WsrepDonor"
+	stateWsrepLate    string = "WsrepLate"
+	stateProxyRunning string = "ProxyRunning"
+	stateProxyDesync  string = "ProxyDesync"
 )
 
 const (
@@ -320,7 +322,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
-						server.ClusterGroup.LogPrintf("INFO", "Declaring master as failed")
+						server.ClusterGroup.LogPrintf("INFO", "Declaring db master as failed %s", server.URL)
 					}
 					server.ClusterGroup.master.State = stateFailed
 				} else {
@@ -332,7 +334,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.Conf.MaxFail)
 				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
-						server.ClusterGroup.LogPrintf("INFO", "Declaring server %s as failed", server.URL)
+						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
 						server.State = stateFailed
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
@@ -419,7 +421,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
+			//if server.IsRunning() {
 			server.State = stateUnconn
+			//}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()

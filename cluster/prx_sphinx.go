@@ -45,15 +45,15 @@ func (cluster *Cluster) initSphinx(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
+func (cluster *Cluster) refreshSphinx(proxy *Proxy) error {
 	if cluster.Conf.SphinxOn == false {
-		return
+		return nil
 	}
 
 	sphinx, err := connectSphinx(proxy)
 	if err != nil {
 		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
-		return
+		return err
 	}
 	defer sphinx.Connection.Close()
 	proxy.Version = sphinx.GetVersion()
@@ -76,6 +76,7 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) {
 	if err == nil {
 		proxy.BackendsWrite = append(proxy.BackendsRead, bke)
 	}
+	return nil
 }
 
 func (cluster *Cluster) setMaintenanceSphinx(proxy *Proxy, host string, port string) {

@@ -16,9 +16,9 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
+func (cluster *Cluster) refreshMaxscale(proxy *Proxy) error {
 	if cluster.Conf.MxsOn == false {
-		return
+		return nil
 	}
 	var m maxscale.MaxScale
 	if proxy.Tunnel {
@@ -32,7 +32,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		if err != nil {
 			cluster.sme.AddState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
 			cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
-			return
+			return err
 		}
 	}
 	proxy.BackendsWrite = nil
@@ -80,6 +80,7 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) {
 		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 	}
 	m.Close()
+	return nil
 }
 
 func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
