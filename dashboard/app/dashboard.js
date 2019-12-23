@@ -975,7 +975,49 @@ function (
         if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-memory/'+value.toString());
       };
 
+      $scope.saveDBImage = function (image) {
+        if (confirm("Confirm change database OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-image/'+image);
+      };
+      $scope.saveProxySQLImage = function (image) {
+        if (confirm("Confirm change ProxySQL OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-docker-proxysql-img/'+image);
+      };
+      $scope.saveProxySQLImage = function (image) {
+        if (confirm("Confirm change HaProxy OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-docker-haproxy-img/'+image);
+      };
+      $scope.saveShardproxyImage = function (image) {
+        if (confirm("Confirm change Shard Proxy OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-docker-shardproxy-img/'+image);
+      };
+      $scope.saveMaxscaleImage = function (image) {
+        if (confirm("Confirm change Maxscale Proxy OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-docker-maxscale-img/'+image);
+      };
+      $scope.saveSphinxImage = function (image) {
+        if (confirm("Confirm change Sphinx OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/setprov-sphinx-docker-img/'+image);
+      };
 
+      $scope.saveDBDisk = function (selectedDBDiskTyoe,selectedDBDiskFS,selectedDBDiskPool,selectedDBDiskDevice) {
+        if (confirm("Confirm change DB disk: "+selectedDBDiskTyoe+ "/"+selectedDBDiskFS+"/"+selectedDBDiskPool+"/"+selectedDBDiskDevice)) {
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-type/'+selectedDBDiskTyoe);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-fs/'+selectedDBDiskFS);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-pool/'+selectedDBDiskPool);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-device/'+selectedDBDiskDevice);
+        }
+      };
+
+      $scope.saveProxyDisk = function (selectedProxyDiskType,selectedProxyDiskFS,selectedProxyDiskPool,selectedProxyDiskDevice) {
+        if (confirm("Confirm change Proxy disk: "+selectedProxyDiskType+ "/"+selectedProxyDiskFS+"/"+selectedProxyDiskPool+"/"+selectedProxyDiskDevice)) {
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-disk-type/'+selectedProxyDiskType);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-disk-fs/'+selectedProxyDiskFS);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-disk-pool/'+selectedProxyDiskPool);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-disk-device/'+selectedProxyDiskDevice);
+        }
+      };
+
+      $scope.saveDBServiceType = function (selectedDBVM,selectedProxyVM) {
+        if (confirm("Confirm change VM type: "+selectedDBVM+ "/"+selectedProxyVM)) {
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-service-type/'+selectedDBVM);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-service-type/'+selectedProxyVM);
+        }
+      };
 
       $scope.clsetproxycore = function (base,add) {
         value= Number(base)+add;

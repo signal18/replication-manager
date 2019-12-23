@@ -56,35 +56,7 @@
                 </table>
     </md-card>
     <BR>
-    <md-card ng-if="settings.config.enterprise">
-        <table ng-if="settings" class="table">
-            <tr>
-                <th>Provisioning CNI</th>
-            </tr>
-            <tr>
-                <td>
-                    <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provNetCni"
-                               ng-click="switchsettings('prov-net-cni')" aria-label="CNI">
-                        <span ng-if="selectedCluster.config.provNetCni" class="label label-primary">On</span><span
-                            ng-if="!selectedCluster.config.provNetCni" class="label label-warning">Off</span>
-                </md-switch>
-                </td>
-            </tr>
-            <tr>
-                <th>Provisioning Private Docker Daemon</th>
-            </tr>
-            <tr>
-                <td>
-                    <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provDockerDaemonPrivate"
-                               ng-click="switchsettings('prov-docker-daemon-private')" aria-label="CNI">
-                        <span ng-if="selectedCluster.config.provDockerDaemonPrivate" class="label label-primary">On</span><span
-                            ng-if="!selectedCluster.config.provDockerDaemonPrivate" class="label label-warning">Off</span>
-                </md-switch>
-                </td>
-            </tr>
-
-        </table>
-</md-card>
+  
         </div>
 
         <div flex-gt-xs="30" class="col-lg-33">

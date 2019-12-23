@@ -61,6 +61,11 @@ type ReplicationManager struct {
 	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
 	ServiceAcl           []config.Grant              `json:"serviceAcl"`
+	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
+	ServiceFS            map[string]bool             `json:"serviceFS"`
+	ServiceVM            map[string]bool             `json:"serviceVM"`
+	ServiceDisk          map[string]string           `json:"serviceDisk"`
+	ServicePool          map[string]bool             `json:"servicePool"`
 	tlog                 s18log.TermLog
 	termlength           int
 	exitMsg              string
@@ -454,6 +459,11 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
 	repman.InitGrants()
+	repman.ServiceRepos, _ = repman.Conf.GetDockerRepos(repman.Conf.ShareDir + "/repo/repos.json")
+	repman.ServiceVM = repman.Conf.GetVMType()
+	repman.ServiceFS = repman.Conf.GetFSType()
+	repman.ServiceDisk = repman.Conf.GetDiskType()
+	repman.ServicePool = repman.Conf.GetPoolType()
 
 	go repman.apiserver()
 

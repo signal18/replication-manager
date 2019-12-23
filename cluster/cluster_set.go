@@ -528,3 +528,78 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 	cluster.LogPrintf(LvlErr, "Cluster orchestrator set to default %s", config.ConstOrchestratorOnPremise)
 	return nil
 }
+
+func (cluster *Cluster) SetProvDBImage(value string) error {
+	cluster.Conf.ProvDbImg = value
+	return nil
+}
+func (cluster *Cluster) SetProvMaxscaleImage(value string) error {
+	cluster.Conf.ProvProxMaxscaleImg = value
+	return nil
+}
+func (cluster *Cluster) SetProvHaproxyImage(value string) error {
+	cluster.Conf.ProvProxHaproxyImg = value
+	return nil
+}
+func (cluster *Cluster) SetProvShardproxyImage(value string) error {
+	cluster.Conf.ProvProxShardingImg = value
+	return nil
+}
+func (cluster *Cluster) SetProvProxySQLImage(value string) error {
+	cluster.Conf.ProvProxProxysqlImg = value
+	return nil
+}
+func (cluster *Cluster) SetProvSphinxImage(value string) error {
+	cluster.Conf.ProvSphinxImg = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbDiskType(value string) error {
+	cluster.Conf.ProvDiskType = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbDiskFS(value string) error {
+	cluster.Conf.ProvDiskFS = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbDiskPool(value string) error {
+	cluster.Conf.ProvDiskPool = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbDiskDevice(value string) error {
+	cluster.Conf.ProvDiskDevice = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvDbServiceType(value string) error {
+	cluster.Conf.ProvType = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyDiskType(value string) error {
+	cluster.Conf.ProvProxDiskType = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyDiskFS(value string) error {
+	cluster.Conf.ProvProxDiskFS = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyDiskPool(value string) error {
+	cluster.Conf.ProvProxDiskPool = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyDiskDevice(value string) error {
+	cluster.Conf.ProvProxDiskDevice = value
+	return nil
+}
+
+func (cluster *Cluster) SetProvProxyServiceType(value string) error {
+	cluster.Conf.ProvProxType = value
+	return nil
+}

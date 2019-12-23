@@ -11,6 +11,9 @@ package config
 
 import (
 	"database/sql"
+	"encoding/json"
+	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -463,6 +466,21 @@ type ServicePlan struct {
 	PrxCores     int    `json:"prxcores"`
 }
 
+type DockerTag struct {
+	Layer string `json:"layer"`
+	Name  string `json:"name"`
+}
+
+type DockerRepo struct {
+	Name  string      `json:"name"`
+	Image string      `json:"image"`
+	Tags  []DockerTag `json:"tags"`
+}
+
+type DockerRepos struct {
+	Repos []DockerRepo `json:"repos"`
+}
+
 type Grant struct {
 	Grant  string `json:"grant"`
 	Enable bool   `json:"enable"`
@@ -615,13 +633,22 @@ func (conf *Config) GetFSType() map[string]bool {
 func (conf *Config) GetVMType() map[string]bool {
 
 	return map[string]bool{
-		"package": true,
+		"package": false,
 		"docker":  true,
 		"podman":  true,
 		"oci":     true,
 		"kvm":     false,
 		"zone":    false,
 		"lxc":     false,
+	}
+}
+
+func (conf *Config) GetPoolType() map[string]bool {
+
+	return map[string]bool{
+		"none":  true,
+		"zpool": true,
+		"lvm":   true,
 	}
 }
 
@@ -700,4 +727,23 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantProvProxyProvision:      GrantProvProxyProvision,
 		GrantProvProxyUnprovision:    GrantProvProxyUnprovision,
 	}
+}
+
+func (conf *Config) GetDockerRepos(file string) ([]DockerRepo, error) {
+	var repos DockerRepos
+	jsonFile, err := os.Open(file)
+	if err != nil {
+		return repos.Repos, err
+	}
+
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	err = json.Unmarshal([]byte(byteValue), &repos)
+	if err != nil {
+		return repos.Repos, err
+	}
+
+	return repos.Repos, nil
 }

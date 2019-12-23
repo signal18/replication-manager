@@ -1,0 +1,67 @@
+  <md-card ng-if="selectedCluster">
+     <table  ng-if="settings" md-table class="table md-primary md-data-table">
+       <col style="width: 40%;">
+       <col style="width: 10%;">
+       <col style="width: 40%;">
+       <col style="width: 10%;">
+
+         <tr  md-row>
+             <th colspan=4>Orchestrator Database VM</th>
+         </tr>
+         <tr><td>
+             Database VM: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.provDbServiceType }}</span>
+             <md-select  name="selectedDBVM"  ng-model="selectedDBVM">
+                 <md-option ng-selected="{{key ==  selectedCluster.config.provDbServiceType}}"
+                            ng-repeat="(key, value) in settings.serviceVM" ng-value="key"
+                            selected="{{ key === selectedCluster.config.provDbServiceType ? 'selected' : '' }}">
+                                 {{key}}</md-option>
+              </md-select>
+              Proxy VM: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.provProxyServiceType }}</span>
+              <md-select  name="selectedProxyVM"  ng-model="selectedProxyVM">
+                  <md-option ng-selected="{{key ==  selectedCluster.config.provProxyServiceType}}"
+                             ng-repeat="(key, value) in settings.serviceVM" ng-value="key"
+                             selected="{{ key === selectedCluster.config.provProxyServiceType ? 'selected' : '' }}">
+                                  {{key}}</md-option>
+               </md-select>
+
+              </td><td>
+                   <span  style="display:inline-block;;margin: 2px;" ng-click="saveDBServiceType(selectedDBVM,selectedProxyVM)"><i   style="display:inline-block;;margin: 2px;"  class="fa fa-save"/></span>
+
+     </td>
+    <td>
+      <md-card ng-if="selectedCluster.config.enterprise">
+          <table ng-if="settings" class="table">
+              <tr>
+                  <th>Provisioning CNI</th>
+              </tr>
+              <tr>
+                  <td>
+                      <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provNetCni"
+                                 ng-click="switchsettings('prov-net-cni')" aria-label="CNI">
+                          <span ng-if="selectedCluster.config.provNetCni" class="label label-primary">On</span><span
+                              ng-if="!selectedCluster.config.provNetCni" class="label label-warning">Off</span>
+                  </md-switch>
+                  </td>
+              </tr>
+              <tr>
+                  <th>Provisioning Private Docker Daemon</th>
+              </tr>
+              <tr>
+                  <td>
+                      <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provDockerDaemonPrivate"
+                                 ng-click="switchsettings('prov-docker-daemon-private')" aria-label="CNI">
+                          <span ng-if="selectedCluster.config.provDockerDaemonPrivate" class="label label-primary">On</span><span
+                              ng-if="!selectedCluster.config.provDockerDaemonPrivate" class="label label-warning">Off</span>
+                  </md-switch>
+                  </td>
+              </tr>
+
+          </table>
+  </md-card>
+ </td></tr>
+
+
+
+   </table>
+
+ </md-card>

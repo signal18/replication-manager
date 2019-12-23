@@ -948,8 +948,41 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetProvProxyAgents(vars["settingValue"])
 		case "prov-orchestrator":
 			mycluster.SetProvOrchestrator(vars["settingValue"])
+		case "prov-db-image":
+			mycluster.SetProvDBImage(vars["settingValue"])
+		case "prov-proxy-docker-proxysql-img":
+			mycluster.SetProvProxySQLImage(vars["settingValue"])
+		case "prov-proxy-docker-maxscale-img":
+			mycluster.SetProvMaxscaleImage(vars["settingValue"])
+		case "prov-proxy-docker-haproxy-img":
+			mycluster.SetProvHaproxyImage(vars["settingValue"])
+		case "prov-proxy-docker-shardproxy-img":
+			mycluster.SetProvShardproxyImage(vars["settingValue"])
+		case "prov-sphinx-img":
+			mycluster.SetProvSphinxImage(vars["settingValue"])
+		case "prov-db-disk-type":
+			mycluster.SetProvDbDiskType(vars["settingValue"])
+		case "prov-db-disk-fs":
+			mycluster.SetProvDbDiskFS(vars["settingValue"])
+		case "prov-db-disk-pool":
+			mycluster.SetProvDbDiskPool(vars["settingValue"])
+		case "prov-db-disk-device":
+			mycluster.SetProvDbDiskDevice(vars["settingValue"])
+		case "prov-db-service-type":
+			mycluster.SetProvDbServiceType(vars["settingValue"])
+		case "prov-proxy-disk-type":
+			mycluster.SetProvProxyDiskType(vars["settingValue"])
+		case "prov-proxy-disk-fs":
+			mycluster.SetProvProxyDiskFS(vars["settingValue"])
+		case "prov-proxy-disk-pool":
+			mycluster.SetProvProxyDiskPool(vars["settingValue"])
+		case "prov-proxy-disk-device":
+			mycluster.SetProvProxyDiskDevice(vars["settingValue"])
+		case "prov-proxy-service-type":
+			mycluster.SetProvProxyServiceType(vars["settingValue"])
 		case "monitoring-address":
 			mycluster.SetMonitoringAddress(vars["settingValue"])
+
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
