@@ -587,9 +587,9 @@ func (server *ServerMonitor) GetMyConfig() string {
 
 						if server.IsFilterInTags("docker") {
 							if server.IsFilterInTags("wsrep") {
-								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
-							} else {
 								content = strings.Replace(content, "./.system", "/var/lib/mysql", -1)
+							} else {
+								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
 							}
 						}
 						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
