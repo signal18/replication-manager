@@ -586,7 +586,11 @@ func (server *ServerMonitor) GetMyConfig() string {
 						content := misc.ExtractKey(f.Content, server.GetEnv())
 
 						if server.IsFilterInTags("docker") {
-							content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
+							if server.IsFilterInTags("wsrep") {
+								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
+							} else {
+								content = strings.Replace(content, "./.system", "/var/lib/mysql", -1)
+							}
 						}
 						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)

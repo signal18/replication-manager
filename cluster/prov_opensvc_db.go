@@ -819,6 +819,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":       server.ClusterGroup.GetConfigInnoDBLogFileSize(),
 		"%%ENV:SVC_NAMESPACE%%":                             server.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                                  server.Name,
+		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                   server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
 	}
 
 	//	size = ` + collector.ProvDisk + `
