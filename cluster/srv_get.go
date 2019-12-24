@@ -587,7 +587,10 @@ func (server *ServerMonitor) GetMyConfig() string {
 
 						if server.IsFilterInTags("docker") {
 							if server.IsFilterInTags("wsrep") {
-								content = strings.Replace(content, "./.system", "/var/lib/mysql", -1)
+								//if galera don't cusomized system files
+								if strings.Contains(content, "./.system") {
+									content = ""
+								}
 							} else {
 								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
 							}
