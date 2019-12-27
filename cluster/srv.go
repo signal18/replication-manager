@@ -421,9 +421,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
-			//if server.IsRunning() {
-			server.State = stateUnconn
-			//}
+			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+				server.State = stateUnconn
+			}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
