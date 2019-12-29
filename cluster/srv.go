@@ -435,7 +435,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
-			server.State = stateUnconn
+			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+				server.State = stateUnconn
+			}
 			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
