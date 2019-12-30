@@ -40,7 +40,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	if server.ClusterGroup.sme.IsInFailover() {
 		return "In Failover"
 	}
-	if server.HaveWsrep && server.IsRunning() {
+	if server.HaveWsrep && !server.IsFailed() {
 		if server.IsWsrepSync {
 			server.State = stateWsrep
 			return "Galera OK"
