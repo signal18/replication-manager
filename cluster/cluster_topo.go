@@ -70,7 +70,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
 	if cluster.Conf.Hosts == "" {
-		return errors.New("Can not discover empty clustre")
+		return errors.New("Can not discover empty cluster")
 	}
 	for _, server := range cluster.Servers {
 		if server.IsIgnored() {

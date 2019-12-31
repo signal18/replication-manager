@@ -293,7 +293,7 @@ func (server *ServerMonitor) IsReadOnly() bool {
 }
 
 func (server *ServerMonitor) IsReadWrite() bool {
-	return server.HaveReadOnly
+	return !server.HaveReadOnly
 }
 
 func (server *ServerMonitor) IsIOThreadRunning() bool {
