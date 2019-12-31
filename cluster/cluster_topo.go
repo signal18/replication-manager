@@ -238,6 +238,8 @@ func (cluster *Cluster) TopologyDiscover() error {
 						cluster.master = cluster.Servers[k]
 						if cluster.Conf.MultiMaster == true {
 							cluster.master.State = stateMaster
+						} else {
+							cluster.vmaster = cluster.Servers[k]
 						}
 						if cluster.Conf.LogLevel > 2 {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
