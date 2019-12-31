@@ -100,6 +100,7 @@ type ServerMonitor struct {
 	HaveReadOnly                bool                         `json:"haveReadOnly"`
 	IsWsrepSync                 bool                         `json:"isWsrepSync"`
 	IsWsrepDonor                bool                         `json:"isWsrepDonor"`
+	IsWsrepPrimary              bool                         `json:"isWsrepPrimary"`
 	IsMaxscale                  bool                         `json:"isMaxscale"`
 	IsRelay                     bool                         `json:"isRelay"`
 	IsSlave                     bool                         `json:"isSlave"`
@@ -737,6 +738,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.IsWsrepDonor = true
 	} else {
 		server.IsWsrepDonor = false
+	}
+	if server.Status["WSREP_CLUSTER_STATUS"] == "PRIMARY" {
+		server.IsWsrepPrimary = true
+	} else {
+		server.IsWsrepPrimary = false
 	}
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)

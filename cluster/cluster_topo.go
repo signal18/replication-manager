@@ -14,8 +14,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-sql-driver/mysql"
-
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -66,44 +64,6 @@ func (cluster *Cluster) newServerList() error {
 	return nil
 }
 
-// DEAD CODE NO MORE CALLED
-func (cluster *Cluster) pingServerList() {
-	wg := new(sync.WaitGroup)
-	for _, sv := range cluster.Servers {
-		wg.Add(1)
-		go func(sv *ServerMonitor) {
-			defer wg.Done()
-			//	tcpAddr, err := net.ResolveTCPAddr("tcp4", sv.)
-			if sv.Conn != nil {
-				conn, err := sv.GetNewDBConn()
-				defer conn.Close()
-				if err != nil {
-					if driverErr, ok := err.(*mysql.MySQLError); ok {
-						// access denied
-						if driverErr.Number == 1045 {
-							sv.State = stateErrorAuth
-							cluster.SetState("ERR00004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00004"], sv.URL, err.Error()), ErrFrom: "TOPO"})
-						}
-					} else {
-						cluster.SetState("INF00001", state.State{ErrType: "INFO", ErrDesc: fmt.Sprintf("Server %s is down", sv.URL), ErrFrom: "TOPO"})
-						// We can set the failed state at this point if we're in the initial loop
-						// Otherwise, let the monitor check function handle failures
-						if sv.State == "" {
-							cluster.LogPrintf(LvlDbg, "State failed set by topology detection INF00001")
-							sv.State = stateFailed
-						}
-					}
-				}
-			} else {
-				sv.State = stateFailed
-			}
-		}(sv)
-
-	}
-
-	wg.Wait()
-}
-
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
@@ -149,39 +109,39 @@ func (cluster *Cluster) TopologyDiscover() error {
 		if sv.IsFailed() {
 			continue
 		}
-		if sv.IsSlave {
+		// count wsrep node as  slaves
+		if sv.IsSlave || sv.IsWsrepPrimary {
 			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			// not slave
-			if cluster.GetTopology() != topoMultiMasterWsrep {
-				if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-					//sv.State = stateUnconn
-					//transition to standalone may happen despite server have never connect successfully when default to suspect
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
-					}
-				} else {
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-					}
-					if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
-						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
-						cluster.Servers[k].RejoinMaster()
-					} else {
-						cluster.master = cluster.Servers[k]
-						cluster.master.State = stateMaster
 
-						if cluster.master.IsReadOnly() {
-							cluster.master.SetReadWrite()
-							cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
-						}
+			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
+				//sv.State = stateUnconn
+				//transition to standalone may happen despite server have never connect successfully when default to suspect
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
+				}
+			} else {
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
+				}
+				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
+					cluster.Servers[k].RejoinMaster()
+				} else {
+					cluster.master = cluster.Servers[k]
+					cluster.master.State = stateMaster
+
+					if cluster.master.IsReadOnly() {
+						cluster.master.SetReadWrite()
+						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
 					}
 				}
 			}
-			// end not wsrep
+
 		}
 		// end not slave
 	}

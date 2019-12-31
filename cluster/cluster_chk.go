@@ -32,18 +32,21 @@ func (cluster *Cluster) CheckFailed() {
 		if cluster.isFoundCandidateMaster() {
 			if cluster.isBetweenFailoverTimeValid() {
 				if cluster.IsNotHavingMySQLErrantTransaction() {
-					if cluster.isMaxMasterFailedCountReached() {
-						if cluster.isActiveArbitration() {
-							if cluster.isMaxClusterFailoverCountNotReached() {
-								if cluster.isAutomaticFailover() {
-									if cluster.isMasterFailed() {
-										if cluster.isNotFirstSlave() {
-											// False Positive
-											if cluster.isExternalOk() == false {
-												if cluster.isOneSlaveHeartbeatIncreasing() == false {
-													if cluster.isMaxscaleSupectRunning() == false {
-														cluster.MasterFailover(true)
-														cluster.failoverCond.Send <- true
+					if cluster.IsSameWsrepUUID() {
+						if cluster.isMaxMasterFailedCountReached() {
+							if cluster.isActiveArbitration() {
+								if cluster.isMaxClusterFailoverCountNotReached() {
+									if cluster.isAutomaticFailover() {
+										if cluster.isMasterFailed() {
+											if cluster.isNotFirstSlave() {
+
+												// False Positive
+												if cluster.isExternalOk() == false {
+													if cluster.isOneSlaveHeartbeatIncreasing() == false {
+														if cluster.isMaxscaleSupectRunning() == false {
+															cluster.MasterFailover(true)
+															cluster.failoverCond.Send <- true
+														}
 													}
 												}
 											}
@@ -599,6 +602,27 @@ func (cluster *Cluster) CheckSameServerID() {
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) IsSameWsrepUUID() bool {
+	if cluster.GetTopology() != topoMultiMasterWsrep {
+		return true
+	}
+	for _, s := range cluster.Servers {
+		if s.IsFailed() {
+			continue
+		}
+		for _, sothers := range cluster.Servers {
+			if sothers.IsFailed() || s.URL == sothers.URL {
+				continue
+			}
+			if s.Status["WSREP_CLUSTER_STATE_UUID"] != sothers.Status["WSREP_CLUSTER_STATE_UUID"] {
+				cluster.SetState("ERR00083", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status["WSREP_CLUSTER_STATE_UUID"], sothers.URL, sothers.Status["WSREP_CLUSTER_STATE_UUID"]), ErrFrom: "MON", ServerUrl: s.URL})
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
