@@ -155,33 +155,39 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
-			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-				//	sv.State = stateUnconn
-				if cluster.Conf.LogLevel > 2 {
-					cluster.LogPrintf(LvlDbg, "Server %s has no slaves connected and was set as standalone", sv.URL)
-				}
-			} else {
-				if cluster.Conf.LogLevel > 2 {
-					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-				}
-				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
-					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
-					cluster.Servers[k].RejoinMaster()
+			// not slave
+			if cluster.GetTopology() != topoMultiMasterWsrep {
+				if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
+					//sv.State = stateUnconn
+					//transition to standalone may happen despite server have never connect successfully when default to suspect
+					if cluster.Conf.LogLevel > 2 {
+						cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
+					}
 				} else {
-					cluster.master = cluster.Servers[k]
-					cluster.master.State = stateMaster
+					if cluster.Conf.LogLevel > 2 {
+						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
+					}
+					if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
+						cluster.Servers[k].RejoinMaster()
+					} else {
+						cluster.master = cluster.Servers[k]
+						cluster.master.State = stateMaster
 
-					if cluster.master.IsReadOnly() {
-						cluster.master.SetReadWrite()
-						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
+						if cluster.master.IsReadOnly() {
+							cluster.master.SetReadWrite()
+							cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
+						}
 					}
 				}
 			}
+			// end not wsrep
 		}
+		// end not slave
 	}
 
 	// If no cluster.slaves are detected, generate an error
-	if len(cluster.slaves) == 0 {
+	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
@@ -221,7 +227,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 	}
-	if cluster.Conf.MultiMaster == true {
+	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep {
 		srw := 0
 		for _, s := range cluster.Servers {
 			if s.IsReadWrite() {
@@ -267,10 +273,12 @@ func (cluster *Cluster) TopologyDiscover() error {
 						break
 					}
 				}
-				if cluster.Conf.MultiMaster == true && !cluster.Servers[k].IsDown() {
+				if (cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep) && !cluster.Servers[k].IsDown() {
 					if s.IsReadWrite() {
 						cluster.master = cluster.Servers[k]
-						cluster.master.State = stateMaster
+						if cluster.Conf.MultiMaster == true {
+							cluster.master.State = stateMaster
+						}
 						if cluster.Conf.LogLevel > 2 {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
