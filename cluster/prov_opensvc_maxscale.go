@@ -74,7 +74,7 @@ run_image = {env.maxscale_img}
 rm = true
 netns = container#00` + pod + `
 run_args = -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/conf:/etc/maxscale.d:rw
+    	     -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm
