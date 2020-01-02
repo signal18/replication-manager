@@ -191,7 +191,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SERVERS_LIST%%":                         proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
 		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":               "80",
 		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":               strconv.Itoa(proxy.ReadPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(proxy.ReadWritePort),
+		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(proxy.WritePort),
 		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":   strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
 		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":           strconv.Itoa(proxy.ReadWritePort),
 		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":             strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
