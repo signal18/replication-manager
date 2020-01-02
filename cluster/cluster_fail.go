@@ -783,6 +783,16 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
+		if cluster.GetTopology() == topoMultiMasterWsrep {
+			if cluster.vmaster.URL == sl.URL {
+
+				continue
+			} else if sl.State == stateWsrep {
+				return i
+			} else {
+				continue
+			}
+		}
 
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave

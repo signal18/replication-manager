@@ -195,7 +195,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 			}
 		}
 		if srw > 1 {
-			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, switching to prefered master", ErrFrom: "TOPO"})
+			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master", ErrFrom: "TOPO"})
 		}
 		srw = 0
 		for _, s := range cluster.Servers {

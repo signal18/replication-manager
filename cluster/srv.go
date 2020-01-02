@@ -178,7 +178,7 @@ const (
 	stateRelayLate    string = "RelayLate"
 	stateWsrep        string = "Wsrep"
 	stateWsrepDonor   string = "WsrepDonor"
-	stateWsrepLate    string = "WsrepLate"
+	stateWsrepLate    string = "WsrepUnsync"
 	stateProxyRunning string = "ProxyRunning"
 	stateProxyDesync  string = "ProxyDesync"
 )
