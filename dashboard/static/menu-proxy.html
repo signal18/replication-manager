@@ -3,7 +3,7 @@
         <md-icon md-menu-origin  class="fa fa-bars "></md-icon>
      </md-button>
      <md-menu-content>
-        <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+        <md-menu-item >
            <md-menu >
               <md-button ng-click="$mdMenu.open($event)" ">
                  <span md-menu-align-target>
@@ -12,7 +12,7 @@
                  </span>
               </md-button>
               <md-menu-content>
-            
+
                  <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="prxprovision(proxy.id)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-proxy-provision']==false">
                        <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
