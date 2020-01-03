@@ -1174,12 +1174,12 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 		// Add the old master to the slaves list
 	}
-
-	// ********
-	// Phase 5: Closing loop
-	// ********
-	cluster.CloseRing(cluster.oldMaster)
-
+	if cluster.GetTopology() == topoMultiMasterRing {
+		// ********
+		// Phase 5: Closing loop
+		// ********
+		cluster.CloseRing(cluster.oldMaster)
+	}
 	cluster.LogPrintf(LvlInfo, "Virtual Master switch on %s complete", cluster.vmaster.URL)
 	cluster.vmaster.FailCount = 0
 	if fail == true {
