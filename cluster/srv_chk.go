@@ -53,7 +53,7 @@ func (server *ServerMonitor) CheckReplication() string {
 		}
 	}
 	if (server.IsDown()) && server.IsSlave == false {
-		// to what is this looks like wrong no ?????
+
 		return "Master OK"
 	}
 
