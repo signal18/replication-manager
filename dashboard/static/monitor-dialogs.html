@@ -181,13 +181,12 @@
       <md-dialog style="padding: 20px 20px 20px 20px;">
          <form>
            User:  <input type="text" ng-model="$parent.dlgAddUserName"/>
-
    <li ng-repeat="acl in newUserAcls">
-    <input name type="checkbox" value='false' ng-model="acl.enable" /> {{acl.grant}}
+    <input type="checkbox"  ng-model="acl.enable" /> {{acl.grant}}
    </li>
 
-
        </form>
+       {{$parent.selectedAcls}}
        <md-button ng-click="cancelNewUserDialog()" class="md-primary">
            Cancel
        </md-button>

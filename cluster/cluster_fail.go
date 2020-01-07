@@ -1014,14 +1014,19 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
-
-	key := cluster.electVirtualCandidate(cluster.oldMaster, true)
+	key := -1
+	if cluster.GetTopology() != topoMultiMasterWsrep {
+		key = cluster.electVirtualCandidate(cluster.oldMaster, true)
+	} else {
+		key = cluster.electFailoverCandidate(cluster.slaves, true)
+	}
 	if key == -1 {
 		cluster.LogPrintf(LvlErr, "No candidates found")
 		cluster.sme.RemoveFailoverState()
 		return false
 	}
 	cluster.LogPrintf(LvlInfo, "Server %s has been elected as a new master", cluster.slaves[key].URL)
+
 	// Shuffle the server list
 
 	var skey int

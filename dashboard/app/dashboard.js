@@ -45,6 +45,7 @@ function (
   $scope.menuOpened = false;
   $scope.serverListTabular = false;
   $scope.selectedTab = undefined;
+  $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
   $scope.refreshInterval = 2000;
@@ -1145,17 +1146,19 @@ function (
       };
       $scope.closeNewUserDialog = function () {
         $mdDialog.hide({contentElement: '#myNewUserDialog',});
-        if (confirm("Confirm Creating Cluster " + $scope.dlgAddUserName + " "  +  $scope.newUserAcls )) {
-           $scope.newUserAcls.forEach(function (item, index) {
-             if (item.enable) {
-              alert(item.grant );
-              }
+        if (confirm("Confirm Creating Cluster " + $scope.dlgAddUserName  )) {
+            angular.forEach($scope.newUserAcls, function (value, index) {
+          //   console.log(value);
+             alert(value.grant +':'+value.enable);
             });
         };
 
         $mdSidenav('right').close();
         $scope.menuOpened = false;
       };
+
+
+
       $scope.cancelNewUserDialog = function () {
         $mdDialog.hide({contentElement: '#myNewUserDialog',});
         $mdSidenav('right').close();

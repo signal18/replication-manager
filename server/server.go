@@ -13,6 +13,7 @@ import (
 	"net"
 	"os/signal"
 	"runtime/pprof"
+	"sort"
 	"sync"
 
 	"net/http"
@@ -459,7 +460,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
 	repman.InitGrants()
-	repman.ServiceRepos, _ = repman.Conf.GetDockerRepos(repman.Conf.ShareDir + "/repo/repos.json")
+	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir + "/repo/repos.json")
+	if err != nil {
+		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
+	}
 	repman.ServiceVM = repman.Conf.GetVMType()
 	repman.ServiceFS = repman.Conf.GetFSType()
 	repman.ServiceDisk = repman.Conf.GetDiskType()
@@ -791,6 +795,12 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	return nil
 }
 
+type GrantSorter []config.Grant
+
+func (a GrantSorter) Len() int           { return len(a) }
+func (a GrantSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a GrantSorter) Less(i, j int) bool { return a[i].Grant < a[j].Grant }
+
 func (repman *ReplicationManager) InitGrants() error {
 
 	acls := []config.Grant{}
@@ -801,5 +811,6 @@ func (repman *ReplicationManager) InitGrants() error {
 		acls = append(acls, acl)
 	}
 	repman.ServiceAcl = acls
+	sort.Sort(GrantSorter(repman.ServiceAcl))
 	return nil
 }

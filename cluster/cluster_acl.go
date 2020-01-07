@@ -33,6 +33,34 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	return false
 }
 
+func (cluster *Cluster) SaveAcls() {
+	credentials := strings.Split(cluster.Conf.APIUsers+","+cluster.Conf.APIUsersExternal, ",")
+	var aUserAcls []string
+	for _, credential := range credentials {
+		user, _ := misc.SplitPair(credential)
+		var aEnabledAcls []string
+		for grant, value := range cluster.APIUsers[user].Grants {
+			if value {
+				aEnabledAcls = append(aEnabledAcls, grant)
+			}
+		}
+		enabledAclsCredential := user + ":" + strings.Join(aEnabledAcls, " ")
+		aUserAcls = append(aUserAcls, enabledAclsCredential)
+	}
+	cluster.Conf.APIUsersACLAllow = strings.Join(aUserAcls, ",")
+	cluster.Conf.APIUsersACLDiscard = ""
+}
+
+func (cluster *Cluster) SetGrant(user string, grant string, enable bool) {
+	if _, ok := cluster.APIUsers[user].Grants[grant]; ok {
+		cluster.APIUsers[user].Grants[grant] = enable
+	} else {
+		cluster.LogPrintf(LvlErr, "Failed grant not found for user %s, grant %s ", user, grant)
+	}
+
+	cluster.SaveAcls()
+}
+
 func (cluster *Cluster) LoadAPIUsers() error {
 
 	k, err := crypto.ReadKey(cluster.Conf.MonitoringKeyPath)
