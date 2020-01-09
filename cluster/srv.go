@@ -106,6 +106,7 @@ type ServerMonitor struct {
 	IsSlave                     bool                         `json:"isSlave"`
 	IsVirtualMaster             bool                         `json:"isVirtualMaster"`
 	IsMaintenance               bool                         `json:"isMaintenance"`
+	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	InCaptureMode               bool                         `json:"inCaptureMode"`
@@ -202,7 +203,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
-		url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+		if server.IsCompute && cluster.Conf.ClusterHead != "" {
+			url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+		} else {
+			url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+		}
 	}
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
 	var sid uint64
@@ -214,6 +219,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
+	if conf != "" {
+		server.IsCompute = true
+	}
 	server.TestConfig = conf
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
