@@ -132,11 +132,6 @@ func (psql *ProxySQL) SetReader(host string, port string) error {
 	return err
 }
 
-func (psql *ProxySQL) LoadServersToRuntime() error {
-	_, err := psql.Connection.Exec("LOAD MYSQL SERVERS TO RUNTIME")
-	return err
-}
-
 func (psql *ProxySQL) GetStatsForHostRead(host string, port string) (string, string, int, int, int, int, error) {
 	var (
 		hostgroup string
@@ -191,7 +186,7 @@ func (psql *ProxySQL) AddUser(User string, Password string) error {
 	if err != nil {
 		return err
 	}
-	_, err = psql.Connection.Exec("LOAD MYSQL USERS TO RUNTIME")
+	err = psql.LoadUsersToRuntime()
 	return err
 }
 
@@ -200,4 +195,44 @@ func (psql *ProxySQL) GetQueryRulesRuntime() ([]QueryRule, error) {
 	query := "select rule_id,active,username,schemaname,digest,match_digest,match_pattern, destination_hostgroup,mirror_hostgroup,multiplex,apply from runtime_mysql_query_rules"
 	err := psql.Connection.Select(&rules, query)
 	return rules, err
+}
+
+func (psql *ProxySQL) AddQueryRules(rules []QueryRule) error {
+	stmt := "insert into mysql_query_rules (rule_id,active,username,schemaname,digest,match_digest,match_pattern, destination_hostgroup,mirror_hostgroup,multiplex,apply)  VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+	for _, qr := range rules {
+		_, err := psql.Connection.Query(stmt,
+			qr.Id,
+			qr.Active,
+			qr.UserName,
+			qr.SchemaName,
+			qr.Digest,
+			qr.Match_Digest,
+			qr.Match_Pattern,
+			qr.DestinationHostgroup,
+			qr.MirrorHostgroup,
+			qr.Multiplex,
+			qr.Apply)
+		if err != nil {
+			return err
+		}
+	}
+	err := psql.LoadQueryRulesToRuntime()
+	return err
+}
+
+func (psql *ProxySQL) LoadQueryRulesToRuntime() error {
+	query := "LOAD MYSQL QUERY RULES TO RUNTIME"
+	_, err := psql.Connection.Exec(query)
+	return err
+}
+
+func (psql *ProxySQL) LoadUsersToRuntime() error {
+	query := "LOAD MYSQL USERS TO RUNTIME"
+	_, err := psql.Connection.Exec(query)
+	return err
+}
+
+func (psql *ProxySQL) LoadServersToRuntime() error {
+	_, err := psql.Connection.Exec("LOAD MYSQL SERVERS TO RUNTIME")
+	return err
 }

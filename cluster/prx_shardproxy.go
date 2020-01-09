@@ -48,7 +48,11 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not fetch master schemas %s", err)
 	}
+	foundReplicationManagerSchema := false
 	for _, s := range schemas {
+		if s == "replication_manager_schema" {
+			foundReplicationManagerSchema = true
+		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
 		query := "CREATE OR REPLACE SERVER s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
@@ -62,6 +66,9 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 		}
 
+	}
+	if !foundReplicationManagerSchema {
+		cluster.master.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	}
 	query := "FLUSH TABLES"
 	_, err = proxy.ShardProxy.Conn.Exec(query)
