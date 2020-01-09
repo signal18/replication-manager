@@ -193,8 +193,10 @@ const (
 /* Initializes a server object */
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
 	var err error
-
 	server := new(ServerMonitor)
+	if conf != "" {
+		server.IsCompute = true
+	}
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
@@ -219,9 +221,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
-	if conf != "" {
-		server.IsCompute = true
-	}
+
 	server.TestConfig = conf
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
