@@ -131,6 +131,10 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
+	router.Handle("/api/monitor/actions/adduser/{userName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
+	))
 
 	repman.apiDatabaseUnprotectedHandler(router)
 	repman.apiDatabaseProtectedHandler(router)
@@ -253,6 +257,17 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return
+	}
+
+}
+
+func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	for _, cluster := range repman.Clusters {
+		if repman.IsValidClusterACL(r, cluster) {
+			cluster.AddUser(vars["userName"])
+		}
 	}
 
 }

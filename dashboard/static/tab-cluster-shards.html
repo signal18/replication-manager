@@ -46,7 +46,7 @@
 
                       <tr ng-repeat="table in vtables">
                          <td><md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" class="md-mini md-raised" ng-click="checksumtable(table.tableSchema,table.tableName)">Checksum</md-button>
-                           <md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" ng-if="settings.config.shardproxy" class="md-mini md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
+                           <md-button style="margin: 1px 0;font-size: 8px;padding: 1px 1px 1px 1px;border-radius: 10px 10px 10px 10px;" ng-if="selectedCluster.config.shardproxy==true" class="md-mini md-raised" ng-click="reshardtable(table.tableSchema,table.tableName)">Reshard</md-button> </td>
                          <td class="text">{{ table.tableSchema }}</td>
                          <td class="text"">{{ table.tableName }}    </td>
                          <td class="text">{{ table.engine }} </td>

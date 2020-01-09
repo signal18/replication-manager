@@ -93,7 +93,17 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 
 func (cluster *Cluster) AddUser(user string) error {
 	pass, _ := cluster.GeneratePassword()
-	cluster.Conf.APIUsersExternal = cluster.Conf.APIUsersExternal + "," + user + ":" + pass
-	cluster.LoadAPIUsers()
+	if _, ok := cluster.APIUsers[user]; ok {
+		cluster.LogPrintf(LvlErr, "User %s already exist ", user)
+	} else {
+		if cluster.Conf.APIUsersExternal == "" {
+			cluster.Conf.APIUsersExternal = user + ":" + pass
+		} else {
+			cluster.Conf.APIUsersExternal = cluster.Conf.APIUsersExternal + "," + user + ":" + pass
+		}
+		cluster.LoadAPIUsers()
+		cluster.Save()
+	}
+
 	return nil
 }
