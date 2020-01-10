@@ -236,3 +236,8 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 	_, err := psql.Connection.Exec("LOAD MYSQL SERVERS TO RUNTIME")
 	return err
 }
+
+func (psql *ProxySQL) SaveServersToDisk() error {
+	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
+	return err
+}

@@ -1845,7 +1845,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_gtidstrictmode.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ngtid-strict-mode = 0\"}",
                     "var_updated": "2018-09-28 18:59:07",
-                    "var_name": "db_cnf_opt_no_gtidstrictmode",
+                    "var_name": "db_cnf_rep_no_gtidstrictmode",
                     "id": 6033
                 },
                 {
@@ -1975,6 +1975,14 @@
                     "var_updated": "2019-11-22 11:37:51",
                     "var_name": "db_cnf_disk_with_monitor",
                     "id": 6104
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_gtidstrictmode.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:CNF_UID%%\",\"gid\":\"%%ENV:CNF_GID%%\",\"fmt\":\"[mariadb]\\ngtid-strict-mode = 1\"}",
+                    "var_updated": "2020-01-10 10:58:12",
+                    "var_name": "db_cnf_rep_with_gtidstrictmode",
+                    "id": 6107
                 }
             ],
             "ruleset_public": false,
@@ -2023,7 +2031,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
                 "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
-                "mariadb.svc.mrm.db.cnf.generic.withssl"
+                "mariadb.svc.mrm.db.cnf.generic.withssl",
+                "mariadb.svc.mrm.db.cnf.generic.withgtidstrict"
             ],
             "publications": [
                 "replication-manager"
@@ -3173,6 +3182,30 @@
                 "replication-manager"
             ],
             "id": 1072,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_with_rep_gtidstrictmode.cnf\",\"target\":\"../with_rep_gtidstrictmode.cnf\"}",
+                    "var_updated": "2020-01-10 10:57:39",
+                    "var_name": "db_link_withgtidstrictmode",
+                    "id": 6108
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1074,
             "responsibles": [
                 "replication-manager"
             ]
