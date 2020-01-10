@@ -86,7 +86,11 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
 		return
 	}
+	foundReplicationManagerSchema := false
 	for _, s := range schemas {
+		if s == "replication_manager_schema" {
+			foundReplicationManagerSchema = true
+		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
 		query := "CREATE SERVER IF NOT EXISTS s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
@@ -100,6 +104,9 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
 		}
 
+	}
+	if !foundReplicationManagerSchema {
+		cluster.master.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	}
 }
 
