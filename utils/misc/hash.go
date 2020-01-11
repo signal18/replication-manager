@@ -9,10 +9,17 @@ package misc
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"hash/fnv"
 )
 
 func GetMD5Hash(text string) string {
 	hasher := md5.New()
 	hasher.Write([]byte(text))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func Hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
 }

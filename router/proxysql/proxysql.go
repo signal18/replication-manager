@@ -41,7 +41,7 @@ type StatsQueryDigest struct {
 }
 
 type QueryRule struct {
-	Id                   int            `json:"ruleId" db:"rule_id"`
+	Id                   uint32         `json:"ruleId" db:"rule_id"`
 	Active               int            `json:"active" db:"active"`
 	UserName             sql.NullString `json:"userName" db:"username"`
 	SchemaName           sql.NullString `json:"schemaName" db:"schemaname"`
@@ -90,6 +90,12 @@ func (psql *ProxySQL) AddServer(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) AddShardServer(host string, port string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port,hostgroup_id) VALUES('%s','%s',999)", host, port)
+	_, err := psql.Connection.Exec(sql)
+	psql.LoadServersToRuntime()
+	return err
+}
 func (psql *ProxySQL) AddOfflineServer(host string, port string) error {
 	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id, hostname, port) VALUES('666', '%s','%s')", host, port)
 	_, err := psql.Connection.Exec(sql)

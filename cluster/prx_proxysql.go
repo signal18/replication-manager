@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -27,6 +28,33 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 	return psql, nil
 }
 
+func (cluster *Cluster) AddShardProxy(proxysql *Proxy, shardproxy *Proxy) {
+	if cluster.Conf.ProxysqlOn == false {
+		return
+	}
+	psql, err := connectProxysql(proxysql)
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	defer psql.Connection.Close()
+	psql.AddShardServer(shardproxy.Host, shardproxy.Port)
+
+}
+
+func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.QueryRule) error {
+	if cluster.Conf.ProxysqlOn == false {
+		return errors.New("No proxysql enable in config")
+	}
+	psql, err := connectProxysql(proxy)
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return err
+	}
+	defer psql.Connection.Close()
+	err = psql.AddQueryRules(rules)
+	return err
+}
 func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	if cluster.Conf.ProxysqlOn == false {
 		return

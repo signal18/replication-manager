@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/router/proxysql"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
@@ -105,5 +107,32 @@ func (cluster *Cluster) AddUser(user string) error {
 		cluster.Save()
 	}
 
+	return nil
+}
+
+func (cluster *Cluster) AddShardingHostGroup(proxy *Proxy) error {
+	for _, pr := range cluster.Proxies {
+		if pr.Type == config.ConstProxySqlproxy {
+			cluster.AddShardProxy(pr, proxy)
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) AddShardingQueryRules(schema string, table string) error {
+	for _, pr := range cluster.Proxies {
+		if pr.Type == config.ConstProxySqlproxy {
+			var qr proxysql.QueryRule
+			var qrs []proxysql.QueryRule
+			qr.Id = misc.Hash(schema + "." + table)
+			qr.Active = 1
+			qr.Match_Pattern.String = "SELECT|DELETE|UPDATE|INSERT|REPLACE .*" + table + ".*"
+			qr.Apply = 1
+			qr.DestinationHostgroup.Int64 = 999
+			qrs = append(qrs, qr)
+
+			cluster.AddQueryRulesProxysql(pr, qrs)
+		}
+	}
 	return nil
 }

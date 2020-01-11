@@ -431,7 +431,7 @@ type Compliance struct {
 }
 
 type QueryRule struct {
-	Id                   int            `json:"ruleId" db:"rule_id"`
+	Id                   uint32         `json:"ruleId" db:"rule_id"`
 	Active               int            `json:"active" db:"active"`
 	UserName             sql.NullString `json:"userName" db:"username"`
 	SchemaName           sql.NullString `json:"schemaName" db:"schemaname"`

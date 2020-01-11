@@ -38,6 +38,7 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 		cluster.ShardProxyCreateSystemTable(proxy)
 	}
 	cluster.CheckMdbShardServersSchema(proxy)
+	cluster.AddShardingHostGroup(proxy)
 }
 
 func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
@@ -174,7 +175,9 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		if err != nil {
 			return err
 		}
-
+		if duplicates[0].ClusterGroup.Conf.ClusterHead != "" {
+			duplicates[0].ClusterGroup.AddShardingQueryRules(schema, table)
+		}
 	} else if strings.Contains(cluster.Conf.MdbsUniversalTables, schema+"."+table) {
 		cluster.LogPrintf(LvlInfo, "Creating universal table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
@@ -194,6 +197,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		if err != nil {
 			return err
 		}
+		duplicates[0].ClusterGroup.AddShardingQueryRules(schema, table)
 	} else {
 		cluster.LogPrintf(LvlInfo, "Creating split table in MdbShardProxy %s", schema+"."+table)
 		query := "SELECT  column_name,(select COLUMN_TYPE from information_schema.columns C where C.TABLE_NAME=TABLE_NAME AND C.COLUMN_NAME=COLUMN_NAME AND C.TABLE_SCHEMA=TABLE_SCHEMA LIMIT 1) as TYPE   from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND (TABLE_NAME='" + table + "' OR  TABLE_NAME='" + table + "_reshard') AND ORDINAL_POSITION=1"
