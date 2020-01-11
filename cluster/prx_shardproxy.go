@@ -162,6 +162,16 @@ func (cluster *Cluster) ShardProxyGetShardClusters() map[string]*Cluster {
 	return shardCluster
 }
 
+func (cluster *Cluster) ShardProxyGetHeadCluster() *Cluster {
+
+	for _, cl := range cluster.clusterList {
+		if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == "" {
+			return cl
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	var err error

@@ -112,7 +112,7 @@ func (cluster *Cluster) AddUser(user string) error {
 
 func (cluster *Cluster) AddShardingHostGroup(proxy *Proxy) error {
 	for _, pr := range cluster.Proxies {
-		if pr.Type == config.ConstProxySqlproxy {
+		if pr.Type == config.ConstProxySqlproxy && pr.ClusterGroup.Conf.ClusterHead == "" {
 			cluster.AddShardProxy(pr, proxy)
 		}
 	}
@@ -121,16 +121,15 @@ func (cluster *Cluster) AddShardingHostGroup(proxy *Proxy) error {
 
 func (cluster *Cluster) AddShardingQueryRules(schema string, table string) error {
 	for _, pr := range cluster.Proxies {
-		if pr.Type == config.ConstProxySqlproxy {
+		if pr.Type == config.ConstProxySqlproxy && pr.ClusterGroup.Conf.ClusterHead == "" {
 			var qr proxysql.QueryRule
 			var qrs []proxysql.QueryRule
-			qr.Id = misc.Hash(schema + "." + table)
+			qr.Id = misc.Hash("dml." + schema + "." + table)
 			qr.Active = 1
-			qr.Match_Pattern.String = "SELECT|DELETE|UPDATE|INSERT|REPLACE .*" + table + ".*"
+			qr.Match_Pattern.String = "SELECT|DELETE|UPDATE|INSERT|REPLACE .* " + table + " .*"
 			qr.Apply = 1
 			qr.DestinationHostgroup.Int64 = 999
 			qrs = append(qrs, qr)
-
 			cluster.AddQueryRulesProxysql(pr, qrs)
 		}
 	}
