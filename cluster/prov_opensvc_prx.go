@@ -477,7 +477,7 @@ func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers strin
 	conf := `
 [env]
 nodes = ` + agent.Node_name + `
-size = ` + collector.ProvProxDisk + `b
+size = ` + collector.ProvProxDisk + `
 ` + ipPods + `
 ` + portPods + `
 mysql_root_password = ` + cluster.dbPass + `

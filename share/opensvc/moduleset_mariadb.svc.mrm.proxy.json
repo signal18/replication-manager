@@ -220,25 +220,6 @@
                 }
             ],
             "fset_name": "proxy.route.readwritesplit"
-        },
-        {
-            "fset_stats": false,
-            "id": 326,
-            "filters": [
-                {
-                    "filter": {
-                        "f_op": "=",
-                        "f_field": "tag_name",
-                        "f_value": "readwritesplit",
-                        "f_table": "v_tags",
-                        "id": 287
-                    },
-                    "f_order": 0,
-                    "f_log_op": "AND NOT",
-                    "filterset": null
-                }
-            ],
-            "fset_name": "proxy.route.noreadwritesplit"
         }
     ],
     "rulesets": [
@@ -754,7 +735,7 @@
             ]
         },
         {
-            "fset_name": "proxy.route.noreadwritesplit",
+            "fset_name": null,
             "ruleset_name": "mariadb.svc.mrm.proxy.cnf.proxysql.default",
             "variables": [
                 {
