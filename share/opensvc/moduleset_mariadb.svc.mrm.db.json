@@ -935,6 +935,25 @@
                 }
             ],
             "fset_name": "mariadb.disk.diskmonitor"
+        },
+        {
+            "fset_stats": false,
+            "id": 328,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "gtidstrict",
+                        "f_table": "v_tags",
+                        "id": 289
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.replication.gtidstrict"
         }
     ],
     "rulesets": [
@@ -3187,7 +3206,7 @@
             ]
         },
         {
-            "fset_name": null,
+            "fset_name": "mariadb.replication.gtidstrict",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
             "variables": [
                 {
