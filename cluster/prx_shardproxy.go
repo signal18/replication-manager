@@ -27,7 +27,7 @@ var crcTable = crc64.MakeTable(crc64.ECMA)
 
 func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 
-	cluster.createMdbShardServers(proxy)
+	cluster.failoverMdbShardBackends(proxy)
 
 }
 
@@ -41,7 +41,7 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	cluster.AddShardingHostGroup(proxy)
 }
 
-func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
+func (cluster *Cluster) failoverMdbShardBackends(proxy *Proxy) {
 	if cluster.master == nil {
 		return
 	}
@@ -56,11 +56,19 @@ func (cluster *Cluster) createMdbShardServers(proxy *Proxy) {
 		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
-		query := "CREATE OR REPLACE SERVER s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
+		query := "CREATE OR REPLACE SERVER RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR: query %s %s", query, err)
 		}
+		for _, slave := range cluster.slaves {
+			query := "CREATE OR REPLACE SERVER RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + slave.Host + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
+			_, err = proxy.ShardProxy.Conn.Exec(query)
+			if err != nil {
+				cluster.LogPrintf("ERROR: query %s %s", query, err)
+			}
+		}
+
 		query = "CREATE DATABASE IF NOT EXISTS " + s
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
@@ -94,10 +102,18 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
-		query := "CREATE SERVER IF NOT EXISTS s" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
+		query := "CREATE SERVER IF NOT EXISTS RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR: query %s %s", query, err)
+		}
+		for _, slave := range cluster.slaves {
+
+			query := "CREATE SERVER IF NOT EXISTS RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + slave.Host + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
+			_, err = proxy.ShardProxy.Conn.Exec(query)
+			if err != nil {
+				cluster.LogPrintf("ERROR: query %s %s", query, err)
+			}
 		}
 		query = "CREATE DATABASE IF NOT EXISTS " + s
 		_, err = proxy.ShardProxy.Conn.Exec(query)
@@ -109,6 +125,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 	if !foundReplicationManagerSchema {
 		cluster.master.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	}
+
 }
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
@@ -180,7 +197,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		cluster.LogPrintf(LvlInfo, "Creating federation table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
 		cluster.CheckMdbShardServersSchema(proxy)
-		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"s" + strconv.FormatUint(checksum64, 10) + "\"'"
+		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"RW" + strconv.FormatUint(checksum64, 10) + "\"'"
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
 		if err != nil {
 			return err
@@ -196,7 +213,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		for _, cl := range cluster.ShardProxyGetShardClusters() {
 			cl.CheckMdbShardServersSchema(proxy)
 			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
-			srv_def = srv_def + "s" + strconv.FormatUint(checksum64, 10) + " "
+			srv_def = srv_def + "RW" + strconv.FormatUint(checksum64, 10) + " "
 			link_status_def = link_status_def + "0 "
 		}
 		srv_def = srv_def + "\" "
@@ -237,7 +254,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 		for _, cl := range cluster.ShardProxyGetShardClusters() {
 			cl.CheckMdbShardServersSchema(proxy)
 			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
-			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"s" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
+			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"RW" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
 			if i != len(cluster.clusterList) {
 				query = query + ",\n"
 			}
