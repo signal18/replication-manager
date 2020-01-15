@@ -608,7 +608,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	myconf[clusterName] = repman.Conf
 	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
-	repman.ClusterList = repman.ClusterList
+	//repman.ClusterList = repman.ClusterList
 	repman.Confs[clusterName] = repman.Conf
 	repman.Unlock()
 	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)

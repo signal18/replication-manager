@@ -439,7 +439,8 @@ func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster 
 func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
 
 	for _, c := range cluster.clusterList {
-		if cluster.Name == name {
+
+		if c.Name == name {
 			return c, nil
 		}
 	}
