@@ -358,7 +358,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			}
 			defer db.Close()
 			var sv map[string]string
-			sv, _, err = dbhelper.GetVariables(db, pr.ShardProxy.DBVersion)
+			sv, _, err = dbhelper.GetVariables(db, cluster.GetMaster().DBVersion)
 			if err != nil {
 				if cluster.IsVerbose() {
 					cluster.LogPrintf(LvlErr, "Can't get variables: %s", err)

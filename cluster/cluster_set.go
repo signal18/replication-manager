@@ -477,7 +477,21 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				if err == nil {
 					for _, oriProxy := range oriClusters.Proxies {
 						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.Type, oriProxy.Host, oriProxy.Port)
-						cluster.AddSeededProxy(oriProxy.Type, oriProxy.Host, oriProxy.Port, oriProxy.User, oriProxy.Pass)
+						if oriProxy.Type == config.ConstProxySpider {
+							cluster.AddSeededProxy(oriProxy.Type, oriProxy.Host, oriProxy.Port, oriProxy.User, oriProxy.Pass)
+						}
+					}
+					if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+						portproxysql, err := cluster.LocalhostGetFreePort()
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
+						} else {
+							cluster.LogPrintf(LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
+						}
+						cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
+
+					} else {
+						cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
 					}
 				}
 			}
