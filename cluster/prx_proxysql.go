@@ -56,7 +56,7 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	return err
 }
 func (cluster *Cluster) initProxysql(proxy *Proxy) {
-	if cluster.Conf.ProxysqlOn == false {
+	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
 		return
 	}
 
@@ -66,15 +66,12 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		return
 	}
 	defer psql.Connection.Close()
-
 	for _, s := range cluster.Servers {
-		if cluster.Conf.ProxysqlBootstrap {
-			err = psql.AddServer(s.Host, s.Port)
-			if err != nil {
-				cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
-			}
+		err = psql.AddServer(s.Host, s.Port)
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
 		}
-		if s.State == stateUnconn {
+		if s.State == stateUnconn || s.IsIgnored() {
 			err = psql.AddOfflineServer(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s as offline (%s)", s.URL, err)
@@ -96,18 +93,18 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 
 	defer psql.Connection.Close()
 	for _, s := range cluster.Servers {
-		if s.State == stateUnconn {
+		if s.State == stateUnconn || s.IsIgnored() {
 			err = psql.SetOffline(s.Host, s.Port)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s offline (%s)", s.URL, err)
 			}
 		}
-		/*		if s.IsMaster() {
-				err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port)
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
-				}
-			}*/
+		if s.IsMaster() {
+			err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
+			}
+		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
@@ -176,7 +173,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
-		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave {
+		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 			cluster.LogPrintf(LvlDbg, "ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(s.Host, s.Port)
 			if err != nil {
@@ -204,7 +201,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
-			} else if s.IsSlave {
+			} else if s.IsSlave && !s.IsIgnored() {
 				err = psql.SetReader(s.Host, s.Port)
 				if err != nil {
 					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})

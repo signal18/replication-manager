@@ -126,15 +126,19 @@ func (psql *ProxySQL) SetWriter(host string, port string) error {
 	return err
 }
 
-func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' ,  hostgroup_id='%s', hostname='%s',  port='%s' WHERE  hostname='%s' and  port='%s' ", psql.WriterHG, host, port, oldhost, oldport)
+func (psql *ProxySQL) SetReader(host string, port string) error {
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.ReaderHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
-func (psql *ProxySQL) SetReader(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.ReaderHG, host, port)
-	_, err := psql.Connection.Exec(sql)
+func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string) error {
+	err := psql.SetReader(oldhost, oldport)
+	if err != nil {
+		return err
+	}
+	err = psql.SetWriter(host, port)
+	//sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' ,  hostgroup_id='%s', hostname='%s',  port='%s' WHERE  hostname='%s' and  port='%s' ", psql.WriterHG, host, port, oldhost, oldport)
 	return err
 }
 
