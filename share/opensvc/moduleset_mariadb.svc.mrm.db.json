@@ -2002,6 +2002,22 @@
                     "var_updated": "2020-01-10 10:58:12",
                     "var_name": "db_cnf_rep_with_gtidstrictmode",
                     "id": 6107
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_sec_localinfile.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nlocal-infile=1\"}",
+                    "var_updated": "2020-01-20 17:50:10",
+                    "var_name": "db_cnf_sec_with_loadinfile",
+                    "id": 6110
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_icp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\noptimizer_switch ='index_condition_pushdown=off'\"}",
+                    "var_updated": "2020-01-21 07:40:30",
+                    "var_name": "db_cnf_opt_no_icp",
+                    "id": 6112
                 }
             ],
             "ruleset_public": false,
@@ -2051,7 +2067,9 @@
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
                 "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
                 "mariadb.svc.mrm.db.cnf.generic.withssl",
-                "mariadb.svc.mrm.db.cnf.generic.withgtidstrict"
+                "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
+                "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
+                "mariadb.svc.mrm.db.cnf.generic.noicp"
             ],
             "publications": [
                 "replication-manager"
@@ -3225,6 +3243,54 @@
                 "replication-manager"
             ],
             "id": 1074,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_with_sec_locainfile.cnf\",\"target\":\"../with_sec_locainfile.cnf\"}",
+                    "var_updated": "2020-01-20 17:58:09",
+                    "var_name": "db_link_with_localinfile",
+                    "id": 6111
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1075,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noicp",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/99_no_icp.cnf\",\"target\":\"../no_icp.cnf\"}",
+                    "var_updated": "2020-01-21 07:43:11",
+                    "var_name": "db_link_noicp",
+                    "id": 6113
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1076,
             "responsibles": [
                 "replication-manager"
             ]
