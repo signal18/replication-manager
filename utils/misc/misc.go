@@ -20,11 +20,24 @@ import (
 
 /* Returns two host and port items from a pair, e.g. host:port */
 func SplitHostPort(s string) (string, string) {
-	items := strings.Split(s, ":")
-	if len(items) == 1 {
-		return items[0], "3306"
+
+	if strings.Count(s, ":") >= 2 {
+		// IPV6
+		host, port, err := net.SplitHostPort(s)
+		if err != nil {
+			return "", "3306"
+		} else {
+			return host, port
+		}
+	} else {
+		// IPV6
+		items := strings.Split(s, ":")
+		if len(items) == 1 {
+			return items[0], "3306"
+		}
+		return items[0], items[1]
 	}
-	return items[0], items[1]
+
 }
 
 func SplitHostPortDB(s string) (string, string, string) {

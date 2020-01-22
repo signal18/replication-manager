@@ -954,6 +954,44 @@
                 }
             ],
             "fset_name": "mariadb.replication.gtidstrict"
+        },
+        {
+            "fset_stats": false,
+            "id": 329,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "localinfile",
+                        "f_table": "v_tags",
+                        "id": 291
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.security.localinfile"
+        },
+        {
+            "fset_stats": false,
+            "id": 330,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noicp",
+                        "f_table": "v_tags",
+                        "id": 292
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.noicp"
         }
     ],
     "rulesets": [
@@ -3248,7 +3286,7 @@
             ]
         },
         {
-            "fset_name": null,
+            "fset_name": "mariadb.security.localinfile",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
             "variables": [
                 {
@@ -3272,7 +3310,7 @@
             ]
         },
         {
-            "fset_name": null,
+            "fset_name": "mariadb.optimizer.noicp",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noicp",
             "variables": [
                 {
