@@ -128,6 +128,9 @@ func (repman *ReplicationManager) httpserver() {
 	repman.apiClusterUnprotectedHandler(router)
 	repman.apiDatabaseUnprotectedHandler(router)
 	if !repman.Conf.APIHttpsBind {
+		router.Handle("/api/monitor", negroni.New(
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
+		))
 		repman.apiClusterProtectedHandler(router)
 		repman.apiDatabaseProtectedHandler(router)
 		repman.apiProxyProtectedHandler(router)
