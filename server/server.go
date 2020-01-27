@@ -234,7 +234,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 	} else {
-		log.Warning("No montoring-save-config variable in default section")
+		log.Warning("No monitoring-save-config variable in default section")
 	}
 
 	m := viper.AllKeys()
@@ -246,7 +246,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 			if strings.Contains(k, ".") {
 				mycluster := strings.Split(k, ".")[0]
-				if mycluster != "default" {
+				if strings.ToLower(mycluster) != "default" {
 					if strings.HasPrefix(mycluster, "saved-") {
 						mycluster = strings.TrimPrefix(mycluster, "saved-")
 					}

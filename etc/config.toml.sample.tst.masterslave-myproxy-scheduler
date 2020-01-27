@@ -22,6 +22,7 @@ myproxy-password = "repman"
 
 prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
 monitoring-scheduler = true
+
 scheduler-db-servers-logical-backup  = true
 scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
 scheduler-db-servers-logs   =  true
@@ -51,7 +52,7 @@ scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"
 
 # log-file = "/var/log/replication-manager.log"
 verbose = true
-
+monitoring-save-config = true
 ##############
 ## TOPOLOGY ##
 ##############
