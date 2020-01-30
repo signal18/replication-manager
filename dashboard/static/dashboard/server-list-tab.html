@@ -75,7 +75,7 @@
           <td colspan=2 >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
     </tr>
 </table>
-  <table class="table fixed" style="border: 1px"  *ngFor="let replication of server.replications">
+  <table class="table fixed" style="border: 1px"  ng-repeat="replication in server.replications">
     <tr >
     <td colspan=4 style="padding: 0px;">
     <Table class="table table-condensed fixed" style="border: 1px">

@@ -181,7 +181,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBBackup] {
-		if strings.Contains(URL, "/action/backup-logical") {
+		if strings.Contains(URL, "/actions/backup-logical") {
 			return true
 		}
 		if strings.Contains(URL, "/actions/backup-error-log") {
