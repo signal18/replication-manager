@@ -207,7 +207,7 @@ func (m *MaxScale) ListServers() ([]Server, error) {
 	if m.Conn == nil {
 		return nil, errors.New("Tcp Connection close")
 	}
-	ServerList = nil
+	ServerList = make([]Server, 0)
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 1024)
@@ -252,7 +252,7 @@ func (m *MaxScale) ListMonitors() ([]Monitor, error) {
 	if err != nil {
 		return nil, err
 	}
-	MonitorList = nil
+	MonitorList = make([]Monitor, 0)
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	buf := make([]byte, 512)
