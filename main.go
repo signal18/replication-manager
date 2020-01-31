@@ -387,6 +387,7 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
+		monitorCmd.Flags().BoolVar(&conf.ProxysqlMasterIsReader, "proxysql-master-is-reader", false, "Add the master to the reader group")
 	}
 	if WithSphinx == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
