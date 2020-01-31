@@ -10,14 +10,14 @@
       background-color: rgb(51, 122, 183);
     }
   </style>
-<table  border=0 ng-if="servers" class="table table-condensed fixed">
+<table  style="width: 100%;" border=0 ng-if="servers" class="table table-condensed fixed">
   <col style="width: 5%;">
   <col style="width: 30%;">
  <col style="width: 55%;">
  <col style="width: 5%;">
   <col style="width: 5%;">
 
-      <tr  ng-click="openServer(server.id)">
+     <tr  ng-click="openServer(server.id)">
 
      <th class="server.state == 'Master' ? 'mastertable' :  ''"   >
              <img ng-if="server.dbVersion.flavor=='MariaDB'" src="static/img/mariadb.svg"  class="vicon" />
@@ -26,14 +26,19 @@
               <img ng-if="server.dbVersion.flavor=='PostgreSQL'" src="static/img/postgreesql.png"  style="padding: 0px;width: 24px;vertical-align: top;" />
       </th>
       <th colspan=2>{{server.host}}:{{server.port}}  </th>
-        <th align="right">
+      <th align="right">
           <div><md-button  style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" class="md-raised" aria-label="Tabular" ng-click="toogleTabular()"><md-icon md-menu-origin class="fa fa-table"></md-icon></md-button></div>
-          </th>
+      </th>
       <th align="right">
         <div align="right" ng-include src="'static/menu-server.html'"></div>
       </th>
-      </tr><tr>
-      <td colspan=5 style="padding: 0px;">
+      </tr>
+</table>
+<table style="width: 100%;"  border=0 ng-if="servers" class="table table-condensed fixed">
+  <col style="width: 30%;">
+ <col style="width: 70%;">
+      <tr>
+      <td colspan=2 style="padding: 0px;">
         <Table class="table fixed" style="border: 1px">
         <tr>
           <th class="tabicon">Status</th>
@@ -64,20 +69,27 @@
         </tr>
         </table>
     </td>
-    </tr><tr>
-      <td colspan=2 class="rowicon">Version</td>
-      <td colspan=2>{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}.{{server.dbVersion.release}}</td>
-    </tr><tr>
-        <td colspan=2 class="rowicon">Server Id</td>
-        <td colspan=2 >{{server.serverId}}</td>
-    </tr><tr>
-          <td colspan=2 >Fail Cnt</td>
-          <td colspan=2 >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
+    </tr>
+    <tr>
+      <td class="rowicon">Version</td>
+      <td >{{server.dbVersion.flavor}} {{server.dbVersion.major}}.{{server.dbVersion.minor}}.{{server.dbVersion.release}}</td>
+    </tr>
+    <tr>
+        <td  class="rowicon">Server Id</td>
+        <td>{{server.serverId}}</td>
+    </tr>
+    <tr>
+          <td  class="rowicon" >Fail Cnt</td>
+          <td >{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
     </tr>
 </table>
-  <table class="table fixed" style="border: 1px"  ng-repeat="replication in server.replications">
+  <div  ng-repeat="replication in server.replications">
+  <table  style="width: 100%;" class="table table-condensed fixed" border=0>
+    <col style="width: 30%;">
+    <col style="width: 70%;">
+
     <tr >
-    <td colspan=4 style="padding: 0px;">
+    <td colspan=2 style="padding: 0px;">
     <Table class="table table-condensed fixed" style="border: 1px">
     <tr>
       <th class="tabicon">IO Thread</th>
@@ -104,53 +116,54 @@
   </table>
 </td>
   </tr><tr>
-      <td  colspan=2 >Source</td>
-      <td  colspan=2 >{{replication.connectionName.String}}</td>
-  </tr><tr  >
+      <td >Source</td>
+      <td  >{{replication.connectionName.String}}</td>
+  </tr><tr>
 
 
-        <td colspan=2>
+        <td >
             <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Using GTID</span>
             <span ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</span>
         </td>
-        <td colspan=2 class="gtid"><span
+        <td  class="gtid"><span
                 ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{replication.usingGtid.String}}</span>
         <span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span>
         </td>
 
-        </tr><tr>
-        <td class="gtid" colspan=2>
+    </tr><tr>
+        <td class="gtid">
             <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current GTID</span>
             <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</span>
         </td>
-        <td class="gtid" colspan=2 ><span
+        <td class="gtid" ><span
                 ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.currentGtid)}}">{{gtidstring(server.currentGtid)}}</span>
         <span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{replication.masterLogFile.String}}</span>
         <span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogFile}}</span>
         </td>
-        </tr><tr>
-        <td  colspan=2 class="gtid">
+    </tr><tr>
+        <td  class="gtid">
             <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave GTID</span>
             <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</span>
         </td>
-        <td colspan=2 class="gtid"><span
+        <td  class="gtid"><span
                 ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true" title="{{gtidstring(server.slaveGtid)}}">{{gtidstring(server.slaveGtid)}}</span>
         <span ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{replication.execMasterLogPos.String}}</span>
         <span ng-if="server.isSlave==false && slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{server.binaryLogPos}}</span>
         </td>
 
         </tr><tr>
-          <td  colspan=2 >Delay</td>
-          <td  colspan=2 >{{replication.secondsBehindMaster.Int64}}</td>
+          <td   >Delay</td>
+          <td   >{{replication.secondsBehindMaster.Int64}}</td>
 
       </tr><tr>
-        <td colspan=2 >Master</td>
-        <td colspan=2>{{replication.masterHost.String}}:{{replication.masterPort.String}}</td>
+        <td  >Master</td>
+        <td >{{replication.masterHost.String}}:{{replication.masterPort.String}}</td>
       </tr><tr>
-          <td  colspan=2>SQL error</td>
-          <td  colspan=2>{{replication.lastSqlError.String}}</td>
+          <td >SQL error</td>
+          <td  >{{replication.lastSqlError.String}}</td>
         </tr>
   </table>
+  </div>
 
 </md-card>
 </div>
