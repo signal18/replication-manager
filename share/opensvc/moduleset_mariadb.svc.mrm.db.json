@@ -1612,8 +1612,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n[mysqld]\\n#skip_slave_start = 1\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = 5 \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nslave_type_conversions='ALL_NON_LOSSY'\\n\\n[mariadb]\\nreplicate_annotate_row_events = 1\\nbinlog_annotate_row_events = 1\\ngtid-strict-mode = 1\\n\\n[mysql 5.6]\\nbinlog_row_query_log_events = 1\\n[mysql 5.7]\\nbinlog_row_query_log_events = 1\\n[mysql 8.0]\\nbinlog_row_query_log_events = 1\"}",
-                    "var_updated": "2019-07-24 07:27:37",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n[mysqld]\\n#skip_slave_start = 1\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = 5 \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nslave_type_conversions='ALL_NON_LOSSY'\\n\\n[mariadb]\\nreplicate_annotate_row_events = 1\\nbinlog_annotate_row_events = 1\\n#gtid-strict-mode = 1\\ngtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\n\\n[mysql 5.6]\\nbinlog_row_query_log_events = 1\\n[mysql 5.7]\\nbinlog_row_query_log_events = 1\\n[mysql 8.0]\\nbinlog_row_query_log_events = 1\"}",
+                    "var_updated": "2020-02-01 09:07:26",
                     "var_name": "db_cnf_default_replication",
                     "id": 5943
                 },
