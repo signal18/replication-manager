@@ -131,7 +131,6 @@ type ServerMonitor struct {
 	Version                     int                          `json:"-"`
 	QPS                         int64                        `json:"qps"`
 	ReplicationHealth           string                       `json:"replicationHealth"`
-	TestConfig                  string                       `json:"testConfig"`
 	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist       `json:"-"`
 	Variables                   map[string]string            `json:"-"`
@@ -190,13 +189,11 @@ const (
 	ConstTLSCurrentConfig string = "&tls=tlsconfig"
 )
 
-/* Initializes a server object */
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, conf string) (*ServerMonitor, error) {
+/* Initializes a server object compute if spider node*/
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
-	if conf != "" {
-		server.IsCompute = true
-	}
+	server.IsCompute = compute
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
@@ -222,7 +219,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 
-	server.TestConfig = conf
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveChecksum = true
@@ -305,8 +301,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		}
-		//	server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
-		//		server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
+		// server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
+		// server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)

@@ -639,9 +639,9 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 	var err error
 	if cluster.Conf.ProvNetCNI {
 		host := strings.Split(proxy.Host, ".")[0]
-		proxy.ShardProxy, err = cluster.newServerMonitor(host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
+		proxy.ShardProxy, err = cluster.newServerMonitor(host+":"+proxy.Port, proxy.User, proxy.Pass, true)
 	} else {
-		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, "semisync.cnf")
+		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, true)
 	}
 	return err
 }

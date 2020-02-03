@@ -436,6 +436,16 @@ func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster 
 	return clusters
 }
 
+func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
+	var clusters = make(map[string]*(Cluster))
+	for _, c := range cluster.clusterList {
+		if cluster.Name == c.Conf.ClusterHead {
+			clusters[c.GetName()] = c
+		}
+	}
+	return clusters
+}
+
 func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
 
 	for _, c := range cluster.clusterList {

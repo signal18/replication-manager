@@ -16,6 +16,17 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
+func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
+	if server.Replications != nil {
+		for _, ss := range server.Replications {
+			if ss.ConnectionName.String == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (server *ServerMonitor) HasProvisionCookie() bool {
 	if _, err := os.Stat(server.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
 		return false

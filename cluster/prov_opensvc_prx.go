@@ -159,7 +159,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	if prx.Type == config.ConstProxySpider {
 
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
-			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, "mdbsproxy.cnf")
+			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true)
 			err := srv.Refresh()
 			if err == nil {
 				cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")

@@ -50,7 +50,7 @@ func (cluster *Cluster) newServerList() error {
 	// split("")  return len = 1
 	if cluster.Conf.Hosts != "" {
 		for k, url := range cluster.hostList {
-			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, "semisync.cnf")
+			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
@@ -59,6 +59,23 @@ func (cluster *Cluster) newServerList() error {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 			}
 		}
+		// Add child clusters nodes only if they get same multi source
+		mychilds := cluster.GetChildClusters()
+		for _, c := range mychilds {
+			for l, url := range c.hostList {
+				srv, err := cluster.newServerMonitor(url, c.dbUser, c.dbPass, false)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", c.Servers[l].URL, err)
+				}
+				if cluster.Conf.Verbose {
+					cluster.LogPrintf(LvlInfo, "New database monitored: %v", c.Servers[l].URL)
+				}
+				if srv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
+					cluster.Servers[len(cluster.Servers)+1] = srv
+				}
+			}
+		}
+		// End  child clusters  same multi source server discorvery
 	}
 	cluster.Unlock()
 	return nil
@@ -129,6 +146,7 @@ func (cluster *Cluster) TopologyDiscover() error {
 					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 				}
 				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					cluster.Servers[k].RejoinMaster()
 				} else {
