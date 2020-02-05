@@ -71,7 +71,7 @@ func (cluster *Cluster) newServerList() error {
 					cluster.LogPrintf(LvlInfo, "New database monitored: %v", c.Servers[l].URL)
 				}
 				if srv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-					cluster.Servers[len(cluster.Servers)+1] = srv
+					cluster.Servers = append(cluster.Servers, srv)
 				}
 			}
 		}
