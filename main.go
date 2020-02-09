@@ -474,10 +474,9 @@ func init() {
 
 	if WithOpenSVC == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpromise,local", "seprated list of orchestrator ")
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "opensvc", "onpromise|opensvc|kube|slapos|local")
-
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpromise|opensvc|kube|slapos|local")
 	} else {
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestator", "onpromise", "onpromise|opensvc|kube|slapos|local")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "onpromise", "onpromise|opensvc|kube|slapos|local")
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpromise,local", "seprated list of orchestrator ")
 	}
 	if WithProvisioning == "ON" {

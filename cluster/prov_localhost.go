@@ -70,6 +70,9 @@ func (cluster *Cluster) LocalhostUnprovisionProxyService(prx *Proxy) error {
 }
 
 func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor) error {
+	cluster.DropDBTag("docker")
+	cluster.DropDBTag("threadpool")
+	cluster.AddDBTag("pkg")
 	out := &bytes.Buffer{}
 	path := server.Datadir + "/var"
 	//os.RemoveAll(path)
@@ -109,6 +112,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	cluster.LogPrintf(LvlInfo, "copy datadir done: %s", out.Bytes())
 	*/
 	sysCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/../scripts/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.MariaDBBinaryPath+"/../", "--force")
+	cluster.LogPrintf(LvlInfo, cluster.Conf.MariaDBBinaryPath+"/../scripts/mysql_install_db"+" --defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf"+" --datadir="+server.Datadir+"/var"+" --basedir="+cluster.Conf.MariaDBBinaryPath+"/../"+" --force")
 	sysCmd.Stdout = out
 	err = sysCmd.Run()
 	if err != nil {

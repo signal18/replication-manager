@@ -59,31 +59,38 @@ func (cluster *Cluster) newServerList() error {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 			}
 		}
-		// Add child clusters nodes only if they get same multi source
-		mychilds := cluster.GetChildClusters()
-		for _, c := range mychilds {
-			for l, url := range c.hostList {
-				srv, err := cluster.newServerMonitor(url, c.dbUser, c.dbPass, false)
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", c.Servers[l].URL, err)
-				}
-				if cluster.Conf.Verbose {
-					cluster.LogPrintf(LvlInfo, "New database monitored: %v", c.Servers[l].URL)
-				}
-				if srv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-					cluster.Servers = append(cluster.Servers, srv)
-				}
-			}
-		}
-		// End  child clusters  same multi source server discorvery
+
 	}
 	cluster.Unlock()
 	return nil
 }
 
+// AddChildServers Add child clusters nodes  if they get same  source name
+func (cluster *Cluster) AddChildServers() error {
+	mychilds := cluster.GetChildClusters()
+	for _, c := range mychilds {
+		for _, sv := range c.Servers {
+
+			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
+				//	cluster.slaves = append(cluster.slaves, sv)
+				if !cluster.HasServer(sv) {
+					srv, err := cluster.newServerMonitor(sv.URL, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false)
+					if err != nil {
+						return err
+					}
+					cluster.Servers = append(cluster.Servers, srv)
+				}
+			}
+		}
+	}
+	return nil
+	// End  child clusters  same multi source server discorvery
+}
+
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover() error {
+	cluster.AddChildServers()
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
 	if cluster.Conf.Hosts == "" {

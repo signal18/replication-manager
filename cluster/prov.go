@@ -58,11 +58,6 @@ func (cluster *Cluster) Bootstrap() error {
 
 func (cluster *Cluster) ProvisionServices() error {
 
-	// create service template and post
-	if !(cluster.Conf.Test || cluster.Conf.Enterprise) {
-		return errors.New("Version does not support provisioning.")
-	}
-
 	cluster.sme.SetFailoverState()
 	// delete the cluster state here
 	path := cluster.WorkingDir + ".json"

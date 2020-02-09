@@ -12,6 +12,17 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
+	for _, sv := range cluster.Servers {
+		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
+		// id can not be used for checking equality because  same srv in different clusters
+		if sv.URL == srv.URL {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsProvisioned() bool {
 	if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
 		return true
