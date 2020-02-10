@@ -84,8 +84,8 @@ func GetStatsQueryDigest(db *sqlx.DB) ([]StatsQueryDigest, string, error) {
 	return res, stmt, nil
 }
 
-func (psql *ProxySQL) AddServer(host string, port string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port) VALUES('%s','%s')", host, port)
+func (psql *ProxySQL) AddServerAsReader(host string, port string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.ReaderHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }

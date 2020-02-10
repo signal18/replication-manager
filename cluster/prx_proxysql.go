@@ -67,7 +67,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	}
 	defer psql.Connection.Close()
 	for _, s := range cluster.Servers {
-		err = psql.AddServer(s.Host, s.Port)
+		err = psql.AddServerAsReader(s.Host, s.Port)
 		if err != nil {
 			cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
 		}
