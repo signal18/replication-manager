@@ -72,7 +72,7 @@ func (cluster *Cluster) AddChildServers() error {
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
 				//	cluster.slaves = append(cluster.slaves, sv)
 				if !cluster.HasServer(sv) {
-					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, cluster.GetDomainHeadCluster())
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
 					if err != nil {
 						return err
 					}

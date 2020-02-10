@@ -35,7 +35,7 @@ function (
   QueryRules
 
  ) {
-  //Selected cluster is choose from the drop-down-list
+
   $scope.selectedClusterName = undefined;
   $scope.selectedPlan= undefined;
   $scope.selectedOrchestrator= undefined;
