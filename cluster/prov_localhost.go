@@ -41,7 +41,7 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 	prx.GetProxyConfig()
 	if prx.Type == config.ConstProxySpider {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
-		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true)
+		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "")
 		err := srv.Refresh()
 		if err == nil {
 			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")

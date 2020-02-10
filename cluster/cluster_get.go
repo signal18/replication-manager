@@ -20,6 +20,20 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (cluster *Cluster) GetDomain() string {
+	if cluster.Conf.ProvNetCNI {
+		return "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+	}
+	return ""
+}
+
+func (cluster *Cluster) GetDomainHeadCluster() string {
+	if cluster.Conf.ProvNetCNI {
+		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvNetCNICluster
+	}
+	return ""
+}
+
 func (cluster *Cluster) GetPersitentState() error {
 
 	type Save struct {

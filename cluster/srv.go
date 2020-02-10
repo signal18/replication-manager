@@ -41,6 +41,7 @@ import (
 type ServerMonitor struct {
 	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                       `json:"name"`
+	Domain                      string                       `json:"domain"`
 	ServiceName                 string                       `json:"serviceName"`
 	Conn                        *sqlx.DB                     `json:"-"`
 	User                        string                       `json:"user"`
@@ -190,10 +191,11 @@ const (
 )
 
 /* Initializes a server object compute if spider node*/
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
 	server.IsCompute = compute
+	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
@@ -202,12 +204,14 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
-		if server.IsCompute && cluster.Conf.ClusterHead != "" {
-			url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
-		} else {
-			url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
-		}
+		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {
+				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+			} else {
+				url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+			}*/
+		url = server.Name + server.Domain + ":3306"
 	}
+
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
 	var sid uint64
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)

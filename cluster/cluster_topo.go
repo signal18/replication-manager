@@ -50,16 +50,14 @@ func (cluster *Cluster) newServerList() error {
 	// split("")  return len = 1
 	if cluster.Conf.Hosts != "" {
 		for k, url := range cluster.hostList {
-			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false)
+			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
-
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 			}
 		}
-
 	}
 	cluster.Unlock()
 	return nil
@@ -74,7 +72,7 @@ func (cluster *Cluster) AddChildServers() error {
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
 				//	cluster.slaves = append(cluster.slaves, sv)
 				if !cluster.HasServer(sv) {
-					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Host, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false)
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, cluster.GetDomainHeadCluster())
 					if err != nil {
 						return err
 					}
