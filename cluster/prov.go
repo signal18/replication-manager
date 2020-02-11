@@ -551,7 +551,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
 				}
 
-				server.SetReadOnly()
+				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					server.SetReadOnly()
+				}
 			}
 
 		}
@@ -598,7 +600,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					}
 
 				}
-				server.SetReadOnly()
+				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					server.SetReadOnly()
+				}
 			}
 		}
 		cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
@@ -622,7 +626,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					cluster.sme.RemoveFailoverState()
 					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
-				server.SetReadOnly()
+				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					server.SetReadOnly()
+				}
 			}
 			if key == 1 {
 
@@ -639,7 +645,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					return errors.New(fmt.Sprintln("Can't start slave: ", err))
 				}
 			}
-			server.SetReadOnly()
+			if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+				server.SetReadOnly()
+			}
 		}
 	}
 	// Ring

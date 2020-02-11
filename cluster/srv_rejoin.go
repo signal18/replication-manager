@@ -293,7 +293,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
 	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 	server.Refresh()
-	if server.ClusterGroup.Conf.ReadOnly {
+	if server.ClusterGroup.Conf.ReadOnly && !server.ClusterGroup.IsInIgnoredReadonly(server) {
 		logs, err := server.SetReadOnly()
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	}

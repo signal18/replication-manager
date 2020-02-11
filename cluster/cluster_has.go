@@ -63,6 +63,16 @@ func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	return false
 }
 
+func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
+	ihosts := strings.Split(cluster.Conf.IgnoreSrvRO, ",")
+	for _, ihost := range ihosts {
+		if server.URL == ihost || server.Name == ihost {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.PrefMaster, ",")
 	for _, ihost := range ihosts {

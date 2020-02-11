@@ -607,7 +607,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlInfo, "Restarting old master replication relay server ready")
 			cluster.oldMaster.StartSlave()
 		}
-		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false {
+		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false && !cluster.IsInIgnoredReadonly(sl) {
 			logs, err = sl.SetReadOnly()
 			cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not set slave %s as read-only, %s", sl.URL, err)
 		} else {
