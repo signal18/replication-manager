@@ -66,6 +66,10 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 		return
 	}
 	defer psql.Connection.Close()
+
+	if cluster.Conf.ProxysqlBootstrapHG {
+		psql.AddHostgroups(cluster.Name)
+	}
 	for _, s := range cluster.Servers {
 
 		if s.State == stateUnconn || s.IsIgnored() {
@@ -79,7 +83,11 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 				cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
 			}
 			if s.State == stateMaster {
-				psql.SetWriter(s.Host, s.Port)
+				if cluster.Conf.ProxysqlMasterIsReader {
+					psql.AddServerAsWriter(s.Host, s.Port)
+				} else {
+					psql.SetWriter(s.Host, s.Port)
+				}
 			}
 		}
 	}
@@ -87,6 +95,8 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
+	psql.SaveServersToDisk()
+
 }
 
 func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
@@ -105,7 +115,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 			}
 		}
 		if s.IsMaster() {
-			err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port)
+			err = psql.ReplaceWriter(s.Host, s.Port, cluster.oldMaster.Host, cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
 			}
@@ -114,6 +124,10 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 	err = psql.LoadServersToRuntime()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+	}
+	err = psql.SaveServersToDisk()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not save servers to disk (%s)", err)
 	}
 }
 

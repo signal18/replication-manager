@@ -84,8 +84,20 @@ func GetStatsQueryDigest(db *sqlx.DB) ([]StatsQueryDigest, string, error) {
 	return res, stmt, nil
 }
 
+func (psql *ProxySQL) AddHostgroups(clustername string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_replication_hostgroups(writer_hostgroup, reader_hostgroup, comment) VALUES (%s,%s,'%s')", psql.WriterHG, psql.ReaderHG, clustername)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) AddServerAsReader(host string, port string) error {
 	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.ReaderHG, host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+func (psql *ProxySQL) AddServerAsWriter(host string, port string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.WriterHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -126,20 +138,37 @@ func (psql *ProxySQL) SetWriter(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) DeleteAllWriters() error {
+	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE hostgroup_id='%s'", psql.WriterHG)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) SetReader(host string, port string) error {
 	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.ReaderHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
-func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string) error {
-	err := psql.SetReader(oldhost, oldport)
-	if err != nil {
+func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool) error {
+
+	if masterasreader {
+		err := psql.DeleteAllWriters()
+		if err != nil {
+			return err
+		}
+		err = psql.AddServerAsWriter(host, port)
+		return err
+	} else {
+		err := psql.SetReader(oldhost, oldport)
+		if err != nil {
+			return err
+		}
+		err = psql.SetWriter(host, port)
 		return err
 	}
-	err = psql.SetWriter(host, port)
 	//sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' ,  hostgroup_id='%s', hostname='%s',  port='%s' WHERE  hostname='%s' and  port='%s' ", psql.WriterHG, host, port, oldhost, oldport)
-	return err
+	return nil
 }
 
 func (psql *ProxySQL) GetStatsForHostRead(host string, port string) (string, string, int, int, int, int, error) {

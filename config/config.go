@@ -231,9 +231,10 @@ type Config struct {
 	ProxysqlReaderHostgroup             string `mapstructure:"proxysql-reader-hostgroup" toml:"proxysql-reader-hostgroup" json:"proxysqlReaderHostgroup"`
 	ProxysqlCopyGrants                  bool   `mapstructure:"proxysql-copy-grants" toml:"proxysql-copy-grants" json:"proxysqlCopyGrants"`
 	ProxysqlBootstrap                   bool   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
-	ProxysqlBinaryPath                  string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
+	ProxysqlBootstrapHG                 bool   `mapstructure:"proxysql-bootstrap-hostgroups" toml:"proxysql-bootstrap-hostgroups" json:"proxysqlBootstrapHostgroups"`
 	ProxysqlBootstrapQueryRules         bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
 	ProxysqlMasterIsReader              bool   `mapstructure:"proxysql-master-is-reader" toml:"proxysql-master-is-reader" json:"proxysqlMasterIsReader"`
+	ProxysqlBinaryPath                  string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	MysqlRouterOn                       bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterHosts                    string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterPort                     string `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
