@@ -871,6 +871,11 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 				return p.Indice
 			}
 		}
+		if cluster.Conf.LogFailedElection {
+
+			data, _ := json.MarshalIndent(trackposList, "", "\t")
+			cluster.LogPrintf(LvlInfo, "Election matrice maxseq >0: %s ", data)
+		}
 		return -1
 	}
 	sort.Slice(trackposList[:], func(i, j int) bool {
@@ -889,9 +894,16 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 				return p.Indice
 			}
 		}
+		if cluster.Conf.LogFailedElection {
+			data, _ := json.MarshalIndent(trackposList, "", "\t")
+			cluster.LogPrintf(LvlInfo, "Election matrice maxpos>0: %s ", data)
+		}
 		return -1
 	}
-
+	if cluster.Conf.LogFailedElection {
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
+	}
 	return -1
 }
 
