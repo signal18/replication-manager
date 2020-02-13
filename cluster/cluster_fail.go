@@ -871,8 +871,18 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 				return p.Indice
 			}
 		}
-		if cluster.Conf.LogFailedElection {
+		//send one with maxseq but also ignored
+		for _, p := range trackposList {
+			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
+				if forcingLog {
+					cluster.LogPrintf(LvlInfo, "Ignored server is the most up to date ")
+				}
+				return p.Indice
+			}
 
+		}
+
+		if cluster.Conf.LogFailedElection {
 			data, _ := json.MarshalIndent(trackposList, "", "\t")
 			cluster.LogPrintf(LvlInfo, "Election matrice maxseq >0: %s ", data)
 		}
@@ -891,6 +901,15 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		//send one with maxpos
 		for _, p := range trackposList {
 			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == false {
+				return p.Indice
+			}
+		}
+		//send one with maxpos and ignored
+		for _, p := range trackposList {
+			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
+				if forcingLog {
+					cluster.LogPrintf(LvlInfo, "Ignored server is the most up to date ")
+				}
 				return p.Indice
 			}
 		}
