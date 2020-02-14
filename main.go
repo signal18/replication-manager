@@ -476,11 +476,11 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 
 	if WithOpenSVC == "ON" {
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpromise,local", "seprated list of orchestrator ")
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpromise|opensvc|kube|slapos|local")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpremise,local", "seprated list of orchestrator ")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpremise|opensvc|kube|slapos|local")
 	} else {
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "onpromise", "onpromise|opensvc|kube|slapos|local")
-		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpromise,local", "seprated list of orchestrator ")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "onpremise", "onpremise|opensvc|kube|slapos|local")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpremise,local", "seprated list of orchestrator ")
 	}
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")

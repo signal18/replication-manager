@@ -558,7 +558,7 @@ const (
 	ConstOrchestratorKubernetes string = "kube"
 	ConstOrchestratorSlapOS     string = "slapos"
 	ConstOrchestratorLocalhost  string = "local"
-	ConstOrchestratorOnPremise  string = "onpromise"
+	ConstOrchestratorOnPremise  string = "onpremise"
 )
 
 func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
