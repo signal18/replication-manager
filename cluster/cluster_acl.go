@@ -373,6 +373,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/schema") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/shardclusters") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowBackups] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
