@@ -172,7 +172,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy)
 func (cluster *Cluster) ShardProxyGetShardClusters() map[string]*Cluster {
 	shardCluster := make(map[string]*Cluster)
 	for _, cl := range cluster.clusterList {
-		if cl.Conf.MdbsProxyOn {
+		if cl.Conf.MdbsProxyOn && (cl.Conf.ClusterHead == cluster.Name || cl.Name == cluster.Name) {
 			shardCluster[cl.Name] = cl
 		}
 	}
@@ -251,11 +251,12 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 
 		query = "CREATE OR REPLACE TABLE `" + schema + "`." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\"' PARTITION BY " + hashFunc + " (" + pk + ") (\n"
 		i := 1
-		for _, cl := range cluster.ShardProxyGetShardClusters() {
+		clusterList := cluster.ShardProxyGetShardClusters()
+		for _, cl := range clusterList {
 			cl.CheckMdbShardServersSchema(proxy)
 			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
 			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"RW" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
-			if i != len(cluster.clusterList) {
+			if i != len(clusterList) {
 				query = query + ",\n"
 			}
 			i++
