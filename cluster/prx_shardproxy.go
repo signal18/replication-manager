@@ -563,8 +563,8 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			if err != nil {
 				return err
 			}
-			query = "SELECT *  from " + schema + "." + table + " limit 1"
-			cluster.RunQueryWithLog(pr.ShardProxy, query)
+			//	query = "SELECT *  from " + schema + "." + table + " limit 1"
+			//	cluster.RunQueryWithLog(pr.ShardProxy, query)
 
 			ct := 0
 			cluster.LogPrintf(LvlInfo, "Online data copy...")
