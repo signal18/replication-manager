@@ -568,10 +568,15 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 
 			ct := 0
 			cluster.LogPrintf(LvlInfo, "Online data copy...")
+			myconn, err := pr.ShardProxy.GetNewDBConn()
+			if err != nil {
+				return err
+			}
+			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
 			for {
 				//		pr.ShardProxy.Conn.SetConnMaxLifetime(3595 * time.Second)
-				query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1')"
-				err = cluster.RunQueryWithLog(pr.ShardProxy, query)
+				_, err = myconn.Exec(query)
+				//	err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 				if err != nil {
 					if ct == 2 {
 						return err

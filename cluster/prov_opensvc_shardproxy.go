@@ -52,9 +52,10 @@ orchestrate = start
 	i := 0
 	pod := fmt.Sprintf("%02d", i+1)
 	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-	conf = conf + `post_provision = {svcmgr} -s  {svcpath} push status;{svcmgr} -s  {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db
+	conf = conf + `# post_provision = {svcmgr} -s  {svcpath} push status;{svcmgr} -s  {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.db
 `
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + prx.GetInitContainer(collector)
 	conf = conf + cluster.GetPodDockerShardproxyTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
