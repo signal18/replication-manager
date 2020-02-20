@@ -578,6 +578,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 				_, err = myconn.Exec(query)
 				//	err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 				if err != nil {
+					cluster.LogPrintf(LvlErr, "copy error...", err)
 					if ct == 2 {
 						return err
 					}

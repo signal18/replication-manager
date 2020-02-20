@@ -17,7 +17,7 @@
                 </md-button>
             </md-list-item>
             <md-list-item >
-                <md-button  ng-click="newClusterDialog()"  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create']==false" data-toggle="modal" >
+                <md-button  ng-click="newClusterDialog()" ng-if="settings.config.monitoringSaveConfig"  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create']==false" data-toggle="modal" >
                           <md-icon md-menu-align-target   class="fa fa-3x fa-plus-circle"></md-icon>
                         <br>Add<br/><div ng-if="selectedClusterName">Shard </div>Cluster<br/>
                 </md-button>

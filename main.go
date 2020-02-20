@@ -188,7 +188,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.HostsTLSKEY, "db-servers-tls-client-key", "", "Database TLS client key")
 	monitorCmd.Flags().StringVar(&conf.HostsTLSCLI, "db-servers-tls-client-cert", "", "Database TLS client certificate")
 	monitorCmd.Flags().IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
-	monitorCmd.Flags().IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 15, "Database read timeout in seconds")
+	monitorCmd.Flags().IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
 	monitorCmd.Flags().StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	monitorCmd.Flags().StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts to ignore set readonly")

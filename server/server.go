@@ -273,6 +273,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	} else {
 
 		cf1.Unmarshal(&conf)
+		repman.Conf = conf
 	}
 	if currentClusterName != "" {
 		repman.ClusterList = strings.Split(currentClusterName, ",")
@@ -332,7 +333,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		currentClusterName = "Default"
 	}
 	repman.Confs = confs
-	repman.Conf = conf
+	//repman.Conf = conf
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
