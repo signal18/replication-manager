@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
@@ -441,6 +442,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		}
 		//reset DNS in case the server is restarted
 		server.TLSConfigUsed = ConstTLSCurrentConfig
+		conn.SetConnMaxLifetime(3595 * time.Second)
 		server.SetDSN()
 		return conn, err
 	}
