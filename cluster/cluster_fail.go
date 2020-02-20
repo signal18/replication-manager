@@ -783,7 +783,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
-		if cluster.GetTopology() == topoMultiMasterWsrep {
+		if cluster.GetTopology() == topoMultiMasterWsrep && cluster.vmaster != nil {
 			if cluster.vmaster.URL == sl.URL {
 
 				continue
