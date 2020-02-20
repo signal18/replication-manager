@@ -9,7 +9,6 @@
 package cluster
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"hash/crc64"
@@ -570,16 +569,16 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 			ct := 0
 			cluster.LogPrintf(LvlInfo, "Online data copy...")
 			myconn, err := pr.ShardProxy.GetNewDBConn()
-			defer myconn.Close()
 			if err != nil {
 				return err
 			}
+			defer myconn.Close()
 			query = "SELECT spider_copy_tables('" + schema + "." + table + "','0','1') as res from dual "
-			var ctx context.Context
+			//	var ctx context.Context
 			var res int32
 			for {
 				//		pr.ShardProxy.Conn.SetConnMaxLifetime(3595 * time.Second)
-				err := myconn.QueryRowContext(ctx, query).Scan(&res)
+				err := myconn.QueryRow(query).Scan(&res)
 				//	err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "copy error...", err)
