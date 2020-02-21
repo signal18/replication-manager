@@ -371,6 +371,7 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
 		svccontainer["netns"] = "container#0001"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "30s"
+		svccontainer["optional"] = "true"
 		if cluster.Conf.ProvDiskType != "volume" {
 			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data"
 		} else {

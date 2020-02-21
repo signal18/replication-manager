@@ -554,6 +554,10 @@ func (server *ServerMonitor) IsFilterInTags(filter string) bool {
 			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
 			return true
 		}
+		if server.IsCompute && strings.Contains(filter, "spider") {
+			//IsCompute identify spider nodes need to force tag spider if no present in db tags config
+			return true
+		}
 	}
 	return false
 }

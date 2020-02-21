@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -73,6 +74,10 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 }
 
 func (proxy *Proxy) GetProxyConfig() string {
+
+	if proxy.Type == config.ConstProxySpider {
+		proxy.ShardProxy.GetMyConfig()
+	}
 	type File struct {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
@@ -166,6 +171,7 @@ start_timeout = 30s
 rm = true
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data
 command = sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'
+optional=true
 
  `
 	}
