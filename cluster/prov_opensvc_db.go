@@ -383,6 +383,14 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
 	return svccontainer
 }
 
+func (cluster *Cluster) OpenSVCGetTmpFsSection() map[string]string {
+	svccontainer := make(map[string]string)
+	svccontainer["type"] = "tmpfs"
+	svccontainer["mnt"] = "{env.base_dir}/tmp"
+	svccontainer["dev"] = "none"
+	return svccontainer
+}
+
 func (server *ServerMonitor) OpenSVCGetTaskZFSSnapshotSection() map[string]string {
 	//[task2]
 	svctask := make(map[string]string)
