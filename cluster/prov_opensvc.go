@@ -269,7 +269,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod" + pod + "\n"
 			}
 			fs = fs + "size = {env.size}g\n"
-			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy\n"
+			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy\n"
 		} else { //no pool
 			fs = fs + "dev = {disk#" + podpool + ".file}\n"
 			fs = fs + "size = {env.size}g\n"
@@ -334,7 +334,7 @@ func (cluster *Cluster) GetDockerDiskTemplate(collector opensvc.Collector) strin
 		fs = fs + "dev = {disk" + podpool + ".file}\n"
 	}
 	if collector.ProvFSPool == "zpool" {
-		fs = fs + "mkfs_opt = -o compression=gzip -o mountpoint=legacy\n"
+		fs = fs + "mkfs_opt = -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy\n"
 	}
 	fs = fs + "mnt = {env.base_dir}/docker\n"
 	fs = fs + "size = 2g\n"

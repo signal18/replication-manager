@@ -451,7 +451,7 @@ func (cluster *Cluster) OpenSVCGetFSDockerPrivateSection() map[string]string {
 			svcfs["dev"] = "{disk" + podpool + ".file}"
 		}
 		if cluster.Conf.ProvDiskPool == "zpool" {
-			svcfs["mkfs_opt"] = "-o compression=gzip -o mountpoint=legacy"
+			svcfs["mkfs_opt"] = "-o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy"
 		}
 		svcfs["mnt"] = "{env.base_dir}/docker"
 		svcfs["size"] = cluster.Conf.ProvDiskDockerSize + "g"
@@ -554,7 +554,7 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 				svcfs["dev"] = cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod01"
 			}
 			svcfs["size"] = "{env.size}g"
-			svcfs["mkfs_opt"] = "-o recordsize=16K -o primarycache=metadata -o atime=off -o compression=gzip -o mountpoint=legacy"
+			svcfs["mkfs_opt"] = "-o recordsize=16K -o primarycache=metadata -o atime=off -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy"
 		} else { //no pool
 			if cluster.Conf.ProvDiskType == "loopback" {
 				svcfs["dev"] = "{disk#" + podpool + ".name}/pod01"
