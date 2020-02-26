@@ -702,7 +702,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if strings.Contains(logfile, ".") == false {
 			continue
 		}
-		for len(filepos) > 10 {
+		for len(filepos) < 12 {
 			filepos = "0" + filepos
 		}
 
@@ -812,7 +812,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		if strings.Contains(logfile, ".") == false {
 			continue
 		}
-		for len(filepos) > 10 {
+		for len(filepos) < 12 {
 			filepos = "0" + filepos
 		}
 
