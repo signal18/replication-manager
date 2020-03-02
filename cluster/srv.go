@@ -229,7 +229,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
-
+	
+	if conn != nil {
+		defer conn.Close()
+	}
+	
 	// Handle failure cases here
 	if err != nil {
 		server.setDSN()
@@ -288,9 +292,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		return
 	}
-	if conn != nil {
-		defer conn.Close()
-	}
+	
 	// from here we have connection
 	server.Refresh()
 
