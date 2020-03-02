@@ -287,7 +287,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 
 		return
-	} else {
+	}
+	if conn != nil {
 		defer conn.Close()
 	}
 	// from here we have connection
