@@ -416,18 +416,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//var outGzip, outFile bytes.Buffer
 		//	var errStdout error
 		usegtid := "--gtid"
-		mysqldumppath := ""
-		if server.ClusterGroup.Conf.MysqldumpPath == "" {
-			mysqldumppath = server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqldump"
-		} else {
-			mysqldumppath = server.ClusterGroup.Conf.MysqldumpPath
-		}
-		dumpCmd := exec.Command(mysqldumppath, "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		//stdout := io.MultiWriter(w, &outDump)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+
+		/*	if server.ClusterGroup.Conf.BackupRestic {
+			resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", "--stdin", "--stdin-filename", server.Datadir+"/bck/mysqldump.sql.gz")
+			newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+server.ClusterGroup.Conf.BackupResticAwsAccessKeyId)
+			newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+server.ClusterGroup.Conf.BackupResticAwsAccessSecret)
+			newEnv = append(newEnv, "RESTIC_REPOSITORY="+server.ClusterGroup.Conf.BackupResticRepository)
+			newEnv = append(newEnv, "RESTIC_PASSWORD="+server.ClusterGroup.Conf.BackupResticPassword)
+			resticcmd.Env = newEnv
+			err := resticcmd.Start()
+			if err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Error restic command: %s", err)
+				return err
+			}
+		}*/
 
 		f, err := os.Create(server.Datadir + "/bck/mysqldump.sql.gz")
 		if err != nil {

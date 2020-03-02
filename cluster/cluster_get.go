@@ -20,6 +20,14 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (cluster *Cluster) GetMysqlDumpPath() string {
+	if cluster.Conf.MysqldumpPath == "" {
+		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
+	} else {
+		return cluster.Conf.MysqldumpPath
+	}
+}
+
 func (cluster *Cluster) GetDomain() string {
 	if cluster.Conf.ProvNetCNI {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster

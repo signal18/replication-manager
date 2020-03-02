@@ -193,9 +193,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/backup-slowquery-log") {
 			return true
 		}
-		if strings.Contains(URL, "/actions/master-physical-backup") {
-			return true
-		}
+
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBRestore] {
 		if strings.Contains(URL, "/actions/reseed/") {
@@ -417,6 +415,14 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 
 		}
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/start-traffic") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantDBBackup] {
+		if strings.Contains(URL, "/actions/master-logical-backup") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/master-physical-backup") {
 			return true
 		}
 	}
