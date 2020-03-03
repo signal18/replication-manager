@@ -203,22 +203,19 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
-	mysqlbinlogPath := server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqlbinlog"
-	mysqlclientPath := server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysql"
-	if server.ClusterGroup.Conf.MysqlbinlogPath != "" {
-		mysqlbinlogPath = server.ClusterGroup.Conf.MysqlbinlogPath
+
+	if _, err := os.Stat(server.ClusterGroup.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.GetMysqlBinlogPath())
+		return err
 	}
-	if server.ClusterGroup.Conf.MysqlclientPath != "" {
-		mysqlclientPath = server.ClusterGroup.Conf.MysqlclientPath
-	}
-	if _, err := os.Stat(mysqlbinlogPath); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", mysqlbinlogPath)
+	if _, err := os.Stat(server.ClusterGroup.GetMysqlclientPath()); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("ERROR", "File does not exist %s", server.ClusterGroup.GetMysqlclientPath())
 		return err
 	}
 
-	binlogCmd := exec.Command(mysqlbinlogPath, "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(mysqlclientPath, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", mysqlbinlogPath, binlogCmd.Args)
+	binlogCmd := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), binlogCmd.Args)
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -531,8 +528,8 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 }
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 
-	if _, err := os.Stat(server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqlbinlog"); os.IsNotExist(err) {
-		server.ClusterGroup.LogPrintf("ERROR", "Backup Binlog File does not exist %s check binary path", server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog")
+	if _, err := os.Stat(server.ClusterGroup.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		server.ClusterGroup.LogPrintf("ERROR", "mysqlbinlog does not exist %s check binary path", server.ClusterGroup.GetMysqlBinlogPath())
 		return err
 	}
 	if _, err := os.Stat(server.ClusterGroup.Conf.WorkingDir); os.IsNotExist(err) {
@@ -543,8 +540,8 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.Conf.WorkingDir+"/", server.deletefiles)
 
-	cmdrun = exec.Command(server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog", "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog", cmdrun.Args)
+	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
+	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), cmdrun.Args)
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -554,7 +551,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.Conf.ShareDir+"/"+server.ClusterGroup.Conf.GoArch+"/"+server.ClusterGroup.Conf.GoOS+"/mysqlbinlog ", cmdrun.Args)
+		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.GetMysqlBinlogPath(), cmdrun.Args)
 		server.ClusterGroup.LogPrint(cmdrun.Stderr)
 		server.ClusterGroup.LogPrint(cmdrun.Stdout)
 		server.ClusterGroup.canFlashBack = false
@@ -590,7 +587,7 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 		usegtid = "--gtid"
 	}
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.Conf.ShareDir+"/"+cluster.Conf.GoArch+"/"+cluster.Conf.GoOS+"/mysql", "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogPrintf(LvlInfo, "Command: %s ", dumpCmd.Path)
 	var err error

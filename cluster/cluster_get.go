@@ -23,9 +23,22 @@ import (
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.MysqldumpPath == "" {
 		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
-	} else {
-		return cluster.Conf.MysqldumpPath
 	}
+	return cluster.Conf.MysqldumpPath
+}
+
+func (cluster *Cluster) GetMysqlBinlogPath() string {
+	if cluster.Conf.MysqlbinlogPath == "" {
+		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
+	}
+	return cluster.Conf.MysqlbinlogPath
+}
+
+func (cluster *Cluster) GetMysqlclientPath() string {
+	if cluster.Conf.MysqlclientPath == "" {
+		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
+	}
+	return cluster.Conf.MysqlclientPath
 }
 
 func (cluster *Cluster) GetDomain() string {
