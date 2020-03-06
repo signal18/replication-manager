@@ -370,10 +370,10 @@ func (server *ServerMonitor) Refresh() error {
 		return errors.New("Connection is closed, server unreachable")
 	}
 	conn, err := sqlx.Connect("mysql", server.DSN)
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
 	if server.ClusterGroup.conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
 		if mxsversion != "" {
