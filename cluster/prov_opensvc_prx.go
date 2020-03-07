@@ -391,6 +391,9 @@ func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
+	if len(clusteragents) == 0 {
+		return agent, errors.New("Indice not found in proxies agent list")
+	}
 	for i, srv := range cluster.Proxies {
 		if srv.Id == proxy.Id {
 			return clusteragents[i%len(clusteragents)], nil
