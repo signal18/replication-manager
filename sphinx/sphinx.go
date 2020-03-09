@@ -30,6 +30,7 @@ func (sphinxql *SphinxSQL) Connect() error {
 	var err error
 	sphinxql.Connection, err = sqlx.Connect("mysql", SphinxConfig.FormatDSN())
 	if err != nil {
+		defer sphinxql.Connection.Close()
 		return fmt.Errorf("Could not connect to SphinxQL (%s)", err)
 	}
 	return nil
