@@ -78,14 +78,23 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
+	if server.ClusterGroup.Conf.BackupRestic {
+		port, err := server.ClusterGroup.SSTRunReceiverToRestic(server.DSN + ".xbtream")
+		if err != nil {
+			return 0, nil
+		}
+		jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
+		return jobid, err
+	} else {
+		port, err := server.ClusterGroup.SSTRunReceiverToFile(server.Datadir+"/bck/"+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
+		if err != nil {
+			return 0, nil
+		}
+		jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
 
-	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/bck/"+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
-	if err != nil {
-		return 0, nil
+		return jobid, err
 	}
-	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
-
-	return jobid, err
+	return 0, nil
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
@@ -216,7 +225,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/log/log_error.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.Datadir+"/log/log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -281,7 +290,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := server.ClusterGroup.SSTRunReceiver(server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
+	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}

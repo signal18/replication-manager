@@ -992,6 +992,25 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.noicp"
+        },
+        {
+            "fset_stats": false,
+            "id": 331,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nobinlog",
+                        "f_table": "v_tags",
+                        "id": 293
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.replication.nobinlog"
         }
     ],
     "rulesets": [
@@ -1372,8 +1391,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\\n\\n[MariaDB 10.2] \\neq_range_index_dive_limit=10\\n\\n[MariaDB 10.3] \\neq_range_index_dive_limit=10\\n\"}",
-                    "var_updated": "2018-10-08 10:27:40",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n#10.3.18, 10.4.8\\n#optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\\n\\n\\n\\n\\n\"}",
+                    "var_updated": "2020-03-11 11:44:50",
                     "var_name": "db_cnf_default_optimizer",
                     "id": 5913
                 },
@@ -2056,6 +2075,14 @@
                     "var_updated": "2020-01-21 07:40:30",
                     "var_name": "db_cnf_opt_no_icp",
                     "id": 6112
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_binlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nskip-log-bin\"}",
+                    "var_updated": "2020-03-12 15:46:09",
+                    "var_name": "db_cnf_rep_no_binlog",
+                    "id": 6114
                 }
             ],
             "ruleset_public": false,
@@ -2107,7 +2134,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withssl",
                 "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
                 "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
-                "mariadb.svc.mrm.db.cnf.generic.noicp"
+                "mariadb.svc.mrm.db.cnf.generic.noicp",
+                "mariadb.svc.mrm.db.cnf.generic.nobinlog"
             ],
             "publications": [
                 "replication-manager"
@@ -3329,6 +3357,30 @@
                 "replication-manager"
             ],
             "id": 1076,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.replication.nobinlog",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nobinlog",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/01_no_binlog.cnf\",\"target\":\"../no_binlog.cnf\"}",
+                    "var_updated": "2020-03-12 16:40:42",
+                    "var_name": "db_link_no_binlog",
+                    "id": 6116
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1077,
             "responsibles": [
                 "replication-manager"
             ]
