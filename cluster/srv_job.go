@@ -95,9 +95,9 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
 
-	//		return jobid, err
+	return jobid, err
 	//	}
-	return 0, nil
+	//return 0, nil
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
