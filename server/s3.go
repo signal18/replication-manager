@@ -19,6 +19,9 @@ import (
 )
 
 func (repman *ReplicationManager) UnMountS3() {
+	if !repman.Conf.BackupStreaming {
+		return
+	}
 	err := goofys.TryUnmount(repman.Conf.WorkingDir + "/s3")
 	if err != nil {
 		log.Errorf("Failed to unmount S3 in response to %s: %s", repman.Conf.WorkingDir+"/backups", err)
