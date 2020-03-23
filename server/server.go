@@ -511,6 +511,8 @@ func (repman *ReplicationManager) Run() error {
 		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
+	go repman.MountS3()
+
 	//repman.InitRestic()
 
 	// If there's an existing encryption key, decrypt the passwords
@@ -538,6 +540,7 @@ func (repman *ReplicationManager) Run() error {
 	go func() {
 		s := <-sigs
 		log.Printf("RECEIVED SIGNAL: %s", s)
+		repman.UnMountS3()
 		repman.exit = true
 
 	}()
@@ -694,6 +697,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 
 	}
+
 	return false
 }
 

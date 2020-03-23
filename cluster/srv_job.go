@@ -78,22 +78,25 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	if server.ClusterGroup.Conf.BackupRestic {
-		port, err := server.ClusterGroup.SSTRunReceiverToRestic(server.DSN + ".xbtream")
-		if err != nil {
-			return 0, nil
-		}
-		jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
-		return jobid, err
-	} else {
-		port, err := server.ClusterGroup.SSTRunReceiverToFile(server.Datadir+"/bck/"+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
-		if err != nil {
-			return 0, nil
-		}
-		jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
-
-		return jobid, err
+	// not  needed to stream internaly using S3 fuse
+	/*
+		if server.ClusterGroup.Conf.BackupRestic {
+			port, err := server.ClusterGroup.SSTRunReceiverToRestic(server.DSN + ".xbtream")
+			if err != nil {
+				return 0, nil
+			}
+			jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
+			return jobid, err
+		} else {
+	*/
+	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.GetBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
+	if err != nil {
+		return 0, nil
 	}
+	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
+
+	//		return jobid, err
+	//	}
 	return 0, nil
 }
 
@@ -384,6 +387,19 @@ func (server *ServerMonitor) JobHandler(JobId int64) error {
 	return nil
 }
 
+func (server *ServerMonitor) GetBackupDirectory() string {
+	if !server.ClusterGroup.Conf.BackupStreaming {
+		return server.Datadir + "/bck/"
+	}
+	s3dir := server.ClusterGroup.Conf.WorkingDir + "/s3/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
+
+	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
+		os.MkdirAll(s3dir, os.ModePerm)
+	}
+	return s3dir + "/"
+
+}
+
 func (server *ServerMonitor) JobBackupLogical() error {
 	//server can be nil as no dicovered master
 	if server == nil {
@@ -406,7 +422,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cfg.DumpServerID = 1001
 
 		cfg.DumpPath = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/river"
-		cfg.DumpExec = server.ClusterGroup.Conf.ShareDir + "/" + server.ClusterGroup.Conf.GoArch + "/" + server.ClusterGroup.Conf.GoOS + "/mysqldump"
+		cfg.DumpExec = server.ClusterGroup.GetMysqlDumpPath()
 		cfg.DumpOnly = true
 		cfg.DumpInit = true
 		cfg.BatchMode = "CSV"
@@ -429,7 +445,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 
 		/*	if server.ClusterGroup.Conf.BackupRestic {
-			resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", "--stdin", "--stdin-filename", server.Datadir+"/bck/mysqldump.sql.gz")
+			resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", "--stdin", "--stdin-filename", server.GetBackupDirectory+"mysqldump.sql.gz")
 			newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+server.ClusterGroup.Conf.BackupResticAwsAccessKeyId)
 			newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+server.ClusterGroup.Conf.BackupResticAwsAccessSecret)
 			newEnv = append(newEnv, "RESTIC_REPOSITORY="+server.ClusterGroup.Conf.BackupResticRepository)
@@ -442,7 +458,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 		}*/
 
-		f, err := os.Create(server.Datadir + "/bck/mysqldump.sql.gz")
+		f, err := os.Create(server.GetBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
 			return err
@@ -485,7 +501,7 @@ func (server *ServerMonitor) BackupRestic() error {
 	var errStdout, errStderr error
 
 	if server.ClusterGroup.Conf.BackupRestic {
-		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.Datadir)
+		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.GetBackupDirectory())
 
 		stdoutIn, _ := resticcmd.StdoutPipe()
 		stderrIn, _ := resticcmd.StderrPipe()

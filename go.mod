@@ -2,7 +2,21 @@ module github.com/signal18/replication-manager
 
 go 1.12
 
+replace github.com/jacobsa/fuse => github.com/kahing/fusego v0.0.0-20190829004836-cb66eea2377f
+
+replace github.com/kahing/goofys => github.com/georgyo/goofys v0.21.0
+
 require (
+	github.com/Azure/azure-pipeline-go v0.2.2
+	github.com/Azure/azure-sdk-for-go v33.2.0+incompatible
+	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest v12.2.0+incompatible
+	github.com/Azure/go-autorest/autorest v0.9.0
+	github.com/Azure/go-autorest/autorest/adal v0.6.0
+	github.com/Azure/go-autorest/autorest/azure/auth v0.3.0
+	github.com/Azure/go-autorest/autorest/azure/cli v0.3.0
+	github.com/Azure/go-autorest/autorest/to v0.3.0 // indirect
+	github.com/Azure/go-autorest/autorest/validation v0.2.0 // indirect
 	github.com/BurntSushi/toml v0.3.1
 	github.com/JaderDias/movingmedian v0.0.0-20170611140316-de8c410559fa
 	github.com/NYTimes/gziphandler v0.0.0-20180125165240-289a3b81f5ae
@@ -10,12 +24,13 @@ require (
 	github.com/alyu/configparser v0.0.0-20151125021232-26b2fe18bee1
 	github.com/armon/go-metrics v0.0.0-20171117184120-7aa49fde8082
 	github.com/asaskevich/govalidator v0.0.0-20180115102450-4b3d68f87f17
+	github.com/aws/aws-sdk-go v1.29.24
 	github.com/bluele/logrus_slack v0.0.0-20170812021752-74aa3c9b7cc3
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/dgrijalva/jwt-go v3.1.0+incompatible
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dgryski/carbonzipper v0.0.0-20170426152955-d1a3cec4169b
 	github.com/dgryski/go-expirecache v0.0.0-20170314133854-743ef98b2adb
 	github.com/dgryski/go-onlinestats v0.0.0-20170612111826-1c7d19468768
@@ -30,13 +45,14 @@ require (
 	github.com/facebookgo/pidfile v0.0.0-20150612191647-f242e2999868
 	github.com/facebookgo/stats v0.0.0-20151006221625-1b76add642e4
 	github.com/fsnotify/fsnotify v1.4.7
-	github.com/go-sql-driver/mysql v1.4.1
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5
 	github.com/gonum/internal v0.0.0-20180125090855-fda53f8d2571
 	github.com/gonum/lapack v0.0.0-20180125091020-f0b8b25edece
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
+	github.com/google/uuid v1.1.1
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.3.0
@@ -56,9 +72,12 @@ require (
 	github.com/hydrogen18/stalecucumber v0.0.0-20161215203336-0a94983f3e27
 	github.com/inconshreveable/mousetrap v1.0.0
 	github.com/iu0v1/gelada v1.2.2
+	github.com/jacobsa/fuse v0.0.0-20180417054321-cd3959611bcb
 	github.com/jmoiron/sqlx v0.0.0-20180124204410-05cef0741ade
 	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20170703010042-c7d06af17c68
+	github.com/kahing/goofys v0.23.1
+	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 	github.com/kisielk/og-rek v0.0.0-20170425174049-dd41cde712de
 	github.com/lestrrat/go-file-rotatelogs v0.0.0-20171229092148-f984502973a0
 	github.com/lestrrat/go-strftime v0.0.0-20170113112000-04ef93e28531
@@ -70,7 +89,7 @@ require (
 	github.com/micro/go-log v0.1.0 // indirect
 	github.com/micro/go-micro v0.1.4
 	github.com/micro/misc v0.1.0 // indirect
-	github.com/mitchellh/go-homedir v0.0.0-20161203194507-b8bc1bf76747
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/hashstructure v0.0.0-20170609045927-2bca23e0e452
 	github.com/mitchellh/mapstructure v0.0.0-20180203102830-a4e142e9c047
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
@@ -81,32 +100,36 @@ require (
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/errors v0.11.0
 	github.com/pires/go-proxyproto v0.0.0-20190615163442-2c19fd512994
-	github.com/pkg/errors v0.0.0-20180127015812-30136e27e2ac
+	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/satori/go.uuid v1.2.0
+	github.com/shirou/gopsutil v2.20.2+incompatible
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed
 	github.com/siddontang/go-mysql v0.0.0-20190311123328-7fc3b28d6104
 	github.com/siddontang/go-mysql-elasticsearch v0.0.0-20180201161913-f34f371d4391
-	github.com/sirupsen/logrus v0.0.0-20180213143110-8c0189d9f6bb
+	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/afero v0.0.0-20180211162714-bbf41cb36dff
 	github.com/spf13/cast v1.2.0
 	github.com/spf13/cobra v0.0.0-20180211162230-be77323fc051
 	github.com/spf13/jwalterweatherman v0.0.0-20180109140146-7c0cea34c8ec
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v0.0.0-20171227194143-aafc9e6bc7b7
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.4.0
+	github.com/urfave/cli v1.22.3
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
-	golang.org/x/crypto v0.0.0-20181025213731-e84da0312774
-	golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc
+	golang.org/x/crypto v0.0.0-20190418165655-df01cb2cc480
+	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
 	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
 	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
+	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
 	gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2 // indirect
+	gopkg.in/ini.v1 v1.55.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0-20170531160350-a96e63847dc3
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 	gopkg.in/yaml.v2 v2.2.4
