@@ -270,6 +270,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	monitorCmd.Flags().BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
+	monitorCmd.Flags().StringVar(&conf.MyDumperPath, "mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
+	monitorCmd.Flags().StringVar(&conf.MyLoaderPath, "myloader-path", "/usr/bin/myloader", "Path to myloader binary")
 	monitorCmd.Flags().StringVar(&conf.MysqldumpPath, "mysqldump-path", "", "Path to mysqldump binary")
 	monitorCmd.Flags().StringVar(&conf.MysqlbinlogPath, "mysqlbinlog-path", "", "Path to mysqlbinlog binary")
 	monitorCmd.Flags().StringVar(&conf.MysqlclientPath, "mysqlclient-path", "", "Path to mysql client binary")

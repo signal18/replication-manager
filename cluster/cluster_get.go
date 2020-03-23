@@ -27,6 +27,13 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 	return cluster.Conf.MysqldumpPath
 }
 
+func (cluster *Cluster) GetMyDumperPath() string {
+	if cluster.Conf.MyDumperPath == "" {
+		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
+	}
+	return cluster.Conf.MyDumperPath
+}
+
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.MysqlbinlogPath == "" {
 		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"

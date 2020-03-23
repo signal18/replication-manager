@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -410,7 +412,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		return nil
 	}
 
-	if server.ClusterGroup.Conf.BackupLogicalType == "river" {
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeRiver {
 		cfg := new(river.Config)
 		cfg.MyHost = server.URL
 		cfg.MyUser = server.User
@@ -437,26 +439,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		river.NewRiver(cfg)
 	}
-	if server.ClusterGroup.Conf.BackupLogicalType == "mysqldump" {
-		//var outGzip, outFile bytes.Buffer
-		//	var errStdout error
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 		usegtid := "--gtid"
 
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-
-		/*	if server.ClusterGroup.Conf.BackupRestic {
-			resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", "--stdin", "--stdin-filename", server.GetBackupDirectory+"mysqldump.sql.gz")
-			newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+server.ClusterGroup.Conf.BackupResticAwsAccessKeyId)
-			newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+server.ClusterGroup.Conf.BackupResticAwsAccessSecret)
-			newEnv = append(newEnv, "RESTIC_REPOSITORY="+server.ClusterGroup.Conf.BackupResticRepository)
-			newEnv = append(newEnv, "RESTIC_PASSWORD="+server.ClusterGroup.Conf.BackupResticPassword)
-			resticcmd.Env = newEnv
-			err := resticcmd.Start()
-			if err != nil {
-				server.ClusterGroup.LogPrintf(LvlErr, "Error restic command: %s", err)
-				return err
-			}
-		}*/
 
 		f, err := os.Create(server.GetBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
@@ -490,6 +476,33 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Wait()
 
 	}
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+		//  --no-schemas     --regex '^(?!(mysql))'
+
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--trx-consistency-only", "--kill-long-queries", "--threads=2", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		pr, pw := io.Pipe()
+		defer pw.Close()
+
+		// tell the command to write to our pipe
+
+		dumpCmd.Stdout = pw
+		buf := new(bytes.Buffer)
+		go func() {
+			defer pr.Close()
+			// copy the data written to the PipeReader via the cmd to stdout
+			if _, err := io.Copy(buf, pr); err != nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
+			}
+			server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf.String())
+		}()
+
+		// run the command, which writes all output to the PipeWriter
+		// which then ends up in the PipeReader
+		if err := dumpCmd.Run(); err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
+		}
+	}
+
 	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	server.BackupRestic()
 	return nil

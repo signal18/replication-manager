@@ -387,6 +387,9 @@ type Config struct {
 	BackupDatabaseLogCron                     string `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
 	BackupDatabaseOptimizeCron                string `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
 	BackupLogicalType                         string `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
+	BackupLogicalLoadThreads                  int    `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
+	BackupLogicalDumpThreads                  int    `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
+	BackupLogicalDumpSystemTables             bool   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
 	BackupPhysicalType                        string `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
 	BackupKeepHourly                          int    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
 	BackupKeepDaily                           int    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
@@ -409,6 +412,8 @@ type Config struct {
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDatabaseLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
 	MysqldumpPath                             string `mapstructure:"mysqldump-path" toml:"mysqldump-path" json:"mysqldumpPath"`
+	MyDumperPath                              string `mapstructure:"mydumper-path" toml:"mydumper-path" json:"mydumperPath"`
+	MyLoaderPath                              string `mapstructure:"myloader-path" toml:"myloader-path" json:"myloaderPath"`
 	MysqlbinlogPath                           string `mapstructure:"mysqlbinlog-path" toml:"mysqlbinlog-path" json:"mysqlbinlogPath"`
 	MysqlclientPath                           string `mapstructure:"mysqlclient-path" toml:"mysqlclient-path" json:"mysqlclientgPath"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
@@ -567,6 +572,34 @@ const (
 	ConstOrchestratorLocalhost  string = "local"
 	ConstOrchestratorOnPremise  string = "onpremise"
 )
+
+const (
+	ConstBackupLogicalTypeMysqldump string = "mysqldump"
+	ConstBackupLogicalTypeMydumper  string = "mydumper"
+	ConstBackupLogicalTypeRiver     string = "internal"
+	ConstBackupLogicalTypeDumpling  string = "dumpling"
+)
+
+const (
+	ConstBackupPhysicalTypeXtrabackup  string = "xtrabackup"
+	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
+)
+
+func (conf *Config) GetBackupPhysicalType() map[string]bool {
+	return map[string]bool{
+		ConstBackupPhysicalTypeXtrabackup:  true,
+		ConstBackupPhysicalTypeMariaBackup: true,
+	}
+}
+
+func (conf *Config) GetBackupLogicalType() map[string]bool {
+	return map[string]bool{
+		ConstBackupLogicalTypeMysqldump: true,
+		ConstBackupLogicalTypeMydumper:  true,
+		ConstBackupLogicalTypeRiver:     false,
+		ConstBackupLogicalTypeDumpling:  false,
+	}
+}
 
 func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
 
