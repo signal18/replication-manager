@@ -296,6 +296,8 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 		cluster.K8SStopDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
 		cluster.SlapOSStopDatabaseService(server)
+	case config.ConstOrchestratorOnPremise:
+		server.JobServerStop()
 	default:
 		return cluster.LocalhostStopDatabaseService(server)
 	}
@@ -346,6 +348,8 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 		cluster.K8SStartDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
 		cluster.SlapOSStartDatabaseService(server)
+	case config.ConstOrchestratorOnPremise:
+		server.JobServerStart()
 	default:
 		return cluster.LocalhostStartDatabaseService(server)
 	}

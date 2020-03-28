@@ -203,6 +203,24 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	return jobid, err
 }
 
+func (server *ServerMonitor) JobServerStop() (int64, error) {
+	jobid, err := server.JobInsertTaks("stop", "4444", server.ClusterGroup.Conf.MonitorAddress)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Stop server: %s %s", server.URL, err)
+		return jobid, err
+	}
+	return jobid, err
+}
+
+func (server *ServerMonitor) JobServerStart() (int64, error) {
+	jobid, err := server.JobInsertTaks("start", "4444", server.ClusterGroup.Conf.MonitorAddress)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Start server: %s %s", server.URL, err)
+		return jobid, err
+	}
+	return jobid, err
+}
+
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
@@ -447,8 +465,10 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 			} else {
 				if task.task == "optimized" {
 					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "restart" {
+				} else if task.task == "start" {
 					server.ClusterGroup.sme.AddState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "stop" {
+					server.ClusterGroup.sme.AddState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "xtrabackup" {
 					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "mariabackup" {

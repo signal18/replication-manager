@@ -143,5 +143,6 @@ var clusterError = map[string]string{
 	"WARN0093": "Restic fetch repo issue: %s\n%s\n%s",
 	"WARN0094": "Restic purge repo issue: %s\n%s\n%s",
 	"WARN0095": "Restic init repo issue: %s\n%s\n%s",
-	"WARN0096": "Restart database server %s",
+	"WARN0096": "Start database server %s",
+	"WARN0097": "Stop database server %s",
 }
