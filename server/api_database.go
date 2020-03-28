@@ -490,7 +490,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				node.JobReseedMysqldump()
+				node.JobReseedLogicalBackup()
 			}
 			if vars["backupMethod"] == "logicalmaster" {
 				node.RejoinMasterDump()

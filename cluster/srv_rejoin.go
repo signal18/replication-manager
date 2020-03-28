@@ -116,9 +116,9 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 			return errors.New("Dump from master failed")
 		}
 	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
-		server.JobFlashbackMysqldump()
+		server.JobFlashbackLogicalBackup()
 	} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
-		server.JobFlashbackXtraBackup()
+		server.JobFlashbackPhysicalBackup()
 	} else if server.ClusterGroup.Conf.AutorejoinZFSFlashback {
 		server.RejoinPreviousSnapshot()
 	} else if server.ClusterGroup.Conf.RejoinScript != "" {

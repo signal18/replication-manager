@@ -34,6 +34,13 @@ func (cluster *Cluster) GetMyDumperPath() string {
 	return cluster.Conf.MyDumperPath
 }
 
+func (cluster *Cluster) GetMyLoaderPath() string {
+	if cluster.Conf.MyDumperPath == "" {
+		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
+	}
+	return cluster.Conf.MyLoaderPath
+}
+
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.MysqlbinlogPath == "" {
 		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"

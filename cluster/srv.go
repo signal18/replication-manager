@@ -201,7 +201,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
-
+	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
 		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {

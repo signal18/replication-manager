@@ -33,6 +33,10 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (server *ServerMonitor) JobRun() {
+
+}
+
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
 	conn, err := sqlx.Connect("mysql", server.DSN)
 	if err != nil {
@@ -133,8 +137,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("flashbackxtrabackup", "4444", server.ClusterGroup.Conf.MonitorAddress)
+func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
+
+	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupPhysicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -165,11 +170,11 @@ func (server *ServerMonitor) JobFlashbackXtraBackup() (int64, error) {
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
-	jobid, err := server.JobInsertTaks("reseedmysqldump", "4444", server.ClusterGroup.Conf.MonitorAddress)
+func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
+	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupLogicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL, err)
 
 		return jobid, err
 	}
@@ -191,14 +196,15 @@ func (server *ServerMonitor) JobReseedMysqldump() (int64, error) {
 
 		return jobid, err
 	}
-
-	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
-
+	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+		go server.JobReseedMyLoader()
+	}
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
-	jobid, err := server.JobInsertTaks("flashbackmysqldump", "4444", server.ClusterGroup.Conf.MonitorAddress)
+func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
+	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 
@@ -223,6 +229,9 @@ func (server *ServerMonitor) JobFlashbackMysqldump() (int64, error) {
 	}
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+		go server.JobReseedMyLoader()
+	}
 	return jobid, err
 }
 
@@ -316,6 +325,100 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	return server.JobInsertTaks("zfssnapback", "0", server.ClusterGroup.Conf.MonitorAddress)
 }
 
+func (server *ServerMonitor) JobReseedMyLoader() {
+
+	threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalLoadThreads)
+	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+
+	stdoutIn, _ := dumpCmd.StdoutPipe()
+	stderrIn, _ := dumpCmd.StderrPipe()
+	dumpCmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stdoutIn)
+	}()
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn)
+	}()
+	wg.Wait()
+	if err := dumpCmd.Wait(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "MyLoader: %s", err)
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical restaure %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	if server.IsSlave {
+		meta, err := server.JobMyLoaderParseMeta(server.ClusterGroup.master.GetBackupDirectory())
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "MyLoader metadata parsing: %s", err)
+		}
+		if server.IsMariaDB() && server.HaveMariaDBGTID {
+			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='" + meta.BinLogUuid + "'")
+			server.StartSlave()
+		}
+	}
+
+}
+
+func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMetaData, error) {
+
+	var m config.MyDumperMetaData
+	buf := new(bytes.Buffer)
+
+	// metadata file name.
+	meta := fmt.Sprintf("%s/metadata", dir)
+
+	// open a file.
+	MetaFd, err := os.Open(meta)
+	if err != nil {
+		return m, err
+	}
+	defer MetaFd.Close()
+
+	MetaRd := bufio.NewReader(MetaFd)
+	for {
+		line, err := MetaRd.ReadBytes('\n')
+		if err != nil {
+			break
+		}
+
+		if len(line) > 2 {
+			newline := bytes.TrimLeft(line, "")
+			buf.Write(bytes.Trim(newline, "\n"))
+			line = []byte{}
+		}
+		if strings.Contains(string(buf.Bytes()), "Started") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.StartTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
+		}
+		if strings.Contains(string(buf.Bytes()), "Log") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.BinLogFileName = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
+		}
+		if strings.Contains(string(buf.Bytes()), "Pos") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			pos, _ := strconv.Atoi(strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "))
+
+			m.BinLogFilePos = uint64(pos)
+		}
+
+		if strings.Contains(string(buf.Bytes()), "GTID") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.BinLogUuid = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
+		}
+		if strings.Contains(string(buf.Bytes()), "Finished") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.EndTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
+		}
+		buf.Reset()
+
+	}
+
+	return m, nil
+}
+
 func (server *ServerMonitor) JobsCheckRunning() error {
 	if server.IsDown() || server.ClusterGroup.Conf.MonitorScheduler == false {
 		return nil
@@ -344,20 +447,28 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 			} else {
 				if task.task == "optimized" {
 					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "restart" {
+					server.ClusterGroup.sme.AddState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "xtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "mariabackup" {
-					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedxtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmariabackup" {
-					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmysqldump" {
-					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "reseedmydumper" {
+					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackxtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "flashbackmariabackup" {
+					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				} else if task.task == "flashbackmydumper" {
+					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackmysqldump" {
-					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				}
 
 			}
@@ -393,7 +504,7 @@ func (server *ServerMonitor) GetBackupDirectory() string {
 	if !server.ClusterGroup.Conf.BackupStreaming {
 		return server.Datadir + "/bck/"
 	}
-	s3dir := server.ClusterGroup.Conf.WorkingDir + "/s3/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
+	s3dir := server.ClusterGroup.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		os.MkdirAll(s3dir, os.ModePerm)
@@ -478,27 +589,43 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		//  --no-schemas     --regex '^(?!(mysql))'
+		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+		/*	pr, pw := io.Pipe()
+			defer pw.Close()
 
-		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--trx-consistency-only", "--kill-long-queries", "--threads=2", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-		pr, pw := io.Pipe()
-		defer pw.Close()
+			// tell the command to write to our pipe
 
-		// tell the command to write to our pipe
+					dumpCmd.Stdout = pw
+					dumpCmd.Stderr = pw
 
-		dumpCmd.Stdout = pw
-		buf := new(bytes.Buffer)
+				buf := new(bytes.Buffer)
+				go func() {
+					defer pr.Close()
+					// copy the data written to the PipeReader via the cmd to stdout
+					if _, err := io.Copy(buf, pr); err != nil {
+						server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
+					}
+					server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf.String())
+				}()
+
+		*/
+		stdoutIn, _ := dumpCmd.StdoutPipe()
+		stderrIn, _ := dumpCmd.StderrPipe()
+		dumpCmd.Start()
+		var wg sync.WaitGroup
+		wg.Add(2)
 		go func() {
-			defer pr.Close()
-			// copy the data written to the PipeReader via the cmd to stdout
-			if _, err := io.Copy(buf, pr); err != nil {
-				server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
-			}
-			server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf.String())
+			defer wg.Done()
+			server.copyLogs(stdoutIn)
 		}()
-
-		// run the command, which writes all output to the PipeWriter
-		// which then ends up in the PipeReader
-		if err := dumpCmd.Run(); err != nil {
+		go func() {
+			defer wg.Done()
+			server.copyLogs(stderrIn)
+		}()
+		wg.Wait()
+		if err := dumpCmd.Wait(); err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
 		}
 	}
@@ -506,6 +633,26 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	server.BackupRestic()
 	return nil
+}
+
+func (server *ServerMonitor) copyLogs(r io.Reader) {
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			server.ClusterGroup.LogPrintf(LvlInfo, "%s", s.Text())
+		}
+
+		/*n, err := r.Read(buf)
+		if n > 0 {
+			server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf)
+		}
+		if err != nil {
+			break
+		}*/
+	}
 }
 
 func (server *ServerMonitor) BackupRestic() error {

@@ -12,7 +12,9 @@ package server
 
 import (
 	"context"
+	"os"
 
+	"github.com/signal18/replication-manager/config"
 	goofys "github.com/signal18/replication-manager/goofys/api"
 	common "github.com/signal18/replication-manager/goofys/api/common"
 	log "github.com/sirupsen/logrus"
@@ -22,7 +24,8 @@ func (repman *ReplicationManager) UnMountS3() {
 	if !repman.Conf.BackupStreaming {
 		return
 	}
-	err := goofys.TryUnmount(repman.Conf.WorkingDir + "/s3")
+
+	err := goofys.TryUnmount(repman.Conf.WorkingDir + "/" + config.ConstStreamingSubDir)
 	if err != nil {
 		log.Errorf("Failed to unmount S3 in response to %s: %s", repman.Conf.WorkingDir+"/backups", err)
 	} else {
@@ -35,6 +38,9 @@ func (repman *ReplicationManager) MountS3() {
 	if !repman.Conf.BackupStreaming {
 		return
 	}
+	if _, err := os.Stat(repman.Conf.WorkingDir + "/" + config.ConstStreamingSubDir); os.IsNotExist(err) {
+		os.MkdirAll(repman.Conf.WorkingDir+"/"+config.ConstStreamingSubDir, os.ModePerm)
+	}
 	bucketName := repman.Conf.BackupStreamingBucket
 	conf := (&common.S3Config{
 		AccessKey: repman.Conf.BackupStreamingAwsAccessKeyId,
@@ -43,13 +49,13 @@ func (repman *ReplicationManager) MountS3() {
 	}).Init()
 
 	config := common.FlagStorage{
-		MountPoint: repman.Conf.WorkingDir + "/s3",
-		DirMode:    0755,
-		FileMode:   0644,
+		MountPoint: repman.Conf.WorkingDir + "/" + config.ConstStreamingSubDir,
+		DirMode:    os.ModePerm,
+		FileMode:   os.ModePerm,
 		Endpoint:   repman.Conf.BackupStreamingEndpoint,
 		Backend:    conf,
 	}
-	log.Infof("Mount S3 to %:s", config.MountPoint)
+	log.Infof("Mount S3 to %s", config.MountPoint)
 	/*	s3, err := internal.NewS3("", config, conf)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to connect s3 %v: %v", config.MountPoint, err)
