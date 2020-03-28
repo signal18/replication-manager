@@ -1114,3 +1114,17 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) {
 		server.ExecQueryNoBinLog("DROP TABLE " + database + "." + row)
 	}
 }
+
+func (server *ServerMonitor) WaitInnoDBPurge() error {
+	query := "SET GLOBAL innodb_purge_rseg_truncate_frequency=1"
+	server.ExecQueryNoBinLog(query)
+	ct := 0
+	for {
+		if server.EngineInnoDB["history_list_lenght_inside_innodb"] == "0" {
+			return nil
+		}
+		if ct == 1200 {
+			return errors.New("Waiting to long for history_list_lenght_inside_innodb 0")
+		}
+	}
+}

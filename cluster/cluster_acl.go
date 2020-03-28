@@ -279,6 +279,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/maintenance") {
 			return true
 		}
+		if strings.Contains(URL, "/actions/wait-innodb-purge") {
+			return true
+		}
 	}
 	/*	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigCreate] {
 			if strings.Contains(URL, "/kill") {

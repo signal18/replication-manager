@@ -167,6 +167,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetInnoDBMonitor)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerWaitInnoDBPurge)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQueryCapture)),
@@ -573,6 +578,32 @@ func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWri
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+func (repman *ReplicationManager) handlerWaitInnoDBPurge(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			err := node.WaitInnoDBPurge()
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+
 }
 
 func (repman *ReplicationManager) handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {

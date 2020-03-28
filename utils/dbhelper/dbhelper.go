@@ -1359,13 +1359,16 @@ func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
 	// 0 read views open inside InnoDB
 	rQueries, _ := regexp.Compile(`(\d+) queries inside InnoDB, (\d+) queries in queue`)
 	rViews, _ := regexp.Compile(`(\d+) read views open inside InnoDB`)
-
+	rHistory, _ := regexp.Compile(`History list length (\d+)`)
 	for _, line := range strings.Split(statusCol, "\n") {
 		if data := rQueries.FindStringSubmatch(line); data != nil {
 			vars["queries_inside_innodb"] = data[1]
 			vars["queries_in_queue"] = data[2]
 		} else if data := rViews.FindStringSubmatch(line); data != nil {
 			vars["read_views_open_inside_innodb"] = data[1]
+
+		} else if data := rHistory.FindStringSubmatch(line); data != nil {
+			vars["history_list_lenght_inside_innodb"] = data[1]
 		}
 	}
 	return vars, logs, nil

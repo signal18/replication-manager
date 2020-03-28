@@ -564,14 +564,18 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		gw := gzip.NewWriter(wf)
 		//fw := bufio.NewWriter(gw)
 		dumpCmd.Stdout = gw
-
+		stderrIn, _ := dumpCmd.StderrPipe()
 		err = dumpCmd.Start()
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
 			return err
 		}
 		var wg sync.WaitGroup
-		wg.Add(1)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			server.copyLogs(stderrIn)
+		}()
 		go func() {
 			defer wg.Done()
 			err := dumpCmd.Wait()
