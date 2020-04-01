@@ -1,0 +1,36 @@
+## config.toml
+## Example replication-manager configuration file
+
+## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+[cluster1]
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+[cluster2]
+db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
+db-servers-prefered-master = "127.0.0.1:3331"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+
+[Default]
+prov-orchestrator = "local"
+db-servers-binary-path= "/usr/local/mysql/bin/"
+haproxy-binary-path= "/usr/local/bin/haproxy"
+
+verbose = true
+log-heartbeat = true
+
+arbitration-external = true
+arbitration-external-secret = "13787932529099014144"
+arbitration-external-hosts = "reparb.signal18.io:80"
+arbitration-peer-hosts ="127.0.0.1:10002"
+
+http-server = true
+http-bind-address = "0.0.0.0"

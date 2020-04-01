@@ -1,0 +1,25 @@
+## config.toml
+## Example replication-manager configuration file
+
+## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+[Cluster_Postgres_Haproxy_MasterSlave]
+title = "ClusterTestPgLogical"
+
+db-servers-hosts = "127.0.0.1:5555/source_rep,127.0.0.1:5556/target_rep"
+db-servers-prefered-master = "127.0.0.1:5555/source_rep"
+db-servers-credential = "apple:"
+db-servers-connect-timeout = 1
+replication-master-slave-pg-logical = true
+replication-credential = "apple:"
+haproxy = true
+haproxy-write-port = 3303
+haproxy-read-port = 3302
+
+[Default]
+prov-orchestrator = "local"
+haproxy-binary-path= "/usr/local/bin/haproxy"
+verbose = true
+http-server = true
+http-bind-address = "0.0.0.0"
