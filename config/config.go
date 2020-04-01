@@ -279,7 +279,8 @@ type Config struct {
 	TestInjectTraffic                         bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                                bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 	KubeConfig                                string `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
-	SlapOSConfig                              string `mapstructure:"slapos-config" toml:"slapos-config" json:"slapos-config"`
+	SlapOSConfig                              string `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`
+	SlapOSDBPartions                          string `mapstructure:"slapos-db-partitions" toml:"slapos-db-partitions" json:"slaposDbPartitions"`
 	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`

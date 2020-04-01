@@ -604,6 +604,9 @@ func (server *ServerMonitor) GetMyConfig() string {
 						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)
 							content = strings.Replace(content, "../etc/mysql", server.Datadir+"/init/etc/mysql", -1)
+						} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+							content = strings.Replace(content, "includedir ..", "includedir "+server.SlapOSDatadir+"/init", -1)
+							content = strings.Replace(content, "../etc/mysql", server.SlapOSDatadir+"/init/etc/mysql", -1)
 						}
 						outFile, err := os.Create(fpath)
 						if err != nil {

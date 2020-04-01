@@ -12,6 +12,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/utils/state"
@@ -49,10 +50,14 @@ func (cluster *Cluster) newServerList() error {
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 	if cluster.Conf.Hosts != "" {
+		slapospartitions := strings.Split(cluster.Conf.SlapOSDBPartions, ",")
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
+			}
+			if k < len(slapospartitions) {
+				cluster.Servers[k].SlapOSDatadir = slapospartitions[k]
 			}
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)

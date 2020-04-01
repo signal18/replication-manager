@@ -154,6 +154,7 @@ type ServerMonitor struct {
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
 	Datadir                     string                       `json:"-"`
+	SlapOSDatadir               string                       `json:"slaposDatadir"`
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
@@ -211,7 +212,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 			}*/
 		url = server.Name + server.Domain + ":3306"
 	}
-
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
 	var sid uint64
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
