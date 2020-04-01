@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	river "github.com/signal18/replication-manager/utils/river"
@@ -611,10 +612,37 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Wait()
 
 	}
+
+	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeDumpling {
+
+		conf := dumplingext.DefaultConfig()
+		conf.Database = ""
+		conf.Host = server.Host
+		conf.User = server.ClusterGroup.dbUser
+		conf.Port, _ = strconv.Atoi(server.Port)
+		conf.Password = server.ClusterGroup.dbPass
+
+		conf.Threads = server.ClusterGroup.Conf.BackupLogicalDumpThreads
+		conf.FileSize = 1000
+		conf.StatementSize = dumplingext.UnspecifiedSize
+		conf.OutputDirPath = server.GetBackupDirectory()
+		conf.Consistency = "snapshot"
+		conf.NoViews = true
+		conf.StatusAddr = ":8281"
+		conf.Rows = dumplingext.UnspecifiedSize
+		conf.Where = ""
+		conf.EscapeBackslash = true
+		conf.LogLevel = "3"
+
+		err := dumplingext.Dump(conf)
+		server.ClusterGroup.LogPrintf(LvlErr, "Dumpling %s", err)
+
+	}
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		//  --no-schemas     --regex '^(?!(mysql))'
+
 		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
-		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 		/*	pr, pw := io.Pipe()
 			defer pw.Close()
