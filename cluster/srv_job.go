@@ -626,13 +626,13 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		conf.FileSize = 1000
 		conf.StatementSize = dumplingext.UnspecifiedSize
 		conf.OutputDirPath = server.GetBackupDirectory()
-		conf.Consistency = "snapshot"
+		conf.Consistency = "flush"
 		conf.NoViews = true
 		conf.StatusAddr = ":8281"
 		conf.Rows = dumplingext.UnspecifiedSize
 		conf.Where = ""
 		conf.EscapeBackslash = true
-		conf.LogLevel = "3"
+		conf.LogLevel = LvlInfo
 
 		err := dumplingext.Dump(conf)
 		server.ClusterGroup.LogPrintf(LvlErr, "Dumpling %s", err)

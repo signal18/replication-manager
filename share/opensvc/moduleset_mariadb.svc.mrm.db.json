@@ -1049,6 +1049,25 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.nodeadlockdetect"
+        },
+        {
+            "fset_stats": false,
+            "id": 334,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "bind",
+                        "f_table": "v_tags",
+                        "id": 296
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.network.bind"
         }
     ],
     "rulesets": [
@@ -2137,6 +2156,14 @@
                     "var_updated": "2020-03-28 10:24:46",
                     "var_name": "db_cnf_opt_no_deadlock_detect",
                     "id": 6119
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_bind.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nbind-address=%%ENV:SERVER_IP%%\"}",
+                    "var_updated": "2020-04-02 17:11:41",
+                    "var_name": "db_cnf_net_with_bind",
+                    "id": 6121
                 }
             ],
             "ruleset_public": false,
@@ -2191,7 +2218,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.noicp",
                 "mariadb.svc.mrm.db.cnf.generic.nobinlog",
                 "mariadb.svc.mrm.db.cnf.generic.noslavestart",
-                "mariadb.svc.mrm.db.cnf.generic.nodeadlockdetect"
+                "mariadb.svc.mrm.db.cnf.generic.nodeadlockdetect",
+                "mariadb.svc.mrm.db.cnf.generic.withnetbind"
             ],
             "publications": [
                 "replication-manager"
@@ -3485,6 +3513,30 @@
                 "replication-manager"
             ],
             "id": 1079,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.network.bind",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withnetbind",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/01_with_net_bind.cnf\",\"target\":\"../with_net_bind.cnf\"}",
+                    "var_updated": "2020-04-02 17:11:27",
+                    "var_name": "db_link_withnetbind",
+                    "id": 6122
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1080,
             "responsibles": [
                 "replication-manager"
             ]

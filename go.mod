@@ -119,6 +119,7 @@ require (
 	github.com/spf13/viper v1.4.0
 	github.com/stretchr/testify v1.4.0
 	github.com/urfave/cli v1.22.3
+	github.com/walle/lll v1.0.1 // indirect
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529
@@ -137,4 +138,6 @@ require (
 	k8s.io/api v0.0.0-20191016225839-816a9b7df678
 	k8s.io/apimachinery v0.0.0-20191017185446-6e68a40eebf9
 	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
+	mvdan.cc/interfacer v0.0.0-20180901003855-c20040233aed // indirect
+	mvdan.cc/lint v0.0.0-20170908181259-adc824a0674b // indirect
 )
