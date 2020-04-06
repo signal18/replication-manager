@@ -817,7 +817,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":                      server.ClusterGroup.GetConfigInnoDBBPSize(),
 		"%%ENV:IBPINSTANCES%%":                              server.ClusterGroup.GetConfigInnoDBBPInstances(),
 		"%%ENV:SVC_CONF_ENV_GCOMM%%":                        server.ClusterGroup.GetGComm(),
-		"%%ENV:SERVER_IP%%":                                 "0.0.0.0",
+		"%%ENV:SERVER_IP%%":                                 server.GetBindAddress(),
 		"%%ENV:SERVER_PORT%%":                               server.Port,
 		"%%ENV:CHECKPOINTIOPS%%":                            server.ClusterGroup.GetConfigInnoDBIOCapacity(),
 		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                     server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),

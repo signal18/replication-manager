@@ -92,6 +92,13 @@ func (server *ServerMonitor) GetReplicationUsingGtid() string {
 	}
 }
 
+func (server *ServerMonitor) GetBindAddress() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.Host
+	}
+	return "0.0.0.0"
+}
+
 func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
 	if server.IsMariaDB() {
 		if server.Variables["GTID_STRICT_MODE"] == "ON" {
