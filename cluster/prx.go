@@ -54,6 +54,7 @@ type Proxy struct {
 	State           string               `json:"state"`
 	PrevState       string               `json:"prevState"`
 	FailCount       int                  `json:"failCount"`
+	SlapOSDatadir   string               `json:"slaposDatadir"`
 }
 
 type Backend struct {
@@ -108,10 +109,14 @@ func (cluster *Cluster) newProxyList() error {
 	var ctproxy = 0
 	var err error
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
-		for _, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
+		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
+
+		for k, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
 			prx := new(Proxy)
 			prx.Type = config.ConstProxyMaxscale
-
+			if k < len(slapospartitions) {
+				prx.SlapOSDatadir = slapospartitions[k]
+			}
 			prx.Port = cluster.Conf.MxsPort
 			prx.User = cluster.Conf.MxsUser
 			prx.Pass = cluster.Conf.MxsPass
@@ -142,9 +147,13 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.HaproxyOn {
+		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
 
-		for _, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
+		for k, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
 			prx := new(Proxy)
+			if k < len(slapospartitions) {
+				prx.SlapOSDatadir = slapospartitions[k]
+			}
 			prx.Type = config.ConstProxyHaproxy
 			prx.Port = strconv.Itoa(cluster.Conf.HaproxyStatPort)
 			prx.ReadPort = cluster.Conf.HaproxyReadPort
@@ -185,8 +194,14 @@ func (cluster *Cluster) newProxyList() error {
 		ctproxy++
 	}
 	if cluster.Conf.ProxysqlOn {
-		for _, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
+		slapospartitions := strings.Split(cluster.Conf.SlapOSProxySQLPartitions, ",")
+
+		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
+
 			prx := new(Proxy)
+			if k < len(slapospartitions) {
+				prx.SlapOSDatadir = slapospartitions[k]
+			}
 			prx.Type = config.ConstProxySqlproxy
 			prx.Port = cluster.Conf.ProxysqlAdminPort
 			prx.ReadWritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)

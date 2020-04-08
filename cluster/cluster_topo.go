@@ -50,7 +50,7 @@ func (cluster *Cluster) newServerList() error {
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 	if cluster.Conf.Hosts != "" {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSDBPartions, ",")
+		slapospartitions := strings.Split(cluster.Conf.SlapOSDBPartitions, ",")
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
 			if err != nil {

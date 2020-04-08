@@ -185,6 +185,13 @@ func (proxy *Proxy) GetBndAddress() string {
 	return "0.0.0.0"
 }
 
+func (proxy *Proxy) GetDatadir() string {
+	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return proxy.SlapOSDatadir
+	}
+	return "/tmp"
+}
+
 func (proxy *Proxy) GetEnv() map[string]string {
 	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                      proxy.ClusterGroup.Conf.ProvCores,
@@ -220,6 +227,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        proxy.ClusterGroup.GetClusterName(),
 		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.ProxySQLReadOnMaster(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetDatadir(),
 	}
 }
 
