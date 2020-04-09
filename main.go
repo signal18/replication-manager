@@ -491,6 +491,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	monitorCmd.Flags().IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	monitorCmd.Flags().IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
+	monitorCmd.Flags().BoolVar(&conf.SysbenchV1, "sysbench-v1", false, "v1 get different syntax")
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.MariaDBBinaryPath, "db-servers-binary-path", "/usr/local/mysql/bin", "Path to mysqld binary for testing")
 

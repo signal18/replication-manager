@@ -44,12 +44,15 @@ func (cluster *Cluster) PrepareBench() error {
 	}
 
 	if cluster.benchmarkType == "sysbench" {
-
+		test := "--test=oltp"
+		if cluster.Conf.SysbenchV1 {
+			test = "oltp_read_write"
+		}
 		var prepare = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
 		cluster.LogPrintf("BENCH", "%s", strings.Replace(prepare, cluster.rplPass, "XXXXX", -1))
 		var cmdprep *exec.Cmd
 
-		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--oltp-table-size=1000000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "prepare")
 		var outprep bytes.Buffer
 		cmdprep.Stdout = &outprep
 
@@ -77,10 +80,14 @@ func (cluster *Cluster) CleanupBench() error {
 		return errors.New("No proxy")
 	}
 	if cluster.benchmarkType == "sysbench" {
+		test := "--test=oltp"
+		if cluster.Conf.SysbenchV1 {
+			test = "oltp_read_write"
+		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
 		cluster.LogPrintf("BENCH", "%s", cleanup)
 		var cmdcls *exec.Cmd
-		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=10000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
+		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--oltp-table-size=10000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
 		var outcls bytes.Buffer
 		cmdcls.Stdout = &outcls
 
@@ -123,11 +130,15 @@ func (cluster *Cluster) RunBench() error {
 		return errors.New("No proxy")
 	}
 	if cluster.benchmarkType == "sysbench" {
+		test := "--test=oltp"
+		if cluster.Conf.SysbenchV1 {
+			test = "oltp_read_write"
+		}
 		var run = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads) + " run"
 		cluster.LogPrintf("BENCH", "%s", run)
 		var cmdrun *exec.Cmd
 
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, "--test=oltp", "--oltp-table-size=1000000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time="+strconv.Itoa(cluster.Conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.Conf.SysbenchThreads), "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--oltp-table-size=1000000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time="+strconv.Itoa(cluster.Conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.Conf.SysbenchThreads), "run")
 		var outrun bytes.Buffer
 		cmdrun.Stdout = &outrun
 

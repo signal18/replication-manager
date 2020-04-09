@@ -264,6 +264,7 @@ type Config struct {
 	GraphiteCarbonPicklePort                  int    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
 	GraphiteCarbonPprofPort                   int    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
 	SysbenchBinaryPath                        string `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
+	SysbenchV1                                bool   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
 	SysbenchTime                              int    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
 	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
 	Arbitration                               bool   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
