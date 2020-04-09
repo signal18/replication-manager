@@ -178,7 +178,7 @@ optional=true
 	return vm
 }
 
-func (proxy *Proxy) GetBndAddress() string {
+func (proxy *Proxy) GetBindAddress() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return proxy.Host
 	}
@@ -200,7 +200,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":               string(proxy.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     proxy.ClusterGroup.dbPass,
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
-		"%%ENV:SERVER_IP%%":                            proxy.GetBndAddress(),
+		"%%ENV:SERVER_IP%%":                            proxy.GetBindAddress(),
 		"%%ENV:SERVER_PORT%%":                          proxy.Port,
 		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                             proxy.Name,
