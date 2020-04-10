@@ -35,7 +35,7 @@ RUN apk add --virtual .build-deps git build-base automake autoconf libtool maria
   && apk del .build-deps \
 
 
- COPY sysbench /usr/bin/sysbench
+ COPY src/sysbench /usr/bin/sysbench
 
   RUN cd /
   RUN apk add -t build-depends build-base automake bzip2 patch git cmake openssl-dev zlib-dev libc6-compat libexecinfo-dev && \
