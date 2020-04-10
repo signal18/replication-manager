@@ -288,10 +288,10 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 }
 
 func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
-
-	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, 4444))
+	port, _ := strconv.Atoi(sv.SSTPort)
+	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port))
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port 4444 server %s %s ", sv.Host, err)
+		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 		return
 	}
 	defer client.Close()

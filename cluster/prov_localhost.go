@@ -59,6 +59,14 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 		srv.Close()
 		cluster.ShardProxyBootstrap(prx)
 	}
+	if prx.Type == config.ConstProxySqlproxy {
+		err := cluster.LocalhostProvisionProxySQLService(prx)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Bootstrap Proxysql Failed")
+			cluster.errorChan <- err
+			return err
+		}
+	}
 	cluster.errorChan <- nil
 	return nil
 }

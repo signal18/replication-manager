@@ -158,6 +158,7 @@ type ServerMonitor struct {
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
+	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 }
 
 type serverList []*ServerMonitor

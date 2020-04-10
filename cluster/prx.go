@@ -11,6 +11,7 @@ package cluster
 import (
 	"fmt"
 	"hash/crc64"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ type Proxy struct {
 	PrevState       string               `json:"prevState"`
 	FailCount       int                  `json:"failCount"`
 	SlapOSDatadir   string               `json:"slaposDatadir"`
+	Process         *os.Process          `json:"process"`
 }
 
 type Backend struct {

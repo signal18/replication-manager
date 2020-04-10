@@ -109,7 +109,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 
-	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -140,7 +140,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 
-	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupPhysicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -172,7 +172,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupLogicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL, err)
@@ -205,7 +205,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobServerStop() (int64, error) {
-	jobid, err := server.JobInsertTaks("stop", "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("stop", server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Stop server: %s %s", server.URL, err)
 		return jobid, err
@@ -214,7 +214,7 @@ func (server *ServerMonitor) JobServerStop() (int64, error) {
 }
 
 func (server *ServerMonitor) JobServerStart() (int64, error) {
-	jobid, err := server.JobInsertTaks("start", "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("start", server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Start server: %s %s", server.URL, err)
 		return jobid, err
@@ -223,7 +223,7 @@ func (server *ServerMonitor) JobServerStart() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
-	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, "4444", server.ClusterGroup.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 
@@ -522,9 +522,7 @@ func (server *ServerMonitor) JobHandler(JobId int64) error {
 }
 
 func (server *ServerMonitor) GetBackupDirectory() string {
-	if !server.ClusterGroup.Conf.BackupStreaming {
-		return server.Datadir + "/bck/"
-	}
+
 	s3dir := server.ClusterGroup.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
