@@ -9,6 +9,40 @@ COPY . .
 
 RUN make pro cli
 
+FROM alpine:3 AS builder2
+
+RUN mkdir -p /build
+
+WORKDIR /build
+
+RUN apk add --virtual .build-deps git build-base automake autoconf libtool mariadb-dev --update \
+  && git clone https://github.com/akopytov/sysbench.git \
+  && cd /build/sysbench \
+  && ./autogen.sh \
+  && ./configure --disable-shared \
+  && make \
+  && apk del .build-deps
+
+WORKDIR /build
+
+RUN apk add -t build-depends build-base automake bzip2 patch git cmake openssl-dev zlib-dev libc6-compat libexecinfo-dev && \
+      git clone https://github.com/sysown/proxysql.git && \
+      cd /build/proxysql && \
+      git checkout v1.4.12 && \
+      make clean && \
+      make build_deps && \
+      NOJEMALLOC=1 make
+
+WORKDIR /build
+
+RUN export LIB_PACKAGES='glib mysql-client pcre' && \
+    export BUILD_PACKAGES='glib-dev mariadb-dev zlib-dev pcre-dev libressl-dev cmake build-base' && \
+    apk add --no-cache --update $LIB_PACKAGES $BUILD_PACKAGES && \
+    git clone https://github.com/tanji/mydumper &&  \
+    cd mydumper && \
+    cmake . &&  \
+    make && \
+    apk del $BUILD_PACKAGES
 
 FROM alpine:3
 
@@ -22,46 +56,13 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/s
 COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /usr/share/replication-manager/dashboard
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+COPY --from=builder2 /build/mydumper/mydumper /usr/bin/mydumper
+COPY --from=builder2 /build/mydumper/myloader /usr/bin/myloader
+COPY --from=builder2 /build/proxysql/src/proxysql /usr/bin/proxysql
+COPY --from=builder2 /build/sysbench /usr/bin/sysbench
 
 RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
 
-WORKDIR /
-
-RUN apk add --virtual .build-deps git build-base automake autoconf libtool mariadb-dev --update \
-  && git clone https://github.com/akopytov/sysbench.git \
-  && cd sysbench \
-  && ./autogen.sh \
-  && ./configure --disable-shared \
-  && make \
-  && make install \
-  && apk del .build-deps \
-
-WORKDIR /
-
-  RUN apk add -t build-depends build-base automake bzip2 patch git cmake openssl-dev zlib-dev libc6-compat libexecinfo-dev && \
-      git clone https://github.com/sysown/proxysql.git && \
-      cd proxysql && \
-      git checkout v1.4.12 && \
-      make clean && \
-      make build_deps && \
-      NOJEMALLOC=1 make
-
-COPY src/proxysql /usr/bin/proxysql
-
-WORKDIR /
-
-
-RUN export LIB_PACKAGES='glib mysql-client pcre' && \
-    export BUILD_PACKAGES='glib-dev mariadb-dev zlib-dev pcre-dev libressl-dev cmake build-base' && \
-    apk add --no-cache --update $LIB_PACKAGES $BUILD_PACKAGES && \
-    git clone https://github.com/tanji/mydumper &&  \
-    cd mydumper && \
-    cmake . &&  \
-    make && \
-    make install && \
-    apk del $BUILD_PACKAGES
-COPY mydumper /usr/bin/mydumper
-COPY myloader /usr/bin/myloader
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
