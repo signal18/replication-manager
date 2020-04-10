@@ -25,5 +25,15 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 
 RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
 
+RUN apk add --virtual .build-deps git build-base automake autoconf libtool mariadb-dev --update \
+  && git clone https://github.com/akopytov/sysbench.git \
+  && cd sysbench \
+  && ./autogen.sh \
+  && ./configure --disable-shared \
+  && make \
+  && make install \
+  && apk del .build-deps \
+  && apk add bash mariadb-client-libs
+
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
