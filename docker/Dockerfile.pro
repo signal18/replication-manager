@@ -25,6 +25,8 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 
 RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
 
+WORKDIR /
+
 RUN apk add --virtual .build-deps git build-base automake autoconf libtool mariadb-dev --update \
   && git clone https://github.com/akopytov/sysbench.git \
   && cd sysbench \
@@ -34,9 +36,8 @@ RUN apk add --virtual .build-deps git build-base automake autoconf libtool maria
   && make install \
   && apk del .build-deps \
 
+WORKDIR /
 
-
-  RUN cd /
   RUN apk add -t build-depends build-base automake bzip2 patch git cmake openssl-dev zlib-dev libc6-compat libexecinfo-dev && \
       git clone https://github.com/sysown/proxysql.git && \
       cd proxysql && \
@@ -47,7 +48,7 @@ RUN apk add --virtual .build-deps git build-base automake autoconf libtool maria
 
 COPY src/proxysql /usr/bin/proxysql
 
-RUN cd /
+WORKDIR /
 
 
 RUN export LIB_PACKAGES='glib mysql-client pcre' && \
