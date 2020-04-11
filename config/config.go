@@ -736,21 +736,23 @@ func (conf *Config) GetTopologyType() map[string]string {
 }
 
 func (conf *Config) GetMemoryPctShared() (map[string]int, error) {
-	var engines map[string]int
+	engines := make(map[string]int)
 	tblengine := strings.Split(conf.ProvMemSharedPct, ",")
 	for _, engine := range tblengine {
 		keyval := strings.Split(engine, ":")
 		val, err := strconv.Atoi(keyval[1])
+
 		if err != nil {
 			return engines, err
 		}
+		//		log.Printf("%s", keyval[1])
 		engines[keyval[0]] = val
 	}
 	return engines, nil
 }
 
 func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
-	var engines map[string]int
+	engines := make(map[string]int)
 	tblengine := strings.Split(conf.ProvMemThreadedPct, ",")
 	for _, engine := range tblengine {
 		keyval := strings.Split(engine, ":")
