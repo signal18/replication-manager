@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -298,6 +299,8 @@ type Config struct {
 	ProvType                                  string `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
 	ProvMem                                   string `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
+	ProvMemSharedPct                          string `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
+	ProvMemThreadedPct                        string `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
 	ProvIops                                  string `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
 	ProvCores                                 string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                                  string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
@@ -730,6 +733,34 @@ func (conf *Config) GetTopologyType() map[string]string {
 		"master-slave-pg-stream":  "master-slave-pg-stream",
 		"unknown":                 "unknown",
 	}
+}
+
+func (conf *Config) GetMemoryPctShared() (map[string]int, error) {
+	var engines map[string]int
+	tblengine := strings.Split(conf.ProvMemSharedPct, ",")
+	for _, engine := range tblengine {
+		keyval := strings.Split(engine, ":")
+		val, err := strconv.Atoi(keyval[1])
+		if err != nil {
+			return engines, err
+		}
+		engines[keyval[0]] = val
+	}
+	return engines, nil
+}
+
+func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
+	var engines map[string]int
+	tblengine := strings.Split(conf.ProvMemThreadedPct, ",")
+	for _, engine := range tblengine {
+		keyval := strings.Split(engine, ":")
+		val, err := strconv.Atoi(keyval[1])
+		if err != nil {
+			return engines, err
+		}
+		engines[keyval[0]] = val
+	}
+	return engines, nil
 }
 
 func (conf *Config) GetGrantType() map[string]string {

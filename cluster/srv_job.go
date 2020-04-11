@@ -526,8 +526,12 @@ func (server *ServerMonitor) GetBackupDirectory() string {
 	s3dir := server.ClusterGroup.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
-		os.MkdirAll(s3dir, os.ModePerm)
+		err := os.MkdirAll(s3dir, os.ModePerm)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Create backup path failed: %s", s3dir, err)
+		}
 	}
+
 	return s3dir + "/"
 
 }

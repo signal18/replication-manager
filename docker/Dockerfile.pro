@@ -61,7 +61,7 @@ COPY --from=builder2 /build/mydumper/myloader /usr/bin/myloader
 COPY --from=builder2 /build/proxysql/src/proxysql /usr/bin/proxysql
 COPY --from=builder2 /build/sysbench /usr/bin/sysbench
 
-RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
+RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy mariadb-dev glib pcre openssl-dev zlib-dev libc6-compat libexecinfo-dev
 
 
 CMD ["replication-manager", "monitor", "--http-server"]

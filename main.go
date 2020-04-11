@@ -480,6 +480,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvTags, "prov-db-tags", "semisync,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	monitorCmd.Flags().StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	monitorCmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
+	monitorCmd.Flags().StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0", "% memory shared per buffer")
+	monitorCmd.Flags().StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	monitorCmd.Flags().StringVar(&conf.ProvDisk, "prov-db-disk-size", "20", "Disk in g for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	monitorCmd.Flags().StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20", "Disk in g for micro service VM")

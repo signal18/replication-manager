@@ -21,7 +21,7 @@ db-servers-prefered-master = "127.0.0.1:3333"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
-
+mysqldump-path = "/usr/local/bin/mysqldump"
 backup-logical-type ="mysqldump"
 
 [backup3]
@@ -40,7 +40,7 @@ backup-logical-type ="dumpling"
 prov-orchestrator = "local"
 db-servers-binary-path= "/usr/local/mysql/bin/"
 haproxy-binary-path= "/usr/local/bin/haproxy"
-backup-streaming = true
+backup-streaming = false
 backup-streaming-aws-access-key-id = "admin"
 backup-streaming-aws-access-secret = "xxxx"
 backup-streaming-endpoint= "https://s3.signal18.io/"
