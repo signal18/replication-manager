@@ -85,7 +85,7 @@ func (cluster *Cluster) CleanupBench() error {
 			test = "oltp_read_write"
 		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=10000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup"
-		cluster.LogPrintf("BENCH", "%s", cleanup)
+		cluster.LogPrintf("BENCH", "%s", strings.Replace(cleanup, cluster.rplPass, "XXXXX", -1))
 		var cmdcls *exec.Cmd
 		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--oltp-table-size=10000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time=60", "--oltp-test-mode=complex", "--max-requests=0", "--num-threads=4", "cleanup")
 		var outcls bytes.Buffer
@@ -135,7 +135,7 @@ func (cluster *Cluster) RunBench() error {
 			test = "oltp_read_write"
 		}
 		var run = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads) + " run"
-		cluster.LogPrintf("BENCH", "%s", run)
+		cluster.LogPrintf("BENCH", "%s", strings.Replace(run, cluster.rplPass, "XXXXX", -1))
 		var cmdrun *exec.Cmd
 
 		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--oltp-table-size=1000000", "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "--max-time="+strconv.Itoa(cluster.Conf.SysbenchTime), "--oltp-test-mode=complex", "--max-requests=0", "--num-threads="+strconv.Itoa(cluster.Conf.SysbenchThreads), "run")

@@ -20,7 +20,7 @@ RUN apk add --virtual .build-deps git build-base automake autoconf libtool maria
   && cd /build/sysbench \
   && ./autogen.sh \
   && ./configure --disable-shared \
-  && make \
+  && make install \
   && apk del .build-deps
 
 WORKDIR /build
@@ -59,7 +59,8 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 COPY --from=builder2 /build/mydumper/mydumper /usr/bin/mydumper
 COPY --from=builder2 /build/mydumper/myloader /usr/bin/myloader
 COPY --from=builder2 /build/proxysql/src/proxysql /usr/bin/proxysql
-COPY --from=builder2 /build/sysbench /usr/bin/sysbench
+COPY --from=builder2 /usr/local/share/sysbench /usr/local/share/sysbench
+COPY --from=builder2 /usr/local/bin/sysbench /usr/bin/sysbench
 
 RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy mariadb-dev glib pcre openssl-dev zlib-dev libc6-compat libexecinfo-dev
 
