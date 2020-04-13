@@ -38,7 +38,19 @@ func (server *ServerMonitor) JobRun() {
 
 }
 
+func (server *ServerMonitor) JobsCreateTable() error {
+	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
+	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
+	if err != nil {
+		if server.ClusterGroup.Conf.LogLevel > 2 {
+			server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.jobs")
+		}
+	}
+	return err
+}
+
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
+	server.JobsCreateTable()
 	conn, err := sqlx.Connect("mysql", server.DSN)
 	if err != nil {
 		if server.ClusterGroup.Conf.LogLevel > 2 {
@@ -54,17 +66,7 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		}
 		return 0, err
 	}
-	_, err = conn.Exec("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	if err != nil {
-		return 0, err
-	}
-	_, err = conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
-	if err != nil {
-		if server.ClusterGroup.Conf.LogLevel > 2 {
-			server.ClusterGroup.LogPrintf(LvlErr, "Can't create table replication_manager_schema.jobs")
-		}
-		return 0, err
-	}
+
 	if task != "" {
 		res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
 		if err == nil {
@@ -450,6 +452,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct FROM replication_manager_schema.jobs WHERE done=0 AND result IS NULL group by task ")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
 		return err
 	}
 	for rows.Next() {
