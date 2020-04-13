@@ -55,14 +55,15 @@ func (cluster *Cluster) PrepareBench() error {
 			tablesize = "--table-size=1000000"
 			threads = "--threads=4"
 			requests = "" //			--events=N
-			time = "--time=N"
+			time = "--time=60"
 			mode = ""
 		}
-		var prepare = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare"
-		cluster.LogPrintf("BENCH", "%s", strings.Replace(prepare, cluster.rplPass, "XXXXX", -1))
 		var cmdprep *exec.Cmd
 
 		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
+
+		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.dbPass, "XXXX", -1))
+
 		var outprep bytes.Buffer
 		cmdprep.Stdout = &outprep
 
@@ -154,11 +155,11 @@ func (cluster *Cluster) RunBench() error {
 			mode = ""
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 		}
-		var run = cluster.Conf.SysbenchBinaryPath + " --test=oltp --oltp-table-size=1000000 --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " --max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime) + "--oltp-test-mode=complex --max-requests=0 --num-threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads) + " run"
-		cluster.LogPrintf("BENCH", "%s", strings.Replace(run, cluster.rplPass, "XXXXX", -1))
 		var cmdrun *exec.Cmd
 
 		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
+		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.dbPass, "XXXX", -1))
+
 		var outrun bytes.Buffer
 		cmdrun.Stdout = &outrun
 
