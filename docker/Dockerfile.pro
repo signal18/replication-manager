@@ -38,7 +38,7 @@ WORKDIR /build
 RUN export LIB_PACKAGES='glib mysql-client pcre' && \
     export BUILD_PACKAGES='glib-dev mariadb-dev zlib-dev pcre-dev libressl-dev cmake build-base' && \
     apk add --no-cache --update $LIB_PACKAGES $BUILD_PACKAGES && \
-    git clone https://github.com/tanji/mydumper &&  \
+    git clone -b no-flush https://github.com/tanji/mydumper &&  \
     cd mydumper && \
     cmake . &&  \
     make && \
