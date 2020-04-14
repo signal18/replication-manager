@@ -50,6 +50,9 @@ func (cluster *Cluster) PrepareBench() error {
 		requests := "--max-requests=0"
 		time := "--max-time=60"
 		mode := "--oltp-test-mode=complex"
+		var cmdprep *exec.Cmd
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
+
 		if cluster.Conf.SysbenchV1 {
 			test = "oltp_read_write"
 			tablesize = "--table-size=1000000"
@@ -57,10 +60,9 @@ func (cluster *Cluster) PrepareBench() error {
 			requests = "" //			--events=N
 			time = "--time=60"
 			mode = ""
-		}
-		var cmdprep *exec.Cmd
+			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, threads, "prepare")
 
-		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
+		}
 
 		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.dbPass, "XXXX", -1))
 
@@ -137,25 +139,25 @@ func (cluster *Cluster) RunBench() error {
 	if prx == nil {
 		return errors.New("No proxy")
 	}
+
 	if cluster.benchmarkType == "sysbench" {
+
 		test := "--test=oltp"
 		threads := "--num-threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
 		tablesize := "--oltp-table-size=1000000"
 		requests := "--max-requests=0"
 		time := "--max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 		mode := "--oltp-test-mode=complex"
+		var cmdrun *exec.Cmd
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
 		if cluster.Conf.SysbenchV1 {
 			test = "oltp_read_write"
 			tablesize = "--table-size=1000000"
 			threads = "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
 			requests = "" //			--events=N
-			mode = ""
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
+			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, threads, "run")
 		}
-		var cmdrun *exec.Cmd
-
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
-
 		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.dbPass, "XXXX", -1))
 
 		out, err := cmdrun.CombinedOutput()
