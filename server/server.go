@@ -67,6 +67,8 @@ type ReplicationManager struct {
 	ServiceVM            map[string]bool             `json:"serviceVM"`
 	ServiceDisk          map[string]string           `json:"serviceDisk"`
 	ServicePool          map[string]bool             `json:"servicePool"`
+	BackupLogicalList    map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList   map[string]bool             `json:"backupPhysicalList"`
 	tlog                 s18log.TermLog
 	termlength           int
 	exitMsg              string
@@ -469,6 +471,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServiceFS = repman.Conf.GetFSType()
 	repman.ServiceDisk = repman.Conf.GetDiskType()
 	repman.ServicePool = repman.Conf.GetPoolType()
+	repman.BackupLogicalList = repman.Conf.GetBackupLogicalType()
+	repman.BackupPhysicalList = repman.Conf.GetBackupPhysicalType()
 
 	go repman.apiserver()
 
