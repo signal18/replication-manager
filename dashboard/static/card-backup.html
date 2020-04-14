@@ -1,0 +1,34 @@
+  <md-card ng-if="selectedCluster">
+     <table  ng-if="settings" md-table class="table md-primary md-data-table">
+       <col style="width: 40%;">
+       <col style="width: 10%;">
+       <col style="width: 40%;">
+       <col style="width: 10%;">
+
+         <tr  md-row>
+             <th colspan=3>Database Backups</th><th>
+                  <span  style="display:inline-block;;margin: 2px;" ng-click="saveBackupType(selectedLogicalBackup,selectedPhysicalBackup)"><i   style="display:inline-block;;margin: 2px;"  class="fa fa-save"/></span>
+
+    </th>
+         </tr>
+         <tr><td colspan=4>
+             Logical Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.backupLogicalType }}</span>
+             <md-select  name="selectedLogicalBackup"  ng-model="selectedLogicalBackup">
+                 <md-option ng-selected="{{key ==  selectedCluster.config.backupLogicalType}}"
+                            ng-repeat="(key, value) in settings.backupLogicalList" ng-value="key"
+                            selected="{{ key === selectedCluster.config.backupLogicalType ? 'selected' : '' }}">
+                                 {{key}}</md-option>
+              </md-select>
+              Physical Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.backupPhysicalType }}</span>
+              <md-select  name="selectedPhysicalBackup"  ng-model="selectedPhysicalBackup">
+                  <md-option ng-selected="{{key ==  selectedCluster.config.backupPhysicalType}}"
+                             ng-repeat="(key, value) in settings.backupPhysicalList" ng-value="key"
+                             selected="{{ key === selectedCluster.config.backupPhysicalType ? 'selected' : '' }}">
+                                  {{key}}</md-option>
+               </md-select>
+
+              </td>
+    </tr>
+   </table>
+
+ </md-card>

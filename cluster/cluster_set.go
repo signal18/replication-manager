@@ -263,6 +263,14 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 
 }
 
+func (cluster *Cluster) SetBackupLogicalType(backup string) {
+	cluster.Conf.BackupLogicalType = backup
+}
+
+func (cluster *Cluster) SetBackupPhysicalType(backup string) {
+	cluster.Conf.BackupPhysicalType = backup
+}
+
 func (cluster *Cluster) SetDbServersCredential(credential string) {
 	cluster.Conf.User = credential
 	cluster.SetClusterVariablesFromConfig()

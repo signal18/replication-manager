@@ -1025,6 +1025,13 @@ function (
         }
       };
 
+      $scope.saveBackupType = function (selectedLogicalBackup,selectedPhysicalBackup) {
+        if (confirm("Confirm backup types: "+selectedLogicalBackup+ "/" + selectedPhysicalBackup)) {
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-logical-type/'+selectedLogicalBackup);
+          httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-physical-type/'+selectedPhysicalBackup);
+        }
+      };
+
       $scope.clsetproxycore = function (base,add) {
         value= Number(base)+add;
         if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-proxy-cpu-cores/'+value.toString());

@@ -937,6 +937,10 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		case "backup-keep-monthly":
 		case "backup-keep-weekly":
 		case "backup-keep-yearly":
+		case "backup-logical-type":
+			mycluster.SetBackupLogicalType(vars["settingValue"])
+		case "backup-physical-type":
+			mycluster.SetBackupPhysicalType(vars["settingValue"])
 		case "db-servers-hosts":
 			mycluster.SetDbServerHosts(vars["settingValue"])
 		case "db-servers-credential":
