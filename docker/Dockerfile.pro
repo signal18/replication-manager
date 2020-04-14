@@ -62,7 +62,7 @@ COPY --from=builder2 /build/proxysql/src/proxysql /usr/bin/proxysql
 COPY --from=builder2 /usr/local/share/sysbench /usr/local/share/sysbench
 COPY --from=builder2 /usr/local/bin/sysbench /usr/bin/sysbench
 
-RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy mariadb-dev glib pcre openssl-dev zlib-dev libc6-compat libexecinfo-dev
+RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy mariadb-dev fuse glib pcre openssl-dev zlib-dev libc6-compat libexecinfo-dev
 
 
 CMD ["replication-manager", "monitor", "--http-server"]
