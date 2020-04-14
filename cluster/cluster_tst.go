@@ -60,19 +60,16 @@ func (cluster *Cluster) PrepareBench() error {
 		}
 		var cmdprep *exec.Cmd
 
-		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
 
 		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.dbPass, "XXXX", -1))
 
-		var outprep bytes.Buffer
-		cmdprep.Stdout = &outprep
-
-		cmdprepErr := cmdprep.Run()
-		if cmdprepErr != nil {
-			cluster.LogPrintf(LvlErr, "%s", cmdprepErr)
-			return cmdprepErr
+		out, err := cmdprep.CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s , %s", string(out), err)
+			return err
 		}
-		cluster.LogPrintf("BENCH", "%s", strings.Replace(outprep.String(), cluster.rplPass, "XXXXX", -1))
+		cluster.LogPrintf("BENCH", "%s", string(out))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
@@ -157,18 +154,16 @@ func (cluster *Cluster) RunBench() error {
 		}
 		var cmdrun *exec.Cmd
 
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
+
 		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.dbPass, "XXXX", -1))
 
-		var outrun bytes.Buffer
-		cmdrun.Stdout = &outrun
-
-		cmdrunErr := cmdrun.Run()
-		if cmdrunErr != nil {
-			cluster.LogPrintf(LvlErr, "%s", cmdrunErr)
-			return cmdrunErr
+		out, err := cmdrun.CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s , %s", string(out), err)
+			return err
 		}
-		cluster.LogPrintf("BENCH", "%s", outrun.String())
+		cluster.LogPrintf("BENCH", "%s", string(out))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)

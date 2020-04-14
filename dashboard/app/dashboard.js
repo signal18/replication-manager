@@ -117,9 +117,10 @@ function (
             $scope.clusters = data;
             if ($scope.clusters.length === 1 && $scope.settings.config.monitoringSaveConfig==false ) {
               $scope.selectedClusterName = $scope.clusters[0].name;
-            } else {
-              $scope.refreshInterval = 2000;
             }
+            //else {
+            //  $scope.refreshInterval = 2000;
+          //  }
           }
         }, function () {
           $scope.reserror = true;
@@ -131,7 +132,11 @@ function (
             $scope.orchestrators =	$scope.settings.serviceOrchestrators;
             $scope.selectedPlan = $scope.plans[12];
             $scope.selectedOrchestrator= $scope.orchestrators[3];
-            $scope.selectedPlanName=  $scope.selectedPlan.plan;
+            $scope.selectedPlanName =  $scope.selectedPlan.plan;
+            if ($scope.newUserAcls == undefined)  {
+            //  alert(data.config.httpRefreshInterval);
+                $scope.refreshInterval = 	$scope.settings.config.httpRefreshInterval;
+            }
             $scope.newUserAcls = JSON.parse(JSON.stringify($scope.settings.serviceAcl));
             if ((data.logs) && (data.logs.buffer)) $scope.logs = data.logs.buffer;
 
@@ -1060,7 +1065,7 @@ function (
       };
 
       $scope.openCluster = function (cluster) {
-        $scope.refreshInterval = 2000;
+    //    $scope.refreshInterval = 2000;
         $scope.selectedClusterName = cluster;
       };
 

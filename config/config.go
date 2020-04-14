@@ -177,6 +177,7 @@ type Config struct {
 	HttpAuth                                  bool   `mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
 	HttpBootstrapButton                       bool   `mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
 	SessionLifeTime                           int    `mapstructure:"http-session-lifetime" toml:"http-session-lifetime" json:"httpSessionLifetime"`
+	HttpRefreshInterval                       int    `mapstructure:"http-refresh-interval" toml:"http-refresh-interval" json:"httpRefreshInterval"`
 	Daemon                                    bool   `mapstructure:"daemon" toml:"-" json:"-"`
 	MailFrom                                  string `mapstructure:"mail-from" toml:"mail-from" json:"mailFrom"`
 	MailTo                                    string `mapstructure:"mail-to" toml:"mail-to" json:"mailTo"`
