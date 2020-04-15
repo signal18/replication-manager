@@ -1374,7 +1374,6 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 			http.Error(w, err.Error(), 403)
 			return
 		}
-		mycluster.RunSysbench()
 	}
 	return
 }
