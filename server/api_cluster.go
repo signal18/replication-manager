@@ -155,6 +155,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSysbench)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/waitdatabases", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterWaitDatabases)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
@@ -1351,6 +1356,25 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			return
 		}
 		go mycluster.RunSysbench()
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		err := mycluster.WaitDatabaseCanConn()
+		if err != nil {
+			http.Error(w, err.Error(), 403)
+			return
+		}
+		mycluster.RunSysbench()
 	}
 	return
 }

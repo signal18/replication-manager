@@ -263,7 +263,7 @@ func (cluster *Cluster) AllDatabaseCanConn() bool {
 	return true
 }
 
-func (cluster *Cluster) waitDatabaseCanConn() error {
+func (cluster *Cluster) WaitDatabaseCanConn() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * 2000)
 

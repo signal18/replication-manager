@@ -25,7 +25,7 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
-	err = cluster.waitDatabaseCanConn()
+	err = cluster.WaitDatabaseCanConn()
 	if err != nil {
 		return err
 	}
