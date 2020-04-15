@@ -364,6 +364,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		return true
 	case "/api/monitor":
 		return true
+	case "/api/clusters/" + cluster.Name + "/actions/waitdatabases":
+		return true
 	case "/api/clusters/" + cluster.Name:
 		return true
 	}
