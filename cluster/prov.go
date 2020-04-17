@@ -297,9 +297,11 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	case config.ConstOrchestratorSlapOS:
 		cluster.SlapOSStopDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		server.JobServerStop()
-	default:
+		cluster.OnPremiseStopDatabaseService(server)
+	case config.ConstOrchestratorLocalhost:
 		return cluster.LocalhostStopDatabaseService(server)
+	default:
+		return errors.New("No valid orchestrator")
 	}
 	return nil
 }
@@ -349,9 +351,11 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	case config.ConstOrchestratorSlapOS:
 		cluster.SlapOSStartDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		server.JobServerStart()
-	default:
+		cluster.OnPremiseStartDatabaseService(server)
+	case config.ConstOrchestratorLocalhost:
 		return cluster.LocalhostStartDatabaseService(server)
+	default:
+		return errors.New("No valid orchestrator")
 	}
 	return nil
 }
@@ -365,8 +369,10 @@ func (cluster *Cluster) GetOchestaratorPlacement(server *ServerMonitor) error {
 		cluster.K8SStartDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
 		cluster.SlapOSStartDatabaseService(server)
-	default:
+	case config.ConstOrchestratorLocalhost:
 		return cluster.LocalhostStartDatabaseService(server)
+	default:
+		return errors.New("No valid orchestrator")
 	}
 	return nil
 }

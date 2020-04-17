@@ -12,7 +12,9 @@ func (cluster *Cluster) SlapOSUnprovisionDatabaseService(s *ServerMonitor) {
 }
 
 func (cluster *Cluster) SlapOSStopDatabaseService(s *ServerMonitor) {
+	s.JobServerStop()
 }
 
 func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor) {
+	s.JobServerStart()
 }
