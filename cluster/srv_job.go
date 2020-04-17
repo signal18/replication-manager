@@ -725,12 +725,7 @@ func (server *ServerMonitor) BackupRestic() error {
 
 		//out, err := resticcmd.CombinedOutput()
 
-		newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+server.ClusterGroup.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+server.ClusterGroup.Conf.BackupResticAwsAccessSecret)
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+server.ClusterGroup.Conf.BackupResticRepository)
-		newEnv = append(newEnv, "RESTIC_PASSWORD="+server.ClusterGroup.Conf.BackupResticPassword)
-
-		resticcmd.Env = newEnv
+		resticcmd.Env = server.ClusterGroup.ResticGetEnv()
 
 		if err := resticcmd.Start(); err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)

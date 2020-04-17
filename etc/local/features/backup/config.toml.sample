@@ -62,8 +62,8 @@ prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
 
 backup-restic = true
 backup-physical-type = "mariabackup"
-#backup-restic-aws-access-secret = "xxxx"
-backup-restic-s3 =  false
+backup-restic-aws-access-secret = "xxxx"
+backup-restic-aws =  false
 backup-restic-password = "xxxx"
 backup-restic-binary-path = "/usr/local/bin/restic"
 
@@ -74,9 +74,9 @@ scheduler-db-servers-logs   =  true
 scheduler-db-servers-logs-cron = "0 0 * * * *"
 #scheduler-db-servers-logs-table-keep = 12
 scheduler-db-servers-logs-table-keep = 4
-scheduler-db-servers-logs-table-rotate  = true
+scheduler-db-servers-logs-table-rotate  = false
 #scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
-scheduler-db-servers-logs-table-rotate-cron = "0 * * * * *"
+#scheduler-db-servers-logs-table-rotate-cron = "0 * * * * *"
 scheduler-db-servers-optimize  = true
 scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
 scheduler-db-servers-physical-backup = true
