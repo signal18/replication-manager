@@ -215,10 +215,10 @@ func (server *ServerMonitor) JobServerStop() (int64, error) {
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobServerStart() (int64, error) {
-	jobid, err := server.JobInsertTaks("start", server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
+func (server *ServerMonitor) JobServerRestart() (int64, error) {
+	jobid, err := server.JobInsertTaks("restart", server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Start server: %s %s", server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Restart server: %s %s", server.URL, err)
 		return jobid, err
 	}
 	return jobid, err
@@ -469,7 +469,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 			} else {
 				if task.task == "optimized" {
 					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "start" {
+				} else if task.task == "restart" {
 					server.ClusterGroup.sme.AddState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "stop" {
 					server.ClusterGroup.sme.AddState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})

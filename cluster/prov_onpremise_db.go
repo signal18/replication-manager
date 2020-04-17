@@ -12,9 +12,9 @@ func (cluster *Cluster) OnPremiseSUnprovisionDatabaseService(s *ServerMonitor) {
 }
 
 func (cluster *Cluster) OnPremiseStopDatabaseService(s *ServerMonitor) {
-	s.JobServerStop()
+	//s.JobServerStop() need an agent or ssh to trigger this
 }
 
 func (cluster *Cluster) OnPremiseStartDatabaseService(s *ServerMonitor) {
-	s.JobServerStart()
+	s.JobServerRestart()
 }
