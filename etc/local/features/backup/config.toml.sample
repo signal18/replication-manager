@@ -62,7 +62,8 @@ prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
 
 backup-restic = true
 backup-physical-type = "mariabackup"
-backup-restic-aws-access-secret = "xxxx"
+#backup-restic-aws-access-secret = "xxxx"
+backup-restic-s3 =  false
 backup-restic-password = "xxxx"
 backup-restic-binary-path = "/usr/local/bin/restic"
 

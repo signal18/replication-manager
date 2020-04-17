@@ -910,6 +910,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchProvNetCNI()
 		case "prov-docker-daemon-private":
 			mycluster.SwitchProvDockerDaemonPrivate()
+		case "backup-restic":
+			mycluster.SwitchBackupRestic()
 		}
 
 	} else {
@@ -938,10 +940,15 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			val, _ := strconv.Atoi(vars["settingValue"])
 			mycluster.SetFailLimit(val)
 		case "backup-keep-hourly":
+			mycluster.SetBackupKeepHourly(vars["settingValue"])
 		case "backup-keep-daily":
+			mycluster.SetBackupKeepDaily(vars["settingValue"])
 		case "backup-keep-monthly":
+			mycluster.SetBackupKeepMonthly(vars["settingValue"])
 		case "backup-keep-weekly":
+			mycluster.SetBackupKeepWeekly(vars["settingValue"])
 		case "backup-keep-yearly":
+			mycluster.SetBackupKeepYearly(vars["settingValue"])
 		case "backup-logical-type":
 			mycluster.SetBackupLogicalType(vars["settingValue"])
 		case "backup-physical-type":

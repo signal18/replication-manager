@@ -198,6 +198,10 @@ func (cluster *Cluster) SetBinlogServer(binlogserver bool) {
 func (cluster *Cluster) SetMultiMasterWsrep(wsrep bool) {
 	cluster.Conf.MultiMasterWsrep = wsrep
 }
+func (cluster *Cluster) SetBackupRestic(check bool) error {
+	cluster.Conf.BackupRestic = check
+	return nil
+}
 
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
@@ -261,6 +265,50 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		cluster.rplPass = p.PlainText
 	}
 
+}
+
+func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepYearly = numkeep
+	return nil
+}
+
+func (cluster *Cluster) SetBackupKeepHourly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepHourly = numkeep
+	return nil
+}
+
+func (cluster *Cluster) SetBackupKeepMonthly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepMonthly = numkeep
+	return nil
+}
+func (cluster *Cluster) SetBackupKeepDaily(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepDaily = numkeep
+	return nil
+}
+
+func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepWeekly = numkeep
+	return nil
 }
 
 func (cluster *Cluster) SetBackupLogicalType(backup string) {

@@ -83,7 +83,7 @@ type Config struct {
 	HostsTLSCLI                               string `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
 	PrefMaster                                string `mapstructure:"db-servers-prefered-master" toml:"db-servers-prefered-master" json:"dbServersPreferedMaster"`
 	IgnoreSrv                                 string `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`
-	IgnoreSrvRO                               string `mapstructure:"db-servers-ignored-readonly toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
+	IgnoreSrvRO                               string `mapstructure:"db-servers-ignored-readonly" toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
 	Timeout                                   int    `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
 	ReadTimeout                               int    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	MariaDBBinaryPath                         string `mapstructure:"db-servers-binary-path" toml:"db-servers-binary-path" json:"dbServersBinaryPath"`
@@ -196,7 +196,7 @@ type Config struct {
 	MdbsProxyCopyGrants                       bool   `mapstructure:"shardproxy-copy-grants" toml:"shardproxy-copy-grants" json:"shardproxyCopyGrants"`
 	MdbsProxyLoadSystem                       bool   `mapstructure:"shardproxy-load-system" toml:"shardproxy-load-system" json:"shardproxyLoadSystem"`
 	MdbsUniversalTables                       string `mapstructure:"shardproxy-universal-tables" toml:"shardproxy-universal-tables" json:"shardproxyUniversalTables"`
-	MdbsIngoreTables                          string `mapstructure:"shardproxy-ignore-tables" toml:"shardproxy-ignore-tables" json:"shardproxyUniversalTables"`
+	MdbsIgnoreTables                          string `mapstructure:"shardproxy-ignore-tables" toml:"shardproxy-ignore-tables" json:"shardproxyIgnoreTables"`
 	MxsOn                                     bool   `mapstructure:"maxscale" toml:"maxscale" json:"maxscale"`
 	MxsHost                                   string `mapstructure:"maxscale-servers" toml:"maxscale-servers" json:"maxscaleServers"`
 	MxsPort                                   string `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
@@ -412,13 +412,14 @@ type Config struct {
 	BackupRestic                              bool   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticAwsAccessKeyId                string `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"-"`
-	BackupResticAwsAccessSecret               string `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:  "-"`
+	BackupResticAwsAccessSecret               string `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
 	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
-	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json: "-"`
+	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
+	BackupResticAws                           bool   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupStreaming                           bool   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
 	BackupStreamingDebug                      bool   `mapstructure:"backup-streaming-debug" toml:"backup-streaming" json:"backupStreamingDebug"`
 	BackupStreamingAwsAccessKeyId             string `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
-	BackupStreamingAwsAccessSecret            string `mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:  "-"`
+	BackupStreamingAwsAccessSecret            string `mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
 	BackupStreamingEndpoint                   string `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
 	BackupStreamingRegion                     string `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
 	BackupStreamingBucket                     string `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`

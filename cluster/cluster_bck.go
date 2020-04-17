@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -43,12 +44,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 		stderrIn, _ := resticcmd.StderrPipe()
 		stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
-
-		newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.BackupResticAwsAccessSecret)
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
-		newEnv = append(newEnv, "RESTIC_PASSWORD="+cluster.Conf.BackupResticPassword)
-		resticcmd.Env = newEnv
+		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
 			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
 			return err
@@ -75,6 +71,26 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 	return nil
 }
 
+func (cluster *Cluster) ResticGetEnv() []string {
+	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.BackupResticPassword)
+	if cluster.Conf.BackupResticAws {
+		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
+		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.BackupResticAwsAccessSecret)
+		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
+	} else {
+		resticdir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive"
+
+		if _, err := os.Stat(resticdir); os.IsNotExist(err) {
+			err := os.MkdirAll(resticdir, os.ModePerm)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Create archive directory failed: %s,%s", resticdir, err)
+			}
+		}
+		newEnv = append(newEnv, "RESTIC_REPOSITORY="+resticdir)
+	}
+	return newEnv
+}
+
 func (cluster *Cluster) ResticInitRepo() error {
 	if cluster.Conf.BackupRestic {
 		//		var stdout, stderr []byte
@@ -86,11 +102,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 		stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 
-		newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.BackupResticAwsAccessSecret)
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
-		newEnv = append(newEnv, "RESTIC_PASSWORD="+cluster.Conf.BackupResticPassword)
-		resticcmd.Env = newEnv
+		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
 			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
 			return err
@@ -127,11 +139,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 
-		newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.BackupResticAwsAccessSecret)
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
-		newEnv = append(newEnv, "RESTIC_PASSWORD="+cluster.Conf.BackupResticPassword)
-		resticcmd.Env = newEnv
+		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
 			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
 			return err

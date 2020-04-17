@@ -248,6 +248,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/toogle-slow-query-capture") {
 			return true
 		}
+		if strings.Contains(URL, "/actions/toogle-slow-query") {
+			return true
+		}
 		if strings.Contains(URL, "/actions/set-long-query-time") {
 			return true
 		}
