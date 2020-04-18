@@ -36,10 +36,18 @@ backup-logical-type ="dumpling"
 
 
 [Default]
-# mariadb-backup-path="/usr/local/bin/mariadb-backup"
+
+
 prov-orchestrator = "local"
-db-servers-binary-path= "/usr/local/mysql/bin/"
-haproxy-binary-path= "/usr/local/bin/haproxy"
+prov-db-binary-basedir= "/usr/local/mysql/bin"
+prov-db-client-basedir= "/usr/local/bin"
+prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
+
+backup-mydumper-path = "/usr/local/bin/mydumper"
+backup-myloader-path = "/usr/local/bin/myloader"
+backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
+backup-mysqldump-path = "/usr/local/bin/mysqldump"
+
 backup-streaming = false
 backup-streaming-aws-access-key-id = "admin"
 backup-streaming-aws-access-secret = "xxxx"
@@ -47,36 +55,23 @@ backup-streaming-endpoint= "https://s3.signal18.io/"
 backup-streaming-region= "fr-1"
 backup-streaming-bucket= "repman"
 
-shardproxy = true
-shardproxy-servers = "127.0.0.1:3336"
-shardproxy-user = "root:mariadb"
-
-mydumper-path = "/usr/local/bin/mydumper"
-myloader-path = "/usr/local/bin/myloader"
-db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
-db-servers-prefered-master = "127.0.0.1:3310"
-db-servers-credential = "root:test"
-db-servers-connect-timeout = 1
-
-prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
 
 backup-restic = true
+backup-restic-aws =  false
 backup-physical-type = "mariabackup"
 backup-restic-aws-access-secret = "xxxx"
-backup-restic-aws =  false
 backup-restic-password = "xxxx"
 backup-restic-binary-path = "/usr/local/bin/restic"
 
 monitoring-scheduler = true
 scheduler-db-servers-logical-backup  = true
 scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
-scheduler-db-servers-logs   =  true
+scheduler-db-servers-logs   =  false
 scheduler-db-servers-logs-cron = "0 0 * * * *"
-#scheduler-db-servers-logs-table-keep = 12
+scheduler-db-servers-logs-table-keep = 12
 scheduler-db-servers-logs-table-keep = 4
 scheduler-db-servers-logs-table-rotate  = false
-#scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
-#scheduler-db-servers-logs-table-rotate-cron = "0 * * * * *"
+scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
 scheduler-db-servers-optimize  = true
 scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
 scheduler-db-servers-physical-backup = true

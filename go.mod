@@ -67,6 +67,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/serf v0.0.0-20180213013805-d4f33d5b6a0b
+	github.com/helloyi/go-sshclient v0.0.0-20191203124208-f1e205501005
 	github.com/howeyc/fsnotify v0.0.0-20151003194602-f0c08ee9c607
 	github.com/hpcloud/tail v1.0.0
 	github.com/hydrogen18/stalecucumber v0.0.0-20161215203336-0a94983f3e27

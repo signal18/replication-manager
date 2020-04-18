@@ -569,6 +569,48 @@ func (server *ServerMonitor) IsFilterInTags(filter string) bool {
 	return false
 }
 
+func (server *ServerMonitor) GetDatabaseDatadir() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.Datadir + "/var"
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir + "/var/lib/mysql"
+	}
+	return "/var/lib/mysql"
+}
+func (server *ServerMonitor) GetDatabaseConfdir() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.Datadir + "/init/etc/mysql"
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir + "/etc/mysql"
+	}
+	return "/etc/mysql"
+}
+func (server *ServerMonitor) GetDatabaseBinary() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.ClusterGroup.Conf.ProvDBBinaryBasedir + "/mysqld"
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir + "/usr/sbin/mysqld"
+	}
+	return "/usr/sbin/mysqld"
+}
+func (server *ServerMonitor) GetDatabaseSocket() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.Datadir + "/" + server.Id + ".sock"
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir + "/var/mysqld.sock"
+	}
+	return "/var/run/mysqld/mysqld.sock"
+}
+
+func (server *ServerMonitor) GetDatabaseClientBasedir() string {
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.ClusterGroup.Conf.ProvDBClientBasedir
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir + "/usr/bin/"
+	}
+	return "/usr/bin/mysql"
+}
+
 func (server *ServerMonitor) GetMyConfig() string {
 	type File struct {
 		Path    string `json:"path"`

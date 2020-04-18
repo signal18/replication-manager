@@ -119,8 +119,8 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	}
 	cluster.LogPrintf(LvlInfo, "copy datadir done: %s", out.Bytes())
 	*/
-	sysCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/../scripts/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.MariaDBBinaryPath+"/../", "--force")
-	cluster.LogPrintf(LvlInfo, cluster.Conf.MariaDBBinaryPath+"/../scripts/mysql_install_db"+" --defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf"+" --datadir="+server.Datadir+"/var"+" --basedir="+cluster.Conf.MariaDBBinaryPath+"/../"+" --force")
+	sysCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/../scripts/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--force")
+	cluster.LogPrintf(LvlInfo, cluster.Conf.ProvDBBinaryBasedir+"/../scripts/mysql_install_db"+" --defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf"+" --datadir="+server.Datadir+"/var"+" --basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../"+" --force")
 	sysCmd.Stdout = out
 	err = sysCmd.Run()
 	if err != nil {
@@ -187,9 +187,9 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		cluster.LogPrintf(LvlErr, "%s", err)
 		return err
 	}
-	//	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
+	//	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 	time.Sleep(time.Millisecond * 2000)
-	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
+	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer
@@ -209,7 +209,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
 		cluster.LogPrintf(LvlInfo, "Waiting database first start   .. %s", out)
-		dsn := "root:@unix(" + server.Datadir + "/" + server.Id + ".sock)/?timeout=15s"
+		dsn := "root:@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
 			defer conn.Close()
@@ -309,9 +309,9 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 		cluster.LogPrintf(LvlErr, "%s", err)
 		return err
 	}
-	//	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
+	//	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 	time.Sleep(time.Millisecond * 2000)
-	mariadbdCmd := exec.Command(cluster.Conf.MariaDBBinaryPath+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
+	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer

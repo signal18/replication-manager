@@ -86,7 +86,6 @@ type Config struct {
 	IgnoreSrvRO                               string `mapstructure:"db-servers-ignored-readonly" toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
 	Timeout                                   int    `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
 	ReadTimeout                               int    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
-	MariaDBBinaryPath                         string `mapstructure:"db-servers-binary-path" toml:"db-servers-binary-path" json:"dbServersBinaryPath"`
 	DBServersLocality                         string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
 	PRXReadOnMaster                           bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
 	ClusterHead                               string `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
@@ -296,7 +295,8 @@ type Config struct {
 	ProvCodeApp                               string `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvOrchestrator                          string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                    string `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
-	ProvDBServerPath                          string `mapstructure:"prov-db-localhost-binary-path" toml:"prov-db-localhost-binary-path" json:"provDbLocalhostBinaryPath"`
+	ProvDBClientBasedir                       string `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
+	ProvDBBinaryBasedir                       string `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
 	ProvType                                  string `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
 	ProvMem                                   string `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
@@ -423,11 +423,11 @@ type Config struct {
 	BackupStreamingEndpoint                   string `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
 	BackupStreamingRegion                     string `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
 	BackupStreamingBucket                     string `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
-	MysqldumpPath                             string `mapstructure:"mysqldump-path" toml:"mysqldump-path" json:"mysqldumpPath"`
-	MyDumperPath                              string `mapstructure:"mydumper-path" toml:"mydumper-path" json:"mydumperPath"`
-	MyLoaderPath                              string `mapstructure:"myloader-path" toml:"myloader-path" json:"myloaderPath"`
-	MysqlbinlogPath                           string `mapstructure:"mysqlbinlog-path" toml:"mysqlbinlog-path" json:"mysqlbinlogPath"`
-	MysqlclientPath                           string `mapstructure:"mysqlclient-path" toml:"mysqlclient-path" json:"mysqlclientgPath"`
+	BackupMysqldumpPath                       string `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
+	BackupMyDumperPath                        string `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
+	BackupMyLoaderPath                        string `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
+	BackupMysqlbinlogPath                     string `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
+	BackupMysqlclientPath                     string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	sshcli "github.com/helloyi/go-sshclient"
 	"github.com/jmoiron/sqlx"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
@@ -782,4 +783,24 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 		}
 	}
 
+}
+
+func (server *ServerMonitor) JobRunViaSSH() error {
+
+	key := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDIsA7H/dGGf9lRP1IcVXjmZ7LtD7zCXYnomBBw/E78z6AGaUPalBqhtrhWw8ONr0pO9gFUmgoF4VYrqf0S272ECvcIdzAg8EwfQvAqumvmlQSXP0Uf6WELPqRaJKgKj91mYADY2gwxA+HzdNHl7fCqw/3dm+hcToLWZNoWHl2kD/375Lt7ZY+GbYGkZMq8ledzSSlzRWMPj6TeRu7SvwtRNdO5WIhdFT2MN0wbgnN67SlcTh6L810Hhk07cT4A2+Zvc9MhtpBGPRJBHckNmztuI2zqTD3bDJM7mq6XdnMpXTx8jF0gSA31J32htg4+9CC8zRBawAGvoQm43P4IOCiT apple@macbook-pro-de-apple-2.local"
+	client, err := sshcli.DialWithKey(server.Host+":22", "apple", key)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		return err
+	}
+	defer client.Close()
+
+	out, err2 := client.ScriptFile(server.Datadir + "/init/init/dbjobs").SmartOutput()
+	if err2 != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
+		return err
+	}
+	server.ClusterGroup.LogPrintf(LvlErr, "Exec via ssh  : %s", out)
+
+	return nil
 }
