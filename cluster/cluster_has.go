@@ -92,6 +92,42 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	return true
 }
 
+func (cluster *Cluster) HasRequestDBRestart() bool {
+	for _, s := range cluster.Servers {
+		if s.HasRestartCookie() {
+			return true
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) HasRequestDBReprov() bool {
+	for _, s := range cluster.Servers {
+		if s.HasReprovCookie() {
+			return true
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) HasRequestProxiesRestart() bool {
+	for _, p := range cluster.Proxies {
+		if p.HasRestartCookie() {
+			return true
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) HasRequestProxiesReprov() bool {
+	for _, p := range cluster.Proxies {
+		if p.HasReprovCookie() {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsInHostList(host string) bool {
 	for _, v := range cluster.hostList {
 		if v == host {

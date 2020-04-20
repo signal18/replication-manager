@@ -31,6 +31,20 @@ func (proxy *Proxy) HasProvisionCookie() bool {
 	return true
 }
 
+func (proxy *Proxy) HasRestartCookie() bool {
+	if _, err := os.Stat(proxy.Datadir + "/@cookie_restart"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func (proxy *Proxy) HasReprovCookie() bool {
+	if _, err := os.Stat(proxy.Datadir + "/@cookie_reprov"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func (proxy *Proxy) IsRunning() bool {
 	return !proxy.IsDown()
 }

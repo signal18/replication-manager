@@ -33,101 +33,105 @@ import (
 )
 
 type Cluster struct {
-	Name                 string                      `json:"name"`
-	Tenant               string                      `json:"tenant"`
-	WorkingDir           string                      `json:"workingDir"`
-	Servers              serverList                  `json:"-"`
-	ServerIdList         []string                    `json:"dbServers"`
-	Crashes              crashList                   `json:"dbServersCrashes"`
-	Proxies              proxyList                   `json:"-"`
-	ProxyIdList          []string                    `json:"proxyServers"`
-	FailoverCtr          int                         `json:"failoverCounter"`
-	FailoverTs           int64                       `json:"failoverLastTime"`
-	Status               string                      `json:"activePassiveStatus"`
-	IsSplitBrain         bool                        `json:"isSplitBrain"`
-	IsSplitBrainBck      bool                        `json:"-"`
-	IsFailedArbitrator   bool                        `json:"isFailedArbitrator"`
-	IsLostMajority       bool                        `json:"isLostMajority"`
-	IsDown               bool                        `json:"isDown"`
-	IsClusterDown        bool                        `json:"isClusterDown"`
-	IsAllDbUp            bool                        `json:"isAllDbUp"`
-	IsProvision          bool                        `json:"isProvision"`
-	IsFailable           bool                        `json:"isFailable"`
-	IsPostgres           bool                        `json:"isPostgres"`
-	Conf                 config.Config               `json:"config"`
-	CleanAll             bool                        `json:"cleanReplication"` //used in testing
-	Schedule             []CronEntry                 `json:"schedule"`
-	ConfigDBTags         []Tag                       `json:"configTags"`    //from module
-	ConfigPrxTags        []Tag                       `json:"configPrxTags"` //from module
-	DBTags               []string                    `json:"dbServersTags"` //from conf
-	ProxyTags            []string                    `json:"proxyServersTags"`
-	Topology             string                      `json:"topology"`
-	Uptime               string                      `json:"uptime"`
-	UptimeFailable       string                      `json:"uptimeFailable"`
-	UptimeSemiSync       string                      `json:"uptimeSemisync"`
-	MonitorSpin          string                      `json:"monitorSpin"`
-	DBTableSize          int64                       `json:"dbTableSize"`
-	DBIndexSize          int64                       `json:"dbIndexSize"`
-	Log                  s18log.HttpLog              `json:"log"`
-	Grants               map[string]string           `json:"-"`
-	tlog                 *s18log.TermLog             `json:"-"`
-	htlog                *s18log.HttpLog             `json:"-"`
-	SQLGeneralLog        s18log.HttpLog              `json:"sqlGeneralLog"`
-	SQLErrorLog          s18log.HttpLog              `json:"sqlErrorLog"`
-	MonitorType          map[string]string           `json:"monitorType"`
-	TopologyType         map[string]string           `json:"topologyType"`
-	FSType               map[string]bool             `json:"fsType"`
-	DiskType             map[string]string           `json:"diskType"`
-	VMType               map[string]bool             `json:"vmType"`
-	Agents               []Agent                     `json:"agents"`
-	hostList             []string                    `json:"-"`
-	proxyList            []string                    `json:"-"`
-	clusterList          map[string]*Cluster         `json:"-"`
-	slaves               serverList                  `json:"-"`
-	master               *ServerMonitor              `json:"-"`
-	oldMaster            *ServerMonitor              `json:"-"`
-	vmaster              *ServerMonitor              `json:"-"`
-	mxs                  *maxscale.MaxScale          `json:"-"`
-	dbUser               string                      `json:"-"`
-	dbPass               string                      `json:"-"`
-	rplUser              string                      `json:"-"`
-	rplPass              string                      `json:"-"`
-	sme                  *state.StateMachine         `json:"-"`
-	runOnceAfterTopology bool                        `json:"-"`
-	logPtr               *os.File                    `json:"-"`
-	termlength           int                         `json:"-"`
-	runUUID              string                      `json:"-"`
-	cfgGroupDisplay      string                      `json:"-"`
-	repmgrVersion        string                      `json:"-"`
-	repmgrHostname       string                      `json:"-"`
-	key                  []byte                      `json:"-"`
-	exitMsg              string                      `json:"-"`
-	exit                 bool                        `json:"-"`
-	canFlashBack         bool                        `json:"-"`
-	failoverCond         *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond       *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond           *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond        *nbc.NonBlockingChan        `json:"-"`
-	altertableCond       *nbc.NonBlockingChan        `json:"-"`
-	addtableCond         *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan       chan state.State            `json:"-"`
-	switchoverChan       chan bool                   `json:"-"`
-	errorChan            chan error                  `json:"-"`
-	testStopCluster      bool                        `json:"-"`
-	testStartCluster     bool                        `json:"-"`
-	lastmaster           *ServerMonitor              `json:"-"`
-	benchmarkType        string                      `json:"-"`
-	HaveDBTLSCert        bool                        `json:"haveDBTLSCert"`
-	HaveDBTLSOldCert     bool                        `json:"haveDBTLSOldCert"`
-	tlsconf              *tls.Config                 `json:"-"`
-	tlsoldconf           *tls.Config                 `json:"-"`
-	scheduler            *cron.Cron                  `json:"-"`
-	tunnel               *ssh.Client                 `json:"-"`
-	DBModule             config.Compliance           `json:"-"`
-	ProxyModule          config.Compliance           `json:"-"`
-	QueryRules           map[uint32]config.QueryRule `json:"-"`
-	Backups              []Backup                    `json:"-"`
-	APIUsers             map[string]APIUser          `json:"apiUsers"`
+	Name                   string                      `json:"name"`
+	Tenant                 string                      `json:"tenant"`
+	WorkingDir             string                      `json:"workingDir"`
+	Servers                serverList                  `json:"-"`
+	ServerIdList           []string                    `json:"dbServers"`
+	Crashes                crashList                   `json:"dbServersCrashes"`
+	Proxies                proxyList                   `json:"-"`
+	ProxyIdList            []string                    `json:"proxyServers"`
+	FailoverCtr            int                         `json:"failoverCounter"`
+	FailoverTs             int64                       `json:"failoverLastTime"`
+	Status                 string                      `json:"activePassiveStatus"`
+	IsSplitBrain           bool                        `json:"isSplitBrain"`
+	IsSplitBrainBck        bool                        `json:"-"`
+	IsFailedArbitrator     bool                        `json:"isFailedArbitrator"`
+	IsLostMajority         bool                        `json:"isLostMajority"`
+	IsDown                 bool                        `json:"isDown"`
+	IsClusterDown          bool                        `json:"isClusterDown"`
+	IsAllDbUp              bool                        `json:"isAllDbUp"`
+	IsFailable             bool                        `json:"isFailable"`
+	IsPostgres             bool                        `json:"isPostgres"`
+	IsProvision            bool                        `json:"isProvision"`
+	IsNeedProxiesRestart   bool                        `json:"isNeedProxyRestart"`
+	IsNeedProxiesReprov    bool                        `json:"isNeedProxiesRestart"`
+	IsNeedDatabasesRestart bool                        `json:"isNeedDatabasesRestart"`
+	IsNeedDatabasesReprov  bool                        `json:"isNeedDatabasesReprov"`
+	Conf                   config.Config               `json:"config"`
+	CleanAll               bool                        `json:"cleanReplication"` //used in testing
+	Schedule               []CronEntry                 `json:"schedule"`
+	ConfigDBTags           []Tag                       `json:"configTags"`    //from module
+	ConfigPrxTags          []Tag                       `json:"configPrxTags"` //from module
+	DBTags                 []string                    `json:"dbServersTags"` //from conf
+	ProxyTags              []string                    `json:"proxyServersTags"`
+	Topology               string                      `json:"topology"`
+	Uptime                 string                      `json:"uptime"`
+	UptimeFailable         string                      `json:"uptimeFailable"`
+	UptimeSemiSync         string                      `json:"uptimeSemisync"`
+	MonitorSpin            string                      `json:"monitorSpin"`
+	DBTableSize            int64                       `json:"dbTableSize"`
+	DBIndexSize            int64                       `json:"dbIndexSize"`
+	Log                    s18log.HttpLog              `json:"log"`
+	Grants                 map[string]string           `json:"-"`
+	tlog                   *s18log.TermLog             `json:"-"`
+	htlog                  *s18log.HttpLog             `json:"-"`
+	SQLGeneralLog          s18log.HttpLog              `json:"sqlGeneralLog"`
+	SQLErrorLog            s18log.HttpLog              `json:"sqlErrorLog"`
+	MonitorType            map[string]string           `json:"monitorType"`
+	TopologyType           map[string]string           `json:"topologyType"`
+	FSType                 map[string]bool             `json:"fsType"`
+	DiskType               map[string]string           `json:"diskType"`
+	VMType                 map[string]bool             `json:"vmType"`
+	Agents                 []Agent                     `json:"agents"`
+	hostList               []string                    `json:"-"`
+	proxyList              []string                    `json:"-"`
+	clusterList            map[string]*Cluster         `json:"-"`
+	slaves                 serverList                  `json:"-"`
+	master                 *ServerMonitor              `json:"-"`
+	oldMaster              *ServerMonitor              `json:"-"`
+	vmaster                *ServerMonitor              `json:"-"`
+	mxs                    *maxscale.MaxScale          `json:"-"`
+	dbUser                 string                      `json:"-"`
+	dbPass                 string                      `json:"-"`
+	rplUser                string                      `json:"-"`
+	rplPass                string                      `json:"-"`
+	sme                    *state.StateMachine         `json:"-"`
+	runOnceAfterTopology   bool                        `json:"-"`
+	logPtr                 *os.File                    `json:"-"`
+	termlength             int                         `json:"-"`
+	runUUID                string                      `json:"-"`
+	cfgGroupDisplay        string                      `json:"-"`
+	repmgrVersion          string                      `json:"-"`
+	repmgrHostname         string                      `json:"-"`
+	key                    []byte                      `json:"-"`
+	exitMsg                string                      `json:"-"`
+	exit                   bool                        `json:"-"`
+	canFlashBack           bool                        `json:"-"`
+	failoverCond           *nbc.NonBlockingChan        `json:"-"`
+	switchoverCond         *nbc.NonBlockingChan        `json:"-"`
+	rejoinCond             *nbc.NonBlockingChan        `json:"-"`
+	bootstrapCond          *nbc.NonBlockingChan        `json:"-"`
+	altertableCond         *nbc.NonBlockingChan        `json:"-"`
+	addtableCond           *nbc.NonBlockingChan        `json:"-"`
+	statecloseChan         chan state.State            `json:"-"`
+	switchoverChan         chan bool                   `json:"-"`
+	errorChan              chan error                  `json:"-"`
+	testStopCluster        bool                        `json:"-"`
+	testStartCluster       bool                        `json:"-"`
+	lastmaster             *ServerMonitor              `json:"-"`
+	benchmarkType          string                      `json:"-"`
+	HaveDBTLSCert          bool                        `json:"haveDBTLSCert"`
+	HaveDBTLSOldCert       bool                        `json:"haveDBTLSOldCert"`
+	tlsconf                *tls.Config                 `json:"-"`
+	tlsoldconf             *tls.Config                 `json:"-"`
+	scheduler              *cron.Cron                  `json:"-"`
+	tunnel                 *ssh.Client                 `json:"-"`
+	DBModule               config.Compliance           `json:"-"`
+	ProxyModule            config.Compliance           `json:"-"`
+	QueryRules             map[uint32]config.QueryRule `json:"-"`
+	Backups                []Backup                    `json:"-"`
+	APIUsers               map[string]APIUser          `json:"apiUsers"`
 	sync.Mutex
 }
 
@@ -434,6 +438,12 @@ func (cluster *Cluster) Run() {
 			cluster.StateProcessing()
 			cluster.Topology = cluster.GetTopology()
 			cluster.IsProvision = cluster.IsProvisioned()
+			cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
+			cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
+
+			cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
+			cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
+
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 		}
 	}

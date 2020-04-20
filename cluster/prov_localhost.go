@@ -119,8 +119,8 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	}
 	cluster.LogPrintf(LvlInfo, "copy datadir done: %s", out.Bytes())
 	*/
-	sysCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/../scripts/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--force")
-	cluster.LogPrintf(LvlInfo, cluster.Conf.ProvDBBinaryBasedir+"/../scripts/mysql_install_db"+" --defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf"+" --datadir="+server.Datadir+"/var"+" --basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../"+" --force")
+	sysCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--force")
+	cluster.LogPrintf(LvlInfo, cluster.Conf.ProvDBBinaryBasedir+"/mysql_install_db"+" --defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf"+" --datadir="+server.Datadir+"/var"+" --basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../"+" --force")
 	sysCmd.Stdout = out
 	err = sysCmd.Run()
 	if err != nil {
@@ -209,7 +209,11 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
 		cluster.LogPrintf(LvlInfo, "Waiting database first start   .. %s", out)
-		dsn := "root:@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
+		user, err := user.Current()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can't get replication-manager process user: %s", err)
+		}
+		dsn := user.Username + ":@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
 		if err2 == nil {
 			defer conn.Close()

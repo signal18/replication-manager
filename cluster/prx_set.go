@@ -31,3 +31,19 @@ func (proxy *Proxy) SetProvisionCookie() {
 	}
 	newFile.Close()
 }
+
+func (proxy *Proxy) SetRestartCookie() {
+	newFile, err := os.Create(proxy.Datadir + "/@cookie_restart")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	newFile.Close()
+}
+
+func (proxy *Proxy) SetReprovCookie() {
+	newFile, err := os.Create(proxy.Datadir + "/@cookie_reprov")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	newFile.Close()
+}

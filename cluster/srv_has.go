@@ -34,6 +34,20 @@ func (server *ServerMonitor) HasProvisionCookie() bool {
 	return true
 }
 
+func (server *ServerMonitor) HasRestartCookie() bool {
+	if _, err := os.Stat(server.Datadir + "/@cookie_restart"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func (server *ServerMonitor) HasReprovCookie() bool {
+	if _, err := os.Stat(server.Datadir + "/@cookie_reprov"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func (server *ServerMonitor) HasReadOnly() bool {
 	return server.Variables["READ_ONLY"] == "ON"
 }

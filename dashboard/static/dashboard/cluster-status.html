@@ -28,6 +28,15 @@
                     <td><span class="label label-info">{{selectedCluster.config.provOrchestrator}}</span>
                     </td>
                 </tr>
+                <tr>
+                    <td colspan=2>
+                        Status
+                    </td>
+                    <td><span ng-if=selectedCluster.isProvision class="label label-success">Is Provision</span> <span ng-if=!selectedCluster.isProvision class="label label-warning">Need Provision</span>
+                       <span ng-if=selectedCluster.isNeedDatabasesRestart class="label label-warning">Need DBMs restart</span> <span ng-if=selectedCluster.isNeedDatabasesReprov class="label label-warning">Need DBMs reprov</span>
+                       <span ng-if=selectedCluster.isNeedProxiesRestart class="label label-warning">Need PRXs restart</span><span ng-if=selectedCluster.isNeedProxiesReprov class="label label-warning">Need PRXs resprov</span>
+                    </td>
+                </tr>
 
 
 

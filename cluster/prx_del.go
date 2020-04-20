@@ -19,3 +19,17 @@ func (proxy *Proxy) DelProvisionCookie() {
 		fmt.Println("Error:", err)
 	}
 }
+
+func (proxy *Proxy) DelReprovisionCookie() {
+	err := os.Remove(proxy.Datadir + "/@cookie_reprov")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}
+
+func (proxy *Proxy) DelRestartCookie() {
+	err := os.Remove(proxy.Datadir + "/@cookie_restart")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}

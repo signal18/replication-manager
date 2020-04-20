@@ -86,6 +86,8 @@ func (cluster *Cluster) ProvisionServices() error {
 			} else {
 				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
 				server.SetProvisionCookie()
+				server.DelReprovisionCookie()
+				server.DelRestartCookie()
 			}
 		}
 	}
@@ -200,6 +202,8 @@ func (cluster *Cluster) Unprovision() error {
 			} else {
 				cluster.LogPrintf(LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
 				server.DelProvisionCookie()
+				server.DelRestartCookie()
+				server.DelReprovisionCookie()
 			}
 		}
 	}
@@ -226,6 +230,8 @@ func (cluster *Cluster) Unprovision() error {
 			} else {
 				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.Name)
 				prx.DelProvisionCookie()
+				prx.DelRestartCookie()
+				prx.DelReprovisionCookie()
 			}
 		}
 	}
@@ -255,6 +261,8 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 	case err := <-cluster.errorChan:
 		if err == nil {
 			prx.DelProvisionCookie()
+			prx.DelReprovisionCookie()
+			prx.DelRestartCookie()
 		}
 		return err
 	}
@@ -278,6 +286,8 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	case err := <-cluster.errorChan:
 		if err == nil {
 			server.DelProvisionCookie()
+			server.DelReprovisionCookie()
+			server.DelRestartCookie()
 		}
 		return err
 	}
@@ -303,6 +313,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	server.DelRestartCookie()
 	return nil
 }
 
@@ -318,6 +329,7 @@ func (cluster *Cluster) StopProxyService(server *Proxy) error {
 	default:
 		return cluster.LocalhostStopProxyService(server)
 	}
+	server.DelRestartCookie()
 	return nil
 }
 
@@ -333,11 +345,13 @@ func (cluster *Cluster) StartProxyService(server *Proxy) error {
 	default:
 		return cluster.LocalhostStartProxyService(server)
 	}
+	server.DelRestartCookie()
 	return nil
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 	_, err := server.Conn.Exec("SHUTDOWN")
+	server.DelRestartCookie()
 	return err
 }
 
@@ -357,6 +371,7 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	server.DelRestartCookie()
 	return nil
 }
 

@@ -144,3 +144,59 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 		return
 	}
 }
+
+func (repman *ReplicationManager) handlerMuxProxyNeedRestart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		if node != nil && node.IsDown() == false {
+			if node.HasRestartCookie() {
+				w.Write([]byte("200 -Need restart!"))
+				return
+			}
+			w.Write([]byte("503 -No restart needed!"))
+			http.Error(w, "Encoding error", 503)
+
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxProxyNeedReprov(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		if node != nil && node.IsDown() == false {
+			if node.HasReprovCookie() {
+				w.Write([]byte("200 -Need reprov!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}

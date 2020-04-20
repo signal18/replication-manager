@@ -20,3 +20,17 @@ func (server *ServerMonitor) DelProvisionCookie() {
 		fmt.Println("Error:", err)
 	}
 }
+
+func (server *ServerMonitor) DelReprovisionCookie() {
+	err := os.Remove(server.Datadir + "/@cookie_reprov")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}
+
+func (server *ServerMonitor) DelRestartCookie() {
+	err := os.Remove(server.Datadir + "/@cookie_restart")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}

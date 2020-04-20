@@ -68,25 +68,32 @@ func (cluster *Cluster) SetInteractive(check bool) {
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
 	cluster.Conf.ProvDisk = value
+	cluster.SetDBReprovCookie()
 }
 func (cluster *Cluster) SetDBCores(value string) {
 	cluster.Conf.ProvCores = value
+	cluster.SetDBRestartCookie()
 }
 func (cluster *Cluster) SetDBMemorySize(value string) {
 	cluster.Conf.ProvMem = value
+	cluster.SetDBRestartCookie()
 }
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
 	cluster.Conf.ProvIops = value
+	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetProxyCores(value string) {
 	cluster.Conf.ProvProxCores = value
+	cluster.SetProxiesRestartCookie()
 }
 func (cluster *Cluster) SetProxyMemorySize(value string) {
 	cluster.Conf.ProvProxMem = value
+	cluster.SetProxiesRestartCookie()
 }
 func (cluster *Cluster) SetProxyDiskSize(value string) {
 	cluster.Conf.ProvProxDisk = value
+	cluster.SetProxiesReprovCookie()
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
@@ -326,6 +333,7 @@ func (cluster *Cluster) SetDbServersCredential(credential string) {
 		srv.SetCredential(srv.URL, cluster.dbUser, cluster.dbPass)
 	}
 	cluster.SetUnDiscovered()
+	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
@@ -339,6 +347,29 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	}
 	for _, prx := range cluster.Proxies {
 		prx.User, prx.Pass = misc.SplitPair(credential)
+		prx.SetRestartCookie()
+	}
+}
+
+func (cluster *Cluster) SetDBRestartCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetRestartCookie()
+	}
+}
+func (cluster *Cluster) SetDBReprovCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetReprovCookie()
+	}
+}
+
+func (cluster *Cluster) SetProxiesRestartCookie() {
+	for _, prx := range cluster.Proxies {
+		prx.SetRestartCookie()
+	}
+}
+func (cluster *Cluster) SetProxiesReprovCookie() {
+	for _, prx := range cluster.Proxies {
+		prx.SetReprovCookie()
 	}
 }
 
@@ -353,6 +384,7 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 	cluster.DBTags = newtags
 	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
+	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
@@ -366,6 +398,7 @@ func (cluster *Cluster) DropProxyTag(dtag string) {
 	cluster.ProxyTags = newtags
 	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
 	cluster.SetClusterVariablesFromConfig()
+	cluster.SetProxiesRestartCookie()
 }
 
 func (cluster *Cluster) SetReplicationCredential(credential string) {
@@ -561,6 +594,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 
 func (cluster *Cluster) SetProvNetCniCluster(value string) error {
 	cluster.Conf.ProvNetCNICluster = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 
@@ -601,61 +635,74 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 
 func (cluster *Cluster) SetProvDBImage(value string) error {
 	cluster.Conf.ProvDbImg = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 func (cluster *Cluster) SetProvMaxscaleImage(value string) error {
 	cluster.Conf.ProvProxMaxscaleImg = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 func (cluster *Cluster) SetProvHaproxyImage(value string) error {
 	cluster.Conf.ProvProxHaproxyImg = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 func (cluster *Cluster) SetProvShardproxyImage(value string) error {
 	cluster.Conf.ProvProxShardingImg = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 func (cluster *Cluster) SetProvProxySQLImage(value string) error {
 	cluster.Conf.ProvProxProxysqlImg = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 func (cluster *Cluster) SetProvSphinxImage(value string) error {
 	cluster.Conf.ProvSphinxImg = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskType(value string) error {
 	cluster.Conf.ProvDiskType = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskFS(value string) error {
 	cluster.Conf.ProvDiskFS = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskPool(value string) error {
 	cluster.Conf.ProvDiskPool = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskDevice(value string) error {
 	cluster.Conf.ProvDiskDevice = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbServiceType(value string) error {
 	cluster.Conf.ProvType = value
+	cluster.SetDBReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvProxyDiskType(value string) error {
 	cluster.Conf.ProvProxDiskType = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvProxyDiskFS(value string) error {
 	cluster.Conf.ProvProxDiskFS = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 
@@ -666,10 +713,12 @@ func (cluster *Cluster) SetProvProxyDiskPool(value string) error {
 
 func (cluster *Cluster) SetProvProxyDiskDevice(value string) error {
 	cluster.Conf.ProvProxDiskDevice = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 
 func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	cluster.Conf.ProvProxType = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }

@@ -31,12 +31,14 @@ func (cluster *Cluster) AddDBTag(tag string) {
 	cluster.DBTags = append(cluster.DBTags, tag)
 	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
+	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.ProxyTags = append(cluster.ProxyTags, tag)
 	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
 	cluster.SetClusterVariablesFromConfig()
+	cluster.SetProxiesRestartCookie()
 }
 
 func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user string, password string) error {
