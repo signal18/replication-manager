@@ -531,7 +531,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		if opt.Channel == "" {
 			opt.Channel = "alltables"
 		}
-		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + opt.Host + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
+		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
 	} else {
 
 		cm += "CHANGE MASTER "
