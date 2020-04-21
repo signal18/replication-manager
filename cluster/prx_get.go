@@ -248,17 +248,17 @@ func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 		confmaxscale += `
 [server` + strconv.Itoa(i) + `]
 type=server
-address="` + db.Host + `
+address="` + misc.Unbracket(db.Host) + `
 port=` + db.Port + `
 protocol=MySQLBackend
 `
 
 		confhaproxyread += `
-    server server` + strconv.Itoa(i) + ` ` + db.Host + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
 		confhaproxywrite += `
-    server server` + strconv.Itoa(i) + ` ` + db.Host + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
 		confproxysql += `
-    { address="` + db.Host + `" , port=` + db.Port + ` , hostgroup=0, max_connections=1024 }`
+    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=0, max_connections=1024 }`
 
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 

@@ -130,3 +130,7 @@ func ExtractKey(s string, r map[string]string) string {
 	}
 	return s2
 }
+
+func Unbracket(mystring string) string {
+	return strings.ReplaceAll("[", strings.ReplaceAll("]", mystring, ""), "")
+}
