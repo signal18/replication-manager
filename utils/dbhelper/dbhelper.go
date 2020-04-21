@@ -647,6 +647,30 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		return priv, "", errors.New("Error getting privileges for non-existent IP address")
 	}
 
+	if strings.Contains(ip, ":") {
+		splitip := strings.Split(ip, ":")
+		iprange1 := splitip[0] + ":%:%:%"
+		iprange2 := splitip[0] + ":" + splitip[1] + ":%:%"
+		iprange3 := splitip[0] + ":" + splitip[1] + ":" + splitip[2] + ":%"
+
+		if myver.IsPPostgreSQL() {
+			stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
+			row := db.QueryRowx(stmt)
+			err = row.StructScan(&priv)
+			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
+				return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+			}
+
+		} else {
+			stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+			row := db.QueryRowx(stmt, user, host, ip, "::", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255:255.255.0", iprange1, iprange2, iprange3)
+			err = row.StructScan(&priv)
+			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
+				return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+			}
+		}
+		return priv, stmt, err
+	}
 	splitip := strings.Split(ip, ".")
 
 	iprange1 := splitip[0] + ".%.%.%"
@@ -670,6 +694,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		}
 	}
 	return priv, stmt, err
+
 }
 
 func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *MySQLVersion) (bool, string, error) {
