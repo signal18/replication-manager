@@ -654,7 +654,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		iprange3 := splitip[0] + ":" + splitip[1] + ":" + splitip[2] + ":%"
 
 		if myver.IsPPostgreSQL() {
-			stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
+			stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
 			row := db.QueryRowx(stmt)
 			err = row.StructScan(&priv)
 			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
@@ -662,7 +662,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 			}
 
 		} else {
-			stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+			stmt = "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 			row := db.QueryRowx(stmt, user, host, ip, "::", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255:255.255.0", iprange1, iprange2, iprange3)
 			err = row.StructScan(&priv)
 			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
@@ -678,7 +678,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
 	if myver.IsPPostgreSQL() {
-		stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
+		stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
 		row := db.QueryRowx(stmt)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
@@ -701,7 +701,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 
 	stmt := ""
 	if myver.IsPPostgreSQL() {
-		stmt := "SELECT passwd  AS pass ,passwd AS upass  FROM pg_catalog.pg_user u WHERE usename = ?"
+		stmt = "SELECT passwd  AS pass ,passwd AS upass  FROM pg_catalog.pg_user u WHERE usename = ?"
 		rows, err := db.Query(stmt, user)
 		if err != nil {
 			return false, stmt, err
@@ -725,7 +725,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 		iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
 		iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
-		stmt := "SELECT STRCMP(Password) AS pass, PASSWORD(?) AS upass FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+		stmt = "SELECT STRCMP(Password) AS pass, PASSWORD(?) AS upass FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 		rows, err := db.Query(stmt, pass, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 		if err != nil {
 			return false, stmt, err

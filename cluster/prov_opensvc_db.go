@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -813,7 +814,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                    server.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                     string(server.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                    string(server.Id[2:10]),
-		"%%ENV:SERVER_IP%%":                                 server.GetBindAddress(),
+		"%%ENV:SERVER_IP%%":                                 misc.Unbracket(server.GetBindAddress()),
 		"%%ENV:SERVER_HOST%%":                               server.Host,
 		"%%ENV:SERVER_PORT%%":                               server.Port,
 		"%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%":                server.GetDatabaseDatadir(),
