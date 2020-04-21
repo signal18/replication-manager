@@ -296,7 +296,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
 		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser, server.DBVersion)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
-		myip, err := misc.GetIPSafe(myhost)
+		myip, err := misc.GetIPSafe(misc.Unbracket(myhost))
 		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)
 		}
@@ -321,7 +321,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		// Check replication user has correct privs.
 		for _, sv2 := range server.ClusterGroup.Servers {
 			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
-				rplhost, _ := misc.GetIPSafe(sv2.Host)
+				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
 				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost, server.DBVersion)
 				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err))
 				if err != nil {

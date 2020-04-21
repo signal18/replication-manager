@@ -104,6 +104,9 @@ func GetIPSafe(h string) (string, error) {
 		if ip.To4() != nil {
 			return ip.String(), nil
 		}
+		if ip.To16() != nil {
+			return ip.String(), nil
+		}
 	}
 	return "", fmt.Errorf("Could not resolve host name %s to IP", h)
 }
