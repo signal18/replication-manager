@@ -186,7 +186,7 @@ func (SM *StateMachine) GetHeartbeats() int64 {
 
 func (SM *StateMachine) GetUptime() string {
 	var up = strconv.FormatFloat(float64(100*float64(SM.Uptime)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
-	//fmt.Printf("INFO : Uptime %f", float64(SM.Uptime)/float64(time.Now().Unix()- SM.Firsttime))
+	fmt.Printf("INFO : Uptime %f %f ", float64(SM.Uptime), float64(time.Now().Unix()-SM.Firsttime))
 	if up == "100.00000" {
 		up = "99.99999"
 	}

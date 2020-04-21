@@ -24,6 +24,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 const debug = false
@@ -537,7 +538,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		if myver.IsMariaDB() && opt.Channel != "" {
 			cm += " '" + opt.Channel + "'"
 		}
-		cm += " TO master_host='" + opt.Host + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+		cm += " TO master_host='" + misc.Unbracket(opt.Host) + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
 		switch opt.Mode {
 		case "SLAVE_POS":
 			cm += ", MASTER_USE_GTID=SLAVE_POS"
@@ -973,7 +974,7 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(master_host+":"+master_port), crcTable))
 
-	stmt := "CHANGE MASTER 'mrm_" + checksum64 + "' TO master_host='" + master_host + "', master_port=" + master_port + ", master_user='" + master_user + "', master_password='" + master_password + "' , master_use_gtid=slave_pos"
+	stmt := "CHANGE MASTER 'mrm_" + checksum64 + "' TO master_host='" + misc.Unbracket(master_host) + "', master_port=" + master_port + ", master_user='" + master_user + "', master_password='" + master_password + "' , master_use_gtid=slave_pos"
 	logs := stmt
 	_, err := db.Exec(stmt)
 	if err != nil {
