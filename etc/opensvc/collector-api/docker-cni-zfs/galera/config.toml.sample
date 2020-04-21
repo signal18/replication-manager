@@ -1,0 +1,65 @@
+# config.toml
+# Example replication-manager configuration file
+
+# TOPOLOGY
+# --------
+
+[Default]
+prov-net-cni-cluster = "cloud18"
+prov-docker-daemon-private=false
+prov-db-agents = "s18-fr-1,s18-fr-2"
+prov-proxy-agents = "s18-fr-1,s18-fr-2"
+prov-net-cni = true
+prov-db-service-type = "docker"
+opensvc-use-collector-api = true
+monitoring-save-config=true
+
+[tst-3x-galera-maxscale]
+title = "tst-3x-galera-maxscale"
+db-servers-hosts = "db1,db2,db3"
+db-servers-prefered-master = "db1"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+failover-mode = "automatic"
+prov-net-cni-cluster= "cloud18"
+prov-docker-daemon-private = false
+
+prov-db-agents = "s18-fr-1,s18-fr-2"
+prov-db-service-type = "docker"
+prov-db-disk-fs = "zfs"
+prov-db-disk-pool = "zpool"
+prov-db-disk-type = "pool"
+prov-db-disk-device = "data"
+prov-db-net-iface = "br-prd"
+prov-db-net-gateway = "192.168.100.1"
+prov-db-net-mask = "255.255.255.0"
+prov-db-tags = "wsrep,docker,linux,smallredolog,innodb,noquerycache,threadpool,slow,zfs,ssd"
+prov-db-disk-size = "1"
+prov-proxy-disk-size ="1G"
+prov-db-docker-img = "mariadb:10.2"
+replication-multi-master-wsrep = true
+
+
+maxscale=true
+maxscale-monitor = true
+maxscale-maxinfo-port = 8080
+maxscale-get-info-method = "maxadmin"
+maxscale-servers = "mx1"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = false
+
+prov-proxy-docker-maxscale-img="asosso/maxscale:2.1.16"
+prov-proxy-agents = "s18-fr-1,s18-fr-2"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-fs = "zfs"
+prov-proxy-disk-pool = "zpool"
+prov-proxy-disk-type = "data"
+prov-proxy-disk-device = "data"
+prov-proxy-tags = "wsrep"

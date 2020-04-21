@@ -1,0 +1,43 @@
+[cluster1]
+title = "cluster1"
+db-servers-hosts = "10.0.151.118:2099,10.0.151.118:2199"
+db-servers-prefered-master = "10.0.151.118:2099"
+db-servers-credential = "repman:xxx"
+replication-credential = "repman:xxx"
+db-servers-connect-timeout = 1
+slapos-db-partitions = "/srv/slapgrid/slappart10/srv/runner/instance/slappart1,/srv/slapgrid/slappart10/srv/runner/instance/slappart2"
+slapos-proxysql-partitions = "/srv/slapgrid/slappart10/srv/runner/instance/slappart0"
+proxysql = true
+proxysql-port = 6033
+proxysql-servers = "10.0.151.118"
+proxysql-user = "external"
+proxysql-bootstrap = true
+proxysql-admin-port = 6032
+proxysql-password = "rhgwcposzfnx"
+prov-proxy-tags = "pkg,masterslave,linux,noreadwritesplit"
+
+[Default]
+
+monitoring-save-config = false
+api-https-bind = true
+api-credentials = "admin:rhgwcposzfnx"
+include = "/srv/slapgrid/slappart10/srv/runner/instance/slappart0/etc/repman/cluster.d"
+autorejoin = true
+db-servers-binary-path = "/srv/slapgrid/slappart10/srv/runner/software/f79da523f3a00998198b14ccd9481612/parts/mariadb/bin"
+
+mail-from = "mrm@localhost"
+# Alert email SMTP server address, in host:[port] format (default "localhost:25")
+mail-smtp-addr = "localhost:25"
+mail-smtp-password = ""
+mail-smtp-user = ""
+# Alert email recipients, separated by commas
+mail-to = ""
+mysqlbinlog-path = "/srv/slapgrid/slappart10/srv/runner/software/f79da523f3a00998198b14ccd9481612/parts/mariadb/bin/mysqlbinlog"
+mysqlclient-path = "/srv/slapgrid/slappart10/srv/runner/software/f79da523f3a00998198b14ccd9481612/parts/mariadb/bin/mysql"
+mysqldump-path = "/srv/slapgrid/slappart10/srv/runner/software/f79da523f3a00998198b14ccd9481612/parts/mariadb/bin/mysqldump"
+prov-orchestrator = "slapos"
+prov-db-tags="gtidstrict,bind,pkg,innodb,noquerycache,slow,pfs,linux,readonly,diskmonitor,sqlerror,compressbinlog,ssl"
+sysbench-binary-path = "/srv/slapgrid/slappart10/srv/runner/software/f79da523f3a00998198b14ccd9481612/parts/sysbench/bin/sysbench"
+# Number of threads to run benchmark (default 4)
+sysbench-threads = 4
+sysbench-time = 100
