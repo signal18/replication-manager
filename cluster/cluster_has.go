@@ -101,6 +101,26 @@ func (cluster *Cluster) HasRequestDBRestart() bool {
 	return false
 }
 
+func (cluster *Cluster) HasRequestDBRollingRestart() bool {
+	ret := true
+	for _, s := range cluster.Servers {
+		if !s.HasRestartCookie() {
+			return false
+		}
+	}
+	return ret
+}
+
+func (cluster *Cluster) HasRequestDBRollingReprov() bool {
+	ret := true
+	for _, s := range cluster.Servers {
+		if !s.HasReprovCookie() {
+			return false
+		}
+	}
+	return ret
+}
+
 func (cluster *Cluster) HasRequestDBReprov() bool {
 	for _, s := range cluster.Servers {
 		if s.HasReprovCookie() {

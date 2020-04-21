@@ -28,12 +28,18 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRestart)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-reprov", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedReprov)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/need-rolling-restart", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingRestart)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave", negroni.New(
@@ -1056,6 +1062,44 @@ func (repman *ReplicationManager) handlerMuxServerNeedReprov(w http.ResponseWrit
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedRollingReprov(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+
+		if mycluster.HasRequestDBRollingReprov() {
+			w.Write([]byte("200 -Need rolling reprov!"))
+			return
+		}
+		w.Write([]byte("503 -No rooling reprov needed!"))
+		http.Error(w, "Encoding error", 503)
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedRollingRestart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+
+		if mycluster.HasRequestDBRollingRestart() {
+			w.Write([]byte("200 -Need rolling restart!"))
+			return
+		}
+		w.Write([]byte("503 -No rooling reprov restart!"))
+		http.Error(w, "Encoding error", 503)
 
 	} else {
 		http.Error(w, "No cluster", 500)

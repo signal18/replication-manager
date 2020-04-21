@@ -27,10 +27,10 @@ func SplitHostPort(s string) (string, string) {
 		if err != nil {
 			return "", "3306"
 		} else {
-			return host, port
+			return "[" + host + "]", port
 		}
 	} else {
-		// IPV6
+		// not IPV6
 		items := strings.Split(s, ":")
 		if len(items) == 1 {
 			return items[0], "3306"

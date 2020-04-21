@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/go-sql-driver/mysql"
 
@@ -106,11 +105,11 @@ func (server *ServerMonitor) SetDSN() {
 			//		dsn += "tcp(" + server.IP + ":" + server.Port + ")/" + params
 			//	} else {
 
-			if strings.Contains(server.Host, ":") {
-				dsn += "tcp([" + server.Host + "]:" + server.Port + ")/" + params
-			} else {
-				dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
-			}
+			//if strings.Contains(server.Host, ":") {
+			//		dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			//	} else {
+			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			//		}
 		} else {
 			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
 		}
