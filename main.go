@@ -443,7 +443,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogsTableRotate, "scheduler-db-servers-logs-table-rotate", true, "Schedule rotate database system table logs")
 	monitorCmd.Flags().StringVar(&conf.SchedulerDatabaseLogsTableRotateCron, "scheduler-db-servers-logs-table-rotate-cron", "0 0 0/6 * * *", "Logs table rotate cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().IntVar(&conf.SchedulerMaintenanceDatabaseLogsTableKeep, "scheduler-db-servers-logs-table-keep", 12, "Keep this number of system table logs")
-	monitorCmd.Flags().StringVar(&conf.SchedulerSLARotateCron, "scheduler-sla-rotate-cron", "0 0 0 * * *", "SLA rotate cron expression represents a set of times, using 6 space-separated fields.")
+	monitorCmd.Flags().StringVar(&conf.SchedulerSLARotateCron, "scheduler-sla-rotate-cron", "0 0 0 1 * *", "SLA rotate cron expression represents a set of times, using 6 space-separated fields.")
 
 	monitorCmd.Flags().BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
 	monitorCmd.Flags().StringVar(&conf.BackupLogicalType, "backup-logical-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
