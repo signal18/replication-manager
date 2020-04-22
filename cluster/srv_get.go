@@ -634,7 +634,6 @@ func (server *ServerMonitor) GetMyConfig() string {
 						if err != nil {
 							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
 						}
-
 					}
 
 					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
