@@ -6,18 +6,49 @@
   </md-button>
 
 <md-menu-content>
+  <md-menu>
+     <md-button ng-click="$mdMenu.open($event)">
+        <span md-menu-align-target>
+        HA
+        </span>
+        <md-icon class="fas fa-arrow-right"></md-icon>
+     </md-button>
+  <md-menu-content>
   <md-menu-item ng-if="master.State !='Failed'" ng-click="resetfail()">
     <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
       <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
   Reset Failover Counter
     </md-button>
   </md-menu-item>
+  <md-menu-item ng-if="master.State !='Failed'" ng-click="resetsla()">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-reset-sla']==false">
+      <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+  Reset Sla
+    </md-button>
+  </md-menu-item>
+
   <md-menu-item ng-click="toggletraffic()">
     <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-traffic']==false">
       <md-icon md-menu-align-target class="fas fa-pencil-alt"></md-icon>
     Toogle Traffic
     </md-button>
   </md-menu-item>
+  <md-menu-item ng-click="switch(false)">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-switchover']==false || master.state =='Failed'">
+      <md-icon md-menu-align-target class="fas fa-toggle-on"></md-icon>
+    Switchover
+    </md-button>
+  </md-menu-item>
+  <md-menu-item ng-click="switch(true)">
+    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-failover']==false || master.state !='Failed'">
+      <md-icon md-menu-align-target class="fas fa-toggle-on"></md-icon>
+    Failover
+  </md-button>
+  </md-menu-item>
+</md-menu-content>
+</md-menu>
+</md-menu-item>
+
   <md-menu-item>
   <md-menu>
      <md-button ng-click="$mdMenu.open($event)">

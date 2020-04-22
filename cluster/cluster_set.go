@@ -326,6 +326,12 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	cluster.Conf.BackupPhysicalType = backup
 }
 
+func (cluster *Cluster) SetEmptySla() {
+	cluster.LogPrintf(LvlInfo, "Resetting SLA")
+	cluster.sme.ResetUptime()
+
+}
+
 func (cluster *Cluster) SetDbServersCredential(credential string) {
 	cluster.Conf.User = credential
 	cluster.SetClusterVariablesFromConfig()

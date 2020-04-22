@@ -401,7 +401,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterResetSLA] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-sla") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreateMonitor] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/addserver") {
 			return true

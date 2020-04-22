@@ -118,6 +118,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRotateKeys)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/reset-sla", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetSla)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -391,6 +395,24 @@ func (repman *ReplicationManager) handlerMuxRotateKeys(w http.ResponseWriter, r 
 			return
 		}
 		mycluster.KeyRotation()
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.SetEmptySla()
 	} else {
 
 		http.Error(w, "No cluster", 500)

@@ -892,7 +892,9 @@ function (
       $scope.resetfail = function () {
         if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
       };
-
+      $scope.resetsla = function () {
+        if (confirm("Reset SLA counters?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-sla');
+      };
       $scope.setactive = function () {
         if (confirm("Confirm Active Status?")) httpGetWithoutResponse(getClusterUrl() + '/api/setactive');
       };
