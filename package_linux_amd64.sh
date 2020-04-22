@@ -16,7 +16,7 @@ git status -bs
 builddir="$(pwd)"/build
 mkdir -p "$builddir"/binaries "$builddir"/package "$builddir"/tar "$builddir"/release
 
-version=$(git describe --tag --abbrev=4)
+version=$(git describe --tag --abbrev=4 | sed 's/^v//')
 head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
 description="Replication Manager for MariaDB and MySQL"
