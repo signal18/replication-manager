@@ -252,6 +252,15 @@ func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
 	//fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b Uptime %d UptimeFailable %d UptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.Uptime, SM.UptimeFailable ,SM.UptimeSemisync)
 }
 
+func (SM *StateMachine) SetMasterUpAndSyncRestart() {
+	var timenow int64
+	timenow = time.Now().Unix()
+	SM.UptimeSemisync = SM.UptimeSemisync + (timenow - SM.lasttime)
+	SM.UptimeFailable = SM.UptimeFailable + (timenow - SM.lasttime)
+	SM.Uptime = SM.Uptime + (timenow - SM.lasttime)
+	SM.lasttime = timenow
+}
+
 // Clear copies the current map to argument map and clears it
 func (SM *StateMachine) ClearState() {
 	SM.Lock()

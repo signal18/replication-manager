@@ -327,9 +327,9 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 }
 
 func (cluster *Cluster) SetEmptySla() {
-	cluster.LogPrintf(LvlInfo, "Resetting SLA")
+	cluster.LogPrintf(LvlInfo, "Rotate SLA")
+	cluster.SLAHistory = append(cluster.SLAHistory, cluster.sme.GetSla())
 	cluster.sme.ResetUptime()
-
 }
 
 func (cluster *Cluster) SetDbServersCredential(credential string) {

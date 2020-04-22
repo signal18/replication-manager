@@ -133,6 +133,7 @@ type Cluster struct {
 	ProxyModule                   config.Compliance           `json:"-"`
 	QueryRules                    map[uint32]config.QueryRule `json:"-"`
 	Backups                       []Backup                    `json:"-"`
+	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
 	sync.Mutex
 }
@@ -289,6 +290,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	// createKeys do nothing yet
 	cluster.createKeys()
 	cluster.initScheduler()
+	cluster.GetPersitentState()
+
 	cluster.newServerList()
 	err = cluster.newProxyList()
 	if err != nil {
@@ -300,7 +303,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.ConfigDBTags = cluster.GetDBModuleTags()
 	cluster.ConfigPrxTags = cluster.GetProxyModuleTags()
 	// Reload SLA and crashes
-	cluster.GetPersitentState()
+
 	cluster.initOrchetratorNodes()
 	return nil
 }
@@ -359,6 +362,10 @@ func (cluster *Cluster) initScheduler() {
 				cluster.Optimize()
 			})
 		}
+		cluster.LogPrintf(LvlInfo, "Schedule SLA rotation fetch time at: %s", cluster.Conf.SchedulerSLARotateCron)
+		cluster.scheduler.AddFunc(cluster.Conf.SchedulerSLARotateCron, func() {
+			cluster.SetEmptySla()
+		})
 		cluster.scheduler.Start()
 	}
 }
@@ -508,16 +515,19 @@ func (cluster *Cluster) StateProcessing() {
 }
 func (cluster *Cluster) Stop() {
 	cluster.scheduler.Stop()
+	cluster.Save()
 	cluster.exit = true
+
 }
 
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
-		Servers   string    `json:"servers"`
-		Crashes   crashList `json:"crashes"`
-		SLA       state.Sla `json:"sla"`
-		IsAllDbUp bool      `json:"provisioned"`
+		Servers    string      `json:"servers"`
+		Crashes    crashList   `json:"crashes"`
+		SLA        state.Sla   `json:"sla"`
+		SLAHistory []state.Sla `json:"slaHistory"`
+		IsAllDbUp  bool        `json:"provisioned"`
 	}
 
 	var clsave Save
@@ -525,6 +535,7 @@ func (cluster *Cluster) Save() error {
 	clsave.Servers = cluster.Conf.Hosts
 	clsave.SLA = cluster.sme.GetSla()
 	clsave.IsAllDbUp = cluster.IsAllDbUp
+	clsave.SLAHistory = cluster.SLAHistory
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)

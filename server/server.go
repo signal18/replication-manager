@@ -545,6 +545,9 @@ func (repman *ReplicationManager) Run() error {
 		s := <-sigs
 		log.Printf("RECEIVED SIGNAL: %s", s)
 		repman.UnMountS3()
+		for _, cl := range repman.Clusters {
+			cl.Stop()
+		}
 		repman.exit = true
 
 	}()

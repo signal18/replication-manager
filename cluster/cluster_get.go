@@ -72,9 +72,10 @@ func (cluster *Cluster) GetDomainHeadCluster() string {
 func (cluster *Cluster) GetPersitentState() error {
 
 	type Save struct {
-		Servers string    `json:"servers"`
-		Crashes crashList `json:"crashes"`
-		SLA     state.Sla `json:"sla"`
+		Servers    string      `json:"servers"`
+		Crashes    crashList   `json:"crashes"`
+		SLA        state.Sla   `json:"sla"`
+		SLAHistory []state.Sla `json:"slaHistory"`
 	}
 
 	var clsave Save
@@ -91,8 +92,10 @@ func (cluster *Cluster) GetPersitentState() error {
 	if len(clsave.Crashes) > 0 {
 		cluster.LogPrintf(LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
+	cluster.SLAHistory = clsave.SLAHistory
 	cluster.Crashes = clsave.Crashes
 	cluster.sme.SetSla(clsave.SLA)
+	cluster.sme.SetMasterUpAndSyncRestart()
 
 	return nil
 }

@@ -398,6 +398,7 @@ type Config struct {
 	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDatabaseLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDatabaseLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
+	SchedulerSLARotateCron                    string `mapstructure:"scheduler-sla-rotate-cron" toml:"scheduler-sla-rotate-cron" json:"schedulerSlaRotateCron"`
 	Backup                                    bool   `mapstructure:"backup" toml:"backup" json:"backup"`
 	BackupLogicalType                         string `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
 	BackupLogicalLoadThreads                  int    `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
