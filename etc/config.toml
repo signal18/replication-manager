@@ -1,0 +1,101 @@
+[Default]
+
+include = "/etc/replication-manager/cluster.d"
+
+monitoring-save-config=true
+monitoring-datadir = "/var/lib/replication-manager"
+#monitoring-sharedir = "/usr/share/replication-manager"
+
+## Timeout in seconds between consecutive monitoring
+
+monitoring-ticker = 2
+
+#########
+## LOG ##
+#########
+
+log-file = "/var/log/replication-manager.log"
+log-heartbeat = false
+log-syslog = false
+
+
+
+#################
+## ARBITRATION ##
+#################
+
+arbitration-external = false
+arbitration-external-secret = "13787932529099014144"
+arbitration-external-hosts = "88.191.151.84:80"
+arbitration-peer-hosts ="127.0.0.1:10002"
+
+## Unique value on each replication-manager
+
+arbitration-external-unique-id = 0
+
+##########
+## HTTP ##
+##########
+
+http-server = true
+http-bind-address = "0.0.0.0"
+http-port = "10001"
+http-auth = false
+http-session-lifetime =   3600
+http-bootstrap-button = false
+http-refresh-interval = 4000
+
+#########
+## API ##
+#########
+
+api-credentials = "admin:repman"
+api-port = "10005"
+api-https-bind = false
+
+api-credentials-acl-allow =  "admin:cluster proxy db prov,dba:cluster proxy db,foo:"
+api-credentials-acl-discard = false
+api-credentials-external = "dba:repman,foo:bar"
+
+############
+## ALERTS ##
+############
+
+mail-from = "replication-manager@localhost"
+mail-smtp-addr = "localhost:25"
+mail-to = "replication-manager@signal18.io"
+mail-smtp-password=""
+mail-smtp-user=""
+
+alert-slack-channel = "#support"
+alert-slack-url = ""
+alert-slack-user = "svar"
+
+##########
+# STATS ##
+##########
+
+graphite-metrics = false
+graphite-carbon-host = "127.0.0.1"
+graphite-carbon-port = 2003
+graphite-embedded = false
+graphite-carbon-api-port = 10002
+graphite-carbon-server-port = 10003
+graphite-carbon-link-port = 7002
+graphite-carbon-pickle-port = 2004
+graphite-carbon-pprof-port = 7007
+
+backup-mydumper-path = "/usr/local/bin/mydumper"
+backup-myloader-path = "/usr/local/bin/myloader"
+backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
+backup-mysqldump-path = "/usr/local/bin/mysqldump"
+
+
+##############
+# BENCHMARK ##
+##############
+
+sysbench-binary-path = "/usr/bin/sysbench"
+sysbench-threads = 4
+sysbench-time = 100
+sysbench-v1 = true

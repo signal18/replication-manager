@@ -418,7 +418,7 @@ type Config struct {
 	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupStreaming                           bool   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
-	BackupStreamingDebug                      bool   `mapstructure:"backup-streaming-debug" toml:"backup-streaming" json:"backupStreamingDebug"`
+	BackupStreamingDebug                      bool   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
 	BackupStreamingAwsAccessKeyId             string `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
 	BackupStreamingAwsAccessSecret            string `mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
 	BackupStreamingEndpoint                   string `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`

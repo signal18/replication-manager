@@ -514,7 +514,7 @@ func (cluster *Cluster) StateProcessing() {
 	}
 }
 func (cluster *Cluster) Stop() {
-	cluster.scheduler.Stop()
+	//	cluster.scheduler.Stop()
 	cluster.Save()
 	cluster.exit = true
 

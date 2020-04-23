@@ -171,7 +171,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 	conf.ClusterConfigPath = conf.WorkingDir + "/cluster.d"
 
-	viper.SetEnvPrefix("MRM")
+	viper.SetEnvPrefix("DEFAULT")
 	err := viper.ReadInConfig()
 	if err == nil {
 		log.WithFields(log.Fields{
@@ -182,9 +182,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//log.WithError(err).Fatal("Could not parse config file")
 		log.Warningf("Could not parse config file: %s", err)
 	}
-
-	//t := viper.AllKeys()
-	//log.Fatal(t)
 
 	// Proceed include files
 
@@ -205,6 +202,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			if !f.IsDir() {
 				viper.SetConfigName(f.Name())
 				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
+				//	viper.Debug()
+				viper.AutomaticEnv()
+				viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+
 				err := viper.MergeInConfig()
 				if err != nil {
 					log.Println(err)
@@ -269,12 +270,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	cfgGroupIndex = 0
 
 	cf1 := viper.Sub("Default")
+	//cf1.Debug()
+	cf1.AutomaticEnv()
+	cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	cf1.SetEnvPrefix("DEFAULT")
 	if cf1 == nil {
 		//log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
 		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
 	} else {
 
 		cf1.Unmarshal(&conf)
+
 		repman.Conf = conf
 	}
 	if currentClusterName != "" {
@@ -289,11 +295,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				log.WithField("group", gl).Debug("Reading configuration group")
 
 				def := viper.Sub("Default")
+				//	def.Debug()
+				def.AutomaticEnv()
+				def.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+				def.SetEnvPrefix("DEFAULT")
 				if def != nil {
 					repman.initAlias(def)
 					def.Unmarshal(&clusterconf)
+
 				}
+
 				cf2 := viper.Sub(gl)
+				//		cf2.AutomaticEnv()
+				//			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+				//			def.SetEnvPrefix(strings.ToUpper(gl))
 
 				if cf2 == nil {
 					log.WithField("group", gl).Infof("Could not parse configuration group")
@@ -634,6 +649,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	if err != nil {
 		return err
 	}*/
+
 	cluster, _ := repman.StartCluster(clusterName)
 	cluster.SetClusterHead(clusterHead)
 	cluster.SetClusterList(repman.Clusters)

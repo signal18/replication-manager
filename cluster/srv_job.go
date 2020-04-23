@@ -30,6 +30,7 @@ import (
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
@@ -350,7 +351,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 func (server *ServerMonitor) JobReseedMyLoader() {
 
 	threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalLoadThreads)
-	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := dumpCmd.StdoutPipe()
@@ -580,7 +581,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 		usegtid := "--gtid"
 
-		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 
 		f, err := os.Create(server.GetBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
@@ -623,7 +624,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		conf := dumplingext.DefaultConfig()
 		conf.Database = ""
-		conf.Host = server.Host
+		conf.Host = misc.Unbracket(server.Host)
 		conf.User = server.ClusterGroup.dbUser
 		conf.Port, _ = strconv.Atoi(server.Port)
 		conf.Password = server.ClusterGroup.dbPass
@@ -648,7 +649,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//  --no-schemas     --regex '^(?!(mysql))'
 
 		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
-		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 		/*	pr, pw := io.Pipe()
 			defer pw.Close()
@@ -788,7 +789,7 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 func (server *ServerMonitor) JobRunViaSSH() error {
 
 	key := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDIsA7H/dGGf9lRP1IcVXjmZ7LtD7zCXYnomBBw/E78z6AGaUPalBqhtrhWw8ONr0pO9gFUmgoF4VYrqf0S272ECvcIdzAg8EwfQvAqumvmlQSXP0Uf6WELPqRaJKgKj91mYADY2gwxA+HzdNHl7fCqw/3dm+hcToLWZNoWHl2kD/375Lt7ZY+GbYGkZMq8ledzSSlzRWMPj6TeRu7SvwtRNdO5WIhdFT2MN0wbgnN67SlcTh6L810Hhk07cT4A2+Zvc9MhtpBGPRJBHckNmztuI2zqTD3bDJM7mq6XdnMpXTx8jF0gSA31J32htg4+9CC8zRBawAGvoQm43P4IOCiT apple@macbook-pro-de-apple-2.local"
-	client, err := sshcli.DialWithKey(server.Host+":22", "apple", key)
+	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", "apple", key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
 		return err

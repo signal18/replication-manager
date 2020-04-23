@@ -10,12 +10,12 @@
           </div>
         </div>
         <md-content   layout="column">
-          <md-tabs style="min-height: 600px;" ng-if="selectedClusterName=='Default' || !selectedCluster"   md-dynamic-height="" md-border-bottom="" >
+          <md-tabs style="min-height: 600px;" ng-if="selectedClusterName===undefined"   md-dynamic-height="" md-border-bottom="" >
               <md-tab   label="Clusters">
                   <div ng-include src="'static/tab-clusters-list.html'"></div>
               </md-tab>
             </md-tabs>
-            <md-tabs  ng-if="selectedClusterName!='Default' && selectedCluster"  md-dynamic-height="" md-border-bottom="" >
+            <md-tabs  ng-if="selectedCluster"  md-dynamic-height="" md-border-bottom="" >
                 <md-tab  ng-if="!selectedServer" ng-click="onTabClicked('Dashboard')"  md-select-id="Dashboard" md-on-select="onTabSelected" label="Dashboard">
                     <div style="min-height:800px" ng-include src="'static/tab-cluster-dashboard.html'"></div>
                 </md-tab>

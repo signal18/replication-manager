@@ -84,6 +84,9 @@ func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) HasAllDbUp() bool {
+	if cluster.Servers == nil {
+		return false
+	}
 	for _, s := range cluster.Servers {
 		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 			return false
@@ -93,6 +96,9 @@ func (cluster *Cluster) HasAllDbUp() bool {
 }
 
 func (cluster *Cluster) HasRequestDBRestart() bool {
+	if cluster.Servers == nil {
+		return false
+	}
 	for _, s := range cluster.Servers {
 		if s.HasRestartCookie() {
 			return true
@@ -103,6 +109,9 @@ func (cluster *Cluster) HasRequestDBRestart() bool {
 
 func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	ret := true
+	if cluster.Servers == nil {
+		return false
+	}
 	for _, s := range cluster.Servers {
 		if !s.HasRestartCookie() {
 			return false
@@ -113,6 +122,9 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 	ret := true
+	if cluster.Servers == nil {
+		return false
+	}
 	for _, s := range cluster.Servers {
 		if !s.HasReprovCookie() {
 			return false

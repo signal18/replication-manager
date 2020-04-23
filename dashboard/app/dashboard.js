@@ -115,9 +115,11 @@ function (
         Clusters.query({}, function (data) {
           if (data) {
             $scope.clusters = data;
-            if ($scope.clusters.length === 1 && $scope.settings.config.monitoringSaveConfig==false ) {
-              $scope.selectedClusterName = $scope.clusters[0].name;
+
+            if ($scope.clusters.length === 1 && $scope.settings.config.monitoringSaveConfig==false &&  $scope.clusters[0].name=="Default" ) {
+               $scope.selectedClusterName = $scope.clusters[0].name;
             }
+      //      alert( $scope.selectedClusterName );
             //else {
             //  $scope.refreshInterval = 2000;
           //  }

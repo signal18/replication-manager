@@ -28,6 +28,9 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 }
 
 func (server *ServerMonitor) HasProvisionCookie() bool {
+	if server == nil {
+		return false
+	}
 	if _, err := os.Stat(server.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
 		return false
 	}
@@ -35,6 +38,9 @@ func (server *ServerMonitor) HasProvisionCookie() bool {
 }
 
 func (server *ServerMonitor) HasRestartCookie() bool {
+	if server == nil {
+		return false
+	}
 	if _, err := os.Stat(server.Datadir + "/@cookie_restart"); os.IsNotExist(err) {
 		return false
 	}
@@ -42,6 +48,9 @@ func (server *ServerMonitor) HasRestartCookie() bool {
 }
 
 func (server *ServerMonitor) HasReprovCookie() bool {
+	if server == nil {
+		return false
+	}
 	if _, err := os.Stat(server.Datadir + "/@cookie_reprov"); os.IsNotExist(err) {
 		return false
 	}
