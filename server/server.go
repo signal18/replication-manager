@@ -85,45 +85,45 @@ const (
 )
 
 type Settings struct {
-	Enterprise          string              `json:"enterprise"`
-	Interactive         string              `json:"interactive"`
-	FailoverCtr         string              `json:"failoverctr"`
-	MaxDelay            string              `json:"maxdelay"`
-	Faillimit           string              `json:"faillimit"`
-	LastFailover        string              `json:"lastfailover"`
-	MonHearbeats        string              `json:"monheartbeats"`
-	Uptime              string              `json:"uptime"`
-	UptimeFailable      string              `json:"uptimefailable"`
-	UptimeSemiSync      string              `json:"uptimesemisync"`
-	RplChecks           string              `json:"rplchecks"`
-	FailSync            string              `json:"failsync"`
-	SwitchSync          string              `json:"switchsync"`
-	Verbose             string              `json:"verbose"`
-	Rejoin              string              `json:"rejoin"`
-	RejoinBackupBinlog  string              `json:"rejoinbackupbinlog"`
-	RejoinSemiSync      string              `json:"rejoinsemisync"`
-	RejoinFlashback     string              `json:"rejoinflashback"`
-	RejoinUnsafe        string              `json:"rejoinunsafe"`
-	RejoinDump          string              `json:"rejoindump"`
-	RejoinPseudoGTID    string              `json:"rejoinpseudogtid"`
-	Test                string              `json:"test"`
-	Heartbeat           string              `json:"heartbeat"`
-	Status              string              `json:"runstatus"`
-	IsActive            string              `json:"isactive"`
-	ConfGroup           string              `json:"confgroup"`
-	MonitoringTicker    string              `json:"monitoringticker"`
-	FailResetTime       string              `json:"failresettime"`
-	ToSessionEnd        string              `json:"tosessionend"`
-	HttpAuth            string              `json:"httpauth"`
-	HttpBootstrapButton string              `json:"httpbootstrapbutton"`
-	GraphiteMetrics     string              `json:"graphitemetrics"`
-	Clusters            []string            `json:"clusters"`
-	RegTests            []string            `json:"regtests"`
-	Topology            string              `json:"topology"`
-	Version             string              `json:"version"`
-	DBTags              []string            `json:"databasetags"`
-	ProxyTags           []string            `json:"proxytags"`
-	Scheduler           []cluster.CronEntry `json:"scheduler"`
+	Enterprise          string   `json:"enterprise"`
+	Interactive         string   `json:"interactive"`
+	FailoverCtr         string   `json:"failoverctr"`
+	MaxDelay            string   `json:"maxdelay"`
+	Faillimit           string   `json:"faillimit"`
+	LastFailover        string   `json:"lastfailover"`
+	MonHearbeats        string   `json:"monheartbeats"`
+	Uptime              string   `json:"uptime"`
+	UptimeFailable      string   `json:"uptimefailable"`
+	UptimeSemiSync      string   `json:"uptimesemisync"`
+	RplChecks           string   `json:"rplchecks"`
+	FailSync            string   `json:"failsync"`
+	SwitchSync          string   `json:"switchsync"`
+	Verbose             string   `json:"verbose"`
+	Rejoin              string   `json:"rejoin"`
+	RejoinBackupBinlog  string   `json:"rejoinbackupbinlog"`
+	RejoinSemiSync      string   `json:"rejoinsemisync"`
+	RejoinFlashback     string   `json:"rejoinflashback"`
+	RejoinUnsafe        string   `json:"rejoinunsafe"`
+	RejoinDump          string   `json:"rejoindump"`
+	RejoinPseudoGTID    string   `json:"rejoinpseudogtid"`
+	Test                string   `json:"test"`
+	Heartbeat           string   `json:"heartbeat"`
+	Status              string   `json:"runstatus"`
+	IsActive            string   `json:"isactive"`
+	ConfGroup           string   `json:"confgroup"`
+	MonitoringTicker    string   `json:"monitoringticker"`
+	FailResetTime       string   `json:"failresettime"`
+	ToSessionEnd        string   `json:"tosessionend"`
+	HttpAuth            string   `json:"httpauth"`
+	HttpBootstrapButton string   `json:"httpbootstrapbutton"`
+	GraphiteMetrics     string   `json:"graphitemetrics"`
+	Clusters            []string `json:"clusters"`
+	RegTests            []string `json:"regtests"`
+	Topology            string   `json:"topology"`
+	Version             string   `json:"version"`
+	DBTags              []string `json:"databasetags"`
+	ProxyTags           []string `json:"proxytags"`
+	//	Scheduler           []cron.Entry `json:"scheduler"`
 }
 
 type Heartbeat struct {
@@ -306,9 +306,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				}
 
 				cf2 := viper.Sub(gl)
-				//		cf2.AutomaticEnv()
-				//			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-				//			def.SetEnvPrefix(strings.ToUpper(gl))
+				def.SetEnvPrefix(strings.ToUpper(gl))
+				cf2.AutomaticEnv()
+				cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 				if cf2 == nil {
 					log.WithField("group", gl).Infof("Could not parse configuration group")

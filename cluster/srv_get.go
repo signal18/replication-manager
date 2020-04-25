@@ -459,7 +459,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
-	if !server.HasLogsInSystemTables() {
+	if !server.HasLogsInSystemTables() || server.IsDown() {
 		return
 	}
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)

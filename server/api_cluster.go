@@ -895,6 +895,10 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchRejoinZFSFlashback()
 		case "autorejoin-mysqldump":
 			mycluster.SwitchRejoinDump()
+		case "autorejoin-logical-backup":
+			mycluster.SwitchRejoinLogicalBackup()
+		case "autorejoin-physical-backup":
+			mycluster.SwitchRejoinPhysicalBackup()
 		case "switchover-at-sync":
 			mycluster.SwitchSwitchoverSync()
 		case "check-replication-filters":
@@ -903,17 +907,25 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchRplChecks()
 		case "scheduler-db-servers-logical-backup":
 			mycluster.SwitchSchedulerBackupLogical()
-		case "scheduler-db-servers-logs":
-			mycluster.SwitchSchedulerDatabaseLogs()
-		case "scheduler-db-servers-optimize":
-			mycluster.SwitchSchedulerDatabaseOptimize()
 		case "scheduler-db-servers-physical-backup":
 			mycluster.SwitchSchedulerBackupPhysical()
+		case "scheduler-db-servers-logs":
+			mycluster.SwitchSchedulerDatabaseLogs()
+		case "scheduler-db-servers-logs-table-rotate":
+			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
+		case "scheduler-rolling-restart":
+			mycluster.SwitchSchedulerRollingRestart()
+		case "scheduler-rolling-reprov":
+			mycluster.SwitchSchedulerRollingReprov()
+		case "scheduler-db-servers-optimize":
+			mycluster.SwitchSchedulerDatabaseOptimize()
 		case "graphite-metrics":
 			mycluster.SwitchGraphiteMetrics()
 		case "graphite-embedded":
 			mycluster.SwitchGraphiteEmbedded()
 		case "shardproxy-copy-grants":
+		case "monitoring-save-config":
+			mycluster.SwitchMonitoringSaveConfig()
 		case "monitoring-queries":
 			mycluster.SwitchMonitoringQueries()
 		case "monitoring-scheduler":
@@ -1045,7 +1057,22 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetProvProxyServiceType(vars["settingValue"])
 		case "monitoring-address":
 			mycluster.SetMonitoringAddress(vars["settingValue"])
-
+		case "scheduler-db-servers-logical-backup-cron":
+			mycluster.SetSchedulerDbServersLogicalBackupCron(vars["settingValue"])
+		case "scheduler-db-servers-logs-cron":
+			mycluster.SetSchedulerDbServersLogsCron(vars["settingValue"])
+		case "scheduler-db-servers-logs-table-rotate-cron":
+			mycluster.SetSchedulerDbServersLogsTableRotateCron(vars["settingValue"])
+		case "scheduler-db-servers-optimize-cron":
+			mycluster.SetSchedulerDbServersOptimizeCron(vars["settingValue"])
+		case "scheduler-db-servers-physical-backup-cron":
+			mycluster.SetSchedulerDbServersPhysicalBackupCron(vars["settingValue"])
+		case "scheduler-rolling-reprov-cron":
+			mycluster.SetSchedulerRollingReprovCron(vars["settingValue"])
+		case "scheduler-rolling-restart-cron":
+			mycluster.SetSchedulerRollingRestartCron(vars["settingValue"])
+		case "scheduler-sla-rotate-cron":
+			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

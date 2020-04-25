@@ -62,10 +62,9 @@ type Cluster struct {
 	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
 	Conf                          config.Config               `json:"config"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
-	Schedule                      []CronEntry                 `json:"schedule"`
-	ConfigDBTags                  []Tag                       `json:"configTags"`    //from module
-	ConfigPrxTags                 []Tag                       `json:"configPrxTags"` //from module
-	DBTags                        []string                    `json:"dbServersTags"` //from conf
+	ConfigDBTags                  []Tag                       `json:"configTags"`       //from module
+	ConfigPrxTags                 []Tag                       `json:"configPrxTags"`    //from module
+	DBTags                        []string                    `json:"dbServersTags"`    //from conf
 	ProxyTags                     []string                    `json:"proxyServersTags"`
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -127,7 +126,6 @@ type Cluster struct {
 	HaveDBTLSOldCert              bool                        `json:"haveDBTLSOldCert"`
 	tlsconf                       *tls.Config                 `json:"-"`
 	tlsoldconf                    *tls.Config                 `json:"-"`
-	scheduler                     *cron.Cron                  `json:"-"`
 	tunnel                        *ssh.Client                 `json:"-"`
 	DBModule                      config.Compliance           `json:"-"`
 	ProxyModule                   config.Compliance           `json:"-"`
@@ -135,6 +133,16 @@ type Cluster struct {
 	Backups                       []Backup                    `json:"-"`
 	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
+	Schedule                      map[string]cron.Entry       `json:"-"`
+	scheduler                     *cron.Cron                  `json:"-"`
+	idSchedulerPhysicalBackup     cron.EntryID                `json:"-"`
+	idSchedulerLogicalBackup      cron.EntryID                `json:"-"`
+	idSchedulerOptimize           cron.EntryID                `json:"-"`
+	idSchedulerErrorLogs          cron.EntryID                `json:"-"`
+	idSchedulerLogRotateTable     cron.EntryID                `json:"-"`
+	idSchedulerSLARotate          cron.EntryID                `json:"-"`
+	idSchedulerRollingRestart     cron.EntryID                `json:"-"`
+	idSchedulerRollingReprov      cron.EntryID                `json:"-"`
 	sync.Mutex
 }
 
@@ -149,13 +157,6 @@ type QueryRuleSorter []config.QueryRule
 func (a QueryRuleSorter) Len() int           { return len(a) }
 func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
-
-type CronEntry struct {
-	Schedule string
-	Next     time.Time
-	Prev     time.Time
-	Id       string
-}
 
 type Agent struct {
 	Id           string `json:"id"`
@@ -238,6 +239,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.Grants = conf.GetGrantType()
 
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
+	cluster.Schedule = make(map[string]cron.Entry)
 
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
@@ -331,43 +333,18 @@ func (cluster *Cluster) initScheduler() {
 	if cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
 		cluster.scheduler = cron.New()
+		cluster.SetSchedulerBackupLogical()
+		cluster.SetSchedulerLogsTableRotate()
+		cluster.SetSchedulerBackupPhysical()
+		cluster.SetSchedulerBackupLogs()
+		cluster.SetSchedulerOptimize()
+		cluster.SetSchedulerRollingRestart()
+		cluster.SetSchedulerRollingReprov()
+		cluster.SetSchedulerSlaRotate()
 
-		if cluster.Conf.SchedulerBackupLogical {
-			cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
-			cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
-				cluster.master.JobBackupLogical()
-			})
-		}
-		if cluster.Conf.SchedulerBackupPhysical {
-			cluster.LogPrintf(LvlInfo, "Schedule physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
-			cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
-				cluster.master.JobBackupPhysical()
-			})
-		}
-		if cluster.Conf.SchedulerDatabaseLogs {
-			cluster.LogPrintf(LvlInfo, "Schedule database logs fetch time at: %s", cluster.Conf.BackupDatabaseLogCron)
-			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
-				cluster.BackupLogs()
-			})
-		}
-		if cluster.Conf.SchedulerDatabaseLogsTableRotate {
-			cluster.LogPrintf(LvlInfo, "Schedule database logs rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
-			cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
-				cluster.RotateLogs()
-			})
-		}
-		if cluster.Conf.SchedulerDatabaseOptimize {
-			cluster.LogPrintf(LvlInfo, "Schedule database optimize fetch time at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
-			cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
-				cluster.Optimize()
-			})
-		}
-		cluster.LogPrintf(LvlInfo, "Schedule SLA rotation fetch time at: %s", cluster.Conf.SchedulerSLARotateCron)
-		cluster.scheduler.AddFunc(cluster.Conf.SchedulerSLARotateCron, func() {
-			cluster.SetEmptySla()
-		})
 		cluster.scheduler.Start()
 	}
+
 }
 
 func (cluster *Cluster) Run() {
@@ -936,6 +913,50 @@ func (cluster *Cluster) LoadPrxModules() {
 		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
 	}
 
+}
+
+func (cluster *Cluster) RollingReprov() error {
+	master := cluster.GetMaster()
+	for _, slave := range cluster.slaves {
+		if !slave.IsDown() {
+			err := cluster.UnprovisionDatabaseService(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+				return err
+			}
+			err = cluster.InitDatabaseService(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+				return err
+			}
+			err = cluster.WaitDatabaseStart(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+				return err
+			}
+
+		}
+	}
+	cluster.SwitchoverWaitTest()
+	if !master.IsDown() {
+		err := cluster.UnprovisionDatabaseService(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+			return err
+		}
+		err = cluster.InitDatabaseService(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+			return err
+		}
+		err = cluster.WaitDatabaseStart(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
+			return err
+		}
+		cluster.SwitchOver()
+	}
+	return nil
 }
 
 func (cluster *Cluster) RollingRestart() error {

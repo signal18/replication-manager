@@ -58,6 +58,141 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	}
 }
 
+func (cluster *Cluster) SetSchedulerBackupLogical() {
+	if cluster.HasSchedulerEntry("backuplogical") {
+		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
+		cluster.LogPrintf(LvlInfo, "Disable database logical backup ")
+	}
+	if cluster.Conf.SchedulerBackupLogical {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
+		cluster.idSchedulerLogicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
+			cluster.master.JobBackupLogical()
+		})
+		if err == nil {
+			cluster.Schedule["backuplogical"] = cluster.scheduler.Entry(cluster.idSchedulerPhysicalBackup)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerBackupPhysical() {
+	if cluster.HasSchedulerEntry("backupphysical") {
+		cluster.LogPrintf(LvlInfo, "Disable database physical backup")
+		cluster.scheduler.Remove(cluster.idSchedulerPhysicalBackup)
+	}
+	if cluster.Conf.SchedulerBackupPhysical {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule Physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
+		cluster.idSchedulerPhysicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
+			cluster.master.JobBackupPhysical()
+		})
+		if err == nil {
+			cluster.Schedule["backupphysical"] = cluster.scheduler.Entry(cluster.idSchedulerPhysicalBackup)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerLogsTableRotate() {
+	if cluster.HasSchedulerEntry("logstablerotate") {
+		cluster.LogPrintf(LvlInfo, "Disable database logs table rotate")
+		cluster.scheduler.Remove(cluster.idSchedulerLogRotateTable)
+	}
+	if cluster.Conf.SchedulerDatabaseLogsTableRotate {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule database logs table rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
+		cluster.idSchedulerLogRotateTable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
+			cluster.RotateLogs()
+		})
+		if err == nil {
+			cluster.Schedule["logstablerotate"] = cluster.scheduler.Entry(cluster.idSchedulerLogRotateTable)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerBackupLogs() {
+	if cluster.HasSchedulerEntry("errorlogs") {
+		cluster.LogPrintf(LvlInfo, "Disable database logs error fetching")
+		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
+	}
+	if cluster.Conf.SchedulerDatabaseLogs {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule database logs error fetching at: %s", cluster.Conf.BackupDatabaseLogCron)
+		cluster.idSchedulerErrorLogs, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
+			cluster.BackupLogs()
+		})
+		if err == nil {
+			cluster.Schedule["errorlogs"] = cluster.scheduler.Entry(cluster.idSchedulerErrorLogs)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerOptimize() {
+	if cluster.HasSchedulerEntry("optimize") {
+		cluster.LogPrintf(LvlInfo, "Disable database optimize")
+		cluster.scheduler.Remove(cluster.idSchedulerOptimize)
+	}
+	if cluster.Conf.SchedulerDatabaseOptimize {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule database optimize at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
+		cluster.idSchedulerOptimize, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
+			cluster.Optimize()
+		})
+		if err == nil {
+			cluster.Schedule["optimize"] = cluster.scheduler.Entry(cluster.idSchedulerOptimize)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerRollingRestart() {
+	if cluster.HasSchedulerEntry("rollingrestart") {
+		cluster.LogPrintf(LvlInfo, "Disable rolling restart")
+		cluster.scheduler.Remove(cluster.idSchedulerRollingRestart)
+	}
+	if cluster.Conf.SchedulerRollingRestart {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule rolling restart at: %s", cluster.Conf.SchedulerRollingRestartCron)
+		cluster.idSchedulerRollingRestart, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingRestartCron, func() {
+			cluster.RollingRestart()
+		})
+		if err == nil {
+			cluster.Schedule["rollingrestart"] = cluster.scheduler.Entry(cluster.idSchedulerRollingRestart)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerRollingReprov() {
+	if cluster.HasSchedulerEntry("rollingreprov") {
+		cluster.LogPrintf(LvlInfo, "Disable rolling reprov")
+		cluster.scheduler.Remove(cluster.idSchedulerRollingReprov)
+	}
+	if cluster.Conf.SchedulerRollingReprov {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule rolling reprov at: %s", cluster.Conf.SchedulerRollingReprovCron)
+		cluster.idSchedulerRollingReprov, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingReprovCron, func() {
+			cluster.RollingReprov()
+		})
+		if err == nil {
+			cluster.Schedule["rollingreprov"] = cluster.scheduler.Entry(cluster.idSchedulerRollingReprov)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSchedulerSlaRotate() {
+	if cluster.HasSchedulerEntry("slarotate") {
+		cluster.LogPrintf(LvlInfo, "Disable rotate Sla ")
+		cluster.scheduler.Remove(cluster.idSchedulerSLARotate)
+	}
+
+	var err error
+	cluster.LogPrintf(LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerSLARotateCron)
+	cluster.idSchedulerSLARotate, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerSLARotateCron, func() {
+		cluster.SetEmptySla()
+	})
+	if err == nil {
+		cluster.Schedule["slarotate"] = cluster.scheduler.Entry(cluster.idSchedulerSLARotate)
+	}
+}
+
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 	cluster.cfgGroupDisplay = cfgGroup
 }
@@ -616,6 +751,54 @@ func (cluster *Cluster) SetProvProxyAgents(value string) error {
 
 func (cluster *Cluster) SetMonitoringAddress(value string) error {
 	cluster.Conf.MonitorAddress = value
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersLogicalBackupCron(value string) error {
+	cluster.Conf.BackupPhysicalCron = value
+	cluster.SetSchedulerBackupLogical()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersPhysicalBackupCron(value string) error {
+	cluster.Conf.BackupPhysicalCron = value
+	cluster.SetSchedulerBackupPhysical()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersOptimizeCron(value string) error {
+	cluster.Conf.BackupDatabaseOptimizeCron = value
+	cluster.SetSchedulerOptimize()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersLogsCron(value string) error {
+	cluster.Conf.BackupDatabaseLogCron = value
+	cluster.SetSchedulerBackupLogs()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersLogsTableRotateCron(value string) error {
+	cluster.Conf.SchedulerDatabaseLogsTableRotateCron = value
+	cluster.SetSchedulerLogsTableRotate()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerSlaRotateCron(value string) error {
+	cluster.Conf.SchedulerSLARotateCron = value
+	cluster.SetSchedulerSlaRotate()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerRollingRestartCron(value string) error {
+	cluster.Conf.SchedulerRollingRestartCron = value
+	cluster.SetSchedulerRollingRestart()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerRollingReprovCron(value string) error {
+	cluster.Conf.SchedulerRollingReprovCron = value
+	cluster.SetSchedulerRollingReprov()
 	return nil
 }
 

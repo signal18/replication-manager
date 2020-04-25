@@ -23,6 +23,14 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 	return false
 }
 
+func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
+	if _, ok := cluster.Schedule[myname]; ok {
+		return true
+	}
+
+	return false
+}
+
 func (cluster *Cluster) IsProvisioned() bool {
 	if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
 		return true

@@ -2,7 +2,7 @@
 
 include = "/etc/replication-manager/cluster.d"
 
-monitoring-save-config=true
+monitoring-save-config = false
 monitoring-datadir = "/var/lib/replication-manager"
 #monitoring-sharedir = "/usr/share/replication-manager"
 

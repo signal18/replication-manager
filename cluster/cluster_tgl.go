@@ -68,7 +68,12 @@ func (cluster *Cluster) SwitchRejoin() {
 func (cluster *Cluster) SwitchRejoinDump() {
 	cluster.Conf.AutorejoinMysqldump = !cluster.Conf.AutorejoinMysqldump
 }
-
+func (cluster *Cluster) SwitchRejoinLogicalBackup() {
+	cluster.Conf.AutorejoinLogicalBackup = !cluster.Conf.AutorejoinLogicalBackup
+}
+func (cluster *Cluster) SwitchRejoinPhysicalBackup() {
+	cluster.Conf.AutorejoinPhysicalBackup = !cluster.Conf.AutorejoinPhysicalBackup
+}
 func (cluster *Cluster) SwitchRejoinBackupBinlog() {
 	cluster.Conf.AutorejoinBackupBinlog = !cluster.Conf.AutorejoinBackupBinlog
 }
@@ -106,6 +111,7 @@ func (cluster *Cluster) SwitchBackup() {
 
 func (cluster *Cluster) SwitchSchedulerBackupLogical() {
 	cluster.Conf.SchedulerBackupLogical = !cluster.Conf.SchedulerBackupLogical
+	cluster.SetSchedulerBackupLogical()
 }
 
 func (cluster *Cluster) SwitchSchedulerBackupPhysical() {
@@ -114,10 +120,30 @@ func (cluster *Cluster) SwitchSchedulerBackupPhysical() {
 
 func (cluster *Cluster) SwitchSchedulerDatabaseLogs() {
 	cluster.Conf.SchedulerDatabaseLogs = !cluster.Conf.SchedulerDatabaseLogs
+	cluster.SetSchedulerBackupLogs()
+}
+func (cluster *Cluster) SwitchSchedulerDatabaseLogsTableRotate() {
+	cluster.Conf.SchedulerDatabaseLogsTableRotate = !cluster.Conf.SchedulerDatabaseLogsTableRotate
+	cluster.SetSchedulerLogsTableRotate()
 }
 
 func (cluster *Cluster) SwitchSchedulerDatabaseOptimize() {
 	cluster.Conf.SchedulerDatabaseOptimize = !cluster.Conf.SchedulerDatabaseOptimize
+	cluster.SetSchedulerOptimize()
+}
+
+func (cluster *Cluster) SwitchSchedulerRollingRestart() {
+	cluster.Conf.SchedulerRollingRestart = !cluster.Conf.SchedulerRollingRestart
+	cluster.SetSchedulerRollingRestart()
+}
+
+func (cluster *Cluster) SwitchSchedulerRollingReprov() {
+	cluster.Conf.SchedulerRollingReprov = !cluster.Conf.SchedulerRollingReprov
+	cluster.SetSchedulerRollingReprov()
+}
+
+func (cluster *Cluster) SwitchMonitoringSaveConfig() {
+	cluster.Conf.ConfRewrite = !cluster.Conf.ConfRewrite
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
@@ -146,6 +172,13 @@ func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
+	if cluster.Conf.MonitorScheduler {
+		cluster.LogPrintf(LvlInfo, "Stopping scheduler")
+		cluster.scheduler.Stop()
+	} else {
+		cluster.LogPrintf(LvlInfo, "Starting scheduler")
+		cluster.scheduler.Start()
+	}
 }
 
 func (cluster *Cluster) SwitchMonitoringQueries() {
