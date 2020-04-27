@@ -199,7 +199,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			log.Infof("No config include directory %s ", conf.ClusterConfigPath)
 		}
 		for _, f := range files {
-			if !f.IsDir() {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
 				viper.SetConfigName(f.Name())
 				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 				//	viper.Debug()
