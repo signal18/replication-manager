@@ -38,7 +38,7 @@ cflags=(-m "$maintainer" --license "$license" -v $version)
 
 cp "$builddir"/binaries/replication-manager-cli "$builddir"/package/usr/bin/
 fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm -n replication-manager-client --description "$description - client package" -p "$builddir/release"
-fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-client --description "$description - client package" -p "$builddir/release"
+fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-client --description "$description - client package" -p "$builddir/release" --config-files /etc/replication-manager/config.toml
 fpm --package replication-manager-client-$version.tar -C "$builddir"/package -s dir -t tar -n replication-manager-client -p "$builddir"/release/replication-manager-client-$version.tar.gz
 
 
@@ -92,7 +92,8 @@ do
     cp service/replication-manager-$flavor.init.el6 "$builddir"/package/etc/init.d/replication-manager
     fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" -p "$builddir/release"
     cp service/replication-manager-$flavor.init.deb7 "$builddir"/package/etc/init.d/replication-manager
-    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release"
+    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release" --config-files /etc/replication-manager/config.toml
+
     rm -f "$builddir"/package/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
