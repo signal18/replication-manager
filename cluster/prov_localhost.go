@@ -156,15 +156,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 }
 
 func (cluster *Cluster) LocalhostStopDatabaseService(server *ServerMonitor) error {
-	_, err := server.Conn.Exec("SHUTDOWN")
-	if err != nil {
-		cluster.LogPrintf("TEST", "Shutdown failed %s", err)
-	}
-	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
-
-	//	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", server.Process.Pid))
-	//	killCmd.Run()
-	return nil
+	return server.Shutdown()
 }
 
 func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMonitor) error {

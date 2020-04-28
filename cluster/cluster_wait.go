@@ -45,7 +45,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 			return
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Failover end")
 	} else {
 		cluster.LogPrintf(LvlErr, "Failover end timeout")
@@ -68,7 +68,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 			return
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Switchover end")
 	} else {
 		cluster.LogPrintf(LvlErr, "Switchover end timeout")
@@ -117,12 +117,12 @@ func (cluster *Cluster) WaitClusterStop() error {
 			exitloop++
 			// All cluster down
 			if cluster.sme.IsInState("ERR00021") == true {
-				exitloop = 100
+				exitloop = 9999999
 			}
 
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Cluster is shutdown")
 	} else {
 		cluster.LogPrintf(LvlErr, "Cluster shutdown timeout")
@@ -142,11 +142,11 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 			exitloop++
 			// All cluster down
 			if cluster.IsProxyEqualMaster() == true {
-				exitloop = 100
+				exitloop = 9999999
 			}
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Proxy can join master")
 	} else {
 		cluster.LogPrintf(LvlErr, "Proxy to join master timeout")
@@ -157,20 +157,20 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 
 func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting MariaDB shutdown")
 			exitloop++
 			_, err := os.FindProcess(server.Process.Pid)
 			if err != nil {
-				exitloop = 100
+				exitloop = 9999999
 			}
 
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "MariaDB shutdown")
 	} else {
 		cluster.LogPrintf(LvlInfo, "MariaDB shutdown timeout")
@@ -181,8 +181,8 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 
 func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 
@@ -191,17 +191,44 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 			err := server.Refresh()
 			if err == nil {
 
-				exitloop = 100
+				exitloop = 9999999
 			} else {
-				cluster.LogPrintf(LvlInfo, "Waiting for database start on %s failed with error %s ", server.URL, err)
+				cluster.LogPrintf(LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
 			}
 		}
 	}
-	if exitloop == 100 {
-		cluster.LogPrintf(LvlInfo, "Database started")
+	if exitloop == 9999999 {
+		cluster.LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
 	} else {
-		cluster.LogPrintf(LvlInfo, "Database start timeout")
-		return errors.New("Failed to Start MariaDB")
+		cluster.LogPrintf("Wait state running on %s", server.URL)
+		return errors.New("Failed to wait running database server")
+	}
+	return nil
+}
+
+func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
+		select {
+		case <-ticker.C:
+
+			exitloop++
+
+			err := server.Refresh()
+			if err != nil {
+
+				exitloop = 9999999
+			} else {
+				cluster.LogPrintf(LvlInfo, "Waiting state suspect on %s failed with error %s ", server.URL, err)
+			}
+		}
+	}
+	if exitloop == 9999999 {
+		cluster.LogPrintf(LvlInfo, "Waiting state suspect reach on %s", server.URL)
+	} else {
+		cluster.LogPrintf(LvlInfo, "Wait state suspect timeout on %s", server.URL)
+		return errors.New("Failed to wait state suspect")
 	}
 	return nil
 }
@@ -209,19 +236,19 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 func (cluster *Cluster) WaitBootstrapDiscovery() error {
 	cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 			exitloop++
 			if cluster.sme.IsDiscovered() {
-				exitloop = 100
+				exitloop = 9999999
 			}
 
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Cluster is Bootstraped and discovery")
 	} else {
 		cluster.LogPrintf(LvlErr, "Bootstrap timeout")
@@ -233,19 +260,19 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 func (cluster *Cluster) waitMasterDiscovery() error {
 	cluster.LogPrintf(LvlInfo, "Waiting Master Found")
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 30 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting Master Found")
 			exitloop++
 			if cluster.GetMaster() != nil {
-				exitloop = 100
+				exitloop = 9999999
 			}
 
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Master founded")
 	} else {
 		cluster.LogPrintf(LvlErr, "Master found timeout")
@@ -265,21 +292,21 @@ func (cluster *Cluster) AllDatabaseCanConn() bool {
 
 func (cluster *Cluster) WaitDatabaseCanConn() error {
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 
 	cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
-	for exitloop < 30 {
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
 			exitloop++
 			if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() {
-				exitloop = 100
+				exitloop = 9999999
 			}
 
 		}
 	}
-	if exitloop == 100 {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "All databases can connect")
 	} else {
 		cluster.LogPrintf(LvlErr, "Timeout waiting for database to be connected")

@@ -36,6 +36,7 @@ type Config struct {
 	MonitoringSSLKey                          string `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
 	MonitoringKeyPath                         string `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringTicker                          int64  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
+	MonitorWaitRetry                          int64  `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitoringWaitRetry"`
 	Socket                                    string `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
 	TunnelHost                                string `mapstructure:"monitoring-tunnel-host" toml:"monitoring-tunnel-host" json:"monitoringTunnelHost"`
 	TunnelCredential                          string `mapstructure:"monitoring-tunnel-credential" toml:"monitoring-tunnel-credential" json:"monitoringTunnelCredential"`
@@ -434,6 +435,7 @@ type Config struct {
 	BackupMysqlbinlogPath                     string `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
 	BackupMysqlclientPath                     string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
+
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
 

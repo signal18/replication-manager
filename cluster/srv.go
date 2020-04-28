@@ -1129,3 +1129,12 @@ func (server *ServerMonitor) WaitInnoDBPurge() error {
 		}
 	}
 }
+
+func (server *ServerMonitor) Shutdown() error {
+	_, err := server.Conn.Exec("SHUTDOWN")
+	if err != nil {
+		server.ClusterGroup.LogPrintf("TEST", "Shutdown failed %s", err)
+		return err
+	}
+	return nil
+}

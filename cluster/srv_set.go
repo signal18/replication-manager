@@ -25,6 +25,10 @@ func (server *ServerMonitor) SetIgnored(ignored bool) {
 	server.Ignored = ignored
 }
 
+func (server *ServerMonitor) SetFailed() {
+	server.State = stateFailed
+}
+
 func (server *ServerMonitor) SetPrefered(pref bool) {
 	server.Prefered = pref
 }

@@ -60,6 +60,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingRestart bool                        `json:"isNeedDatabasesRollingRestart"`
 	IsNeedDatabasesRollingReprov  bool                        `json:"isNeedDatabasesRollingReprov"`
 	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
+	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	Conf                          config.Config               `json:"config"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	ConfigDBTags                  []Tag                       `json:"configTags"`       //from module
@@ -357,6 +358,7 @@ func (cluster *Cluster) Run() {
 		cluster.Uptime = cluster.GetStateMachine().GetUptime()
 		cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
 		cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
+		cluster.IsNotMonitoring = cluster.sme.IsInFailover()
 		cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 		select {
 		case sig := <-cluster.switchoverChan:
@@ -961,33 +963,62 @@ func (cluster *Cluster) RollingReprov() error {
 
 func (cluster *Cluster) RollingRestart() error {
 	master := cluster.GetMaster()
+	saveFailoverMode := cluster.Conf.FailSync
+	cluster.SetFailSync(false)
+	defer cluster.SetFailSync(saveFailoverMode)
 	for _, slave := range cluster.slaves {
 		if !slave.IsDown() {
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.DSN, err)
+
 				return err
 			}
+
+			err = cluster.WaitDatabaseSuspect(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.DSN, err)
+				return err
+			}
+			slave.SetFailed()
 			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.DSN, err)
 				return err
 			}
 		}
 	}
 	cluster.SwitchoverWaitTest()
-	if !master.IsDown() {
-		err := cluster.StopDatabaseService(master)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
-			return err
-		}
-		err = cluster.StartDatabaseWaitRejoin(master)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
-			return err
-		}
-		cluster.SwitchOver()
+	if cluster.master.DSN == master.DSN {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart master is the same after Switchover")
+		return nil
 	}
+	if master.IsDown() {
+		return errors.New("Cancel roolling restart master down")
+	}
+	err := cluster.StopDatabaseService(master)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart master stop failed %s %s", master.DSN, err)
+		return err
+	}
+	err = cluster.WaitDatabaseSuspect(master)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart master does not transit suspect %s %s", master.DSN, err)
+		return err
+	}
+	master.SetFailed()
+	err = cluster.StartDatabaseWaitRejoin(master)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart mastster does not restart %s %s", master.DSN, err)
+		return err
+	}
+
+	err = cluster.StartDatabaseWaitRejoin(master)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
+		return err
+	}
+	cluster.SwitchOver()
+
 	return nil
 }

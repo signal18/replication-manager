@@ -12,7 +12,7 @@ func (cluster *Cluster) SlapOSUnprovisionDatabaseService(s *ServerMonitor) {
 }
 
 func (cluster *Cluster) SlapOSStopDatabaseService(s *ServerMonitor) {
-	//	s.JobServerStop() need agent or ssh to enable this
+	s.Shutdown()
 }
 
 func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor) {
