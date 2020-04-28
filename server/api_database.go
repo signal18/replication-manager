@@ -1082,7 +1082,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && node.IsDown() == false {
+		if node != nil {
 			if node.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need restart!"))
 				return
