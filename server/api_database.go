@@ -33,6 +33,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedReprov)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-start", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStop)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
@@ -1053,6 +1059,70 @@ func (repman *ReplicationManager) handlerMuxServerNeedReprov(w http.ResponseWrit
 			http.Error(w, "Encoding error", 503)
 		} else if proxy != nil {
 			if proxy.HasReprovCookie() {
+				w.Write([]byte("200 -Need reprov!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && node.IsDown() == false {
+			if node.HasWaitStartCookie() {
+				w.Write([]byte("200 -Need restart!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else if proxy != nil {
+			if proxy.HasWaitStartCookie() {
+				w.Write([]byte("200 -Need reprov!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && node.IsDown() == false {
+			if node.HasWaitStopCookie() {
+				w.Write([]byte("200 -Need restart!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else if proxy != nil {
+			if proxy.HasWaitStopCookie() {
 				w.Write([]byte("200 -Need reprov!"))
 				return
 			}

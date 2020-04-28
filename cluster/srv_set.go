@@ -262,6 +262,22 @@ func (server *ServerMonitor) SetRestartCookie() {
 	newFile.Close()
 }
 
+func (server *ServerMonitor) SetWaitStartCookie() {
+	newFile, err := os.Create(server.Datadir + "/@cookie_waitstart")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Can't save wait start cookie %s", err)
+	}
+	newFile.Close()
+}
+
+func (server *ServerMonitor) SetWaitStopCookie() {
+	newFile, err := os.Create(server.Datadir + "/@cookie_waitstop")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Can't save wait start cookie %s", err)
+	}
+	newFile.Close()
+}
+
 func (server *ServerMonitor) SetReprovCookie() {
 	newFile, err := os.Create(server.Datadir + "/@cookie_reprov")
 	if err != nil {

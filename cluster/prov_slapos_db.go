@@ -16,5 +16,6 @@ func (cluster *Cluster) SlapOSStopDatabaseService(s *ServerMonitor) {
 }
 
 func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor) {
-	s.JobServerRestart()
+	//	s.JobServerRestart()
+	s.SetWaitStartCookie()
 }

@@ -335,6 +335,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring db master as failed %s", server.URL)
 					}
 					server.ClusterGroup.master.State = stateFailed
+					server.DelWaitStopCookie()
 				} else {
 					server.ClusterGroup.master.State = stateSuspect
 
@@ -346,6 +347,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
 						server.State = stateFailed
+						server.DelWaitStopCookie()
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
 						if server.Replications != nil {
@@ -397,6 +399,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		return
 	}
 	defer conn.Close()
+
+	// For orchestrator to trigger a start via tracking state URL
+	if server.PrevState == stateFailed {
+		server.DelWaitStartCookie()
+	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0

@@ -33,3 +33,17 @@ func (proxy *Proxy) DelRestartCookie() {
 		fmt.Println("Error:", err)
 	}
 }
+
+func (proxy *Proxy) DelWaitStartCookie() {
+	err := os.Remove(proxy.Datadir + "/@cookie_waitstart")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}
+
+func (proxy *Proxy) DelWaitStopCookie() {
+	err := os.Remove(proxy.Datadir + "/@cookie_waitstop")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+}

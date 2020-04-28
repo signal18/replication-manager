@@ -37,6 +37,26 @@ func (server *ServerMonitor) HasProvisionCookie() bool {
 	return true
 }
 
+func (server *ServerMonitor) HasWaitStartCookie() bool {
+	if server == nil {
+		return false
+	}
+	if _, err := os.Stat(server.Datadir + "/@cookie_waitstart"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func (server *ServerMonitor) HasWaitStopCookie() bool {
+	if server == nil {
+		return false
+	}
+	if _, err := os.Stat(server.Datadir + "/@cookie_waitstop"); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func (server *ServerMonitor) HasRestartCookie() bool {
 	if server == nil {
 		return false

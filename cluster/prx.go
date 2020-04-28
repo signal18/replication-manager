@@ -454,6 +454,7 @@ func (cluster *Cluster) refreshProxies() {
 		if err == nil {
 			pr.FailCount = 0
 			pr.State = stateProxyRunning
+			pr.DelWaitStartCookie()
 		} else {
 			pr.FailCount++
 			if pr.FailCount >= pr.ClusterGroup.Conf.MaxFail {
@@ -461,6 +462,7 @@ func (cluster *Cluster) refreshProxies() {
 					pr.ClusterGroup.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s", pr.Type, pr.Host, pr.Port)
 				}
 				pr.State = stateFailed
+				pr.DelWaitStopCookie()
 			} else {
 				pr.State = stateSuspect
 			}

@@ -32,6 +32,22 @@ func (proxy *Proxy) SetProvisionCookie() {
 	newFile.Close()
 }
 
+func (proxy *Proxy) SetWaitStartCookie() {
+	newFile, err := os.Create(proxy.Datadir + "/@cookie_waitstart")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	newFile.Close()
+}
+
+func (proxy *Proxy) SetWaitStopCookie() {
+	newFile, err := os.Create(proxy.Datadir + "/@cookie_waitstop")
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	newFile.Close()
+}
+
 func (proxy *Proxy) SetRestartCookie() {
 	newFile, err := os.Create(proxy.Datadir + "/@cookie_restart")
 	if err != nil {
