@@ -313,7 +313,7 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 func (cluster *Cluster) GetProxyFromURL(url string) *Proxy {
 	if strings.Contains(url, ":") {
 		for _, proxy := range cluster.Proxies {
-			cluster.LogPrintf(LvlInfo, " serach prx %s %s for url %s", proxy.Host, proxy.Port, url)
+			//	cluster.LogPrintf(LvlInfo, " search prx %s %s for url %s", proxy.Host, proxy.Port, url)
 			if proxy.Host+":"+proxy.Port == url {
 				return proxy
 			}

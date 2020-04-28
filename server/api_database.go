@@ -1085,6 +1085,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 		if node != nil {
 			if node.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need start!"))
+				node.DelWaitStartCookie()
 				return
 			}
 			w.Write([]byte("503 -No start needed!"))
@@ -1092,6 +1093,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 		} else if proxy != nil {
 			if proxy.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need start!"))
+				proxy.DelWaitStartCookie()
 				return
 			}
 			w.Write([]byte("503 -No start needed!"))
@@ -1116,6 +1118,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && node.IsDown() == false {
 			if node.HasWaitStopCookie() {
+				node.DelWaitStopCookie()
 				w.Write([]byte("200 -Need stop!"))
 				return
 			}
@@ -1124,6 +1127,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 		} else if proxy != nil {
 			if proxy.HasWaitStopCookie() {
 				w.Write([]byte("200 -Need stop!"))
+				proxy.DelWaitStopCookie()
 				return
 			}
 			w.Write([]byte("503 -No stop needed!"))
